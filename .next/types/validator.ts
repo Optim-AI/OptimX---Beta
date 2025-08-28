@@ -39,12 +39,6 @@ type PagesPageConfig = {
   handler satisfies PagesPageConfig
 }
 
-// Validate ../../pages/auth.tsx
-{
-  const handler = {} as typeof import("../../pages/auth.js")
-  handler satisfies PagesPageConfig
-}
-
 // Validate ../../pages/auth/signin.tsx
 {
   const handler = {} as typeof import("../../pages/auth/signin.js")

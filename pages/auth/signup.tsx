@@ -1,9 +1,16 @@
-import { useState } from "react";
+import { useState, FormEvent } from "react";
 import Link from "next/link";
+import { useRouter } from "next/router";
 
 export default function SignUpPage() {
   const [showPw, setShowPw] = useState(false);
   const [showPw2, setShowPw2] = useState(false);
+  const router = useRouter();
+
+  const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    router.push("/dashboard");
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 p-4">
@@ -11,26 +18,31 @@ export default function SignUpPage() {
         {/* Brand */}
         <div className="text-center">
           <h1 className="text-3xl font-semibold">OptimAI</h1>
-          <p className="text-sm text-slate-500 mt-1">AI-powered marketing optimization</p>
+          <p className="text-sm text-slate-500 mt-1">
+            AI-powered marketing optimization
+          </p>
         </div>
 
         {/* Tabs */}
         <div className="mt-6 grid grid-cols-2 rounded-xl bg-slate-100 p-1 text-sm font-medium">
-          <Link href="/auth/signin" className="rounded-lg py-2 text-center text-slate-600 hover:text-slate-900">
+          <Link
+            href="/auth/signin"
+            className="rounded-lg py-2 text-center text-slate-600 hover:text-slate-900"
+          >
             Sign In
           </Link>
-          <div className="rounded-lg bg-white py-2 text-center shadow">Sign Up</div>
+          <div className="rounded-lg bg-white py-2 text-center shadow">
+            Sign Up
+          </div>
         </div>
 
         {/* Form */}
-        <form
-          className="mt-6 space-y-4"
-          onSubmit={(e) => {
-            e.preventDefault();
-          }}
-        >
+        <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
           <div>
-            <label htmlFor="name" className="block text-sm font-medium text-slate-700">
+            <label
+              htmlFor="name"
+              className="block text-sm font-medium text-slate-700"
+            >
               Full Name
             </label>
             <input
@@ -43,7 +55,10 @@ export default function SignUpPage() {
           </div>
 
           <div>
-            <label htmlFor="biz" className="block text-sm font-medium text-slate-700">
+            <label
+              htmlFor="biz"
+              className="block text-sm font-medium text-slate-700"
+            >
               Business Name
             </label>
             <input
@@ -56,7 +71,10 @@ export default function SignUpPage() {
           </div>
 
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-slate-700">
+            <label
+              htmlFor="email"
+              className="block text-sm font-medium text-slate-700"
+            >
               Email
             </label>
             <input
@@ -69,7 +87,10 @@ export default function SignUpPage() {
           </div>
 
           <div>
-            <label htmlFor="password" className="block text-sm font-medium text-slate-700">
+            <label
+              htmlFor="password"
+              className="block text-sm font-medium text-slate-700"
+            >
               Password
             </label>
             <div className="mt-1 relative">
@@ -92,7 +113,10 @@ export default function SignUpPage() {
           </div>
 
           <div>
-            <label htmlFor="confirm" className="block text-sm font-medium text-slate-700">
+            <label
+              htmlFor="confirm"
+              className="block text-sm font-medium text-slate-700"
+            >
               Confirm Password
             </label>
             <div className="mt-1 relative">
@@ -129,9 +153,10 @@ export default function SignUpPage() {
           <div className="h-px flex-1 bg-slate-200" />
         </div>
 
-        {/* Google button (UI only) */}
+        {/* Google button */}
         <button
           type="button"
+          onClick={() => router.push("/dashboard")}
           className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 font-medium hover:bg-slate-50"
         >
           <span className="mr-2">🟢</span> Continue with Google
