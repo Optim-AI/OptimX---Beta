@@ -1,11 +1,17 @@
 import React from 'react';
+import Link from "next/link";
+
 export const Hero = () => (
   <header className="bg-blue-50 py-8">
     <nav className="container mx-auto flex justify-between items-center">
       <div className="text-2xl font-bold">OptimAI</div>
-      <div>
-        <button className="mr-4">Sign in</button>
-        <button className="bg-blue-500 text-white px-4 py-2 rounded">Get Started</button>
+      <div className="flex gap-3">
+        <Link href="/auth/signin" className="px-4 py-2 rounded hover:bg-blue-100">
+          Sign in
+        </Link>
+        <Link href="/auth/signup" className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+          Get Started
+        </Link>
       </div>
     </nav>
     <div className="container mx-auto text-center py-16">

@@ -45,6 +45,18 @@ type PagesPageConfig = {
   handler satisfies PagesPageConfig
 }
 
+// Validate ../../pages/auth/signin.tsx
+{
+  const handler = {} as typeof import("../../pages/auth/signin.js")
+  handler satisfies PagesPageConfig
+}
+
+// Validate ../../pages/auth/signup.tsx
+{
+  const handler = {} as typeof import("../../pages/auth/signup.js")
+  handler satisfies PagesPageConfig
+}
+
 // Validate ../../pages/campaign/create.tsx
 {
   const handler = {} as typeof import("../../pages/campaign/create.js")
