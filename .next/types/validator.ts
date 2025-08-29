@@ -51,27 +51,21 @@ type PagesPageConfig = {
   handler satisfies PagesPageConfig
 }
 
-// Validate ../../pages/campaign/create.tsx
+// Validate ../../pages/create-campaign-finalize.tsx
 {
-  const handler = {} as typeof import("../../pages/campaign/create.js")
+  const handler = {} as typeof import("../../pages/create-campaign-finalize.js")
   handler satisfies PagesPageConfig
 }
 
-// Validate ../../pages/campaign/finalize.tsx
+// Validate ../../pages/create-campaign-preview.tsx
 {
-  const handler = {} as typeof import("../../pages/campaign/finalize.js")
+  const handler = {} as typeof import("../../pages/create-campaign-preview.js")
   handler satisfies PagesPageConfig
 }
 
-// Validate ../../pages/campaign/preview.tsx
+// Validate ../../pages/create-campaign.tsx
 {
-  const handler = {} as typeof import("../../pages/campaign/preview.js")
-  handler satisfies PagesPageConfig
-}
-
-// Validate ../../pages/create.tsx
-{
-  const handler = {} as typeof import("../../pages/create.js")
+  const handler = {} as typeof import("../../pages/create-campaign.js")
   handler satisfies PagesPageConfig
 }
 
@@ -108,12 +102,6 @@ type PagesPageConfig = {
 // Validate ../../pages/notifications.tsx
 {
   const handler = {} as typeof import("../../pages/notifications.js")
-  handler satisfies PagesPageConfig
-}
-
-// Validate ../../pages/onboarding.tsx
-{
-  const handler = {} as typeof import("../../pages/onboarding.js")
   handler satisfies PagesPageConfig
 }
 

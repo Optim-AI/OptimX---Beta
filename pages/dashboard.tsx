@@ -17,28 +17,28 @@ export default function Dashboard() {
           <Link href="/dashboard" className="block px-3 py-2 rounded-lg hover:bg-slate-100">
             📊 Dashboard
           </Link>
-          <Link href="#" className="block px-3 py-2 rounded-lg hover:bg-slate-100">
+          <Link onClick={() => router.push("/create-campaign")} href="#" className="block px-3 py-2 rounded-lg hover:bg-slate-100">
             ➕ Create Campaign
           </Link>
-          <Link href="#" className="block px-3 py-2 rounded-lg hover:bg-slate-100">
+          <Link href="/insights" className="block px-3 py-2 rounded-lg hover:bg-slate-100">
             🤖 AI Insights
           </Link>
-          <Link href="#" className="block px-3 py-2 rounded-lg hover:bg-slate-100">
+          <Link href="/analytics" className="block px-3 py-2 rounded-lg hover:bg-slate-100">
             📈 Analytics
           </Link>
-          <Link href="#" className="block px-3 py-2 rounded-lg hover:bg-slate-100">
+          <Link href="/library" className="block px-3 py-2 rounded-lg hover:bg-slate-100">
             📚 Campaign Library
           </Link>
-          <Link href="#" className="block px-3 py-2 rounded-lg hover:bg-slate-100">
+          <Link href="/publish" className="block px-3 py-2 rounded-lg hover:bg-slate-100">
             📤 Publishing
           </Link>
-          <Link href="#" className="block px-3 py-2 rounded-lg hover:bg-slate-100">
+          <Link href="/integrations" className="block px-3 py-2 rounded-lg hover:bg-slate-100">
             🔗 Integrations
           </Link>
-          <Link href="#" className="block px-3 py-2 rounded-lg hover:bg-slate-100">
+          <Link href="/notifications" className="block px-3 py-2 rounded-lg hover:bg-slate-100">
             🔔 Notifications
           </Link>
-          <Link href="#" className="block px-3 py-2 rounded-lg hover:bg-slate-100">
+          <Link href="#/settings" className="block px-3 py-2 rounded-lg hover:bg-slate-100">
             ⚙️ Settings
           </Link>
         </nav>
@@ -46,7 +46,7 @@ export default function Dashboard() {
         {/* Quick Create */}
         <div className="p-4 border-t">
           <button
-            onClick={() => alert('Redirect to campaign create')}
+            onClick={() => router.push("/create-campaign")}
             className="w-full rounded-lg bg-blue-600 px-4 py-2 text-white font-medium hover:bg-blue-700"
           >
             Start Campaign
@@ -96,7 +96,7 @@ export default function Dashboard() {
               <span className="text-sm text-slate-600">📱 Multi-platform publishing</span>
               <span className="text-sm text-slate-600">📊 Real-time analytics</span>
             </div>
-            <button className="mt-6 rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700">
+            <button onClick={() => router.push("/create-campaign")} className="mt-6 rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700">
               Create Your First Campaign
             </button>
           </div>
@@ -140,7 +140,7 @@ export default function Dashboard() {
           <div className="rounded-xl bg-white p-6 shadow">
             <h3 className="font-medium text-lg">Your Campaigns</h3>
             <p className="text-slate-500 mt-2">No campaigns yet. Start by creating one below.</p>
-            <button className="mt-4 rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700">
+            <button onClick={() => router.push("/create-campaign")} className="mt-4 rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700">
               + Create Campaign
             </button>
           </div>
