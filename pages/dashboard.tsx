@@ -1,8 +1,18 @@
 import Link from "next/link";
 import { useRouter } from "next/router";
-
+import { getAuth, signOut } from "firebase/auth";
 export default function Dashboard() {
   const router = useRouter();
+  const auth = getAuth();
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      router.push("/auth/signin"); // redirect to signin page
+    } catch (error) {
+      console.error("Error signing out:", error);
+    }
+  };
 
   return (
     <div className="min-h-screen flex bg-slate-50">
@@ -74,7 +84,7 @@ export default function Dashboard() {
               </div>
               <span className="text-slate-700 text-sm">Ssn</span>
               <button
-                onClick={() => router.push("/auth/signin")}
+                onClick={handleLogout}
                 className="ml-3 text-xs text-red-600 hover:underline"
               >
                 Logout

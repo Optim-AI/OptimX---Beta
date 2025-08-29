@@ -1,14 +1,52 @@
 import { useState, FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/router";
+import { getAuth, signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
+import { app } from "../../lib/firebase"; // your firebase config file
 
 export default function SignInPage() {
   const [showPw, setShowPw] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
   const router = useRouter();
 
-  const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
+  const auth = getAuth(app);
+
+  // Email/Password login
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    router.push("/dashboard");
+    setError("");
+
+    try {
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      if (userCredential.user) {
+        router.push("/dashboard");
+      }
+    } catch (err: any) {
+      if (err.code === "auth/user-not-found") {
+        setError("User does not exist. Please create a new account.");
+      } else if (err.code === "auth/wrong-password") {
+        setError("Incorrect password.");
+      } else {
+        setError(err.message);
+      }
+    }
+  };
+
+  // Google login
+  const handleGoogleLogin = async () => {
+    setError("");
+    const provider = new GoogleAuthProvider();
+
+    try {
+      const result = await signInWithPopup(auth, provider);
+      if (result.user) {
+        router.push("/dashboard");
+      }
+    } catch (err: any) {
+      setError("Google sign-in failed. Try again.");
+    }
   };
 
   return (
@@ -36,16 +74,15 @@ export default function SignInPage() {
         {/* Form */}
         <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
           <div>
-            <label
-              htmlFor="email"
-              className="block text-sm font-medium text-slate-700"
-            >
+            <label htmlFor="email" className="block text-sm font-medium text-slate-700">
               Email
             </label>
             <div className="mt-1 relative">
               <input
                 id="email"
                 type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 required
                 placeholder="Enter your email"
                 className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 outline-none focus:border-slate-400"
@@ -57,16 +94,15 @@ export default function SignInPage() {
           </div>
 
           <div>
-            <label
-              htmlFor="password"
-              className="block text-sm font-medium text-slate-700"
-            >
+            <label htmlFor="password" className="block text-sm font-medium text-slate-700">
               Password
             </label>
             <div className="mt-1 relative">
               <input
                 id="password"
                 type={showPw ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
                 required
                 placeholder="Enter your password"
                 className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 pr-11 outline-none focus:border-slate-400"
@@ -81,6 +117,8 @@ export default function SignInPage() {
               </button>
             </div>
           </div>
+
+          {error && <p className="text-red-500 text-sm">{error}</p>}
 
           <button
             type="submit"
@@ -100,7 +138,7 @@ export default function SignInPage() {
         {/* Google button */}
         <button
           type="button"
-          onClick={() => router.push("/dashboard")}
+          onClick={handleGoogleLogin}
           className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 font-medium hover:bg-slate-50"
         >
           <span className="mr-2">🟢</span> Continue with Google

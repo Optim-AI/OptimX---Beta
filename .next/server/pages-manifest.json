@@ -2,8 +2,7 @@
   "/_app": "pages/_app.js",
   "/_error": "pages/_error.js",
   "/_document": "pages/_document.js",
-  "/dashboard": "pages/dashboard.js",
-  "/publish": "pages/publish.js",
-  "/settings": "pages/settings.js",
-  "/create-campaign": "pages/create-campaign.js"
+  "/auth/signin": "pages/auth/signin.js",
+  "/auth/signup": "pages/auth/signup.js",
+  "/dashboard": "pages/dashboard.js"
 }
