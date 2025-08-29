@@ -2,7 +2,8 @@
   "/_app": "pages/_app.js",
   "/_error": "pages/_error.js",
   "/_document": "pages/_document.js",
-  "/auth/signin": "pages/auth/signin.js",
   "/dashboard": "pages/dashboard.js",
-  "/create-campaign": "pages/create-campaign.js"
+  "/create-campaign-finalize": "pages/create-campaign-finalize.js",
+  "/": "pages/index.js",
+  "/create-campaign-preview": "pages/create-campaign-preview.js"
 }

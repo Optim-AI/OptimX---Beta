@@ -1,9 +1,53 @@
-// pages/create-campaign.tsx
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useState } from "react";
 
 export default function CreateCampaign() {
-    const router = useRouter();
+  const router = useRouter();
+
+  const [name, setName] = useState("");
+  const [audience, setAudience] = useState("");
+  const [campaignType, setCampaignType] = useState("");
+  const [brandVoice, setBrandVoice] = useState("");
+  const [contentTypes, setContentTypes] = useState<string[]>([]);
+  const [vision, setVision] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const toggleContentType = (t: string) => {
+    setContentTypes(prev =>
+      prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t]
+    );
+  };
+
+  const handleGenerate = async () => {
+    if (!name || !vision || contentTypes.length === 0) {
+      alert("Please fill in Campaign Name, Vision, and pick at least one content type.");
+      return;
+    }
+    setLoading(true);
+    try {
+      const payload = { name, audience, campaignType, brandVoice, contentTypes, vision };
+      const resp = await fetch("/api/generate-campaign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await resp.json();
+      if (!data.ok) throw new Error(data.error || "API failed");
+
+      sessionStorage.setItem(
+        "preview",
+        JSON.stringify({ inputs: payload, output: data.copy, image: data.image })
+      );
+      router.push("/create-campaign-preview");
+    } catch (err: any) {
+      alert("Generation failed: " + (err.message || err));
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen flex bg-slate-50">
       {/* Sidebar */}
@@ -12,7 +56,6 @@ export default function CreateCampaign() {
           <h1 className="text-xl font-bold text-slate-800">OptimAI</h1>
           <p className="text-xs text-slate-500">Campaign Manager</p>
         </div>
-
         <nav className="flex-1 p-4 space-y-2 text-slate-700">
           <Link href="/dashboard" className="block px-3 py-2 rounded-lg hover:bg-slate-100">
             📊 Dashboard
@@ -20,30 +63,7 @@ export default function CreateCampaign() {
           <Link href="/create-campaign" className="block px-3 py-2 rounded-lg hover:bg-slate-100">
             ➕ Create Campaign
           </Link>
-          <Link href="#" className="block px-3 py-2 rounded-lg hover:bg-slate-100">
-            🤖 AI Insights
-          </Link>
-          <Link href="#" className="block px-3 py-2 rounded-lg hover:bg-slate-100">
-            📈 Analytics
-          </Link>
-          <Link href="#" className="block px-3 py-2 rounded-lg hover:bg-slate-100">
-            📚 Campaign Library
-          </Link>
-          <Link href="#" className="block px-3 py-2 rounded-lg hover:bg-slate-100">
-            📤 Publishing
-          </Link>
-          <Link href="#" className="block px-3 py-2 rounded-lg hover:bg-slate-100">
-            🔗 Integrations
-          </Link>
-          <Link href="#" className="block px-3 py-2 rounded-lg hover:bg-slate-100">
-            🔔 Notifications
-          </Link>
-          <Link href="#" className="block px-3 py-2 rounded-lg hover:bg-slate-100">
-            ⚙️ Settings
-          </Link>
         </nav>
-
-        {/* Quick Create */}
         <div className="p-4 border-t">
           <Link
             href="/create-campaign"
@@ -58,7 +78,7 @@ export default function CreateCampaign() {
       <div className="flex-1 p-8">
         <h2 className="text-2xl font-bold mb-1">Create AI Campaign</h2>
         <p className="text-slate-500 mb-6">
-          Describe what you want and let AI create your perfect campaign content.
+          Describe your vision and let the free Pollinations image service generate a visual.
         </p>
 
         {/* Progress */}
@@ -69,26 +89,29 @@ export default function CreateCampaign() {
         <div className="space-y-8 max-w-3xl">
           {/* Campaign Information */}
           <div className="bg-white rounded-xl shadow p-6 space-y-4">
-            <h3 className="font-semibold flex items-center gap-2">
-              📑 Campaign Information
-            </h3>
+            <h3 className="font-semibold flex items-center gap-2">📑 Campaign Information</h3>
             <div className="grid grid-cols-2 gap-4">
               <input
                 placeholder="Campaign Name *"
+                value={name}
+                onChange={e => setName(e.target.value)}
                 className="border rounded-lg px-3 py-2"
               />
               <input
                 placeholder="Target Audience"
+                value={audience}
+                onChange={e => setAudience(e.target.value)}
                 className="border rounded-lg px-3 py-2"
               />
             </div>
             <div>
               <p className="text-sm font-medium mb-2">Campaign Type *</p>
               <div className="grid grid-cols-2 gap-2">
-                {["Flash Sale", "Product Launch", "Festival Promotion", "Brand Awareness"].map((t) => (
+                {["Flash Sale", "Product Launch", "Festival Promotion", "Brand Awareness"].map(t => (
                   <button
                     key={t}
-                    className="px-3 py-2 border rounded-lg hover:bg-blue-50"
+                    onClick={() => setCampaignType(t)}
+                    className={`px-3 py-2 border rounded-lg ${campaignType === t ? "bg-blue-50" : ""}`}
                   >
                     {t}
                   </button>
@@ -98,10 +121,11 @@ export default function CreateCampaign() {
             <div>
               <p className="text-sm font-medium mb-2">Brand Voice</p>
               <div className="flex gap-2 flex-wrap">
-                {["Professional", "Friendly", "Energetic", "Luxury"].map((v, i) => (
+                {["Professional", "Friendly", "Energetic", "Luxury"].map(v => (
                   <button
-                    key={i}
-                    className="px-3 py-1 border rounded-lg hover:bg-blue-50"
+                    key={v}
+                    onClick={() => setBrandVoice(v)}
+                    className={`px-3 py-1 border rounded-lg ${brandVoice === v ? "bg-blue-50" : ""}`}
                   >
                     {v}
                   </button>
@@ -116,13 +140,16 @@ export default function CreateCampaign() {
             <div className="grid grid-cols-2 gap-4">
               {[
                 { title: "Social Media Poster", desc: "Eye-catching visual content" },
-                { title: "Video Content", desc: "Dynamic video advertisements" },
+                { title: "Video Content", desc: "Dynamic video ads" },
                 { title: "Caption & Copy", desc: "Compelling text and hashtags" },
                 { title: "Email Campaign", desc: "Professional email templates" },
-              ].map((item) => (
+              ].map(item => (
                 <button
                   key={item.title}
-                  className="border rounded-lg p-4 text-left hover:bg-blue-50"
+                  onClick={() => toggleContentType(item.title)}
+                  className={`border rounded-lg p-4 text-left ${
+                    contentTypes.includes(item.title) ? "bg-blue-50" : ""
+                  }`}
                 >
                   <p className="font-medium">{item.title}</p>
                   <p className="text-xs text-slate-500">{item.desc}</p>
@@ -131,13 +158,15 @@ export default function CreateCampaign() {
             </div>
           </div>
 
-          {/* Describe Vision */}
+          {/* Vision */}
           <div className="bg-white rounded-xl shadow p-6 space-y-4">
             <h3 className="font-semibold">✨ Describe Your Vision *</h3>
             <textarea
               rows={4}
               placeholder="What do you want to create?"
               className="w-full border rounded-lg px-3 py-2"
+              value={vision}
+              onChange={e => setVision(e.target.value)}
             />
             <textarea
               rows={2}
@@ -154,8 +183,12 @@ export default function CreateCampaign() {
             >
               Cancel
             </Link>
-            <button onClick={() => router.push("/create-campaign-preview")} className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700">
-              Generate Content →
+            <button
+              onClick={handleGenerate}
+              disabled={loading}
+              className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700"
+            >
+              {loading ? "Generating..." : "Generate Content →"}
             </button>
           </div>
         </div>

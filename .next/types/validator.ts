@@ -22,6 +22,19 @@ type PagesPageConfig = {
   }
 }
 
+type ApiRouteConfig = {
+  default: (req: any, res: any) => Promise<Response | void> | Response | void
+  config?: {
+    api?: {
+      bodyParser?: boolean | { sizeLimit?: string }
+      responseLimit?: string | number | boolean
+      externalResolver?: boolean
+    }
+    runtime?: 'edge' | 'experimental-edge' | 'nodejs' | string // necessary unless config is exported as const
+    maxDuration?: number
+  }
+}
+
 
 
 
@@ -117,6 +130,10 @@ type PagesPageConfig = {
   handler satisfies PagesPageConfig
 }
 
-
+// Validate ../../pages/api/generate-campaign.ts
+{
+  const handler = {} as typeof import("../../pages/api/generate-campaign.js")
+  handler satisfies ApiRouteConfig
+}
 
 
