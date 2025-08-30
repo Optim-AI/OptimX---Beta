@@ -30,10 +30,20 @@ globalThis.__BUILD_MANIFEST = {
       "static/chunks/main.js",
       "static/chunks/pages/auth/signin.js"
     ],
-    "/auth/signup": [
+    "/create-campaign": [
       "static/chunks/webpack.js",
       "static/chunks/main.js",
-      "static/chunks/pages/auth/signup.js"
+      "static/chunks/pages/create-campaign.js"
+    ],
+    "/create-campaign-finalize": [
+      "static/chunks/webpack.js",
+      "static/chunks/main.js",
+      "static/chunks/pages/create-campaign-finalize.js"
+    ],
+    "/create-campaign-preview": [
+      "static/chunks/webpack.js",
+      "static/chunks/main.js",
+      "static/chunks/pages/create-campaign-preview.js"
     ],
     "/dashboard": [
       "static/chunks/webpack.js",
