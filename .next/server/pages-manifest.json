@@ -1,12 +1,1 @@
-{
-  "/_app": "pages/_app.js",
-  "/_error": "pages/_error.js",
-  "/_document": "pages/_document.js",
-  "/dashboard": "pages/dashboard.js",
-  "/": "pages/index.js",
-  "/auth/signin": "pages/auth/signin.js",
-  "/api/generate-campaign": "pages/api/generate-campaign.js",
-  "/create-campaign": "pages/create-campaign.js",
-  "/create-campaign-preview": "pages/create-campaign-preview.js",
-  "/create-campaign-finalize": "pages/create-campaign-finalize.js"
-}
+{}
