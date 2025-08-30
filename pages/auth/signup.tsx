@@ -8,50 +8,89 @@ export default function SignUpPage() {
   const [showPw, setShowPw] = useState(false);
   const [showPw2, setShowPw2] = useState(false);
   const [error, setError] = useState('');
+  const [info, setInfo] = useState('');
   const router = useRouter();
 
-  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError('');
+    setInfo('');
 
     const form = new FormData(e.currentTarget);
-    const email = form.get('email') as string;
-    const password = form.get('password') as string;
-    const confirm = form.get('confirm') as string;
-    const full_name = form.get('name') as string;
-    const business_name = form.get('biz') as string;
+    const name = (form.get('name') || '') as string;
+    const biz = (form.get('biz') || '') as string;
+    const email = (form.get('email') || '') as string;
+    const password = (form.get('password') || '') as string;
+    const confirm = (form.get('confirm') || '') as string;
 
     if (password !== confirm) {
       setError('Passwords do not match');
       return;
     }
 
-    const { data, error: signUpError } = await supabase.auth.signUp({
-      email: email,
-      password: password,
-      options: {
-        data: {
-          full_name: full_name,
-          business_name: business_name
+    try {
+      // 1) Sign up with metadata
+      const res = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            full_name: name,
+            business_name: biz
+          }
         }
+      });
+
+      const err = (res as any).error || (res as any).data?.error || null;
+      if (err) {
+        setError(err.message || JSON.stringify(err));
+        return;
       }
-    });
 
-    if (signUpError) {
-      setError(signUpError.message);
-      return;
+      const user = (res as any).data?.user || (res as any).user || null;
+      if (user?.id) {
+        // 2) Upsert profile with .select()
+        const { data: upserted, error: insertErr } = await supabase
+          .from('profiles')
+          .upsert(
+            {
+              id: user.id,
+              full_name: name,
+              business_name: biz,
+              email
+            },
+            {
+              onConflict: 'id'
+            }
+          )
+          .select();
+
+        if (insertErr) console.warn('Profile upsert error:', insertErr.message);
+        else console.log('Profile upsert result:', upserted);
+      }
+
+      if (!user) {
+        setInfo('Check your email to confirm the account. After confirmation, you can sign in.');
+      } else {
+        router.push('/dashboard');
+      }
+    } catch (e: any) {
+      setError(e.message || String(e));
     }
-
-    router.push('/dashboard');
-  }
+  };
 
   const handleGoogleSignup = async () => {
-    const { data, error: err } = await supabase.auth.signInWithOAuth({
+    const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: 'http://localhost:3000/dashboard' }
+      options: {
+        redirectTo: 'http://localhost:3000/dashboard'
+      }
     });
-    if (err) alert(err.message);
-    else if (data?.url) window.location.href = data.url;
+    if (error) {
+      alert(error.message);
+      return;
+    }
+    if (data?.url) window.location.href = data.url;
   };
 
   return (
@@ -65,6 +104,7 @@ export default function SignUpPage() {
           <Link href="/auth/signin" className="rounded-lg py-2 text-center text-slate-600 hover:text-slate-900">Sign In</Link>
           <div className="rounded-lg bg-white py-2 text-center shadow">Sign Up</div>
         </div>
+
         <form onSubmit={handleSubmit} className="mt-6 space-y-4">
           <div>
             <label className="block text-sm font-medium text-slate-700">Full Name</label>
@@ -87,7 +127,11 @@ export default function SignUpPage() {
                 required
                 className="w-full rounded-lg border px-4 py-2.5 pr-11"
               />
-              <button type="button" onClick={() => setShowPw((s) => !s)} className="absolute inset-y-0 right-2">
+              <button
+                type="button"
+                onClick={() => setShowPw(s => !s)}
+                className="absolute inset-y-0 right-2"
+              >
                 {showPw ? '🙈' : '👁️'}
               </button>
             </div>
@@ -101,20 +145,28 @@ export default function SignUpPage() {
                 required
                 className="w-full rounded-lg border px-4 py-2.5 pr-11"
               />
-              <button type="button" onClick={() => setShowPw2((s) => !s)} className="absolute inset-y-0 right-2">
+              <button
+                type="button"
+                onClick={() => setShowPw2(s => !s)}
+                className="absolute inset-y-0 right-2"
+              >
                 {showPw2 ? '🙈' : '👁️'}
               </button>
             </div>
           </div>
           {error && <p className="text-red-500 text-sm">{error}</p>}
+          {info && <p className="text-green-600 text-sm">{info}</p>}
           <button type="submit" className="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-white">Create Account</button>
         </form>
+
         <div className="my-6 flex items-center gap-3 text-xs text-slate-400">
           <div className="h-px flex-1 bg-slate-200" /><span>OR CONTINUE WITH</span><div className="h-px flex-1 bg-slate-200" />
         </div>
+
         <button onClick={handleGoogleSignup} className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 font-medium hover:bg-slate-50">
           <span className="mr-2">🟢</span> Continue with Google
         </button>
+
         <p className="mt-6 text-center text-xs text-slate-500">By continuing, you agree to our Terms of Service and Privacy Policy.</p>
       </div>
     </div>

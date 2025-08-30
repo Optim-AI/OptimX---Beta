@@ -2,9 +2,8 @@
   "/_app": "pages/_app.js",
   "/_error": "pages/_error.js",
   "/_document": "pages/_document.js",
-  "/create-campaign": "pages/create-campaign.js",
   "/create-campaign-preview": "pages/create-campaign-preview.js",
-  "/": "pages/index.js",
   "/create-campaign-finalize": "pages/create-campaign-finalize.js",
-  "/api/generate-campaign": "pages/api/generate-campaign.js"
+  "/dashboard": "pages/dashboard.js",
+  "/create-campaign": "pages/create-campaign.js"
 }
