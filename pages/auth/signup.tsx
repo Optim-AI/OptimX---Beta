@@ -10,28 +10,46 @@ export default function SignUpPage() {
   const [error, setError] = useState('');
   const router = useRouter();
 
-  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError('');
+
     const form = new FormData(e.currentTarget);
     const email = form.get('email') as string;
     const password = form.get('password') as string;
     const confirm = form.get('confirm') as string;
+    const full_name = form.get('name') as string;
+    const business_name = form.get('biz') as string;
 
     if (password !== confirm) {
       setError('Passwords do not match');
       return;
     }
 
-    const { error: err } = await supabase.auth.signUp({ email, password });
-    if (err) setError(err.message);
-    else router.push('/dashboard');
-  };
+    const { data, error: signUpError } = await supabase.auth.signUp({
+      email: email,
+      password: password,
+      options: {
+        data: {
+          full_name: full_name,
+          business_name: business_name
+        }
+      }
+    });
+
+    if (signUpError) {
+      setError(signUpError.message);
+      return;
+    }
+
+    router.push('/dashboard');
+  }
 
   const handleGoogleSignup = async () => {
-    const { data, error: err } = await supabase.auth.signInWithOAuth({ provider: 'google',options: {
-      redirectTo: 'http://localhost:3000/dashboard',
-    }, });
+    const { data, error: err } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: 'http://localhost:3000/dashboard' }
+    });
     if (err) alert(err.message);
     else if (data?.url) window.location.href = data.url;
   };
@@ -48,35 +66,44 @@ export default function SignUpPage() {
           <div className="rounded-lg bg-white py-2 text-center shadow">Sign Up</div>
         </div>
         <form onSubmit={handleSubmit} className="mt-6 space-y-4">
-          {/* Full Name */}
           <div>
             <label className="block text-sm font-medium text-slate-700">Full Name</label>
             <input name="name" type="text" required className="mt-1 w-full rounded-lg border px-4 py-2.5" />
           </div>
-          {/* Business Name */}
           <div>
             <label className="block text-sm font-medium text-slate-700">Business Name</label>
             <input name="biz" type="text" required className="mt-1 w-full rounded-lg border px-4 py-2.5" />
           </div>
-          {/* Email */}
           <div>
             <label className="block text-sm font-medium text-slate-700">Email</label>
             <input name="email" type="email" required className="mt-1 w-full rounded-lg border px-4 py-2.5" />
           </div>
-          {/* Password */}
           <div>
             <label className="block text-sm font-medium text-slate-700">Password</label>
             <div className="relative">
-              <input name="password" type={showPw ? 'text' : 'password'} required className="w-full rounded-lg border px-4 py-2.5 pr-11" />
-              <button type="button" onClick={() => setShowPw(s => !s)} className="absolute inset-y-0 right-2">{showPw ? '🙈' : '👁️'}</button>
+              <input
+                name="password"
+                type={showPw ? 'text' : 'password'}
+                required
+                className="w-full rounded-lg border px-4 py-2.5 pr-11"
+              />
+              <button type="button" onClick={() => setShowPw((s) => !s)} className="absolute inset-y-0 right-2">
+                {showPw ? '🙈' : '👁️'}
+              </button>
             </div>
           </div>
-          {/* Confirm Password */}
           <div>
             <label className="block text-sm font-medium text-slate-700">Confirm Password</label>
             <div className="relative">
-              <input name="confirm" type={showPw2 ? 'text' : 'password'} required className="w-full rounded-lg border px-4 py-2.5 pr-11" />
-              <button type="button" onClick={() => setShowPw2(s => !s)} className="absolute inset-y-0 right-2">{showPw2 ? '🙈' : '👁️'}</button>
+              <input
+                name="confirm"
+                type={showPw2 ? 'text' : 'password'}
+                required
+                className="w-full rounded-lg border px-4 py-2.5 pr-11"
+              />
+              <button type="button" onClick={() => setShowPw2((s) => !s)} className="absolute inset-y-0 right-2">
+                {showPw2 ? '🙈' : '👁️'}
+              </button>
             </div>
           </div>
           {error && <p className="text-red-500 text-sm">{error}</p>}
