@@ -1,10 +1,12 @@
+// pages/create-campaign.tsx
+
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { supabase } from "../lib/supabaseClient";
 
 export default function CreateCampaign() {
   const router = useRouter();
-
   const [name, setName] = useState("");
   const [audience, setAudience] = useState("");
   const [campaignType, setCampaignType] = useState("");
@@ -25,24 +27,55 @@ export default function CreateCampaign() {
       return;
     }
     setLoading(true);
+
     try {
-      const payload = { name, audience, campaignType, brandVoice, contentTypes, vision };
+      const { data: userData } = await supabase.auth.getUser();
+      const user = userData.user;
+      if (!user) {
+        alert("Please sign in");
+        router.push("/auth/signin");
+        setLoading(false);
+        return;
+      }
+
+      const { data: campaign, error } = await supabase
+        .from("campaigns")
+        .insert({
+          user_id: user.id,
+          name,
+          audience,
+          campaign_type: campaignType,
+          brand_voice: brandVoice,
+          content_types: contentTypes,
+          vision,
+          status: "draft"
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      const campaignId = campaign.id;
+
       const resp = await fetch("/api/generate-campaign", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ name, audience, campaignType, brandVoice, contentTypes, vision }),
       });
-      const data = await resp.json();
-      if (!data.ok) throw new Error(data.error || "API failed");
 
-      sessionStorage.setItem(
-        "preview",
-        JSON.stringify({ inputs: payload, output: data.copy, image: data.image })
-      );
+      const data = await resp.json();
+      if (!data.ok) throw new Error(data.error || "AI generation failed");
+
+      sessionStorage.setItem("preview", JSON.stringify({
+        campaignId,
+        inputs: { name, audience, campaignType, brandVoice, contentTypes, vision },
+        output: data.copy,
+        image: data.image
+      }));
+
       router.push("/create-campaign-preview");
     } catch (err: any) {
-      alert("Generation failed: " + (err.message || err));
       console.error(err);
+      alert("Error: " + err.message);
     } finally {
       setLoading(false);
     }
@@ -57,18 +90,11 @@ export default function CreateCampaign() {
           <p className="text-xs text-slate-500">Campaign Manager</p>
         </div>
         <nav className="flex-1 p-4 space-y-2 text-slate-700">
-          <Link href="/dashboard" className="block px-3 py-2 rounded-lg hover:bg-slate-100">
-            📊 Dashboard
-          </Link>
-          <Link href="/create-campaign" className="block px-3 py-2 rounded-lg hover:bg-slate-100">
-            ➕ Create Campaign
-          </Link>
+          <Link href="/dashboard" className="block px-3 py-2 rounded-lg hover:bg-slate-100">📊 Dashboard</Link>
+          <Link href="/create-campaign" className="block px-3 py-2 rounded-lg hover:bg-slate-100">➕ Create Campaign</Link>
         </nav>
         <div className="p-4 border-t">
-          <Link
-            href="/create-campaign"
-            className="w-full block text-center rounded-lg bg-blue-600 px-4 py-2 text-white font-medium hover:bg-blue-700"
-          >
+          <Link href="/create-campaign" className="w-full block text-center rounded-lg bg-blue-600 px-4 py-2 text-white font-medium hover:bg-blue-700">
             Start Campaign
           </Link>
         </div>
@@ -134,7 +160,7 @@ export default function CreateCampaign() {
             </div>
           </div>
 
-          {/* Content Type */}
+          {/* Content Types */}
           <div className="bg-white rounded-xl shadow p-6 space-y-4">
             <h3 className="font-semibold">🖼️ Content Type *</h3>
             <div className="grid grid-cols-2 gap-4">
@@ -147,9 +173,7 @@ export default function CreateCampaign() {
                 <button
                   key={item.title}
                   onClick={() => toggleContentType(item.title)}
-                  className={`border rounded-lg p-4 text-left ${
-                    contentTypes.includes(item.title) ? "bg-blue-50" : ""
-                  }`}
+                  className={`border rounded-lg p-4 text-left ${contentTypes.includes(item.title) ? "bg-blue-50" : ""}`}
                 >
                   <p className="font-medium">{item.title}</p>
                   <p className="text-xs text-slate-500">{item.desc}</p>
@@ -164,9 +188,9 @@ export default function CreateCampaign() {
             <textarea
               rows={4}
               placeholder="What do you want to create?"
-              className="w-full border rounded-lg px-3 py-2"
               value={vision}
               onChange={e => setVision(e.target.value)}
+              className="w-full border rounded-lg px-3 py-2"
             />
             <textarea
               rows={2}
@@ -177,18 +201,13 @@ export default function CreateCampaign() {
 
           {/* Actions */}
           <div className="flex justify-between">
-            <Link
-              href="/dashboard"
-              className="px-4 py-2 rounded-lg border text-slate-600 hover:bg-slate-100"
-            >
-              Cancel
-            </Link>
+            <Link href="/dashboard" className="px-4 py-2 rounded-lg border text-slate-600 hover:bg-slate-100">Cancel</Link>
             <button
               onClick={handleGenerate}
               disabled={loading}
               className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700"
             >
-              {loading ? "Generating..." : "Generate Content →"}
+              {loading ? "Generating…" : "Generate Content →"}
             </button>
           </div>
         </div>

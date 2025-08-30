@@ -25,6 +25,11 @@ globalThis.__BUILD_MANIFEST = {
       "static/chunks/main.js",
       "static/chunks/pages/_error.js"
     ],
+    "/auth/signin": [
+      "static/chunks/webpack.js",
+      "static/chunks/main.js",
+      "static/chunks/pages/auth/signin.js"
+    ],
     "/create-campaign": [
       "static/chunks/webpack.js",
       "static/chunks/main.js",
@@ -35,10 +40,10 @@ globalThis.__BUILD_MANIFEST = {
       "static/chunks/main.js",
       "static/chunks/pages/create-campaign-finalize.js"
     ],
-    "/create-campaign-preview": [
+    "/dashboard": [
       "static/chunks/webpack.js",
       "static/chunks/main.js",
-      "static/chunks/pages/create-campaign-preview.js"
+      "static/chunks/pages/dashboard.js"
     ]
   },
   "ampFirstPages": []

@@ -1,3 +1,5 @@
+// pages/create-campaign-finalize.tsx
+
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -5,6 +7,7 @@ import { useEffect, useState } from "react";
 export default function CreateCampaignFinalize() {
   const router = useRouter();
   const [preview, setPreview] = useState<any | null>(null);
+  const [publishing, setPublishing] = useState(false);
 
   useEffect(() => {
     const raw = sessionStorage.getItem("preview");
@@ -19,7 +22,37 @@ export default function CreateCampaignFinalize() {
     return <div className="min-h-screen flex items-center justify-center">Loading…</div>;
   }
 
-  const { inputs, output, image } = preview;
+  const { inputs, output, image, campaignId } = preview;
+
+  const handlePublish = async () => {
+    if (!campaignId) {
+      alert("Missing campaign ID. Please go back and try again.");
+      return;
+    }
+    setPublishing(true);
+
+    try {
+      const resp = await fetch("/api/publish-campaign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          campaignId,
+          image,      // URL from Pollinations
+          copy: output // generated text/copy
+        }),
+      });
+      const data = await resp.json();
+      if (!data.ok) throw new Error(data.error || "Publish failed");
+
+      sessionStorage.removeItem("preview");
+      router.push("/dashboard");
+    } catch (err: any) {
+      alert("Publish failed: " + err.message);
+      console.error("Publish error:", err);
+    } finally {
+      setPublishing(false);
+    }
+  };
 
   return (
     <div className="min-h-screen flex bg-slate-50">
@@ -36,10 +69,7 @@ export default function CreateCampaignFinalize() {
           <Link href="/create-campaign-finalize" className="block px-3 py-2 rounded-lg hover:bg-slate-100">✅ Finalize Campaign</Link>
         </nav>
         <div className="p-4 border-t">
-          <Link
-            href="/create-campaign"
-            className="w-full block text-center rounded-lg bg-blue-600 px-4 py-2 text-white font-medium hover:bg-blue-700"
-          >
+          <Link href="/create-campaign" className="w-full block text-center rounded-lg bg-blue-600 px-4 py-2 text-white font-medium hover:bg-blue-700">
             Start Campaign
           </Link>
         </div>
@@ -82,24 +112,18 @@ export default function CreateCampaignFinalize() {
           {/* Generated Copy */}
           <div className="bg-white rounded-xl shadow p-6 space-y-4">
             <h3 className="font-semibold">Generated Copy</h3>
-            <pre className="whitespace-pre-wrap bg-slate-100 p-4 rounded">
-              {JSON.stringify(output, null, 2)}
-            </pre>
+            <pre className="whitespace-pre-wrap bg-slate-100 p-4 rounded">{JSON.stringify(output, null, 2)}</pre>
           </div>
 
           {/* Actions */}
           <div className="flex justify-between">
-            <Link
-              href="/create-campaign-preview"
-              className="px-4 py-2 rounded-lg border text-slate-600 hover:bg-slate-100"
-            >
-              Back
-            </Link>
-            <button
-              onClick={() => router.push("/dashboard")}
+            <Link href="/create-campaign-preview" className="px-4 py-2 rounded-lg border text-slate-600 hover:bg-slate-100">Back</Link>
+            <button 
+              onClick={handlePublish} 
+              disabled={publishing} 
               className="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700"
             >
-              🚀 Publish Campaign
+              {publishing ? "Publishing…" : "🚀 Publish Campaign"}
             </button>
           </div>
         </div>
