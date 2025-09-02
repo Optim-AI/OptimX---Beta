@@ -1,29 +1,12 @@
 // pages/analytics.tsx
 import Link from "next/link";
 import { AlertCircle, Eye, MousePointer, TrendingUp, DollarSign, BarChart3 } from "lucide-react";
-
+import Sidebar from '../app/web/src/components/Sidebar';
 export default function Analytics() {
   return (
     <div className="min-h-screen flex bg-slate-50">
       {/* Sidebar */}
-      <aside className="w-64 bg-white shadow-lg flex flex-col">
-        <div className="px-6 py-4 border-b">
-          <h1 className="text-xl font-bold text-slate-800">OptimAI</h1>
-          <p className="text-xs text-slate-500">Campaign Manager</p>
-        </div>
-
-        <nav className="flex-1 p-4 space-y-2 text-slate-700">
-          <Link href="/dashboard" className="block px-3 py-2 rounded-lg hover:bg-slate-100">
-            📊 Dashboard
-          </Link>
-          <Link href="/create-campaign" className="block px-3 py-2 rounded-lg hover:bg-slate-100">
-            ➕ Create Campaign
-          </Link>
-          <Link href="/analytics" className="block px-3 py-2 rounded-lg bg-slate-200 font-semibold">
-            📈 AI Insights
-          </Link>
-        </nav>
-      </aside>
+      <Sidebar />
 
       {/* Main Content */}
       <main className="flex-1 p-8">

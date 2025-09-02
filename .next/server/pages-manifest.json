@@ -2,5 +2,12 @@
   "/_app": "pages/_app.js",
   "/_error": "pages/_error.js",
   "/_document": "pages/_document.js",
-  "/": "pages/index.js"
+  "/dashboard": "pages/dashboard.js",
+  "/create-campaign": "pages/create-campaign.js",
+  "/library": "pages/library.js",
+  "/": "pages/index.js",
+  "/auth/signin": "pages/auth/signin.js",
+  "/analytics": "pages/analytics.js",
+  "/integrations": "pages/integrations.js",
+  "/notifications": "pages/notifications.js"
 }
