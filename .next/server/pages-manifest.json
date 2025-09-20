@@ -2,8 +2,8 @@
   "/_app": "pages/_app.js",
   "/_error": "pages/_error.js",
   "/_document": "pages/_document.js",
-  "/integrations": "pages/integrations.js",
-  "/library": "pages/library.js",
-  "/notifications": "pages/notifications.js",
-  "/insights": "pages/insights.js"
+  "/": "pages/index.js",
+  "/auth/signin": "pages/auth/signin.js",
+  "/dashboard": "pages/dashboard.js",
+  "/integrations": "pages/integrations.js"
 }
