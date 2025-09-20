@@ -124,10 +124,22 @@ type ApiRouteConfig = {
   handler satisfies PagesPageConfig
 }
 
+// Validate ../../pages/seo.tsx
+{
+  const handler = {} as typeof import("../../pages/seo.js")
+  handler satisfies PagesPageConfig
+}
+
 // Validate ../../pages/settings.tsx
 {
   const handler = {} as typeof import("../../pages/settings.js")
   handler satisfies PagesPageConfig
+}
+
+// Validate ../../pages/api/analyze.ts
+{
+  const handler = {} as typeof import("../../pages/api/analyze.js")
+  handler satisfies ApiRouteConfig
 }
 
 // Validate ../../pages/api/generate-campaign.ts
