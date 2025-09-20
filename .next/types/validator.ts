@@ -106,6 +106,12 @@ type ApiRouteConfig = {
   handler satisfies PagesPageConfig
 }
 
+// Validate ../../pages/integrationsInstagram.tsx
+{
+  const handler = {} as typeof import("../../pages/integrationsInstagram.js")
+  handler satisfies PagesPageConfig
+}
+
 // Validate ../../pages/library.tsx
 {
   const handler = {} as typeof import("../../pages/library.js")
@@ -124,12 +130,6 @@ type ApiRouteConfig = {
   handler satisfies PagesPageConfig
 }
 
-// Validate ../../pages/seo.tsx
-{
-  const handler = {} as typeof import("../../pages/seo.js")
-  handler satisfies PagesPageConfig
-}
-
 // Validate ../../pages/settings.tsx
 {
   const handler = {} as typeof import("../../pages/settings.js")
@@ -139,6 +139,36 @@ type ApiRouteConfig = {
 // Validate ../../pages/api/analyze.ts
 {
   const handler = {} as typeof import("../../pages/api/analyze.js")
+  handler satisfies ApiRouteConfig
+}
+
+// Validate ../../pages/api/auth/instagram/callback.ts
+{
+  const handler = {} as typeof import("../../pages/api/auth/instagram/callback.js")
+  handler satisfies ApiRouteConfig
+}
+
+// Validate ../../pages/api/auth/instagram/comment.ts
+{
+  const handler = {} as typeof import("../../pages/api/auth/instagram/comment.js")
+  handler satisfies ApiRouteConfig
+}
+
+// Validate ../../pages/api/auth/instagram/media.ts
+{
+  const handler = {} as typeof import("../../pages/api/auth/instagram/media.js")
+  handler satisfies ApiRouteConfig
+}
+
+// Validate ../../pages/api/auth/instagram/post.ts
+{
+  const handler = {} as typeof import("../../pages/api/auth/instagram/post.js")
+  handler satisfies ApiRouteConfig
+}
+
+// Validate ../../pages/api/auth/instagram/start.ts
+{
+  const handler = {} as typeof import("../../pages/api/auth/instagram/start.js")
   handler satisfies ApiRouteConfig
 }
 
