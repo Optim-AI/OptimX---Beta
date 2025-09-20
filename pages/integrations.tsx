@@ -2,6 +2,12 @@
 import Link from "next/link";
 import Sidebar from '../app/web/src/components/Sidebar';
 export default function Integrations() {
+// For instagram
+  const handleConnect = () => {
+    window.location.href = 'http://localhost:3000/api/auth/instagram/start';
+  };
+
+  // For Instagram
   const platforms = [
     { name: "Facebook", icon: "📘", status: "Disconnected" },
     { name: "Instagram", icon: "📸", status: "Disconnected" },
@@ -44,7 +50,7 @@ export default function Integrations() {
               </div>
 
               {/* Connect Button */}
-              <button className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700">
+              <button onClick={handleConnect} className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700">
                 + Connect
               </button>
             </div>
