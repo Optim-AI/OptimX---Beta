@@ -130,6 +130,12 @@ type ApiRouteConfig = {
   handler satisfies PagesPageConfig
 }
 
+// Validate ../../pages/seo.tsx
+{
+  const handler = {} as typeof import("../../pages/seo.js")
+  handler satisfies PagesPageConfig
+}
+
 // Validate ../../pages/settings.tsx
 {
   const handler = {} as typeof import("../../pages/settings.js")
@@ -154,9 +160,15 @@ type ApiRouteConfig = {
   handler satisfies ApiRouteConfig
 }
 
-// Validate ../../pages/api/auth/instagram/media.ts
+// Validate ../../pages/api/auth/instagram/login.ts
 {
-  const handler = {} as typeof import("../../pages/api/auth/instagram/media.js")
+  const handler = {} as typeof import("../../pages/api/auth/instagram/login.js")
+  handler satisfies ApiRouteConfig
+}
+
+// Validate ../../pages/api/auth/instagram/me.ts
+{
+  const handler = {} as typeof import("../../pages/api/auth/instagram/me.js")
   handler satisfies ApiRouteConfig
 }
 
@@ -175,6 +187,12 @@ type ApiRouteConfig = {
 // Validate ../../pages/api/generate-campaign.ts
 {
   const handler = {} as typeof import("../../pages/api/generate-campaign.js")
+  handler satisfies ApiRouteConfig
+}
+
+// Validate ../../pages/api/seo-analyze.ts
+{
+  const handler = {} as typeof import("../../pages/api/seo-analyze.js")
   handler satisfies ApiRouteConfig
 }
 
