@@ -1,39 +1,27 @@
-// pages/api/instagram/comment.ts
-import { NextApiRequest, NextApiResponse } from 'next';
-import fetch from 'node-fetch';
-
-interface CommentRequestBody {
-  media_id: string;
-  message: string;
-}
+// pages/api/auth/instagram/comment.ts
+import type { NextApiRequest, NextApiResponse } from "next";
+import { promises as fs } from "fs";
+import path from "path";
+const DATA_FILE = path.join(process.cwd(), "data", "instagram.json");
+const version = process.env.FACEBOOK_API_VERSION || "23.0";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method Not Allowed' });
-  }
-
-  const { media_id, message }: CommentRequestBody = req.body;
-
-  // Hardcoded credentials for testing
-  const pageToken = 'IGAAeZCmYKatLNBZAE1qOUVVeDU5S0tBWkNEYUhMaVVNMEctSGJwZADZAPLXB1RW11Vkw5SFp0ZAEs3c1c0cy05c0kyNThERVZA3QzNOckQ3NHJWbHFpRjdQUUdYaUhreU5NaUZAqY0laQVV3UEtBcmE1R2JfWmY2QnRYSV94cm82ekRaNAZDZD';
-  const version = 'v23.0';
-
-  if (!media_id || !message) {
-    return res.status(400).json({ error: 'Missing media_id or message' });
-  }
+  if (req.method !== "POST") return res.status(405).end();
+  const { mediaId, message } = req.body;
+  if (!mediaId || !message) return res.status(400).json({ error: "mediaId and message required" });
 
   try {
-    const resp = await fetch(
-      `https://graph.facebook.com/${version}/${media_id}/comments?` +
-        `message=${encodeURIComponent(message)}&access_token=${pageToken}`,
-      { method: 'POST' }
-    );
-    const json = await resp.json();
-    if (!resp.ok) throw json;
+    const raw = await fs.readFile(DATA_FILE, "utf8");
+    const saved = JSON.parse(raw);
+    const pageAccessToken = saved.pageAccessToken;
 
-    res.status(200).json({ success: true, comment_id: json.id });
-  } catch (e) {
-    console.error('Error posting comment:', e);
-    res.status(500).json({ error: e.message || 'Internal Server Error' });
+    const url = `https://graph.facebook.com/v${version}/${mediaId}/comments`;
+    const params = new URLSearchParams({ message, access_token: pageAccessToken });
+    const r = await fetch(url, { method: "POST", body: params });
+    const json = await r.json();
+    return res.json(json);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "comment failed", details: (err as any).toString() });
   }
 }
