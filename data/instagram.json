@@ -1,0 +1,55 @@
+{
+  "createdAt": "2025-09-23T19:20:56.710Z",
+  "userAccessToken": "EAALGA8VZArcwBPp93pvfSZBKosn4Ykpjf7pFkXa7ikEgwtIuvbjGrNKSDRLFkBbS8sfILSjvKZA3GB0ozBhKKHnBOiO6D9GoyUaLB4rqFY01EpjOtXV8yZCsgX0oinu5dtpRXrXLkU9q9nwdSZCirRc5Wwwp8tyEit2HfCY7GKGiLapMZBZAHHNWDZAcWFhos25m",
+  "pageAccessToken": "EAALGA8VZArcwBPqZChSiohRpEa6I6eJw7TdHB2LlvQRSoNsN4SAour9nUciBegqdkAwhCnBKaZAeLwnvR9JHfZCOPgWWBP4Y2BH82BN0c27hTDxBG0XLSYzFSMf4ZCb4nzbAziLefovji2hzrEQWwKtLCjAQuUzMSyDQfmYvxfvcU8fLLBuVFzIMhWSiakEGaZBnix3xAP",
+  "pageId": "833288613193080",
+  "igUserId": "17841476839861872",
+  "raw": {
+    "tokenJson": {
+      "access_token": "EAALGA8VZArcwBPv2eZC4uZBPAOT4dSbGPGiqPcS9ZAGJUalqdD75qLmklyxDmZCs0mIfPz7CIsf44THg9E1GZCdYklhOdboX8IHzUGdsQWFfx38ksJhp5wbeF9ZAZBeFtlA34gmQrlyMm9w6ZB1J4DZC3iZAPSfKZBFTWbNj4YZBu01a6KdUjptO5HqWVXPJo8ffqzPJNEViihFyZA9rZCfwZAg2GKX2Ea5KzvZAURN6colsyWBmEWJmpRhBRTqw3fxqZAezFh",
+      "token_type": "bearer",
+      "expires_in": 5173845
+    },
+    "exchangeJson": {
+      "access_token": "EAALGA8VZArcwBPp93pvfSZBKosn4Ykpjf7pFkXa7ikEgwtIuvbjGrNKSDRLFkBbS8sfILSjvKZA3GB0ozBhKKHnBOiO6D9GoyUaLB4rqFY01EpjOtXV8yZCsgX0oinu5dtpRXrXLkU9q9nwdSZCirRc5Wwwp8tyEit2HfCY7GKGiLapMZBZAHHNWDZAcWFhos25m",
+      "token_type": "bearer",
+      "expires_in": 5173845
+    },
+    "pagesJson": {
+      "data": [
+        {
+          "access_token": "EAALGA8VZArcwBPqZChSiohRpEa6I6eJw7TdHB2LlvQRSoNsN4SAour9nUciBegqdkAwhCnBKaZAeLwnvR9JHfZCOPgWWBP4Y2BH82BN0c27hTDxBG0XLSYzFSMf4ZCb4nzbAziLefovji2hzrEQWwKtLCjAQuUzMSyDQfmYvxfvcU8fLLBuVFzIMhWSiakEGaZBnix3xAP",
+          "category": "Marketing agency",
+          "category_list": [
+            {
+              "id": "123377808095874",
+              "name": "Marketing agency"
+            }
+          ],
+          "name": "Optamize",
+          "id": "833288613193080",
+          "tasks": [
+            "ADVERTISE",
+            "ANALYZE",
+            "CREATE_CONTENT",
+            "MESSAGING",
+            "MODERATE",
+            "MANAGE"
+          ]
+        }
+      ],
+      "paging": {
+        "cursors": {
+          "before": "QVFIU09CcVhQbHZA2eFRROVVMUkY1Rkp6RU5MdVdkSkdKUU1EQ2RRa2xUUUlYOVdCMnVIb1d0YWpLR2FCQXkyNWVTX3FwRHdBSlRfRjJaNDZABMWM4WTF1ZAzR3",
+          "after": "QVFIU09CcVhQbHZA2eFRROVVMUkY1Rkp6RU5MdVdkSkdKUU1EQ2RRa2xUUUlYOVdCMnVIb1d0YWpLR2FCQXkyNWVTX3FwRHdBSlRfRjJaNDZABMWM4WTF1ZAzR3"
+        }
+      }
+    },
+    "igJson": {
+      "instagram_business_account": {
+        "id": "17841476839861872"
+      },
+      "id": "833288613193080"
+    }
+  }
+}

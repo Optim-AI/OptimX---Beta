@@ -1,186 +1,80 @@
+// pages/integrationsInstagram.tsx
 import { useEffect, useState } from "react";
-import Cookies from "js-cookie";
-import { parse } from 'cookie';
-interface MediaItem {
-  id: string;
-  media_url: string;
-  caption?: string;
-  permalink: string;
-}
 
-interface UserInfo {
-  username: string;
-  accountId: string;
-}
+export default function IntegrationsInstagram() {
+  const [me, setMe] = useState<any>(null);
+  const [imageUrl, setImageUrl] = useState("");
+  const [caption, setCaption] = useState("");
+  const [mediaIdForComment, setMediaIdForComment] = useState("");
+  const [comment, setComment] = useState("");
+  const [result, setResult] = useState<any>(null);
 
-export default function InstagramMediaPage() {
-  const [user, setUser] = useState<UserInfo | null>(null);
-  const [media, setMedia] = useState<MediaItem[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [newPost, setNewPost] = useState({ image_url: "", caption: "" });
-  const [comment, setComment] = useState<{ [key: string]: string }>({});
-  const [posting, setPosting] = useState(false);
-  const [commenting, setCommenting] = useState<{ [key: string]: boolean }>({});
-
-  // Fetch user info from cookies
   useEffect(() => {
-    const username = Cookies.get("ig_username");
-    const accountId = Cookies.get("ig_acctid");
-    if (username && accountId) {
-      setUser({ username, accountId });
-    }
+    fetch("/api/auth/instagram/me")
+      .then(r => r.json())
+      .then(setMe);
   }, []);
 
-  // Fetch media from API
-  useEffect(() => {
-    const fetchMedia = async () => {
-      try {
-        const res = await fetch("/api/auth/instagram/media");
-        const json = await res.json();
-        if (!res.ok) {
-          setError(json.error || "Failed to fetch media");
-        } else {
-          setMedia(json.data || []);
-        }
-      } catch (err) {
-        console.error(err);
-        setError("Failed to fetch media");
-      }
-    };
-    fetchMedia();
-  }, []);
+  async function handlePost(e: React.FormEvent) {
+    e.preventDefault();
+    setResult(null);
+    const r = await fetch("/api/auth/instagram/post", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ image_url: imageUrl, caption })
+    });
+    const j = await r.json();
+    setResult(j);
+  }
 
-  // Handle creating a new post
-  const handlePost = async () => {
-    if (!newPost.image_url) return alert("Image URL required");
-    setPosting(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/auth/instagram/post", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newPost),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to post");
-      }
-      // On success, maybe refresh media or prepend
-      if (data.post_id) {
-        // Option: fetch media again to get latest
-        setMedia(prev => [{ id: data.post_id, media_url: newPost.image_url, caption: newPost.caption, permalink: "" }, ...prev]);
-      }
-      setNewPost({ image_url: "", caption: "" });
-    } catch (err: any) {
-      console.error(err);
-      setError(err.message);
-    } finally {
-      setPosting(false);
-    }
-  };
-
-  // Handle posting a comment
-  const handleComment = async (mediaId: string) => {
-    if (!comment[mediaId]) return alert("Comment required");
-    commenting[mediaId] = true;
-    setCommenting({ ...commenting });
-    setError(null);
-    try {
-      const res = await fetch("/api/auth/instagram/comment", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ media_id: mediaId, message: comment[mediaId] }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to comment");
-      }
-      // Success
-      alert("Comment posted!");
-      setComment(prev => ({ ...prev, [mediaId]: "" }));
-    } catch (err: any) {
-      console.error(err);
-      setError(err.message);
-    } finally {
-      commenting[mediaId] = false;
-      setCommenting({ ...commenting });
-    }
-  };
+  async function handleComment(e: React.FormEvent) {
+    e.preventDefault();
+    setResult(null);
+    const r = await fetch("/api/auth/instagram/comment", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ mediaId: mediaIdForComment, message: comment })
+    });
+    const j = await r.json();
+    setResult(j);
+  }
 
   return (
-    <div className="container mx-auto p-8">
-      <h1 className="text-2xl font-bold mb-4">Instagram Media</h1>
-      {error && <p className="text-red-600 mb-4">{error}</p>}
+    <div className="min-h-screen p-6 bg-gray-50">
+      <div className="max-w-3xl mx-auto bg-white p-6 rounded-xl shadow">
+        <h2 className="text-2xl font-semibold mb-4">Instagram Integration</h2>
 
-      {user && (
-        <div className="mb-6 p-4 border rounded-md bg-gray-50">
-          <p><strong>Username:</strong> {user.username}</p>
-          <p><strong>Account ID:</strong> {user.accountId}</p>
-        </div>
-      )}
-
-      {/* New Post Form */}
-      <div className="mb-6 p-4 border rounded-md bg-gray-50">
-        <h2 className="font-semibold mb-2">Create New Post</h2>
-        <input
-          type="text"
-          placeholder="Image URL"
-          value={newPost.image_url}
-          onChange={(e) => setNewPost({ ...newPost, image_url: e.target.value })}
-          className="border p-2 w-full mb-2"
-        />
-        <input
-          type="text"
-          placeholder="Caption"
-          value={newPost.caption}
-          onChange={(e) => setNewPost({ ...newPost, caption: e.target.value })}
-          className="border p-2 w-full mb-2"
-        />
-        <button
-          onClick={handlePost}
-          disabled={posting}
-          className={`px-4 py-2 rounded-md text-white ${posting ? 'bg-gray-400' : 'bg-blue-600 hover:bg-blue-700'}`}
-        >
-          {posting ? 'Posting...' : 'Post'}
-        </button>
-      </div>
-
-      {/* Media Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-        {media.map((post) => (
-          <div key={post.id} className="border rounded-md overflow-hidden p-2">
-            <a href={post.permalink} target="_blank" rel="noopener noreferrer">
-              {post.media_url ? (
-                <img
-                  src={post.media_url}
-                  alt={post.caption || "media"}
-                  className="w-full h-auto"
-                />
-              ) : (
-                <p>No media url</p>
-              )}
-            </a>
-            {post.caption && <p className="text-sm mt-1">{post.caption}</p>}
-
-            {/* Comment Input */}
-            <div className="mt-2">
-              <input
-                type="text"
-                placeholder="Add a comment..."
-                value={comment[post.id] || ""}
-                onChange={(e) => setComment({ ...comment, [post.id]: e.target.value })}
-                className="border p-1 w-full mb-1"
-              />
-              <button
-                onClick={() => handleComment(post.id)}
-                disabled={commenting[post.id]}
-                className={`px-2 py-1 rounded-md text-white ${commenting[post.id] ? 'bg-gray-400' : 'bg-green-600 hover:bg-green-700'}`}
-              >
-                {commenting[post.id] ? 'Commenting...' : 'Comment'}
-              </button>
+        <div className="mb-6">
+          {me?.connected ? (
+            <div>
+              <p className="text-sm">Connected to Page ID: <strong>{me.pageId}</strong></p>
+              <p className="text-sm">IG User ID: <strong>{me.igUserId}</strong></p>
             </div>
-          </div>
-        ))}
+          ) : (
+            <div>
+              <p className="text-sm">Not connected. Click connect on Integrations page.</p>
+            </div>
+          )}
+        </div>
+
+        <form onSubmit={handlePost} className="mb-6">
+          <h3 className="font-medium mb-2">Create a Post (image URL)</h3>
+          <input value={imageUrl} onChange={e => setImageUrl(e.target.value)} placeholder="https://..." className="w-full p-2 border rounded mb-2"/>
+          <textarea value={caption} onChange={e => setCaption(e.target.value)} placeholder="Caption" className="w-full p-2 border rounded mb-2"/>
+          <button className="px-4 py-2 bg-blue-600 text-white rounded">Post Image</button>
+        </form>
+
+        <form onSubmit={handleComment} className="mb-6">
+          <h3 className="font-medium mb-2">Create a Comment</h3>
+          <input value={mediaIdForComment} onChange={e => setMediaIdForComment(e.target.value)} placeholder="IG media id (e.g. 179...)" className="w-full p-2 border rounded mb-2"/>
+          <input value={comment} onChange={e => setComment(e.target.value)} placeholder="Comment text" className="w-full p-2 border rounded mb-2"/>
+          <button className="px-4 py-2 bg-green-600 text-white rounded">Post Comment</button>
+        </form>
+
+        <div>
+          <h4 className="font-medium mb-2">Result</h4>
+          <pre className="bg-gray-100 p-3 rounded max-h-64 overflow-auto text-xs">{JSON.stringify(result, null, 2)}</pre>
+        </div>
       </div>
     </div>
   );
