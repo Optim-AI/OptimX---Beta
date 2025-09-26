@@ -20,20 +20,10 @@ globalThis.__BUILD_MANIFEST = {
       "static/chunks/main.js",
       "static/chunks/pages/_error.js"
     ],
-    "/insights": [
+    "/create-campaign-finalize": [
       "static/chunks/webpack.js",
       "static/chunks/main.js",
-      "static/chunks/pages/insights.js"
-    ],
-    "/library": [
-      "static/chunks/webpack.js",
-      "static/chunks/main.js",
-      "static/chunks/pages/library.js"
-    ],
-    "/notifications": [
-      "static/chunks/webpack.js",
-      "static/chunks/main.js",
-      "static/chunks/pages/notifications.js"
+      "static/chunks/pages/create-campaign-finalize.js"
     ]
   },
   "ampFirstPages": []

@@ -2,8 +2,6 @@
   "/_app": "pages/_app.js",
   "/_error": "pages/_error.js",
   "/_document": "pages/_document.js",
-  "/integrations": "pages/integrations.js",
-  "/library": "pages/library.js",
-  "/notifications": "pages/notifications.js",
-  "/insights": "pages/insights.js"
+  "/create-campaign-preview": "pages/create-campaign-preview.js",
+  "/create-campaign-finalize": "pages/create-campaign-finalize.js"
 }
