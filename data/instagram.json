@@ -1,22 +1,22 @@
 {
-  "createdAt": "2025-09-24T08:30:01.793Z",
-  "userAccessToken": "EAALGA8VZArcwBPuK7O5pzTIvLq7RQCVEycq8k6DmIjk3dIGyuRRXoDLM9XyHH2IZCHZAakIPGzSkZB4rG3ZB7CV4v8FVClthwKHlMbxxEtLR2WPDrl3gEWcoh5GRjNqyXYtO0ujTSAtjFeYZAn71zfm6vjeu6DH19ZBwMddtAk9kHcMXZBacM3QnGRpmR6wsLKTK",
-  "pageAccessToken": "EAALGA8VZArcwBPt1XZAfv3oyLx8oNZBLv4fNT5rbCS7ZB1y52CuS8m71TKzZAD1zNiahT2IXPjAa2R5pNE6mkPOfqXTMsdwD6LlXCmScIK7WngzKr9KRWSgpDzU7xORdLCGKOOZCovwRSwq1FkZCxOOnvPssxklBeLUV9552PdvkglWvY3Sf0oOVYbXgyh9aaqZBiAKF",
+  "createdAt": "2025-09-26T13:26:47.174Z",
+  "userAccessToken": "EAALGA8VZArcwBProp2RWCPBWTYmu0ztV4ayUP39z98S6y09ZBf9qxJm0sbCHh78NpFQYti45p8WpAQWXR1rKP5lCXjDGds0BREXC5UVfZBsDZBaeUbZBnZAXrgROl3acVaQha6gycZAnnYhBrRtsUoDlVT88EnxEoFO3JNVlXdHbut8RwY4ZAvQ5izksP2Q1e7M1",
+  "pageAccessToken": "EAALGA8VZArcwBPnaFHGOWZCNMl5zbZAAxwMeNEqvWfGuc5Ib9DBp3eBICWQMkZAokaHVgziFpjOYIGKDlWaZAvbzs11LMz0xGZC8WZCHdW2SIyeIwX6ibaU0uXatAjjhgpb7tBIZBWRylZCYK2oOEODjG5VOg8Ye5jKC1ROU7ZCnEJW69cc4Rh8qJajpMzJ91o3n9quXEx",
   "pageId": "833288613193080",
   "igUserId": "17841476839861872",
   "raw": {
     "tokenJson": {
-      "access_token": "EAALGA8VZArcwBPuO3sFSRsv9tQ7ZBc3FKs1wE7TZBNeQqiLdX4yCffP1oDFCZBAGvaZBWg83dyVwAMBx5pR2qo3SJhgM6Se6hHpZCMppPZBWv4XHBidTP966CyP4e59ZBnZC56tkUqFPLPgvIFVSB3jZB2ZCQmFiLcHpZAd6Y5ZBbcpLe8ZBh5piXllFDz7BBSOesnl8u6wZBZAuxm9HuIlZAZAwAZAUmHTalZBKzZBcXOlO2aLncApMQ6Ea5UpCnifdknjvDureR",
+      "access_token": "EAALGA8VZArcwBPkzQGBpbL99g9UTCD2hPGsWNRZA4pTPRQZCs8m7dxS6464807PGu8Ia7oP6Qk4XuGAggGqk4mupZBTEcxqRrToRHPWXeKBMTV8GlF4EWdh1OUidscBvYiSJ6KOXOhmZAd8GZCsGPZAdLQzD4BYmBRdeqjZC3NLVqBMeo89DxSO92mTH8As5MLPaGKBBEtZBGZA860ZCj1xW873NQqna4DLkAUy3kZBVmvJzE18bZATlZBrdtOhOyB",
       "token_type": "bearer"
     },
     "exchangeJson": {
-      "access_token": "EAALGA8VZArcwBPuK7O5pzTIvLq7RQCVEycq8k6DmIjk3dIGyuRRXoDLM9XyHH2IZCHZAakIPGzSkZB4rG3ZB7CV4v8FVClthwKHlMbxxEtLR2WPDrl3gEWcoh5GRjNqyXYtO0ujTSAtjFeYZAn71zfm6vjeu6DH19ZBwMddtAk9kHcMXZBacM3QnGRpmR6wsLKTK",
+      "access_token": "EAALGA8VZArcwBProp2RWCPBWTYmu0ztV4ayUP39z98S6y09ZBf9qxJm0sbCHh78NpFQYti45p8WpAQWXR1rKP5lCXjDGds0BREXC5UVfZBsDZBaeUbZBnZAXrgROl3acVaQha6gycZAnnYhBrRtsUoDlVT88EnxEoFO3JNVlXdHbut8RwY4ZAvQ5izksP2Q1e7M1",
       "token_type": "bearer"
     },
     "pagesJson": {
       "data": [
         {
-          "access_token": "EAALGA8VZArcwBPt1XZAfv3oyLx8oNZBLv4fNT5rbCS7ZB1y52CuS8m71TKzZAD1zNiahT2IXPjAa2R5pNE6mkPOfqXTMsdwD6LlXCmScIK7WngzKr9KRWSgpDzU7xORdLCGKOOZCovwRSwq1FkZCxOOnvPssxklBeLUV9552PdvkglWvY3Sf0oOVYbXgyh9aaqZBiAKF",
+          "access_token": "EAALGA8VZArcwBPnaFHGOWZCNMl5zbZAAxwMeNEqvWfGuc5Ib9DBp3eBICWQMkZAokaHVgziFpjOYIGKDlWaZAvbzs11LMz0xGZC8WZCHdW2SIyeIwX6ibaU0uXatAjjhgpb7tBIZBWRylZCYK2oOEODjG5VOg8Ye5jKC1ROU7ZCnEJW69cc4Rh8qJajpMzJ91o3n9quXEx",
           "category": "Marketing agency",
           "category_list": [
             {
@@ -48,6 +48,15 @@
         "id": "17841476839861872"
       },
       "id": "833288613193080"
+    },
+    "adAccountsJson": {
+      "error": {
+        "message": "(#100) Unsupported get request. Please read the Graph API documentation at https://developers.facebook.com/docs/graph-api",
+        "type": "OAuthException",
+        "code": 100,
+        "fbtrace_id": "A_RcHK5Pu9-V_kbn95LMVWU"
+      }
     }
-  }
+  },
+  "adAccountId": "690361720742536"
 }
