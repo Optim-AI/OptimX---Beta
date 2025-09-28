@@ -148,6 +148,12 @@ type ApiRouteConfig = {
   handler satisfies ApiRouteConfig
 }
 
+// Validate ../../pages/api/auth/facebook/ads.ts
+{
+  const handler = {} as typeof import("../../pages/api/auth/facebook/ads.js")
+  handler satisfies ApiRouteConfig
+}
+
 // Validate ../../pages/api/auth/instagram/callback.ts
 {
   const handler = {} as typeof import("../../pages/api/auth/instagram/callback.js")
