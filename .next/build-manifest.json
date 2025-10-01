@@ -31,10 +31,10 @@
       "static/chunks/main.js",
       "static/chunks/pages/integrations.js"
     ],
-    "/integrationsInstagram": [
+    "/integrationsGoogle": [
       "static/chunks/webpack.js",
       "static/chunks/main.js",
-      "static/chunks/pages/integrationsInstagram.js"
+      "static/chunks/pages/integrationsGoogle.js"
     ]
   },
   "ampFirstPages": []
