@@ -2,8 +2,8 @@
   "/_app": "pages/_app.js",
   "/_error": "pages/_error.js",
   "/_document": "pages/_document.js",
+  "/integrationsGoogle": "pages/integrationsGoogle.js",
+  "/auth/signin": "pages/auth/signin.js",
   "/dashboard": "pages/dashboard.js",
-  "/integrations": "pages/integrations.js",
-  "/integrationsInstagram": "pages/integrationsInstagram.js",
-  "/api/auth/facebook/ads": "pages/api/auth/facebook/ads.js"
+  "/api/auth/google-ads/runCampaign": "pages/api/auth/google-ads/runCampaign.js"
 }

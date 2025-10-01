@@ -106,15 +106,33 @@ type ApiRouteConfig = {
   handler satisfies PagesPageConfig
 }
 
+// Validate ../../pages/integrationsGoogle.tsx
+{
+  const handler = {} as typeof import("../../pages/integrationsGoogle.js")
+  handler satisfies PagesPageConfig
+}
+
 // Validate ../../pages/integrationsInstagram.tsx
 {
   const handler = {} as typeof import("../../pages/integrationsInstagram.js")
   handler satisfies PagesPageConfig
 }
 
+// Validate ../../pages/integrationsnew.tsx
+{
+  const handler = {} as typeof import("../../pages/integrationsnew.js")
+  handler satisfies PagesPageConfig
+}
+
 // Validate ../../pages/library.tsx
 {
   const handler = {} as typeof import("../../pages/library.js")
+  handler satisfies PagesPageConfig
+}
+
+// Validate ../../pages/login.tsx
+{
+  const handler = {} as typeof import("../../pages/login.js")
   handler satisfies PagesPageConfig
 }
 
@@ -151,6 +169,42 @@ type ApiRouteConfig = {
 // Validate ../../pages/api/auth/facebook/ads.ts
 {
   const handler = {} as typeof import("../../pages/api/auth/facebook/ads.js")
+  handler satisfies ApiRouteConfig
+}
+
+// Validate ../../pages/api/auth/google-ads/auth.ts
+{
+  const handler = {} as typeof import("../../pages/api/auth/google-ads/auth.js")
+  handler satisfies ApiRouteConfig
+}
+
+// Validate ../../pages/api/auth/google-ads/callback.ts
+{
+  const handler = {} as typeof import("../../pages/api/auth/google-ads/callback.js")
+  handler satisfies ApiRouteConfig
+}
+
+// Validate ../../pages/api/auth/google-ads/clientAccounts.ts
+{
+  const handler = {} as typeof import("../../pages/api/auth/google-ads/clientAccounts.js")
+  handler satisfies ApiRouteConfig
+}
+
+// Validate ../../pages/api/auth/google-ads/profile.ts
+{
+  const handler = {} as typeof import("../../pages/api/auth/google-ads/profile.js")
+  handler satisfies ApiRouteConfig
+}
+
+// Validate ../../pages/api/auth/google-ads/runCampaign.ts
+{
+  const handler = {} as typeof import("../../pages/api/auth/google-ads/runCampaign.js")
+  handler satisfies ApiRouteConfig
+}
+
+// Validate ../../pages/api/auth/google-ads/start.ts
+{
+  const handler = {} as typeof import("../../pages/api/auth/google-ads/start.js")
   handler satisfies ApiRouteConfig
 }
 
