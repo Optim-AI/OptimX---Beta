@@ -220,6 +220,12 @@ type ApiRouteConfig = {
   handler satisfies ApiRouteConfig
 }
 
+// Validate ../../pages/api/auth/instagram/getLeads.ts
+{
+  const handler = {} as typeof import("../../pages/api/auth/instagram/getLeads.js")
+  handler satisfies ApiRouteConfig
+}
+
 // Validate ../../pages/api/auth/instagram/login.ts
 {
   const handler = {} as typeof import("../../pages/api/auth/instagram/login.js")
@@ -238,9 +244,21 @@ type ApiRouteConfig = {
   handler satisfies ApiRouteConfig
 }
 
+// Validate ../../pages/api/auth/instagram/saveLead.ts
+{
+  const handler = {} as typeof import("../../pages/api/auth/instagram/saveLead.js")
+  handler satisfies ApiRouteConfig
+}
+
 // Validate ../../pages/api/auth/instagram/start.ts
 {
   const handler = {} as typeof import("../../pages/api/auth/instagram/start.js")
+  handler satisfies ApiRouteConfig
+}
+
+// Validate ../../pages/api/auth/instagram/updateLeadStatus.ts
+{
+  const handler = {} as typeof import("../../pages/api/auth/instagram/updateLeadStatus.js")
   handler satisfies ApiRouteConfig
 }
 

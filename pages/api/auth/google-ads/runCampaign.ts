@@ -1,4 +1,4 @@
-// pages/api/google-ads/runCampaign.ts
+// pages/api/auth/google-ads/runCampaign.ts
 import { NextApiRequest, NextApiResponse } from "next";
 import * as cookie from "cookie";
 
@@ -29,12 +29,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (req.method !== "POST") return res.status(405).json({ error: "Only POST allowed" });
 
   try {
-    const { childAccount, campaignName } = req.body as { childAccount?: string; campaignName?: string };
+    const body = req.body as any;
+
+    // required: childAccount can be a resourceName 'customers/123' or id '123'
+    const childAccount = body.childAccount;
     if (!childAccount) return res.status(400).json({ error: "childAccount required" });
 
-    // normalize to numeric id
     let targetId = childAccount;
-    if (childAccount.startsWith("customers/")) targetId = childAccount.split("/")[1];
+    if (childAccount.startsWith?.("customers/")) targetId = childAccount.split("/")[1];
 
     const raw = req.headers.cookie ?? "";
     const cookies = raw ? cookie.parse(raw) : {};
@@ -50,77 +52,73 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
     if (!accessToken) return res.status(401).json({ error: "Not authenticated" });
 
-    const safeName = campaignName && campaignName.trim() ? campaignName : `API Campaign ${Date.now()}`;
+    // Read user inputs with sensible defaults
+    const safeName = (body.campaignName && String(body.campaignName).trim()) || `API Campaign ${Date.now()}`;
+    const amountMicros = typeof body.budgetAmount === "number" && body.budgetAmount > 0 ? body.budgetAmount : 5_000_000;
+    const finalUrls: string[] = Array.isArray(body.finalUrls) && body.finalUrls.length > 0 ? body.finalUrls : ["https://www.example.com"];
+    const headlines: string[] = Array.isArray(body.headlines) && body.headlines.length > 0 ? body.headlines : ["Buy now", "Best deals", "Limited time"];
+    const descriptions: string[] = Array.isArray(body.descriptions) && body.descriptions.length > 0 ? body.descriptions : ["Great product", "Don't miss out"];
+    const containsEuPoliticalAdvertising = body.containsEuPoliticalAdvertising || "DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING";
 
     const payload = {
-  mutateOperations: [
-    {
-      campaignBudgetOperation: {
-        create: {
-          resourceName: `customers/${targetId}/campaignBudgets/-1`,
-          name: `APIBudget_${Math.random().toString(36).substring(2, 8)}`,
-          deliveryMethod: "STANDARD",
-          amountMicros: 5000000,
-          explicitlyShared: false,
-        },
-      },
-    },
-    {
-      campaignOperation: {
-        create: {
-          resourceName: `customers/${targetId}/campaigns/-2`,
-          status: "PAUSED",
-          advertisingChannelType: "SEARCH",
-          name: safeName,
-          campaignBudget: `customers/${targetId}/campaignBudgets/-1`,
-          targetSpend: {},
-          // <-- add this required field:
-          contains_eu_political_advertising: "DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING",
-        },
-      },
-    },
-    {
-      adGroupOperation: {
-        create: {
-          resourceName: `customers/${targetId}/adGroups/-3`,
-          campaign: `customers/${targetId}/campaigns/-2`,
-          name: `AG_${Math.random().toString(36).substring(2, 8)}`,
-          status: "PAUSED",
-          type: "SEARCH_STANDARD",
-        },
-      },
-    },
-    {
-      adGroupAdOperation: {
-        create: {
-          adGroup: `customers/${targetId}/adGroups/-3`,
-          status: "PAUSED",
-          ad: {
-            responsiveSearchAd: {
-              headlines: [
-                { pinnedField: "HEADLINE_1", text: "Buy now" },
-                { text: "Best deals" },
-                { text: "Limited time" },
-              ],
-              descriptions: [
-                { text: "Great product" },
-                { text: "Don’t miss out" },
-              ],
-              path1: "promo",
-              path2: "sale",
+      mutateOperations: [
+        {
+          campaignBudgetOperation: {
+            create: {
+              resourceName: `customers/${targetId}/campaignBudgets/-1`,
+              name: `APIBudget_${Math.random().toString(36).substring(2, 8)}`,
+              deliveryMethod: "STANDARD",
+              amountMicros: amountMicros,
+              explicitlyShared: false,
             },
-            finalUrls: ["https://www.example.com"],
           },
         },
-      },
-    },
-  ],
-};
-
+        {
+          campaignOperation: {
+            create: {
+              resourceName: `customers/${targetId}/campaigns/-2`,
+              status: "PAUSED",
+              advertisingChannelType: "SEARCH",
+              name: safeName,
+              campaignBudget: `customers/${targetId}/campaignBudgets/-1`,
+              targetSpend: {},
+              contains_eu_political_advertising: containsEuPoliticalAdvertising,
+            },
+          },
+        },
+        {
+          adGroupOperation: {
+            create: {
+              resourceName: `customers/${targetId}/adGroups/-3`,
+              campaign: `customers/${targetId}/campaigns/-2`,
+              name: `AG_${Math.random().toString(36).substring(2, 8)}`,
+              status: "PAUSED",
+              type: "SEARCH_STANDARD",
+            },
+          },
+        },
+        {
+          adGroupAdOperation: {
+            create: {
+              adGroup: `customers/${targetId}/adGroups/-3`,
+              status: "PAUSED",
+              ad: {
+                responsiveSearchAd: {
+                  headlines: headlines.map((t: string, idx: number) =>
+                    idx === 0 ? { pinnedField: "HEADLINE_1", text: t } : { text: t }
+                  ),
+                  descriptions: descriptions.map((t: string) => ({ text: t })),
+                },
+                finalUrls,
+              },
+            },
+          },
+        },
+      ],
+    };
 
     const endpoint = `https://googleads.googleapis.com/${API_VERSION}/customers/${targetId}/googleAds:mutate`;
     console.log("runCampaign calling endpoint:", endpoint);
-    console.log("runCampaign headers with login-customer-id:", { Authorization: `Bearer ${accessToken}`, "developer-token": DEV_TOKEN, "login-customer-id": MANAGER_ID });
 
     const apiRes = await fetch(endpoint, {
       method: "POST",

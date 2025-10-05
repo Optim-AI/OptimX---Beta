@@ -4,7 +4,7 @@ import { google } from "googleapis";
 
 const CLIENT_ID = "947565254141-5mispk8fus70rj42pp1srjof4774p9ve.apps.googleusercontent.com";
 const CLIENT_SECRET = "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";
-const REDIRECT_URI = "https://f21a706b4441.ngrok-free.app/api/auth/google-ads/callback";
+const REDIRECT_URI = "https://171e39cebd8e.ngrok-free.app/api/auth/google-ads/callback";
 
 const oauth2Client = new google.auth.OAuth2(CLIENT_ID, CLIENT_SECRET, REDIRECT_URI);
 
