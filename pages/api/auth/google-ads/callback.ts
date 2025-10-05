@@ -4,7 +4,7 @@ import * as cookie from "cookie";
 
 const CLIENT_ID = "947565254141-5mispk8fus70rj42pp1srjof4774p9ve.apps.googleusercontent.com";
 const CLIENT_SECRET = "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";
-const BASE_URL = "https://f21a706b4441.ngrok-free.app";
+const BASE_URL = "https://171e39cebd8e.ngrok-free.app";
 const REDIRECT_PATH = "/api/auth/google-ads/callback";
 
 type TokenResponse = {

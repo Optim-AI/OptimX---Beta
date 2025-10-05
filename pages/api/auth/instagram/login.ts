@@ -11,7 +11,8 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
     "instagram_content_publish",
     "pages_show_list",
     "pages_read_engagement",
-    "instagram_manage_comments"
+    "instagram_manage_comments",
+    "leads_retrieval",
   ].join(",");
 
   const oauth = `https://www.facebook.com/v${version}/dialog/oauth` +
