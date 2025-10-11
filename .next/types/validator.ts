@@ -172,6 +172,54 @@ type ApiRouteConfig = {
   handler satisfies ApiRouteConfig
 }
 
+// Validate ../../pages/api/auth/facebook/comment.ts
+{
+  const handler = {} as typeof import("../../pages/api/auth/facebook/comment.js")
+  handler satisfies ApiRouteConfig
+}
+
+// Validate ../../pages/api/auth/facebook/deletePost.ts
+{
+  const handler = {} as typeof import("../../pages/api/auth/facebook/deletePost.js")
+  handler satisfies ApiRouteConfig
+}
+
+// Validate ../../pages/api/auth/facebook/getAdInsights.ts
+{
+  const handler = {} as typeof import("../../pages/api/auth/facebook/getAdInsights.js")
+  handler satisfies ApiRouteConfig
+}
+
+// Validate ../../pages/api/auth/facebook/getAdSets.ts
+{
+  const handler = {} as typeof import("../../pages/api/auth/facebook/getAdSets.js")
+  handler satisfies ApiRouteConfig
+}
+
+// Validate ../../pages/api/auth/facebook/getAds.ts
+{
+  const handler = {} as typeof import("../../pages/api/auth/facebook/getAds.js")
+  handler satisfies ApiRouteConfig
+}
+
+// Validate ../../pages/api/auth/facebook/getCampaigns.ts
+{
+  const handler = {} as typeof import("../../pages/api/auth/facebook/getCampaigns.js")
+  handler satisfies ApiRouteConfig
+}
+
+// Validate ../../pages/api/auth/facebook/getPostComments.ts
+{
+  const handler = {} as typeof import("../../pages/api/auth/facebook/getPostComments.js")
+  handler satisfies ApiRouteConfig
+}
+
+// Validate ../../pages/api/auth/facebook/getPosts.ts
+{
+  const handler = {} as typeof import("../../pages/api/auth/facebook/getPosts.js")
+  handler satisfies ApiRouteConfig
+}
+
 // Validate ../../pages/api/auth/google-ads/auth.ts
 {
   const handler = {} as typeof import("../../pages/api/auth/google-ads/auth.js")
@@ -220,9 +268,45 @@ type ApiRouteConfig = {
   handler satisfies ApiRouteConfig
 }
 
+// Validate ../../pages/api/auth/instagram/debugAll.ts
+{
+  const handler = {} as typeof import("../../pages/api/auth/instagram/debugAll.js")
+  handler satisfies ApiRouteConfig
+}
+
+// Validate ../../pages/api/auth/instagram/deleteMedia.ts
+{
+  const handler = {} as typeof import("../../pages/api/auth/instagram/deleteMedia.js")
+  handler satisfies ApiRouteConfig
+}
+
+// Validate ../../pages/api/auth/instagram/deletePost.ts
+{
+  const handler = {} as typeof import("../../pages/api/auth/instagram/deletePost.js")
+  handler satisfies ApiRouteConfig
+}
+
 // Validate ../../pages/api/auth/instagram/getLeads.ts
 {
   const handler = {} as typeof import("../../pages/api/auth/instagram/getLeads.js")
+  handler satisfies ApiRouteConfig
+}
+
+// Validate ../../pages/api/auth/instagram/getMedia.ts
+{
+  const handler = {} as typeof import("../../pages/api/auth/instagram/getMedia.js")
+  handler satisfies ApiRouteConfig
+}
+
+// Validate ../../pages/api/auth/instagram/getPostComments.ts
+{
+  const handler = {} as typeof import("../../pages/api/auth/instagram/getPostComments.js")
+  handler satisfies ApiRouteConfig
+}
+
+// Validate ../../pages/api/auth/instagram/getPosts.ts
+{
+  const handler = {} as typeof import("../../pages/api/auth/instagram/getPosts.js")
   handler satisfies ApiRouteConfig
 }
 
