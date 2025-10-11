@@ -2,10 +2,11 @@
   "/_app": "pages/_app.js",
   "/_error": "pages/_error.js",
   "/_document": "pages/_document.js",
+  "/integrations": "pages/integrations.js",
+  "/integrationsnew": "pages/integrationsnew.js",
+  "/api/auth/instagram/start": "pages/api/auth/instagram/start.js",
+  "/api/auth/instagram/callback": "pages/api/auth/instagram/callback.js",
   "/integrationsInstagram": "pages/integrationsInstagram.js",
-  "/integrationsGoogle": "pages/integrationsGoogle.js",
-  "/": "pages/index.js",
-  "/auth/signin": "pages/auth/signin.js",
-  "/dashboard": "pages/dashboard.js",
-  "/create-campaign": "pages/create-campaign.js"
+  "/api/auth/instagram/me": "pages/api/auth/instagram/me.js",
+  "/api/generateCaption": "pages/api/generateCaption.js"
 }
