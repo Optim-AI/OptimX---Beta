@@ -24,6 +24,7 @@ export default function IntegrationsInstagram() {
   const [imageUrl, setImageUrl] = useState("");
   const [caption, setCaption] = useState("");
   const [alsoPostToFacebook, setAlsoPostToFacebook] = useState(false);
+  const [generatingCaption, setGeneratingCaption] = useState(false);
 
   const [mediaIdForComment, setMediaIdForComment] = useState("");
   const [comment, setComment] = useState("");
@@ -79,6 +80,36 @@ export default function IntegrationsInstagram() {
     const j = await r.json();
     setResult(j);
   }
+  
+
+   // ---------- Generate Caption ----------
+  async function handleGenerateCaption(mode: "replace" | "append" = "replace") {
+    if (!caption || caption.trim().length === 0) {
+      setResult({ error: "Type something in caption box to generate from" });
+      return;
+    }
+    setGeneratingCaption(true);
+    setResult(null);
+    try {
+      const res = await fetch("/api/generateCaption", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: caption, mode }),
+      });
+      const json = await res.json();
+      setResult(json);
+      if (res.ok && json.caption) {
+        if (mode === "replace") setCaption(json.caption);
+        else setCaption((p) => (p ? p + "\n\n" + json.caption : json.caption));
+      }
+    } catch (err: any) {
+      console.error("generate caption failed", err);
+      setResult({ error: String(err) });
+    } finally {
+      setGeneratingCaption(false);
+    }
+  }
+
 
   async function handleRunAd(e: React.FormEvent) {
     e.preventDefault();
@@ -230,6 +261,30 @@ export default function IntegrationsInstagram() {
             placeholder="Caption"
             className="w-full p-2 border rounded mb-2"
           />
+
+          {/* caption from chat gpt */}
+
+          <div className="flex gap-2 mb-3">
+            <button
+              type="button"
+              onClick={() => handleGenerateCaption("replace")}
+              className="px-3 py-1 bg-yellow-500 text-white rounded"
+              disabled={generatingCaption}
+            >
+              {generatingCaption ? "Generating…" : "Generate Caption"}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleGenerateCaption("append")}
+              className="px-3 py-1 bg-gray-300 rounded"
+              disabled={generatingCaption}
+            >
+              {generatingCaption ? "Generating…" : "Generate & Append"}
+            </button>
+          </div>
+
+          {/* captions from chat gpt */}
           <label className="flex items-center mb-2">
             <input
               type="checkbox"
