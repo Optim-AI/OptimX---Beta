@@ -10,11 +10,6 @@ globalThis.__BUILD_MANIFEST = {
   "rootMainFiles": [],
   "rootMainFilesTree": {},
   "pages": {
-    "/": [
-      "static/chunks/webpack.js",
-      "static/chunks/main.js",
-      "static/chunks/pages/index.js"
-    ],
     "/_app": [
       "static/chunks/webpack.js",
       "static/chunks/main.js",
@@ -25,30 +20,25 @@ globalThis.__BUILD_MANIFEST = {
       "static/chunks/main.js",
       "static/chunks/pages/_error.js"
     ],
-    "/auth/signin": [
-      "static/chunks/webpack.js",
-      "static/chunks/main.js",
-      "static/chunks/pages/auth/signin.js"
-    ],
-    "/create-campaign": [
-      "static/chunks/webpack.js",
-      "static/chunks/main.js",
-      "static/chunks/pages/create-campaign.js"
-    ],
     "/dashboard": [
       "static/chunks/webpack.js",
       "static/chunks/main.js",
       "static/chunks/pages/dashboard.js"
     ],
-    "/integrationsGoogle": [
+    "/integrations": [
       "static/chunks/webpack.js",
       "static/chunks/main.js",
-      "static/chunks/pages/integrationsGoogle.js"
+      "static/chunks/pages/integrations.js"
     ],
     "/integrationsInstagram": [
       "static/chunks/webpack.js",
       "static/chunks/main.js",
       "static/chunks/pages/integrationsInstagram.js"
+    ],
+    "/integrationsnew": [
+      "static/chunks/webpack.js",
+      "static/chunks/main.js",
+      "static/chunks/pages/integrationsnew.js"
     ]
   },
   "ampFirstPages": []

@@ -268,9 +268,21 @@ type ApiRouteConfig = {
   handler satisfies ApiRouteConfig
 }
 
+// Validate ../../pages/api/generateCaption.ts
+{
+  const handler = {} as typeof import("../../pages/api/generateCaption.js")
+  handler satisfies ApiRouteConfig
+}
+
 // Validate ../../pages/api/seo-analyze.ts
 {
   const handler = {} as typeof import("../../pages/api/seo-analyze.js")
+  handler satisfies ApiRouteConfig
+}
+
+// Validate ../../pages/api/uploadImage.ts
+{
+  const handler = {} as typeof import("../../pages/api/uploadImage.js")
   handler satisfies ApiRouteConfig
 }
 
