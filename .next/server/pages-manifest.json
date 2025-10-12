@@ -2,13 +2,8 @@
   "/_app": "pages/_app.js",
   "/_error": "pages/_error.js",
   "/_document": "pages/_document.js",
-  "/integrations": "pages/integrations.js",
-  "/integrationsnew": "pages/integrationsnew.js",
-  "/integrationsInstagram": "pages/integrationsInstagram.js",
-  "/api/auth/facebook/getCampaigns": "pages/api/auth/facebook/getCampaigns.js",
-  "/api/auth/facebook/getAdInsights": "pages/api/auth/facebook/getAdInsights.js",
-  "/api/auth/facebook/getAdSets": "pages/api/auth/facebook/getAdSets.js",
-  "/api/auth/instagram/me": "pages/api/auth/instagram/me.js",
-  "/api/auth/instagram/getMedia": "pages/api/auth/instagram/getMedia.js",
-  "/api/auth/facebook/getPosts": "pages/api/auth/facebook/getPosts.js"
+  "/dashboard": "pages/dashboard.js",
+  "/create-campaign-preview": "pages/create-campaign-preview.js",
+  "/create-campaign-finalize": "pages/create-campaign-finalize.js",
+  "/library": "pages/library.js"
 }
