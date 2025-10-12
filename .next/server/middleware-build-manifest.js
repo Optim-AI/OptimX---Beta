@@ -23,15 +23,25 @@ globalThis.__BUILD_MANIFEST = {
       "static/chunks/main.js",
       "static/chunks/pages/_error.js"
     ],
-    "/integrationsInstagram": [
+    "/create-campaign-finalize": [
       "static/chunks/webpack.js",
       "static/chunks/main.js",
-      "static/chunks/pages/integrationsInstagram.js"
+      "static/chunks/pages/create-campaign-finalize.js"
     ],
-    "/integrationsnew": [
+    "/create-campaign-preview": [
       "static/chunks/webpack.js",
       "static/chunks/main.js",
-      "static/chunks/pages/integrationsnew.js"
+      "static/chunks/pages/create-campaign-preview.js"
+    ],
+    "/dashboard": [
+      "static/chunks/webpack.js",
+      "static/chunks/main.js",
+      "static/chunks/pages/dashboard.js"
+    ],
+    "/library": [
+      "static/chunks/webpack.js",
+      "static/chunks/main.js",
+      "static/chunks/pages/library.js"
     ]
   },
   "ampFirstPages": []

@@ -29,16 +29,6 @@ export default function CreateCampaignFinalize() {
       else if (Array.isArray(p.images) && p.images.length > 0) imgs = p.images;
       else if (typeof p.image === "string" && p.image) imgs = [p.image];
 
-      // If no images (edge case), try generating 4 client-side pollinations urls if vision is present
-      if (imgs.length === 0 && p?.inputs?.vision) {
-        const width = 1024;
-        const height = 1024;
-        for (let i = 1; i <= 4; i++) {
-          const pmt = `${p.inputs.vision} :: variation ${i}`;
-          imgs.push(`https://image.pollinations.ai/prompt/${encodeURIComponent(pmt)}?width=${width}&height=${height}&nologo=true`);
-        }
-      }
-
       setSelectedImages(imgs.length ? [imgs[0]] : []); // default include first
       // store images array back on preview so UI uses preview.images
       setPreview((prev: any) => ({ ...p, images: imgs }));
@@ -122,8 +112,8 @@ export default function CreateCampaignFinalize() {
       }
 
       // 3) Upload each selected image to Supabase storage, collect public URLs
-      const image_urls: string[] = [];
-      const image_paths: string[] = [];
+      const image_url: string[] = [];
+      const image_path: string[] = [];
 
       for (let i = 0; i < selectedImages.length; i++) {
         const url = selectedImages[i];
@@ -161,8 +151,8 @@ export default function CreateCampaignFinalize() {
           throw new Error(`Could not obtain public URL for uploaded image at path: ${path}`);
         }
 
-        image_urls.push(publicUrl);
-        image_paths.push(path);
+        image_url.push(publicUrl);
+        image_path.push(path);
       }
 
       // 4) Prepare payload and insert into DB
@@ -175,8 +165,8 @@ export default function CreateCampaignFinalize() {
         content_types: inputs?.contentTypes || [],
         vision: inputs?.vision || null,
         output: output || null,
-        image_urls, // array of public URLs
-        image_paths, // array of storage paths
+        image_url, // array of public URLs
+        image_path, // array of storage paths
         is_published: true,
       };
 
