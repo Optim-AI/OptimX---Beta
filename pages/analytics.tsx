@@ -11,7 +11,7 @@ export default function Analytics() {
       {/* Main Content */}
       <main className="flex-1 p-8">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-2xl font-bold text-slate-800">AI Insights</h2>
+          <h2 className="text-2xl font-bold text-slate-800">AI Analytics</h2>
           <div className="flex items-center gap-3">
             <button className="px-3 py-2 text-sm rounded-lg border border-slate-300 hover:bg-slate-100">
               Filters
