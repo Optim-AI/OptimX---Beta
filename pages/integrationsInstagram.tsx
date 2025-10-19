@@ -1,12 +1,12 @@
 // pages/integrationsInstagram.tsx
 import React, { useEffect, useState } from "react";
 
-type MeData = {
+interface MeData {
   connected: boolean;
   pageId?: string;
   igUserId?: string;
   createdAt?: string;
-};
+}
 
 type Lead = {
   lead_id: string;
@@ -60,8 +60,6 @@ type Ad = {
   [k: string]: any;
 };
 
-type Insights = Record<string, any>;
-
 export default function IntegrationsInstagram() {
   // --- me / connection ---
   const [me, setMe] = useState<MeData | null>(null);
@@ -86,10 +84,10 @@ export default function IntegrationsInstagram() {
   // result / logs
   const [result, setResult] = useState<any>(null);
 
-  // leads
+  // leads (now from Facebook Lead Ads)
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loadingLeads, setLoadingLeads] = useState(false);
-  const [filter, setFilter] = useState<"all" | "new" | "contacted" | "converted">(
+  const [filter, setFilter] = useState<"all" | "new" | "intake" | "qualified" | "converted">(
     "all"
   );
 
@@ -104,11 +102,11 @@ export default function IntegrationsInstagram() {
   // map postId -> input comment text (for quick comment UI)
   const [newCommentText, setNewCommentText] = useState<Record<string, string>>({});
 
-  // --- Ads dashboard state ---
+  // --- Ads dashboard state (kept) ---
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [adSetsByCampaign, setAdSetsByCampaign] = useState<Record<string, AdSet[]>>({});
   const [adsByAdSet, setAdsByAdSet] = useState<Record<string, Ad[]>>({});
-  const [insightsByKey, setInsightsByKey] = useState<Record<string, Insights>>({});
+  const [insightsByKey, setInsightsByKey] = useState<Record<string, any>>({});
   const [loadingCampaigns, setLoadingCampaigns] = useState(false);
   const [loadingAdSets, setLoadingAdSets] = useState<Record<string, boolean>>({});
   const [loadingAds, setLoadingAds] = useState<Record<string, boolean>>({});
@@ -144,7 +142,7 @@ export default function IntegrationsInstagram() {
       setTimeout(() => {
         fetchIgPosts(true);
         fetchFbPosts(true);
-        fetchCampaigns(); // refresh ads because you might have posted & cross-posted
+        fetchCampaigns();
       }, 1500);
     } catch (err: any) {
       setResult({ error: String(err) });
@@ -216,55 +214,81 @@ export default function IntegrationsInstagram() {
       });
       const j = (await r.json()) as any;
       setResult(j);
-      // refresh campaigns after ad creation
       setTimeout(() => fetchCampaigns(), 1500);
     } catch (err: any) {
       setResult({ error: String(err) });
     }
   }
 
-  // ---------------- Leads functions (kept from your UI) ----------------
+  // ---------------- Leads functions (REPLACED: now fetch from Facebook Lead Ads) ----------------
+  // This replaces any previous Supabase logic and pulls leads from Facebook directly.
+  // Expects server endpoints:
+  // - GET  /api/auth/facebook/getLeads?status=...   (or without status)
+  // - POST /api/auth/facebook/updateLeadStatus    { lead_id, status }
   async function fetchLeads() {
     setLoadingLeads(true);
     setResult(null);
     try {
-      const url =
-        filter === "all"
-          ? "/api/auth/instagram/getLeads"
-          : `/api/auth/instagram/getLeads?status=${filter}`;
-
+      const url = filter === "all" ? "/api/auth/facebook/getLeads" : `/api/auth/facebook/getLeads?status=${encodeURIComponent(filter)}`;
       const res = await fetch(url);
       const json = (await res.json()) as any;
-      const raw = json.data ?? json.leads ?? json.leadsData ?? [];
 
-      const normalized: Lead[] = (raw as any[]).map((item: any) => {
-        const full_name =
-          item.full_name ||
-          item.name ||
-          (item.field_data &&
-            item.field_data.find((f: any) => f.name === "full_name")?.values?.[0]) ||
-          null;
-        const email =
-          item.email ||
-          (item.field_data &&
-            item.field_data.find((f: any) => f.name === "email")?.values?.[0]) ||
-          null;
-        const phone =
-          item.phone ||
-          item.phone_number ||
-          (item.field_data &&
-            item.field_data.find((f: any) => f.name === "phone_number")?.values?.[0]) ||
-          null;
-        const lead_id = item.lead_id || item.id || item.leadId || item.lead_id || "";
-        const status = item.status || "new";
-        const created_time = item.created_time || item.created_at || item.createdAt || null;
+      // Support various shapes:
+      // - { data: [...] }
+      // - { leads: [...] }
+      // - { body: { data: [...] } }
+      const raw = json.data ?? json.leads ?? json.body?.data ?? json.body?.leads ?? [];
+
+      // Normalize Facebook lead objects to the Lead UI type
+      const normalized: Lead[] = (raw as any[]).map((item: any, idx: number) => {
+        // FB lead object often has:
+        // { id, created_time, field_data: [{ name, values: [...] }, ...], ad_id, form_id, ... }
+        const lead_id = item.leadgen_id ?? item.id ?? item.lead_id ?? item.leadId ?? `lead_${idx}`;
+        const created_time = item.created_time ?? item.created_at ?? item.createdAt ?? null;
+
+        // helper to read from field_data or direct keys
+        const getField = (names: string[]) => {
+          // direct properties first
+          for (const n of names) {
+            if (item[n]) return item[n];
+            if (item[n] === "") return ""; // allow empty string
+          }
+          // field_data array (facebook leadgen)
+          const fd = item.field_data ?? item.fieldData ?? item.fielddata ?? null;
+          if (Array.isArray(fd)) {
+            for (const n of names) {
+              const f = fd.find((fitem: any) => String(fitem.name).toLowerCase() === String(n).toLowerCase());
+              if (f) {
+                // f.values may be array of values or [{value: "x"}]
+                if (Array.isArray(f.values) && f.values.length > 0) {
+                  const v = f.values[0];
+                  if (typeof v === "object" && v.value !== undefined) return v.value;
+                  return v;
+                }
+                if (f.value !== undefined) return f.value;
+              }
+            }
+          }
+          // try nested 'data' fields
+          if (item.data && typeof item.data === "object") {
+            for (const n of names) {
+              if (item.data[n]) return item.data[n];
+            }
+          }
+          return null;
+        };
+
+        const full_name = getField(["full_name", "name", "fullName", "first_name"]);
+        const email = getField(["email", "email_address"]);
+        const phone = getField(["phone_number", "phone"]);
+        const status = item.status ?? item.lead_status ?? "new";
 
         return {
-          lead_id,
-          full_name,
-          email,
-          phone,
-          status,
+          lead_id: String(lead_id),
+          full_name: full_name ?? undefined,
+          email: email ?? undefined,
+          phone: phone ?? undefined,
+          status: status ?? "new",
           created_time,
         } as Lead;
       });
@@ -279,6 +303,7 @@ export default function IntegrationsInstagram() {
     }
   }
 
+  // Update lead status on server (calls your server-side endpoint that should update local db/state if needed)
   async function updateLeadStatus(lead_id: string, status: string) {
     if (!lead_id) {
       setResult({ error: "Missing lead id" });
@@ -286,13 +311,14 @@ export default function IntegrationsInstagram() {
     }
     setResult(null);
     try {
-      const r = await fetch("/api/auth/instagram/updateLeadStatus", {
+      const r = await fetch("/api/auth/facebook/updateLeadStatus", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ lead_id, status }),
       });
       const j = (await r.json()) as any;
       setResult(j);
+      // Refresh list
       fetchLeads();
     } catch (err: any) {
       setResult({ error: err.message || String(err) });
@@ -445,7 +471,6 @@ export default function IntegrationsInstagram() {
         setLoadingCampaigns(false);
         return;
       }
-      // Expect json.data or json.body.data shape
       const raw = json.data ?? json.body?.data ?? json.body ?? [];
       const list: Campaign[] = (raw as any[]).map((c: any) => ({
         id: c.id,
@@ -545,17 +570,12 @@ export default function IntegrationsInstagram() {
         return;
       }
 
-      // Graph usually returns { data: [ { id, insights: { data: [...] } } ] } or data: [{...}]
-      // We'll attempt to normalize common shapes to an object of metrics
       let metricsObj: any = {};
       if (Array.isArray(json.data) && json.data.length > 0) {
-        // Many endpoints return array of objects where each has 'insights' or 'insights.data'
         const entry = json.data[0];
         if (entry.insights && Array.isArray(entry.insights.data)) {
-          // flatten insights.data -> { field: lastValue }
           (entry.insights.data as any[]).forEach((m: any) => {
             const keyName = m.name ?? m.title ?? m.field ?? m.metric;
-            // value extraction: pick last value if values array
             if (Array.isArray(m.values) && m.values.length > 0) {
               const last = m.values[m.values.length - 1];
               metricsObj[keyName] = last.value ?? last;
@@ -565,16 +585,10 @@ export default function IntegrationsInstagram() {
               metricsObj[keyName] = m;
             }
           });
-        } else if (entry.insights && entry.insights.data === undefined && entry.values) {
-          // fallback
-          metricsObj = entry;
+        } else if (entry.values && Array.isArray(entry.values) && entry.values.length > 0) {
+          metricsObj = entry.values[entry.values.length - 1];
         } else {
-          // sometimes metrics come back directly as data[0].values
-          if (entry.values && Array.isArray(entry.values) && entry.values.length > 0) {
-            metricsObj = entry.values[entry.values.length - 1];
-          } else {
-            metricsObj = entry;
-          }
+          metricsObj = entry;
         }
       } else if (json.data && !Array.isArray(json.data)) {
         metricsObj = json.data;
@@ -597,7 +611,7 @@ export default function IntegrationsInstagram() {
     fetchIgPosts();
     fetchFbPosts();
     fetchCampaigns();
-    // don't auto-fetch leads by default
+    // leads are fetched manually by user clicking "Fetch Leads" to avoid surprise calls
   }, []);
 
   // ---------------- UI ----------------
@@ -728,13 +742,13 @@ export default function IntegrationsInstagram() {
           </form>
         </div>
 
-        {/* Leads Management */}
+        {/* Leads Management (NOW from Facebook Lead Ads) */}
         <div className="mb-6">
-          <h3 className="font-medium mb-2">Manage Leads</h3>
+          <h3 className="font-medium mb-2">Manage Leads (Facebook Lead Ads)</h3>
 
           <div className="flex items-center gap-3 mb-3">
             <div className="flex gap-2">
-              {["all", "new", "contacted", "converted"].map((f) => (
+              {["all", "new", "intake", "qualified", "converted"].map((f) => (
                 <button
                   key={f}
                   onClick={() => setFilter(f as any)}
@@ -746,14 +760,14 @@ export default function IntegrationsInstagram() {
             </div>
 
             <button onClick={fetchLeads} className="ml-auto px-4 py-2 bg-indigo-600 text-white rounded">
-              {loadingLeads ? "Fetching..." : "Fetch Leads"}
+              {loadingLeads ? "Fetching..." : "Fetch Leads (from Facebook)"}
             </button>
           </div>
 
           {loadingLeads ? (
-            <p>Loading leads...</p>
+            <p>Loading leads from Facebook...</p>
           ) : leads.length === 0 ? (
-            <p className="text-gray-500">No leads found.</p>
+            <p className="text-gray-500">No leads found. Click "Fetch Leads (from Facebook)".</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="min-w-full border border-gray-200 rounded-lg shadow-sm">
@@ -763,6 +777,7 @@ export default function IntegrationsInstagram() {
                     <th className="py-2 px-4 border-b">Email</th>
                     <th className="py-2 px-4 border-b">Phone</th>
                     <th className="py-2 px-4 border-b">Status</th>
+                    <th className="py-2 px-4 border-b">Received</th>
                     <th className="py-2 px-4 border-b">Actions</th>
                   </tr>
                 </thead>
@@ -773,13 +788,21 @@ export default function IntegrationsInstagram() {
                       <td className="py-2 px-4 border-b">{lead.email || "N/A"}</td>
                       <td className="py-2 px-4 border-b">{lead.phone || "N/A"}</td>
                       <td className="py-2 px-4 border-b capitalize">{lead.status || "new"}</td>
+                      <td className="py-2 px-4 border-b">{lead.created_time ? new Date(lead.created_time).toLocaleString() : "—"}</td>
                       <td className="py-2 px-4 border-b">
                         <button
                           className="bg-yellow-500 text-white px-2 py-1 rounded mr-2"
-                          onClick={() => updateLeadStatus(lead.lead_id, "contacted")}
+                          onClick={() => updateLeadStatus(lead.lead_id, "intake")}
                           disabled={!lead.lead_id}
                         >
-                          Contacted
+                          Intake
+                        </button>
+                        <button
+                          className="bg-blue-600 text-white px-2 py-1 rounded mr-2"
+                          onClick={() => updateLeadStatus(lead.lead_id, "qualified")}
+                          disabled={!lead.lead_id}
+                        >
+                          Qualified
                         </button>
                         <button
                           className="bg-green-600 text-white px-2 py-1 rounded"
@@ -797,7 +820,7 @@ export default function IntegrationsInstagram() {
           )}
         </div>
 
-        {/* ------------------ Instagram Posts ------------------ */}
+        {/* Instagram Posts */}
         <div className="mb-6">
           <div className="flex items-center justify-between mb-3">
             <h3 className="font-medium">Instagram Posts</h3>
@@ -852,7 +875,7 @@ export default function IntegrationsInstagram() {
           )}
         </div>
 
-        {/* ------------------ Facebook Posts ------------------ */}
+        {/* Facebook Posts */}
         <div className="mb-6">
           <div className="flex items-center justify-between mb-3">
             <h3 className="font-medium">Facebook Page Posts</h3>
@@ -907,7 +930,7 @@ export default function IntegrationsInstagram() {
           )}
         </div>
 
-        {/* ------------------ Ads Dashboard ------------------ */}
+        {/* Ads Dashboard (kept same) */}
         <div className="mb-6">
           <div className="flex items-center justify-between mb-3">
             <h3 className="font-medium">Facebook Ads — Campaigns, Ad Sets & Ads</h3>
@@ -946,7 +969,6 @@ export default function IntegrationsInstagram() {
                     </div>
                   </div>
 
-                  {/* campaign insights */}
                   {insightsByKey[`campaign:${c.id}`] && (
                     <div className="mt-3 p-2 bg-white border rounded text-sm">
                       <div className="font-medium mb-2">Campaign Insights</div>
@@ -954,7 +976,6 @@ export default function IntegrationsInstagram() {
                     </div>
                   )}
 
-                  {/* ad sets */}
                   <div className="mt-3 space-y-2">
                     {(adSetsByCampaign[c.id] ?? []).length === 0 ? (
                       <div className="text-sm text-gray-500">No ad sets loaded. Click "View Ad Sets".</div>
@@ -978,7 +999,6 @@ export default function IntegrationsInstagram() {
                             </div>
                           </div>
 
-                          {/* adset insights */}
                           {insightsByKey[`adset:${as.id}`] && (
                             <div className="mt-2 p-2 bg-gray-50 rounded text-sm">
                               <div className="font-medium mb-1">Ad Set Insights</div>
@@ -986,7 +1006,6 @@ export default function IntegrationsInstagram() {
                             </div>
                           )}
 
-                          {/* ads */}
                           <div className="mt-2">
                             {(adsByAdSet[as.id] ?? []).length === 0 ? (
                               <div className="text-sm text-gray-500">No ads loaded. Click "View Ads".</div>
@@ -1004,8 +1023,6 @@ export default function IntegrationsInstagram() {
                                       </button>
                                       <a href={`https://www.facebook.com/ads/manager/creation/?act=YOUR_ACT_ID&adgroup_id=${encodeURIComponent(ad.id)}`} target="_blank" rel="noreferrer" className="px-2 py-1 bg-gray-200 rounded">Open in Ads Manager</a>
                                     </div>
-
-                                    {/* show ad insights if loaded */}
                                   </div>
                                 ))}
                               </div>

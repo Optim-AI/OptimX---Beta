@@ -2,10 +2,7 @@
   "/_app": "pages/_app.js",
   "/_error": "pages/_error.js",
   "/_document": "pages/_document.js",
-  "/dashboard": "pages/dashboard.js",
   "/integrationsInstagram": "pages/integrationsInstagram.js",
-  "/api/auth/facebook/getAdInsights": "pages/api/auth/facebook/getAdInsights.js",
-  "/api/auth/facebook/getAds": "pages/api/auth/facebook/getAds.js",
-  "/api/auth/instagram/getLeads": "pages/api/auth/instagram/getLeads.js",
-  "/api/auth/facebook/getCampaigns": "pages/api/auth/facebook/getCampaigns.js"
+  "/analytics": "pages/analytics.js",
+  "/insights": "pages/insights.js"
 }
