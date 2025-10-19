@@ -1,23 +1,43 @@
 {
-  "createdAt": "2025-10-11T14:39:17.584Z",
-  "userAccessToken": "EAALGA8VZArcwBPjoENxdGi2KwpNzVLSU4MPSdSnnUdALdsRJYaJYPxkHaOlQcRUEJKayd6ZARxw7tAPtD6CLxmlx2bTz3ytKEfKZCj5D7Chw0E0DcLjO1OJHqxmUzXVF3gLhAhFEV2JdZA0aziSEk3zsZCIXwTj60je0DXlrJ2AGD0I8qaEOF5pZCPKZCPgH21k",
-  "pageAccessToken": "EAALGA8VZArcwBPoXYAQvYIfU5pfU4TKxwK3rQe0xp03DdPbtctRnPFHQtrb57c5UV0PTA6WbCIeieMJT3xUmcwHzIyhJTtQls20Axt4KMqveeZAlUFAqQ3NYjhoKocfPXXIBAgqDwZB3CFmIJW5OKZC3Q9o8DGZAYZCrXyIAeRZAMwPd67yy9OhwhYzmL5iMCdFWVG38EmN",
-  "pageId": "833288613193080",
+  "createdAt": "2025-10-19T05:30:41.200Z",
+  "userAccessToken": "EAALGA8VZArcwBPpdzTJaCY3tKvALlaRyhAL0InmDzDa9wvdcHqs4024QuF7ZBsZAJT15xCw69fRnZCiQujeqk8eVIO9Y6zBAKVjFkexDqa6TatlJXpMcKGQqFZA6T2EAKAls6BzZAXUDO0Ms60EeBIF4iezuo1fZA1oibCHcyUjd4w1BGhDR255AN7bxHVz",
+  "pageAccessToken": "EAALGA8VZArcwBPkrZCYhgxiZABYYLqDIJLdFVojB0dakQ6w8PAv5Eczz5IhlyZA2xPOIZCXqQ7xXL0lTZCxyZAs0wtaOLuaahe1L7EVf8xF099JZCkVTnJQZAb269ajkxEZCkXvc3kZC6XBffMjlDT4GpVaqcG14QZA8ZB3lTh1coYjeMZBhCkl6hbfraATNyBRLnUHaI759n6",
+  "pageId": "843708132160602",
   "igUserId": "17841476839861872",
-  "adAccountId": "act_690361720742536",
+  "adAccountId": "act_847683517914126",
   "raw": {
     "tokenJson": {
-      "access_token": "EAALGA8VZArcwBPsDHFBKmi5VZCHlS8A6BotyP5glk8i48sGOcANAYpmAzeKo9nu70zZATQKb7fJpLHqPCYAJgzAifdvyZAMw7oPCybPVM9yOF429Fj0QYQZBSQWo0vq94CVT5T5qzBUsbZC3dSiaPV355Ctf3tUJWqruaJkzorFhphzHgSnU3bipZCw40jSDpMgQ7a9VqGXSgXcASJFWPvhIp0zPsFQJB6cBVlYMwfeHZCiill9m3ZAMvKfiZBIeFQ",
+      "access_token": "EAALGA8VZArcwBPse3y1sHao36bt3JDr6KK4Asc4KjgtOOjZAhmZAVwjyyvlAp7SAgFPfQZCvE7et6LYpDZAo6Q9ZAsHbvZCEdN0Rls4LTotIkoxwLyVFJvb3Rh2cZBTk9Yhhc3fWrTxtufOEUzaZBq5ZCodwb1eQctSUtX6HcKPJcczBknTktM9M26ZBn6dhFZCJxW5keTq4ZC4tuJogSxlmKot0toheUZAVIyU8B9X6g8ZBAUAqSQAtH6nLBh9KkrnrpGQ",
       "token_type": "bearer"
     },
     "exchangeJson": {
-      "access_token": "EAALGA8VZArcwBPjoENxdGi2KwpNzVLSU4MPSdSnnUdALdsRJYaJYPxkHaOlQcRUEJKayd6ZARxw7tAPtD6CLxmlx2bTz3ytKEfKZCj5D7Chw0E0DcLjO1OJHqxmUzXVF3gLhAhFEV2JdZA0aziSEk3zsZCIXwTj60je0DXlrJ2AGD0I8qaEOF5pZCPKZCPgH21k",
+      "access_token": "EAALGA8VZArcwBPpdzTJaCY3tKvALlaRyhAL0InmDzDa9wvdcHqs4024QuF7ZBsZAJT15xCw69fRnZCiQujeqk8eVIO9Y6zBAKVjFkexDqa6TatlJXpMcKGQqFZA6T2EAKAls6BzZAXUDO0Ms60EeBIF4iezuo1fZA1oibCHcyUjd4w1BGhDR255AN7bxHVz",
       "token_type": "bearer"
     },
     "pagesJson": {
       "data": [
         {
-          "access_token": "EAALGA8VZArcwBPoXYAQvYIfU5pfU4TKxwK3rQe0xp03DdPbtctRnPFHQtrb57c5UV0PTA6WbCIeieMJT3xUmcwHzIyhJTtQls20Axt4KMqveeZAlUFAqQ3NYjhoKocfPXXIBAgqDwZB3CFmIJW5OKZC3Q9o8DGZAYZCrXyIAeRZAMwPd67yy9OhwhYzmL5iMCdFWVG38EmN",
+          "access_token": "EAALGA8VZArcwBPkrZCYhgxiZABYYLqDIJLdFVojB0dakQ6w8PAv5Eczz5IhlyZA2xPOIZCXqQ7xXL0lTZCxyZAs0wtaOLuaahe1L7EVf8xF099JZCkVTnJQZAb269ajkxEZCkXvc3kZC6XBffMjlDT4GpVaqcG14QZA8ZB3lTh1coYjeMZBhCkl6hbfraATNyBRLnUHaI759n6",
+          "category": "Food and drink",
+          "category_list": [
+            {
+              "id": "314853004119510",
+              "name": "Food and drink"
+            }
+          ],
+          "name": "Zubimendizoe",
+          "id": "843708132160602",
+          "tasks": [
+            "ADVERTISE",
+            "ANALYZE",
+            "CREATE_CONTENT",
+            "MESSAGING",
+            "MODERATE",
+            "MANAGE"
+          ]
+        },
+        {
+          "access_token": "EAALGA8VZArcwBPmlBzbNdIryGPLHc4Hx3rB8pq0B4kwhNh03ECTZAzPrcXRZAZALlPW9tSK1RG9Qx0bYQ3dRv1FahycTUxOgZCgyT4yNSfFybGF7ybHBDJfHr1bFXLKw2kqMVK51uYtnkBWtDwKvuxo2CTiaqFfOqPvJ7wsBOZA0L8ZAGJPJSENSjDAXwkCBGgCaZAEg",
           "category": "Marketing agency",
           "category_list": [
             {
@@ -39,7 +59,7 @@
       ],
       "paging": {
         "cursors": {
-          "before": "QVFIU09CcVhQbHZA2eFRROVVMUkY1Rkp6RU5MdVdkSkdKUU1EQ2RRa2xUUUlYOVdCMnVIb1d0YWpLR2FCQXkyNWVTX3FwRHdBSlRfRjJaNDZABMWM4WTF1ZAzR3",
+          "before": "QVFIU1BGSzRmX0J6MG9BZAEFzdG52NmhGR0lSTDZANN2syS3pFa19GVUY5cHNsRndBVnNTX2t2am92X0VmR3JrenRTUkx5ejY4QU9jVktsNng1NTRvbTNRX2R3",
           "after": "QVFIU09CcVhQbHZA2eFRROVVMUkY1Rkp6RU5MdVdkSkdKUU1EQ2RRa2xUUUlYOVdCMnVIb1d0YWpLR2FCQXkyNWVTX3FwRHdBSlRfRjJaNDZABMWM4WTF1ZAzR3"
         }
       }
@@ -48,10 +68,14 @@
       "instagram_business_account": {
         "id": "17841476839861872"
       },
-      "id": "833288613193080"
+      "id": "843708132160602"
     },
     "adAccountsJson": {
       "data": [
+        {
+          "account_id": "847683517914126",
+          "id": "act_847683517914126"
+        },
         {
           "account_id": "690361720742536",
           "id": "act_690361720742536"
@@ -63,7 +87,7 @@
       ],
       "paging": {
         "cursors": {
-          "before": "MTIwMjM0MDQwNzg5MTYwMTQ5",
+          "before": "MTIwMjMyNTU1MzUwMjYwNTUz",
           "after": "MTIwMjM0MjU3OTE1NzYwMzI1"
         }
       }
