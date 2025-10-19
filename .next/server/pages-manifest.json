@@ -3,7 +3,9 @@
   "/_error": "pages/_error.js",
   "/_document": "pages/_document.js",
   "/dashboard": "pages/dashboard.js",
-  "/create-campaign-preview": "pages/create-campaign-preview.js",
-  "/create-campaign-finalize": "pages/create-campaign-finalize.js",
-  "/library": "pages/library.js"
+  "/integrationsInstagram": "pages/integrationsInstagram.js",
+  "/api/auth/facebook/getAdInsights": "pages/api/auth/facebook/getAdInsights.js",
+  "/api/auth/facebook/getAds": "pages/api/auth/facebook/getAds.js",
+  "/api/auth/instagram/getLeads": "pages/api/auth/instagram/getLeads.js",
+  "/api/auth/facebook/getCampaigns": "pages/api/auth/facebook/getCampaigns.js"
 }
