@@ -208,6 +208,12 @@ type ApiRouteConfig = {
   handler satisfies ApiRouteConfig
 }
 
+// Validate ../../pages/api/auth/facebook/getLeads.ts
+{
+  const handler = {} as typeof import("../../pages/api/auth/facebook/getLeads.js")
+  handler satisfies ApiRouteConfig
+}
+
 // Validate ../../pages/api/auth/facebook/getPostComments.ts
 {
   const handler = {} as typeof import("../../pages/api/auth/facebook/getPostComments.js")
@@ -217,6 +223,18 @@ type ApiRouteConfig = {
 // Validate ../../pages/api/auth/facebook/getPosts.ts
 {
   const handler = {} as typeof import("../../pages/api/auth/facebook/getPosts.js")
+  handler satisfies ApiRouteConfig
+}
+
+// Validate ../../pages/api/auth/facebook/summaryMetrics.ts
+{
+  const handler = {} as typeof import("../../pages/api/auth/facebook/summaryMetrics.js")
+  handler satisfies ApiRouteConfig
+}
+
+// Validate ../../pages/api/auth/facebook/updateLeadStatus.ts
+{
+  const handler = {} as typeof import("../../pages/api/auth/facebook/updateLeadStatus.js")
   handler satisfies ApiRouteConfig
 }
 
@@ -286,12 +304,6 @@ type ApiRouteConfig = {
   handler satisfies ApiRouteConfig
 }
 
-// Validate ../../pages/api/auth/instagram/getLeads.ts
-{
-  const handler = {} as typeof import("../../pages/api/auth/instagram/getLeads.js")
-  handler satisfies ApiRouteConfig
-}
-
 // Validate ../../pages/api/auth/instagram/getMedia.ts
 {
   const handler = {} as typeof import("../../pages/api/auth/instagram/getMedia.js")
@@ -328,21 +340,9 @@ type ApiRouteConfig = {
   handler satisfies ApiRouteConfig
 }
 
-// Validate ../../pages/api/auth/instagram/saveLead.ts
-{
-  const handler = {} as typeof import("../../pages/api/auth/instagram/saveLead.js")
-  handler satisfies ApiRouteConfig
-}
-
 // Validate ../../pages/api/auth/instagram/start.ts
 {
   const handler = {} as typeof import("../../pages/api/auth/instagram/start.js")
-  handler satisfies ApiRouteConfig
-}
-
-// Validate ../../pages/api/auth/instagram/updateLeadStatus.ts
-{
-  const handler = {} as typeof import("../../pages/api/auth/instagram/updateLeadStatus.js")
   handler satisfies ApiRouteConfig
 }
 
@@ -355,6 +355,12 @@ type ApiRouteConfig = {
 // Validate ../../pages/api/generateCaption.ts
 {
   const handler = {} as typeof import("../../pages/api/generateCaption.js")
+  handler satisfies ApiRouteConfig
+}
+
+// Validate ../../pages/api/recommendations.ts
+{
+  const handler = {} as typeof import("../../pages/api/recommendations.js")
   handler satisfies ApiRouteConfig
 }
 

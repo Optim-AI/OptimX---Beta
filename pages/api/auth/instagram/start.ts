@@ -15,6 +15,7 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
     "pages_read_user_content",         // read user-generated content on pages
     "pages_manage_posts",              // manage page posts (delete)
     "instagram_manage_comments",       // manage IG comments (post/delete) — may require review
+    "leads_retrieval"
     // "instagram_manage_insights"        // optional: get insights
   ].join(",");
 
