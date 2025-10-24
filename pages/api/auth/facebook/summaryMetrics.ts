@@ -97,7 +97,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
 
-    const numericAdId = stripActPrefix(rawAdAccount);
+    // At this point rawAdAccount is truthy. Convert/validate numericAdId to a string to avoid "string | null" issues.
+    const numericAdIdRaw = stripActPrefix(rawAdAccount);
+    if (!numericAdIdRaw) {
+      return res.status(400).json({
+        error: "adAccountId could not be parsed",
+        hint: "Ensure adAccountId is a valid string like 'act_123456' or '123456'",
+      });
+    }
+    const numericAdId = String(numericAdIdRaw); // guaranteed string now
     const graphAdAccount = `act_${numericAdId}`;
 
     // date ranges: last 7 days vs previous 7 days (end yesterday)
