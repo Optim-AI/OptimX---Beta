@@ -1,22 +1,21 @@
 // pages/api/auth/google-ads/start.ts
 import { NextApiRequest, NextApiResponse } from "next";
 
-// Hardcoded per your request
-const CLIENT_ID = "947565254141-5mispk8fus70rj42pp1srjof4774p9ve.apps.googleusercontent.com";
-const BASE_URL = "https://171e39cebd8e.ngrok-free.app";
-const REDIRECT_PATH = "/api/auth/google-ads/callback";
+const CLIENT_ID = process.env.GOOGLE_CLIENT_ID!;
+const REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI!;
 
 export default function handler(req: NextApiRequest, res: NextApiResponse) {
-  const redirectUri = `${BASE_URL}${REDIRECT_PATH}`;
+  if (!CLIENT_ID || !REDIRECT_URI) {
+    return res.status(500).send("Missing GOOGLE_CLIENT_ID or GOOGLE_REDIRECT_URI env vars.");
+  }
   const params = new URLSearchParams({
     client_id: CLIENT_ID,
-    redirect_uri: redirectUri,
+    redirect_uri: REDIRECT_URI,
     response_type: "code",
-    access_type: "offline", // to get refresh token
-    prompt: "consent", // force refresh token for repeated tests
+    access_type: "offline",
+    prompt: "consent",
     scope: "https://www.googleapis.com/auth/adwords openid email profile",
   });
   const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
-  console.log("Starting OAuth, redirecting to:", authUrl);
   res.redirect(authUrl);
 }
