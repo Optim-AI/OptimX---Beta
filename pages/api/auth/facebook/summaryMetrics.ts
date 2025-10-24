@@ -1,0 +1,282 @@
+// pages/api/auth/facebook/summaryMetrics.ts
+import type { NextApiRequest, NextApiResponse } from "next";
+import { promises as fs } from "fs";
+import path from "path";
+
+const DATA_FILE = path.join(process.cwd(), "data", "instagram.json");
+const VERSION = process.env.FACEBOOK_API_VERSION || "23.0";
+
+/** Read saved tokens/ids from data/instagram.json (graceful) */
+async function readSaved(): Promise<any | null> {
+  try {
+    const raw = await fs.readFile(DATA_FILE, "utf8");
+    return JSON.parse(raw);
+  } catch (err) {
+    return null;
+  }
+}
+
+function sumNumeric(v: any): number {
+  if (v === undefined || v === null) return 0;
+  if (typeof v === "number") return v;
+  const n = Number(v);
+  return Number.isNaN(n) ? 0 : n;
+}
+
+/** Convert minor-unit integer to major unit when appears to be in cents/paise.
+ * Heuristic: if integer and >= 1000 (i.e. at least ₹10.00 or $10.00) assume minor units.
+ */
+function normalizeCurrencyValueMaybeMinorUnit(n: number): number {
+  if (!Number.isFinite(n)) return 0;
+  if (Number.isInteger(n) && Math.abs(n) >= 1000) {
+    return n / 100; // convert paise/cents -> major unit
+  }
+  return n;
+}
+
+function stripActPrefix(id?: string | null) {
+  if (!id) return null;
+  return String(id).replace(/^act_/, "");
+}
+function isoDate(d: Date) {
+  return d.toISOString().slice(0, 10);
+}
+
+type Agg = {
+  spend: number;
+  impressions: number;
+  reach: number;
+  clicks: number;
+  conversions: number;
+  purchase_value: number;
+  ctr: number;
+  roas: number | null;
+};
+
+type GraphFetchResp = {
+  ok: boolean;
+  status: number;
+  text: string;
+  json: unknown | null;
+  url: string;
+};
+
+async function fetchGraphText(url: string): Promise<GraphFetchResp> {
+  const gRes = await fetch(url);
+  const text = await gRes.text();
+  let parsed: unknown | null = null;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    parsed = null;
+  }
+  return { ok: gRes.ok, status: gRes.status, text, json: parsed, url };
+}
+
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  try {
+    const saved = await readSaved();
+    const userAccessToken =
+      saved?.userAccessToken ??
+      saved?.user_access_token ??
+      saved?.tokenJson?.access_token ??
+      process.env.PAGE_ACCESS_TOKEN ??
+      process.env.USER_ACCESS_TOKEN;
+
+    let rawAdAccount =
+      saved?.adAccountId ??
+      saved?.ad_account_id ??
+      saved?.raw?.adAccountsJson?.data?.[0]?.account_id ??
+      process.env.AD_ACCOUNT_ID ??
+      null;
+
+    if (!userAccessToken || !rawAdAccount) {
+      return res.status(400).json({
+        error: "Missing userAccessToken or adAccountId in data/instagram.json or env",
+        hint: "Add userAccessToken + adAccountId (act_123...) into data/instagram.json",
+      });
+    }
+
+    const numericAdId = stripActPrefix(rawAdAccount);
+    const graphAdAccount = `act_${numericAdId}`;
+
+    // date ranges: last 7 days vs previous 7 days (end yesterday)
+    const today = new Date();
+    const endCurr = new Date(today);
+    endCurr.setDate(endCurr.getDate() - 1);
+    const startCurr = new Date(endCurr);
+    startCurr.setDate(startCurr.getDate() - 6);
+
+    const endPrev = new Date(startCurr);
+    endPrev.setDate(endPrev.getDate() - 1);
+    const startPrev = new Date(endPrev);
+    startPrev.setDate(startPrev.getDate() - 6);
+
+    const currRange = { since: isoDate(startCurr), until: isoDate(endCurr) };
+    const prevRange = { since: isoDate(startPrev), until: isoDate(endPrev) };
+
+    const fields = ["spend", "impressions", "reach", "clicks", "actions", "action_values"].join(",");
+
+    async function fetchInsightsForRange(range: { since: string; until: string }): Promise<GraphFetchResp> {
+      const timeRangeStr = encodeURIComponent(JSON.stringify(range));
+      const urlsToTry = [
+        `https://graph.facebook.com/v${VERSION}/${encodeURIComponent(graphAdAccount)}/insights?time_range=${timeRangeStr}&fields=${encodeURIComponent(
+          fields
+        )}&access_token=${encodeURIComponent(userAccessToken)}&limit=500`,
+        // fallback numeric id (rare)
+        `https://graph.facebook.com/v${VERSION}/${encodeURIComponent(numericAdId)}/insights?time_range=${timeRangeStr}&fields=${encodeURIComponent(
+          fields
+        )}&access_token=${encodeURIComponent(userAccessToken)}&limit=500`,
+      ];
+
+      let last: GraphFetchResp | null = null;
+      for (const u of urlsToTry) {
+        try {
+          const r = await fetchGraphText(u);
+          last = r;
+          if (r.ok && r.json) return r;
+          if (!r.ok && r.json) return r; // return Graph JSON error for debug
+        } catch (err) {
+          last = { ok: false, status: 500, text: String(err), json: null, url: u };
+        }
+      }
+      return last ?? { ok: false, status: 500, text: "no response", json: null, url: urlsToTry[0] };
+    }
+
+    const [currRaw, prevRaw] = await Promise.all([fetchInsightsForRange(currRange), fetchInsightsForRange(prevRange)]);
+
+    function aggregateInsights(rawObj: GraphFetchResp | null): Agg {
+      const parsed = rawObj?.json ?? null;
+      let rows: any[] = [];
+      if (parsed && typeof parsed === "object") {
+        const asAny = parsed as any;
+        if (Array.isArray(asAny.data)) rows = asAny.data;
+        else if (Array.isArray(asAny)) rows = asAny;
+      }
+
+      const agg: Agg = { spend: 0, impressions: 0, reach: 0, clicks: 0, conversions: 0, purchase_value: 0, ctr: 0, roas: null };
+
+      for (const r of rows) {
+        // spend returned by insights is usually as "210.00" (major unit) - keep as-is
+        agg.spend += sumNumeric(r.spend);
+        agg.impressions += sumNumeric(r.impressions);
+        agg.reach += sumNumeric(r.reach);
+        agg.clicks += sumNumeric(r.clicks);
+
+        if (Array.isArray(r.actions)) {
+          for (const a of r.actions) {
+            const actionType = String(a.action_type ?? a.action_type_name ?? "").toLowerCase();
+            const valueNum = sumNumeric(a.value);
+            if (["offsite_conversion", "purchase", "lead", "omni_purchase", "conversion"].some((k) => actionType.includes(k))) {
+              agg.conversions += valueNum;
+            } else {
+              if (actionType.includes("lead")) agg.conversions += valueNum;
+            }
+          }
+        }
+
+        if (Array.isArray(r.action_values)) {
+          for (const av of r.action_values) {
+            const at = String(av.action_type ?? "").toLowerCase();
+            const v = sumNumeric(av.value);
+            if (["purchase", "offsite_conversion"].some((k) => at.includes(k))) {
+              agg.purchase_value += v;
+            }
+          }
+        }
+      }
+
+      agg.ctr = agg.impressions > 0 ? (agg.clicks / agg.impressions) * 100 : 0;
+      agg.roas = agg.spend > 0 ? agg.purchase_value / agg.spend : null;
+      return agg;
+    }
+
+    const currAgg = currRaw && currRaw.ok ? aggregateInsights(currRaw) : aggregateInsights(currRaw ?? null);
+    const prevAgg = prevRaw && prevRaw.ok ? aggregateInsights(prevRaw) : aggregateInsights(prevRaw ?? null);
+
+    // Campaign budgets - try graphAdAccount then numeric fallback
+    async function fetchCampaignsBudget(): Promise<{ daily_budget_sum: number; lifetime_budget_sum: number; count: number; raw: any; ok: boolean; url?: string }> {
+      const urls = [
+        `https://graph.facebook.com/v${VERSION}/${encodeURIComponent(graphAdAccount)}/campaigns?fields=id,name,status,daily_budget,lifetime_budget&access_token=${encodeURIComponent(
+          userAccessToken
+        )}&limit=200`,
+        `https://graph.facebook.com/v${VERSION}/${encodeURIComponent(numericAdId)}/campaigns?fields=id,name,status,daily_budget,lifetime_budget&access_token=${encodeURIComponent(
+          userAccessToken
+        )}&limit=200`,
+      ];
+
+      for (const u of urls) {
+        const info = await fetchGraphText(u);
+        if (info.ok && info.json) {
+          const maybe = info.json as any;
+          const rows = Array.isArray(maybe?.data) ? maybe.data : Array.isArray(maybe) ? maybe : [];
+          let dailySumMajor = 0;
+          let lifetimeSumMajor = 0;
+          for (const c of rows) {
+            const rawDaily = sumNumeric(c.daily_budget);
+            const rawLifetime = sumNumeric(c.lifetime_budget);
+
+            const dailyMajor = normalizeCurrencyValueMaybeMinorUnit(rawDaily);
+            const lifetimeMajor = normalizeCurrencyValueMaybeMinorUnit(rawLifetime);
+
+            dailySumMajor += dailyMajor;
+            lifetimeSumMajor += lifetimeMajor;
+          }
+          return { daily_budget_sum: dailySumMajor, lifetime_budget_sum: lifetimeSumMajor, count: rows.length, raw: info.json, ok: true, url: info.url };
+        }
+      }
+      return { daily_budget_sum: 0, lifetime_budget_sum: 0, count: 0, raw: { currRaw, prevRaw }, ok: false };
+    }
+
+    const budgetInfo = await fetchCampaignsBudget();
+
+    const changePct = (curr: number | null, prev: number | null) => {
+      const c = curr ?? 0;
+      const p = prev ?? 0;
+      if (p === 0) return c === 0 ? 0 : 100;
+      return ((c - p) / Math.abs(p)) * 100;
+    };
+
+    const response = {
+      ok: true,
+      ranges: { current: currRange, previous: prevRange },
+      meta: {
+        current: {
+          total_spend: currAgg.spend,
+          budget_estimate_daily: budgetInfo?.daily_budget_sum ?? 0,
+          total_reach: currAgg.reach,
+          avg_ctr: currAgg.ctr,
+          conversions: currAgg.conversions,
+          roas: currAgg.roas,
+          purchase_value: currAgg.purchase_value,
+        },
+        previous: {
+          total_spend: prevAgg.spend,
+          total_reach: prevAgg.reach,
+          avg_ctr: prevAgg.ctr,
+          conversions: prevAgg.conversions,
+          roas: prevAgg.roas,
+          purchase_value: prevAgg.purchase_value,
+        },
+        change: {
+          total_spend_pct: changePct(currAgg.spend, prevAgg.spend),
+          total_reach_pct: changePct(currAgg.reach, prevAgg.reach),
+          avg_ctr_pct: changePct(currAgg.ctr, prevAgg.ctr),
+          conversions_pct: changePct(currAgg.conversions, prevAgg.conversions),
+          roas_pct: currAgg.roas === null || prevAgg.roas === null ? null : changePct(currAgg.roas, prevAgg.roas),
+        },
+        raw: {
+          currentRaw: currRaw ?? null,
+          previousRaw: prevRaw ?? null,
+          budgetInfo,
+          adAccountUsed: { numericAdId, graphAdAccount, original: rawAdAccount },
+        },
+      },
+    };
+
+    return res.status(200).json(response);
+  } catch (err: any) {
+    console.error("summaryMetrics error:", err);
+    return res.status(500).json({ error: err?.message ?? String(err), stack: err?.stack ?? null });
+  }
+}

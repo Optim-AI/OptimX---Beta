@@ -2,17 +2,18 @@
 import { NextApiRequest, NextApiResponse } from "next";
 import * as cookie from "cookie";
 
-const DEV_TOKEN = "5Oe5ETZKWYkNqoSYa-f_ww";
-const MANAGER_ID = "2185924019"; // test manager id
+const DEV_TOKEN = process.env.GOOGLE_DEVELOPER_TOKEN!;
 const API_VERSION = "v21";
+const CLIENT_ID = process.env.GOOGLE_CLIENT_ID!;
+const CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET!;
 
 async function refreshAccessToken(refreshToken: string): Promise<{ access_token: string; expires_in?: number }> {
   const resp = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
-      client_id: "947565254141-5mispk8fus70rj42pp1srjof4774p9ve.apps.googleusercontent.com",
-      client_secret: "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",
+      client_id: CLIENT_ID,
+      client_secret: CLIENT_SECRET,
       refresh_token: refreshToken,
       grant_type: "refresh_token",
     }),
@@ -25,18 +26,19 @@ async function refreshAccessToken(refreshToken: string): Promise<{ access_token:
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  console.log("runCampaign incoming method:", req.method);
   if (req.method !== "POST") return res.status(405).json({ error: "Only POST allowed" });
 
   try {
     const body = req.body as any;
+    if (!body.childAccount) return res.status(400).json({ error: "childAccount required" });
 
-    // required: childAccount can be a resourceName 'customers/123' or id '123'
-    const childAccount = body.childAccount;
-    if (!childAccount) return res.status(400).json({ error: "childAccount required" });
+    // managerId is required now (choose manager in UI and pass it)
+    let managerId = body.managerId || process.env.DEFAULT_MANAGER_ID;
+    if (!managerId) return res.status(400).json({ error: "managerId required (the MCC that you choose)" });
+    if (managerId.startsWith("customers/")) managerId = managerId.split("/")[1];
 
-    let targetId = childAccount;
-    if (childAccount.startsWith?.("customers/")) targetId = childAccount.split("/")[1];
+    let targetId = body.childAccount;
+    if (targetId.startsWith?.("customers/")) targetId = targetId.split("/")[1];
 
     const raw = req.headers.cookie ?? "";
     const cookies = raw ? cookie.parse(raw) : {};
@@ -118,21 +120,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     };
 
     const endpoint = `https://googleads.googleapis.com/${API_VERSION}/customers/${targetId}/googleAds:mutate`;
-    console.log("runCampaign calling endpoint:", endpoint);
 
     const apiRes = await fetch(endpoint, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${accessToken}`,
         "developer-token": DEV_TOKEN,
-        "login-customer-id": MANAGER_ID,
+        "login-customer-id": managerId,
         "Content-Type": "application/json",
       } as Record<string, string>,
       body: JSON.stringify(payload),
     });
 
     const text = await apiRes.text();
-    console.log("runCampaign raw response text:", text);
     let json: any;
     try { json = JSON.parse(text); } catch { return res.status(apiRes.status).send(text); }
     if (!apiRes.ok) return res.status(apiRes.status).json({ error: json });
@@ -140,6 +140,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(200).json({ success: true, data: json });
   } catch (err: any) {
     console.error("runCampaign error:", err);
-    return res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: err.message || String(err) });
   }
 }
