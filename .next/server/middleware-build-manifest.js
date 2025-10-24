@@ -28,11 +28,6 @@ globalThis.__BUILD_MANIFEST = {
       "static/chunks/main.js",
       "static/chunks/pages/analytics.js"
     ],
-    "/insights": [
-      "static/chunks/webpack.js",
-      "static/chunks/main.js",
-      "static/chunks/pages/insights.js"
-    ],
     "/integrationsInstagram": [
       "static/chunks/webpack.js",
       "static/chunks/main.js",

@@ -3,6 +3,10 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { promises as fs } from "fs";
 import path from "path";
+
+export const config = {
+  runtime: "nodejs",
+};
 const DATA_FILE = path.join(process.cwd(), "data", "instagram.json");
 const version = process.env.FACEBOOK_API_VERSION || "23.0";
 
