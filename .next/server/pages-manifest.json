@@ -4,5 +4,6 @@
   "/_document": "pages/_document.js",
   "/integrationsInstagram": "pages/integrationsInstagram.js",
   "/analytics": "pages/analytics.js",
-  "/insights": "pages/insights.js"
+  "/insights": "pages/insights.js",
+  "/api/auth/facebook/summaryMetrics": "pages/api/auth/facebook/summaryMetrics.js"
 }
