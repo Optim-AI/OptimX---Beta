@@ -21,7 +21,7 @@ export default function SignInPage() {
 
   const handleGoogleLogin = async () => {
     const { data, error: err } = await supabase.auth.signInWithOAuth({ provider: 'google',options: {
-      redirectTo: 'http://localhost:3000/dashboard',
+      redirectTo: 'https://trial-ecru-beta.vercel.app/dashboard',
     }, });
     if (err) alert(err.message);
     else if (data?.url) window.location.href = data.url;
