@@ -13,11 +13,6 @@ globalThis.__BUILD_MANIFEST = {
   ],
   "rootMainFilesTree": {},
   "pages": {
-    "/": [
-      "static/chunks/webpack.js",
-      "static/chunks/main.js",
-      "static/chunks/pages/index.js"
-    ],
     "/_app": [
       "static/chunks/webpack.js",
       "static/chunks/main.js",
@@ -28,20 +23,20 @@ globalThis.__BUILD_MANIFEST = {
       "static/chunks/main.js",
       "static/chunks/pages/_error.js"
     ],
-    "/analytics": [
+    "/create-campaign": [
       "static/chunks/webpack.js",
       "static/chunks/main.js",
-      "static/chunks/pages/analytics.js"
+      "static/chunks/pages/create-campaign.js"
     ],
-    "/auth/signin": [
+    "/insights": [
       "static/chunks/webpack.js",
       "static/chunks/main.js",
-      "static/chunks/pages/auth/signin.js"
+      "static/chunks/pages/insights.js"
     ],
-    "/integrationsInstagram": [
+    "/settings": [
       "static/chunks/webpack.js",
       "static/chunks/main.js",
-      "static/chunks/pages/integrationsInstagram.js"
+      "static/chunks/pages/settings.js"
     ]
   },
   "ampFirstPages": []

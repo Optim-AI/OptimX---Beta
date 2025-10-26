@@ -142,15 +142,15 @@ type ApiRouteConfig = {
   handler satisfies PagesPageConfig
 }
 
-// Validate ../../pages/publish.tsx
+// Validate ../../pages/onboardingInfo.tsx
 {
-  const handler = {} as typeof import("../../pages/publish.js")
+  const handler = {} as typeof import("../../pages/onboardingInfo.js")
   handler satisfies PagesPageConfig
 }
 
-// Validate ../../pages/seo.tsx
+// Validate ../../pages/publish.tsx
 {
-  const handler = {} as typeof import("../../pages/seo.js")
+  const handler = {} as typeof import("../../pages/publish.js")
   handler satisfies PagesPageConfig
 }
 
@@ -364,15 +364,15 @@ type ApiRouteConfig = {
   handler satisfies ApiRouteConfig
 }
 
-// Validate ../../pages/api/seo-analyze.ts
-{
-  const handler = {} as typeof import("../../pages/api/seo-analyze.js")
-  handler satisfies ApiRouteConfig
-}
-
 // Validate ../../pages/api/uploadImage.ts
 {
   const handler = {} as typeof import("../../pages/api/uploadImage.js")
+  handler satisfies ApiRouteConfig
+}
+
+// Validate ../../pages/api/verify-firebase-phone.ts
+{
+  const handler = {} as typeof import("../../pages/api/verify-firebase-phone.js")
   handler satisfies ApiRouteConfig
 }
 

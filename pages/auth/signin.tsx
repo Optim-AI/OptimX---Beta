@@ -1,5 +1,5 @@
 // pages/auth/signin.tsx
-import { useState, FormEvent } from 'react';
+import { useState, FormEvent, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { supabase } from '../../lib/supabaseClient';
@@ -11,18 +11,32 @@ export default function SignInPage() {
   const [error, setError] = useState('');
   const router = useRouter();
 
+  useEffect(() => {
+    // If user is already signed in, redirect to onboarding (or dashboard)
+    const check = async () => {
+      const { data } = await supabase.auth.getUser();
+      if (data?.user) router.replace('/onboardingInfo');
+    };
+    check();
+  }, [router]);
+
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError('');
-    const { error: err } = await supabase.auth.signInWithPassword({ email, password });
-    if (err) setError(err.message);
-    else router.push('/dashboard');
+    try {
+      const { error: err } = await supabase.auth.signInWithPassword({ email, password });
+      if (err) setError(err.message);
+      else router.push('/onboardingInfo');
+    } catch (e: any) {
+      setError(e.message || String(e));
+    }
   };
 
   const handleGoogleLogin = async () => {
-    const { data, error: err } = await supabase.auth.signInWithOAuth({ provider: 'google',options: {
-      redirectTo: 'https://trial-ecru-beta.vercel.app/dashboard',
-    }, });
+    const { data, error: err } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: 'http://localhost:3000/onboardingInfo' },
+    });
     if (err) alert(err.message);
     else if (data?.url) window.location.href = data.url;
   };
