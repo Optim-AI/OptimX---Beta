@@ -48,31 +48,28 @@ export default function SignUpPage() {
       }
 
       const user = (res as any).data?.user || (res as any).user || null;
+
+      // If supabase created a user, upsert profile row so onboarding can find it
       if (user?.id) {
-        // 2) Upsert profile with .select()
-        const { data: upserted, error: insertErr } = await supabase
+        const { error: insertErr } = await supabase
           .from('profiles')
           .upsert(
             {
               id: user.id,
-              full_name: name,
-              business_name: biz,
+              full_name: name || null,
+              business_name: biz || null,
               email
             },
-            {
-              onConflict: 'id'
-            }
-          )
-          .select();
-
+            { onConflict: 'id' }
+          );
         if (insertErr) console.warn('Profile upsert error:', insertErr.message);
-        else console.log('Profile upsert result:', upserted);
       }
 
       if (!user) {
         setInfo('Check your email to confirm the account. After confirmation, you can sign in.');
       } else {
-        router.push('/dashboard');
+        // redirect new signed-up user to onboarding
+        router.push('/onboardingInfo');
       }
     } catch (e: any) {
       setError(e.message || String(e));
@@ -83,7 +80,7 @@ export default function SignUpPage() {
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: 'https://trial-ecru-beta.vercel.app/dashboard'
+        redirectTo: 'http://localhost:3000/onboardingInfo'
       }
     });
     if (error) {

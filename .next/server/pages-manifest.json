@@ -2,8 +2,9 @@
   "/_app": "pages/_app.js",
   "/_error": "pages/_error.js",
   "/_document": "pages/_document.js",
-  "/integrationsInstagram": "pages/integrationsInstagram.js",
-  "/analytics": "pages/analytics.js",
-  "/": "pages/index.js",
-  "/auth/signin": "pages/auth/signin.js"
+  "/settings": "pages/settings.js",
+  "/create-campaign": "pages/create-campaign.js",
+  "/insights": "pages/insights.js",
+  "/api/auth/facebook/summaryMetrics": "pages/api/auth/facebook/summaryMetrics.js",
+  "/api/generate-campaign": "pages/api/generate-campaign.js"
 }
