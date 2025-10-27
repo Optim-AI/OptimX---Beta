@@ -33,8 +33,12 @@
       "static/chunks/_pages-dir-browser_node_modules_next_dist_pages__error_js.js"
     ]
   },
-  "pages\\settings.tsx -> firebase/auth": {
-    "id": "pages\\settings.tsx -> firebase/auth",
+  "pages\\onboardingInfo.tsx -> ../lib/supabaseClient": {
+    "id": "pages\\onboardingInfo.tsx -> ../lib/supabaseClient",
+    "files": []
+  },
+  "pages\\onboardingInfo.tsx -> firebase/auth": {
+    "id": "pages\\onboardingInfo.tsx -> firebase/auth",
     "files": []
   }
 }
