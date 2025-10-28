@@ -2,8 +2,16 @@
   "/_app": "pages/_app.js",
   "/_error": "pages/_error.js",
   "/_document": "pages/_document.js",
+  "/analytics": "pages/analytics.js",
+  "/integrationsInstagram": "pages/integrationsInstagram.js",
+  "/api/auth/instagram/me": "pages/api/auth/instagram/me.js",
+  "/api/auth/instagram/getMedia": "pages/api/auth/instagram/getMedia.js",
+  "/api/auth/facebook/getCampaigns": "pages/api/auth/facebook/getCampaigns.js",
+  "/api/auth/facebook/getPosts": "pages/api/auth/facebook/getPosts.js",
+  "/": "pages/index.js",
   "/auth/signin": "pages/auth/signin.js",
   "/onboardingInfo": "pages/onboardingInfo.js",
   "/dashboard": "pages/dashboard.js",
-  "/": "pages/index.js"
+  "/api/auth/facebook/summaryMetrics": "pages/api/auth/facebook/summaryMetrics.js",
+  "/api/recommendations": "pages/api/recommendations.js"
 }
