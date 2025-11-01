@@ -12,9 +12,14 @@ async function saveJSON(obj: any) {
   await fs.writeFile(DATA_FILE, JSON.stringify(obj, null, 2), "utf8");
 }
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse
+) {
   try {
-    const code = Array.isArray(req.query.code) ? req.query.code[0] : req.query.code;
+    const code = Array.isArray(req.query.code)
+      ? req.query.code[0]
+      : req.query.code;
     if (!code) return res.status(400).send("missing code");
 
     const appId = process.env.FACEBOOK_APP_ID!;
@@ -53,7 +58,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const pagesJson = await pagesResp.json();
     if (!pagesJson?.data?.length) {
       return res.status(400).json({
-        error: "No pages found for this user. Make sure you manage a Page linked to Instagram.",
+        error:
+          "No pages found for this user. Make sure you manage a Page linked to Instagram.",
         pagesJson,
       });
     }
@@ -98,31 +104,36 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     await setStatus("meta", true);
 
     // notify opener and close popup; fallback to query param
-    const fallback = `/integrations?connected=meta`;
-    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    // inside the HTML response that the callback sends
+    const fallback = `/integrations?connected=meta&next=/integrationsInstagram`;
     res.send(`
-      <!doctype html>
-      <html>
-        <head><meta charset="utf-8"/><title>Instagram connected</title></head>
-        <body>
-          <p>Instagram connected. You can close this window.</p>
-          <script>
-            try {
-              if (window.opener && !window.opener.closed) {
-                window.opener.postMessage({ type: "oauth_connected", platform: "meta" }, "*");
-              }
-            } catch (e) {}
-            setTimeout(function(){
-              try { window.close(); } catch(e) {}
-              window.location = ${JSON.stringify(fallback)};
-            }, 600);
-          </script>
-        </body>
-      </html>
-    `);
-
+  <!doctype html>
+  <html>
+    <head><meta charset="utf-8"/><title>Instagram connected</title></head>
+    <body>
+      <p>Instagram connected. You can close this window.</p>
+      <script>
+        try {
+          if (window.opener && !window.opener.closed) {
+            // include a redirect hint
+            window.opener.postMessage(
+              { type: "oauth_connected", platform: "meta", redirect: "/integrationsInstagram" },
+              "*"
+            );
+          }
+        } catch (e) {}
+        setTimeout(function(){
+          try { window.close(); } catch(e) {}
+          window.location = ${JSON.stringify(fallback)};
+        }, 600);
+      </script>
+    </body>
+  </html>
+`);
   } catch (err) {
     console.error("callback error", err);
-    res.status(500).json({ error: "callback error", details: (err as any).toString() });
+    res
+      .status(500)
+      .json({ error: "callback error", details: (err as any).toString() });
   }
 }

@@ -23,20 +23,20 @@ globalThis.__BUILD_MANIFEST = {
       "static/chunks/main.js",
       "static/chunks/pages/_error.js"
     ],
-    "/dashboard": [
+    "/create-campaign": [
       "static/chunks/webpack.js",
       "static/chunks/main.js",
-      "static/chunks/pages/dashboard.js"
+      "static/chunks/pages/create-campaign.js"
     ],
     "/integrations": [
       "static/chunks/webpack.js",
       "static/chunks/main.js",
       "static/chunks/pages/integrations.js"
     ],
-    "/integrationsGoogle": [
+    "/settings": [
       "static/chunks/webpack.js",
       "static/chunks/main.js",
-      "static/chunks/pages/integrationsGoogle.js"
+      "static/chunks/pages/settings.js"
     ]
   },
   "ampFirstPages": []
