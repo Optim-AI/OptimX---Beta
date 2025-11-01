@@ -17,10 +17,10 @@ export function initFirebaseApp(): FirebaseApp {
   if (!_app) {
     if (!getApps().length) {
       initializeApp({
-        apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-        authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-        projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-        appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+        apiKey: 'AIzaSyCnNcfAf8meNIgHJMOJquG9lvZ5DixQTKw',
+        authDomain: 'optim-fc119.firebaseapp.com',
+        projectId: 'optim-fc119',
+        appId: '1:151840492197:web:c5df3f97b01a434ca41b4c',
       });
     }
     _app = getApp();
