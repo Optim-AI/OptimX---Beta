@@ -2,13 +2,9 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { google } from "googleapis";
 
-const CLIENT_ID = process.env.GOOGLE_CLIENT_ID!;
-const CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET!;
-const REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI!;
-
-if (!CLIENT_ID || !CLIENT_SECRET || !REDIRECT_URI) {
-  console.error("Missing Google OAuth environment variables (GOOGLE_CLIENT_ID/SECRET/REDIRECT_URI).");
-}
+const CLIENT_ID = "947565254141-5mispk8fus70rj42pp1srjof4774p9ve.apps.googleusercontent.com";
+const CLIENT_SECRET = "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";
+const REDIRECT_URI = "https://67476f1a363d.ngrok-free.app/api/auth/google-ads/callback";
 
 const oauth2Client = new google.auth.OAuth2(CLIENT_ID, CLIENT_SECRET, REDIRECT_URI);
 
@@ -16,8 +12,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const scopes = [
     "https://www.googleapis.com/auth/adwords",
     "https://www.googleapis.com/auth/userinfo.profile",
-    "https://www.googleapis.com/auth/userinfo.email",
-    "openid",
+    "https://www.googleapis.com/auth/userinfo.email"
   ];
 
   const url = oauth2Client.generateAuthUrl({

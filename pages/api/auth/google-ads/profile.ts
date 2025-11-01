@@ -2,10 +2,10 @@
 import { NextApiRequest, NextApiResponse } from "next";
 import * as cookie from "cookie";
 
-const DEV_TOKEN = process.env.GOOGLE_DEVELOPER_TOKEN!;
+const DEV_TOKEN = "5Oe5ETZKWYkNqoSYa-f_ww";
 const API_VERSION = "v21";
-const CLIENT_ID = process.env.GOOGLE_CLIENT_ID!;
-const CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET!;
+const CLIENT_ID = "947565254141-5mispk8fus70rj42pp1srjof4774p9ve.apps.googleusercontent.com";
+const CLIENT_SECRET = "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";
 
 type RefreshResp = { access_token: string; expires_in?: number };
 
@@ -23,14 +23,16 @@ async function refreshAccessToken(refreshToken: string): Promise<RefreshResp> {
   const txt = await resp.text();
   let obj: any;
   try { obj = JSON.parse(txt); } catch { throw new Error("Failed to parse refresh response: " + txt); }
-  if (!obj.access_token) throw new Error("No access_token in refresh response");
+  if (!obj.access_token) throw new Error("No access_token in refresh response: " + txt);
   return obj;
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
     const raw = req.headers.cookie ?? "";
+    console.log("profile raw cookie header:", raw);
     const cookies = raw ? cookie.parse(raw) : {};
+    console.log("profile parsed cookies:", cookies);
 
     let accessToken: string | undefined = cookies.ga_access_token;
     const refreshToken: string | undefined = cookies.ga_refresh_token;
@@ -44,9 +46,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           path: "/",
           maxAge: nt.expires_in ?? 3600,
           sameSite: "lax",
-          secure: process.env.NODE_ENV === "production",
         });
         res.setHeader("Set-Cookie", [cookieStr]);
+        console.log("profile: refreshed access token, set cookie");
       } catch (e: any) {
         console.error("profile: refresh failed:", e.message);
         return res.status(500).json({ error: "Token refresh failed: " + e.message });
@@ -54,6 +56,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     if (!accessToken) {
+      console.error("profile: no access token present");
       return res.status(401).json({ error: "Not authenticated" });
     }
 
@@ -62,8 +65,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       headers: { Authorization: `Bearer ${accessToken}` },
     });
     const profile = await userRes.json();
+    console.log("profile userinfo:", profile);
 
-    // listAccessibleCustomers
+    // listAccessibleCustomers (may return manager account(s))
     const listRes = await fetch(`https://googleads.googleapis.com/${API_VERSION}/customers:listAccessibleCustomers`, {
       method: "GET",
       headers: {
@@ -72,11 +76,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         "Content-Type": "application/json",
       },
     });
-
     let accessible_customers: any;
     try { accessible_customers = await listRes.json(); } catch (e) { accessible_customers = { error: "parse failed" }; }
 
-    // accessible_customers.resourceNames is typically ["customers/123","customers/456"]
     return res.status(200).json({ profile, accessible_customers });
   } catch (outer: any) {
     console.error("profile handler error:", outer);

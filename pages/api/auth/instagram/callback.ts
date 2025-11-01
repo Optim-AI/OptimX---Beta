@@ -1,8 +1,8 @@
 // pages/api/auth/instagram/callback.ts
-
 import type { NextApiRequest, NextApiResponse } from "next";
 import { promises as fs } from "fs";
 import path from "path";
+import { setStatus } from "../../../../lib/integrationStore";
 
 const DATA_FILE = path.join(process.cwd(), "data", "instagram.json");
 const version = process.env.FACEBOOK_API_VERSION || "23.0";
@@ -15,9 +15,7 @@ async function saveJSON(obj: any) {
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
     const code = Array.isArray(req.query.code) ? req.query.code[0] : req.query.code;
-    if (!code) {
-      return res.status(400).send("missing code");
-    }
+    if (!code) return res.status(400).send("missing code");
 
     const appId = process.env.FACEBOOK_APP_ID!;
     const appSecret = process.env.FACEBOOK_APP_SECRET!;
@@ -46,7 +44,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         `&fb_exchange_token=${tokenJson.access_token}`
     );
     const exchangeJson = await exchangeResp.json();
-
     const userAccessToken = exchangeJson.access_token || tokenJson.access_token;
 
     // 3) Get Pages the user manages
@@ -54,15 +51,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       `https://graph.facebook.com/v${version}/me/accounts?access_token=${userAccessToken}`
     );
     const pagesJson = await pagesResp.json();
-
     if (!pagesJson?.data?.length) {
       return res.status(400).json({
         error: "No pages found for this user. Make sure you manage a Page linked to Instagram.",
         pagesJson,
       });
     }
-
-    // pick the first page (for demo)
     const page = pagesJson.data[0];
     const pageAccessToken = page.access_token;
     const pageId = page.id;
@@ -100,8 +94,33 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     await saveJSON(saved);
 
-    // Redirect back to your frontend page
-    res.redirect("/integrationsInstagram?connected=1");
+    // mark integration on server using id 'meta' (matches your frontend PLATFORMS)
+    await setStatus("meta", true);
+
+    // notify opener and close popup; fallback to query param
+    const fallback = `/integrations?connected=meta`;
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.send(`
+      <!doctype html>
+      <html>
+        <head><meta charset="utf-8"/><title>Instagram connected</title></head>
+        <body>
+          <p>Instagram connected. You can close this window.</p>
+          <script>
+            try {
+              if (window.opener && !window.opener.closed) {
+                window.opener.postMessage({ type: "oauth_connected", platform: "meta" }, "*");
+              }
+            } catch (e) {}
+            setTimeout(function(){
+              try { window.close(); } catch(e) {}
+              window.location = ${JSON.stringify(fallback)};
+            }, 600);
+          </script>
+        </body>
+      </html>
+    `);
+
   } catch (err) {
     console.error("callback error", err);
     res.status(500).json({ error: "callback error", details: (err as any).toString() });

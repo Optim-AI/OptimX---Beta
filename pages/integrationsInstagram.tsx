@@ -1,5 +1,6 @@
 // pages/integrationsInstagram.tsx
 import React, { useEffect, useState } from "react";
+import { supabase } from "../lib/supabaseClient";
 
 interface MeData {
   connected: boolean;
@@ -70,6 +71,11 @@ export default function IntegrationsInstagram() {
   const [alsoPostToFacebook, setAlsoPostToFacebook] = useState(false);
   const [generatingCaption, setGeneratingCaption] = useState(false);
 
+  // NEW: file upload states
+  const [fileToUpload, setFileToUpload] = useState<File | null>(null);
+  const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null);
+  const [uploadingFile, setUploadingFile] = useState(false);
+
   // manual comment by id (old UI)
   const [mediaIdForComment, setMediaIdForComment] = useState("");
   const [comment, setComment] = useState("");
@@ -123,16 +129,76 @@ export default function IntegrationsInstagram() {
       });
   }, []);
 
+  // ---------------- NEW: helper to upload file to Supabase storage and return public URL ----------------
+  async function uploadFileToSupabase(file: File) {
+    setUploadingFile(true);
+    try {
+      const {
+        data: { user },
+        error: userErr,
+      } = await supabase.auth.getUser();
+      if (userErr || !user) throw new Error("Not authenticated.");
+
+      // safe filename & path
+      const safeName = file.name.replace(/[^a-z0-9_\-\.]/gi, "_").toLowerCase();
+      const path = `campaigns/${user.id}/uploads/${Date.now()}_${safeName}`;
+
+      // upload
+      const { error: uploadError } = await supabase.storage
+        .from("campaign-assets")
+        .upload(path, file, { cacheControl: "3600", upsert: false });
+
+      // if conflict (file exists), try upsert
+      if (uploadError && /already exists/i.test(String(uploadError.message || ""))) {
+        const { error: upsertErr } = await supabase.storage
+          .from("campaign-assets")
+          .upload(path, file, { cacheControl: "3600", upsert: true });
+        if (upsertErr) throw upsertErr;
+      } else if (uploadError) {
+        throw uploadError;
+      }
+
+      // get public url
+      const { data: publicData } = supabase.storage.from("campaign-assets").getPublicUrl(path);
+      const publicUrl = (publicData as any)?.publicUrl;
+      if (!publicUrl) throw new Error("Could not obtain public URL after upload.");
+
+      return { publicUrl, path };
+    } finally {
+      setUploadingFile(false);
+    }
+  }
+
+  // When user selects a file, store it and create local preview
+  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0] ?? null;
+    setFileToUpload(f);
+    setFilePreviewUrl(f ? URL.createObjectURL(f) : null);
+  }
+
   // ---------------- Existing (posting / generate caption / old comment by id) ----------------
   async function handlePost(e: React.FormEvent) {
     e.preventDefault();
     setResult(null);
     try {
+      let urlToSend = imageUrl?.trim();
+
+      // If a file is selected, upload it first and use its public URL
+      if (fileToUpload) {
+        const uploadRes = await uploadFileToSupabase(fileToUpload);
+        urlToSend = uploadRes.publicUrl;
+      }
+
+      if (!urlToSend) {
+        setResult({ error: "Please provide an image URL or choose a file to upload." });
+        return;
+      }
+
       const r = await fetch("/api/auth/instagram/post", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          image_url: imageUrl,
+          image_url: urlToSend,
           caption,
           alsoPostToFacebook,
         }),
@@ -220,11 +286,7 @@ export default function IntegrationsInstagram() {
     }
   }
 
-  // ---------------- Leads functions (REPLACED: now fetch from Facebook Lead Ads) ----------------
-  // This replaces any previous Supabase logic and pulls leads from Facebook directly.
-  // Expects server endpoints:
-  // - GET  /api/auth/facebook/getLeads?status=...   (or without status)
-  // - POST /api/auth/facebook/updateLeadStatus    { lead_id, status }
+  // ---------------- Leads functions ----------------
   async function fetchLeads() {
     setLoadingLeads(true);
     setResult(null);
@@ -233,33 +295,22 @@ export default function IntegrationsInstagram() {
       const res = await fetch(url);
       const json = (await res.json()) as any;
 
-      // Support various shapes:
-      // - { data: [...] }
-      // - { leads: [...] }
-      // - { body: { data: [...] } }
       const raw = json.data ?? json.leads ?? json.body?.data ?? json.body?.leads ?? [];
 
-      // Normalize Facebook lead objects to the Lead UI type
       const normalized: Lead[] = (raw as any[]).map((item: any, idx: number) => {
-        // FB lead object often has:
-        // { id, created_time, field_data: [{ name, values: [...] }, ...], ad_id, form_id, ... }
         const lead_id = item.leadgen_id ?? item.id ?? item.lead_id ?? item.leadId ?? `lead_${idx}`;
         const created_time = item.created_time ?? item.created_at ?? item.createdAt ?? null;
 
-        // helper to read from field_data or direct keys
         const getField = (names: string[]) => {
-          // direct properties first
           for (const n of names) {
             if (item[n]) return item[n];
-            if (item[n] === "") return ""; // allow empty string
+            if (item[n] === "") return "";
           }
-          // field_data array (facebook leadgen)
           const fd = item.field_data ?? item.fieldData ?? item.fielddata ?? null;
           if (Array.isArray(fd)) {
             for (const n of names) {
               const f = fd.find((fitem: any) => String(fitem.name).toLowerCase() === String(n).toLowerCase());
               if (f) {
-                // f.values may be array of values or [{value: "x"}]
                 if (Array.isArray(f.values) && f.values.length > 0) {
                   const v = f.values[0];
                   if (typeof v === "object" && v.value !== undefined) return v.value;
@@ -269,7 +320,6 @@ export default function IntegrationsInstagram() {
               }
             }
           }
-          // try nested 'data' fields
           if (item.data && typeof item.data === "object") {
             for (const n of names) {
               if (item.data[n]) return item.data[n];
@@ -303,7 +353,6 @@ export default function IntegrationsInstagram() {
     }
   }
 
-  // Update lead status on server (calls your server-side endpoint that should update local db/state if needed)
   async function updateLeadStatus(lead_id: string, status: string) {
     if (!lead_id) {
       setResult({ error: "Missing lead id" });
@@ -318,7 +367,6 @@ export default function IntegrationsInstagram() {
       });
       const j = (await r.json()) as any;
       setResult(j);
-      // Refresh list
       fetchLeads();
     } catch (err: any) {
       setResult({ error: err.message || String(err) });
@@ -394,7 +442,6 @@ export default function IntegrationsInstagram() {
     }
   }
 
-  // view comments for a single post (provider: "instagram" | "facebook")
   async function openCommentsFor(postId: string, provider: "instagram" | "facebook") {
     setResult(null);
     try {
@@ -555,7 +602,6 @@ export default function IntegrationsInstagram() {
     }
   }
 
-  // level: "campaign" | "adset" | "ad"
   async function fetchInsights(level: "campaign" | "adset" | "ad", id: string) {
     const key = `${level}:${id}`;
     setLoadingInsights(prev => ({ ...prev, [key]: true }));
@@ -611,7 +657,8 @@ export default function IntegrationsInstagram() {
     fetchIgPosts();
     fetchFbPosts();
     fetchCampaigns();
-    // leads are fetched manually by user clicking "Fetch Leads" to avoid surprise calls
+    // leads are fetched manually by user clicking "Fetch Leads"
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ---------------- UI ----------------
@@ -639,13 +686,27 @@ export default function IntegrationsInstagram() {
 
         {/* Create Post */}
         <form onSubmit={handlePost} className="mb-6">
-          <h3 className="font-medium mb-2">Create a Post (Image URL)</h3>
-          <input
-            value={imageUrl}
-            onChange={e => setImageUrl(e.target.value)}
-            placeholder="https://..."
-            className="w-full p-2 border rounded mb-2"
-          />
+          <h3 className="font-medium mb-2">Create a Post (Image URL or Upload)</h3>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-2">
+            <input
+              value={imageUrl}
+              onChange={e => setImageUrl(e.target.value)}
+              placeholder="https://... (leave empty if uploading a file)"
+              className="md:col-span-2 w-full p-2 border rounded"
+            />
+
+            {/* File input */}
+            <div className="md:col-span-1 flex flex-col gap-2">
+              <input type="file" accept="image/*" onChange={handleFileSelect} />
+              {filePreviewUrl && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={filePreviewUrl} alt="preview" className="w-full h-28 object-cover rounded" />
+              )}
+              {uploadingFile && <div className="text-xs text-gray-500">Uploading file…</div>}
+            </div>
+          </div>
+
           <textarea
             value={caption}
             onChange={e => setCaption(e.target.value)}
@@ -682,7 +743,32 @@ export default function IntegrationsInstagram() {
             />
             Also post to Facebook Page
           </label>
-          <button className="px-4 py-2 bg-blue-600 text-white rounded">Post Image</button>
+
+          <div className="flex gap-2">
+            <button className="px-4 py-2 bg-blue-600 text-white rounded" type="submit">
+              {fileToUpload ? (uploadingFile ? "Uploading & Posting…" : "Upload & Post Image") : "Post Image"}
+            </button>
+
+            {fileToUpload && (
+              <button
+                type="button"
+                onClick={async () => {
+                  setResult(null);
+                  try {
+                    const up = await uploadFileToSupabase(fileToUpload);
+                    setResult({ uploaded: up });
+                    setImageUrl(up.publicUrl);
+                  } catch (err: any) {
+                    setResult({ error: err.message || String(err) });
+                  }
+                }}
+                className="px-4 py-2 bg-gray-200 rounded"
+                disabled={uploadingFile}
+              >
+                Upload Only
+              </button>
+            )}
+          </div>
         </form>
 
         {/* Manual comment by ID (legacy UI) */}
@@ -742,7 +828,7 @@ export default function IntegrationsInstagram() {
           </form>
         </div>
 
-        {/* Leads Management (NOW from Facebook Lead Ads) */}
+        {/* Leads Management */}
         <div className="mb-6">
           <h3 className="font-medium mb-2">Manage Leads (Facebook Lead Ads)</h3>
 
@@ -790,27 +876,9 @@ export default function IntegrationsInstagram() {
                       <td className="py-2 px-4 border-b capitalize">{lead.status || "new"}</td>
                       <td className="py-2 px-4 border-b">{lead.created_time ? new Date(lead.created_time).toLocaleString() : "—"}</td>
                       <td className="py-2 px-4 border-b">
-                        <button
-                          className="bg-yellow-500 text-white px-2 py-1 rounded mr-2"
-                          onClick={() => updateLeadStatus(lead.lead_id, "intake")}
-                          disabled={!lead.lead_id}
-                        >
-                          Intake
-                        </button>
-                        <button
-                          className="bg-blue-600 text-white px-2 py-1 rounded mr-2"
-                          onClick={() => updateLeadStatus(lead.lead_id, "qualified")}
-                          disabled={!lead.lead_id}
-                        >
-                          Qualified
-                        </button>
-                        <button
-                          className="bg-green-600 text-white px-2 py-1 rounded"
-                          onClick={() => updateLeadStatus(lead.lead_id, "converted")}
-                          disabled={!lead.lead_id}
-                        >
-                          Converted
-                        </button>
+                        <button className="bg-yellow-500 text-white px-2 py-1 rounded mr-2" onClick={() => updateLeadStatus(lead.lead_id, "intake")} disabled={!lead.lead_id}>Intake</button>
+                        <button className="bg-blue-600 text-white px-2 py-1 rounded mr-2" onClick={() => updateLeadStatus(lead.lead_id, "qualified")} disabled={!lead.lead_id}>Qualified</button>
+                        <button className="bg-green-600 text-white px-2 py-1 rounded" onClick={() => updateLeadStatus(lead.lead_id, "converted")} disabled={!lead.lead_id}>Converted</button>
                       </td>
                     </tr>
                   ))}
@@ -954,16 +1022,10 @@ export default function IntegrationsInstagram() {
                       <div className="text-xs text-gray-500">Status: {c.status ?? "-"}</div>
                     </div>
                     <div className="flex gap-2">
-                      <button
-                        onClick={() => fetchAdSets(c.id)}
-                        className="px-3 py-1 bg-blue-600 text-white rounded"
-                      >
+                      <button onClick={() => fetchAdSets(c.id)} className="px-3 py-1 bg-blue-600 text-white rounded">
                         {loadingAdSets[c.id] ? "Loading…" : "View Ad Sets"}
                       </button>
-                      <button
-                        onClick={() => fetchInsights("campaign", c.id)}
-                        className="px-3 py-1 bg-green-600 text-white rounded"
-                      >
+                      <button onClick={() => fetchInsights("campaign", c.id)} className="px-3 py-1 bg-green-600 text-white rounded">
                         {loadingInsights[`campaign:${c.id}`] ? "Loading…" : "View Insights"}
                       </button>
                     </div>
