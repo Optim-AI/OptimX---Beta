@@ -32,5 +32,9 @@
     "files": [
       "static/chunks/_pages-dir-browser_node_modules_next_dist_pages__error_js.js"
     ]
+  },
+  "pages\\settings.tsx -> firebase/auth": {
+    "id": "pages\\settings.tsx -> firebase/auth",
+    "files": []
   }
 }

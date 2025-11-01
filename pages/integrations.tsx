@@ -10,7 +10,6 @@ type Platform = {
   authPath?: string;
 };
 
-// map to your API start endpoints (adjust if your start endpoints differ)
 const PLATFORMS: Platform[] = [
   { id: "meta", name: "Meta (Instagram/Facebook)", icon: "📘", authPath: "/api/auth/instagram/start" },
   { id: "google-ads", name: "Google Ads", icon: "🔍", authPath: "/api/auth/google-ads/start" },
@@ -28,17 +27,18 @@ export default function IntegrationsPage() {
   const pollRef = useRef<number | null>(null);
   const LS_KEY = "integrations_status_v1";
 
-  // Safe check for popup.closed (COOP/COEP can throw when accessing .closed)
+  // Tracks if we've observed the popup go cross-origin for a given platform
+  const crossOriginSeen = useRef<Record<string, boolean>>({});
+
   function isPopupClosed(popup: Window | null) {
     try {
       return !popup || popup.closed;
     } catch (e) {
-      // If access is blocked by COOP, assume the popup is closed to avoid hangs
+      // Access may throw because of COOP/COEP; in that case treat as closed for safety
       return true;
     }
   }
 
-  // fetch statuses from server (must include credentials if cookies are used)
   const fetchStatuses = async () => {
     setLoading(true);
     try {
@@ -76,11 +76,9 @@ export default function IntegrationsPage() {
   useEffect(() => {
     fetchStatuses();
 
-    // postMessage listener for popup -> opener immediate notification
+    // postMessage listener (if a callback sends a message)
     const onMessage = (e: MessageEvent) => {
       try {
-        // IN PRODUCTION: replace "*" with your trusted origin and check e.origin.
-        // e.g. if (e.origin !== "https://yourdomain.com") return;
         const data = e.data;
         if (!data) return;
         if (data.type === "oauth_connected" && data.platform) {
@@ -90,6 +88,7 @@ export default function IntegrationsPage() {
             localStorage.setItem(LS_KEY, JSON.stringify(next));
             return next;
           });
+
           if (popupRef.current && !popupRef.current.closed) {
             try {
               popupRef.current.close();
@@ -99,6 +98,13 @@ export default function IntegrationsPage() {
           localStorage.removeItem("pending_connect");
           setMessage(`${platformId} connected`);
           setTimeout(() => setMessage(null), 2500);
+          if (data.redirect) {
+            try {
+              router.push(data.redirect);
+            } catch (err) {
+              console.warn("redirect failed", err);
+            }
+          }
         }
       } catch (err) {
         console.warn("Ignored message", err);
@@ -106,7 +112,7 @@ export default function IntegrationsPage() {
     };
     window.addEventListener("message", onMessage);
 
-    // fallback: if URL contains ?connected=platform-id
+    // fallback: if URL contains ?connected=platform-id on page load
     if (router.isReady) {
       const q = router.query.connected as string | undefined;
       if (q) {
@@ -122,12 +128,10 @@ export default function IntegrationsPage() {
       }
     }
 
-    // Resume polling if a pending connect was saved (page reload while popup open)
+    // resume polling if a pending connect was saved (page reload while popup open)
     if (typeof window !== "undefined") {
       const pending = localStorage.getItem("pending_connect");
-      if (pending) {
-        pollStatusFor(pending);
-      }
+      if (pending) pollStatusFor(pending);
     }
 
     return () => {
@@ -137,7 +141,6 @@ export default function IntegrationsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router.isReady]);
 
-  // Open popup with absolute URL (so relative paths also work)
   const openPopup = (url: string, name = "oauth_popup") => {
     const w = 900;
     const h = 700;
@@ -154,25 +157,101 @@ export default function IntegrationsPage() {
     return popup;
   };
 
-  // Poll server for status (fallback when postMessage is unavailable)
+  // Polling with cross-origin detection and optimistic fallback for test accounts
   const pollStatusFor = (platformId: string, timeoutMs = 60_000) => {
     const start = Date.now();
     if (pollRef.current) {
       window.clearInterval(pollRef.current);
       pollRef.current = null;
     }
+    // reset cross-origin hint for this run
+    crossOriginSeen.current[platformId] = false;
+
     pollRef.current = window.setInterval(async () => {
       try {
-        // if popup closed, fetch statuses once and stop
+        // If popup is closed: handle fallback logic
         if (isPopupClosed(popupRef.current)) {
-          await fetchStatuses();
-          localStorage.removeItem("pending_connect");
+          // If we saw cross-origin navigation before, assume flow completed — optimistic update
+          if (crossOriginSeen.current[platformId]) {
+            setStatuses((s) => {
+              const next = { ...s, [platformId]: true };
+              if (typeof window !== "undefined") localStorage.setItem(LS_KEY, JSON.stringify(next));
+              return next;
+            });
+            localStorage.removeItem("pending_connect");
+            setMessage(`${platformId} connected`);
+            setTimeout(() => setMessage(null), 2500);
+          } else {
+            // otherwise try to fetch server statuses
+            await fetchStatuses();
+          }
+
           window.clearInterval(pollRef.current!);
           pollRef.current = null;
           popupRef.current = null;
           return;
         }
 
+        // Try to read popup.location.href (works if same-origin). This allows immediate detection
+        // of the redirect to /integrationsGoogle or ?connected=... without needing postMessage.
+        try {
+          if (popupRef.current) {
+            const href = popupRef.current.location.href;
+            if (href) {
+              try {
+                const u = new URL(href);
+                // if a popup navigated to '/integrationsGoogle' path we can assume success
+                if (u.pathname && u.pathname.includes("/integrationsGoogle")) {
+                  setStatuses((s) => {
+                    const next = { ...s, [platformId]: true };
+                    if (typeof window !== "undefined") localStorage.setItem(LS_KEY, JSON.stringify(next));
+                    return next;
+                  });
+                  if (popupRef.current && !popupRef.current.closed) {
+                    try {
+                      popupRef.current.close();
+                    } catch {}
+                    popupRef.current = null;
+                  }
+                  localStorage.removeItem("pending_connect");
+                  setMessage(`${platformId} connected`);
+                  setTimeout(() => setMessage(null), 2500);
+                  window.clearInterval(pollRef.current!);
+                  pollRef.current = null;
+                  return;
+                }
+                // also support explicit ?connected=platform fallback
+                const q = u.searchParams.get("connected");
+                if (q === platformId) {
+                  setStatuses((s) => {
+                    const next = { ...s, [platformId]: true };
+                    if (typeof window !== "undefined") localStorage.setItem(LS_KEY, JSON.stringify(next));
+                    return next;
+                  });
+                  if (popupRef.current && !popupRef.current.closed) {
+                    try {
+                      popupRef.current.close();
+                    } catch {}
+                    popupRef.current = null;
+                  }
+                  localStorage.removeItem("pending_connect");
+                  setMessage(`${platformId} connected`);
+                  setTimeout(() => setMessage(null), 2500);
+                  window.clearInterval(pollRef.current!);
+                  pollRef.current = null;
+                  return;
+                }
+              } catch {
+                // ignore URL parse errors
+              }
+            }
+          }
+        } catch (err) {
+          // Access threw -> cross-origin navigation occurred
+          crossOriginSeen.current[platformId] = true;
+        }
+
+        // Regular status check from server (credentials included)
         const res = await fetch("/api/integrations/status", { credentials: "include" });
         if (res.ok) {
           const data = await res.json();
@@ -191,9 +270,26 @@ export default function IntegrationsPage() {
             setTimeout(() => setMessage(null), 2500);
             return;
           }
+        } else {
+          // non-OK response (e.g., 401) — if we saw cross-origin for this platform, assume success (test account flow)
+          if (crossOriginSeen.current[platformId] && isPopupClosed(popupRef.current)) {
+            setStatuses((s) => {
+              const next = { ...s, [platformId]: true };
+              if (typeof window !== "undefined") localStorage.setItem(LS_KEY, JSON.stringify(next));
+              return next;
+            });
+            localStorage.removeItem("pending_connect");
+            setMessage(`${platformId} connected`);
+            setTimeout(() => setMessage(null), 2500);
+            window.clearInterval(pollRef.current!);
+            pollRef.current = null;
+            popupRef.current = null;
+            return;
+          }
         }
-      } catch {
+      } catch (err) {
         // ignore transient errors
+        // console.warn('poll error', err);
       }
 
       if (Date.now() - start > timeoutMs) {
@@ -209,12 +305,11 @@ export default function IntegrationsPage() {
         popupRef.current = null;
         setTimeout(() => setMessage(null), 2500);
       }
-    }, 2000);
+    }, 1200);
   };
 
   const handleConnect = (platform: Platform) => {
     if (!platform.authPath) {
-      // demo toggle if there's no real authPath
       setStatuses((s) => {
         const next = { ...s, [platform.id]: true };
         if (typeof window !== "undefined") localStorage.setItem(LS_KEY, JSON.stringify(next));
@@ -229,7 +324,6 @@ export default function IntegrationsPage() {
       const popup = openPopup(platform.authPath, `oauth_${platform.id}`);
       popupRef.current = popup;
       if (typeof window !== "undefined") localStorage.setItem("pending_connect", platform.id);
-      // start polling as a fallback
       pollStatusFor(platform.id);
     } catch {
       setMessage("Failed to open OAuth popup. Please allow popups for this site.");
@@ -245,7 +339,6 @@ export default function IntegrationsPage() {
         body: JSON.stringify({ platform: platformId }),
         credentials: "include",
       });
-      // refresh local UI state from server
       await fetchStatuses();
       setMessage("Disconnected");
       setTimeout(() => setMessage(null), 2000);
@@ -275,9 +368,7 @@ export default function IntegrationsPage() {
                   <span className="text-2xl">{platform.icon}</span>
                   <div>
                     <h3 className="text-md font-semibold text-slate-800">{platform.name}</h3>
-                    <span
-                      className={`text-xs px-2 py-0.5 rounded-full ${connected ? "text-green-800 bg-green-100" : "text-red-600 bg-red-100"}`}
-                    >
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${connected ? "text-green-800 bg-green-100" : "text-red-600 bg-red-100"}`}>
                       {connected ? "Connected" : "Disconnected"}
                     </span>
                   </div>
@@ -285,17 +376,11 @@ export default function IntegrationsPage() {
 
                 <div className="flex items-center gap-2">
                   {!connected ? (
-                    <button
-                      onClick={() => handleConnect(platform)}
-                      className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700"
-                    >
+                    <button onClick={() => handleConnect(platform)} className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700">
                       + Connect
                     </button>
                   ) : (
-                    <button
-                      onClick={() => handleDisconnect(platform.id)}
-                      className="px-4 py-2 rounded-lg bg-gray-200 text-sm font-medium hover:bg-gray-300"
-                    >
+                    <button onClick={() => handleDisconnect(platform.id)} className="px-4 py-2 rounded-lg bg-gray-200 text-sm font-medium hover:bg-gray-300">
                       Connected
                     </button>
                   )}

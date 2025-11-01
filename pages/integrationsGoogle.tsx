@@ -23,7 +23,7 @@ export default function IntegrationsGoogle() {
 
   async function loadProfile() {
     try {
-      const res = await fetch("/api/auth/google-ads/profile");
+      const res = await fetch("/api/auth/google-ads/profile", { credentials: "include" });
       const body = await res.json();
       if (!res.ok) throw new Error(body.error?.message || JSON.stringify(body));
       setProfile(body.profile);

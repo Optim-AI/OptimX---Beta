@@ -1,6 +1,6 @@
 {
   "meta": true,
-  "google-ads": false,
+  "google-ads": true,
   "whatsapp": false,
   "linkedin": false,
   "twitter": false
