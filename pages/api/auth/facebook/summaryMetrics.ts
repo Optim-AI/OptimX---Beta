@@ -73,6 +73,38 @@ async function fetchGraphText(url: string): Promise<GraphFetchResp> {
   return { ok: gRes.ok, status: gRes.status, text, json: parsed, url };
 }
 
+/** Helpers for parsing range query */
+function parseISODateString(s?: string | string[] | null): Date | null {
+  if (!s) return null;
+  const str = Array.isArray(s) ? s[0] : s;
+  // Accept YYYY-MM-DD only
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(str)) return null;
+  const d = new Date(str + "T00:00:00Z");
+  if (Number.isNaN(d.getTime())) return null;
+  return d;
+}
+
+function daysForPreset(preset: string) {
+  switch (preset) {
+    case "1d":
+      return 1;
+    case "7d":
+      return 7;
+    case "15d":
+      return 15;
+    case "1m":
+      return 30;
+    case "3m":
+      return 90;
+    case "6m":
+      return 180;
+    case "1y":
+      return 365;
+    default:
+      return null;
+  }
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
     const saved = await readSaved();
@@ -97,7 +129,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
 
-    // At this point rawAdAccount is truthy. Convert/validate numericAdId to a string to avoid "string | null" issues.
+    // Normalize ad account id
     const numericAdIdRaw = stripActPrefix(rawAdAccount);
     if (!numericAdIdRaw) {
       return res.status(400).json({
@@ -105,24 +137,78 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         hint: "Ensure adAccountId is a valid string like 'act_123456' or '123456'",
       });
     }
-    const numericAdId = String(numericAdIdRaw); // guaranteed string now
+    const numericAdId = String(numericAdIdRaw);
     const graphAdAccount = `act_${numericAdId}`;
 
-    // date ranges: last 7 days vs previous 7 days (end yesterday)
-    const today = new Date();
-    const endCurr = new Date(today);
-    endCurr.setDate(endCurr.getDate() - 1);
-    const startCurr = new Date(endCurr);
-    startCurr.setDate(startCurr.getDate() - 6);
+    // Parse query params for range / custom start-end
+    const { range: rangeQ, start: startQ, end: endQ } = req.query;
 
-    const endPrev = new Date(startCurr);
-    endPrev.setDate(endPrev.getDate() - 1);
-    const startPrev = new Date(endPrev);
-    startPrev.setDate(startPrev.getDate() - 6);
+    // We will compute current range and previous range (both { since, until } in YYYY-MM-DD)
+    let currRange: { since: string; until: string };
+    let prevRange: { since: string; until: string };
 
-    const currRange = { since: isoDate(startCurr), until: isoDate(endCurr) };
-    const prevRange = { since: isoDate(startPrev), until: isoDate(endPrev) };
+    // Helper: return yesterday date (server local) as Date
+    function yesterday(): Date {
+      const d = new Date();
+      d.setDate(d.getDate() - 1);
+      d.setHours(0, 0, 0, 0);
+      return d;
+    }
 
+    if (startQ && endQ) {
+      // custom start/end provided
+      const startDate = parseISODateString(startQ);
+      const endDate = parseISODateString(endQ);
+      if (!startDate || !endDate) {
+        return res.status(400).json({ error: "Invalid start or end. Use YYYY-MM-DD." });
+      }
+      // ensure start <= end
+      if (startDate.getTime() > endDate.getTime()) {
+        return res.status(400).json({ error: "start must be <= end" });
+      }
+      // compute previous range of equal length directly before current start
+      const msPerDay = 24 * 60 * 60 * 1000;
+      const lengthDays = Math.round((endDate.getTime() - startDate.getTime()) / msPerDay) + 1;
+      const prevEnd = new Date(startDate.getTime() - msPerDay);
+      const prevStart = new Date(prevEnd.getTime() - (lengthDays - 1) * msPerDay);
+
+      currRange = { since: isoDate(startDate), until: isoDate(endDate) };
+      prevRange = { since: isoDate(prevStart), until: isoDate(prevEnd) };
+    } else if (rangeQ) {
+      const preset = Array.isArray(rangeQ) ? rangeQ[0] : (rangeQ ?? "7d");
+      const days = daysForPreset(preset);
+      if (!days) {
+        return res.status(400).json({ error: "Unsupported range preset. Use 1d,7d,15d,1m,3m,6m,1y or pass start+end." });
+      }
+      const end = yesterday(); // end is yesterday
+      const start = new Date(end);
+      start.setDate(end.getDate() - (days - 1));
+      // previous range is the contiguous block immediately before start
+      const prevEnd = new Date(start);
+      prevEnd.setDate(start.getDate() - 1);
+      const prevStart = new Date(prevEnd);
+      prevStart.setDate(prevEnd.getDate() - (days - 1));
+
+      currRange = { since: isoDate(start), until: isoDate(end) };
+      prevRange = { since: isoDate(prevStart), until: isoDate(prevEnd) };
+    } else {
+      // default: last 7 days vs previous 7 days (behavior you had previously)
+      const today = new Date();
+      const endCurr = new Date(today);
+      endCurr.setDate(endCurr.getDate() - 1);
+      const startCurr = new Date(endCurr);
+      startCurr.setDate(startCurr.getDate() - 6);
+
+      const endPrev = new Date(startCurr);
+      endPrev.setDate(endPrev.getDate() - 1);
+      const startPrev = new Date(endPrev);
+      startPrev.setDate(startPrev.getDate() - 6);
+
+      currRange = { since: isoDate(startCurr), until: isoDate(endCurr) };
+      prevRange = { since: isoDate(startPrev), until: isoDate(endPrev) };
+    }
+
+    // fields we want from insights
     const fields = ["spend", "impressions", "reach", "clicks", "actions", "action_values"].join(",");
 
     async function fetchInsightsForRange(range: { since: string; until: string }): Promise<GraphFetchResp> {
@@ -165,7 +251,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const agg: Agg = { spend: 0, impressions: 0, reach: 0, clicks: 0, conversions: 0, purchase_value: 0, ctr: 0, roas: null };
 
       for (const r of rows) {
-        // spend returned by insights is usually as "210.00" (major unit) - keep as-is
         agg.spend += sumNumeric(r.spend);
         agg.impressions += sumNumeric(r.impressions);
         agg.reach += sumNumeric(r.reach);

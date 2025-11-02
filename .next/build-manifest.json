@@ -26,20 +26,15 @@
       "static/chunks/main.js",
       "static/chunks/pages/_error.js"
     ],
-    "/create-campaign": [
+    "/analytics": [
       "static/chunks/webpack.js",
       "static/chunks/main.js",
-      "static/chunks/pages/create-campaign.js"
+      "static/chunks/pages/analytics.js"
     ],
     "/integrations": [
       "static/chunks/webpack.js",
       "static/chunks/main.js",
       "static/chunks/pages/integrations.js"
-    ],
-    "/settings": [
-      "static/chunks/webpack.js",
-      "static/chunks/main.js",
-      "static/chunks/pages/settings.js"
     ]
   },
   "ampFirstPages": []
