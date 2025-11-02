@@ -346,6 +346,12 @@ type ApiRouteConfig = {
   handler satisfies ApiRouteConfig
 }
 
+// Validate ../../pages/api/debug/saveTest.ts
+{
+  const handler = {} as typeof import("../../pages/api/debug/saveTest.js")
+  handler satisfies ApiRouteConfig
+}
+
 // Validate ../../pages/api/generate-campaign.ts
 {
   const handler = {} as typeof import("../../pages/api/generate-campaign.js")

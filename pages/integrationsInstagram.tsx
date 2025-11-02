@@ -1,6 +1,16 @@
 // pages/integrationsInstagram.tsx
 import React, { useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
+import { apiFetch } from "../lib/apiFetch";
+
+/**
+ * Full integrations page for Instagram / Facebook + Ads.
+ * - Uses apiFetch to call Next API routes (should attach Supabase session).
+ * - Uploads files to "campaign-assets" bucket (change if needed).
+ *
+ * NOTE: Do NOT annotate the component return type with JSX.Element here to avoid
+ * "Cannot find namespace 'JSX'" issues in some TS configs.
+ */
 
 interface MeData {
   connected: boolean;
@@ -65,125 +75,141 @@ export default function IntegrationsInstagram() {
   // --- me / connection ---
   const [me, setMe] = useState<MeData | null>(null);
 
-  // --- original post states ---
+  // --- post states ---
   const [imageUrl, setImageUrl] = useState("");
   const [caption, setCaption] = useState("");
   const [alsoPostToFacebook, setAlsoPostToFacebook] = useState(false);
   const [generatingCaption, setGeneratingCaption] = useState(false);
 
-  // NEW: file upload states
+  // --- file upload states ---
   const [fileToUpload, setFileToUpload] = useState<File | null>(null);
   const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null);
   const [uploadingFile, setUploadingFile] = useState(false);
 
-  // manual comment by id (old UI)
+  // manual comment by id
   const [mediaIdForComment, setMediaIdForComment] = useState("");
   const [comment, setComment] = useState("");
 
-  // ad states (existing run ad)
+  // ad states
   const [campaignName, setCampaignName] = useState("");
   const [dailyBudget, setDailyBudget] = useState("");
   const [adSetName, setAdSetName] = useState("");
   const [creativeImageUrl, setCreativeImageUrl] = useState("");
   const [creativeCaption, setCreativeCaption] = useState("");
 
-  // result / logs
+  // results / logs
   const [result, setResult] = useState<any>(null);
 
-  // leads (now from Facebook Lead Ads)
+  // leads
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loadingLeads, setLoadingLeads] = useState(false);
-  const [filter, setFilter] = useState<"all" | "new" | "intake" | "qualified" | "converted">(
-    "all"
-  );
+  const [filter, setFilter] = useState<
+    "all" | "new" | "intake" | "qualified" | "converted"
+  >("all");
 
-  // IG + FB posts lists and loading states
+  // IG + FB posts
   const [igPosts, setIgPosts] = useState<SocialPost[]>([]);
   const [fbPosts, setFbPosts] = useState<SocialPost[]>([]);
   const [loadingIgPosts, setLoadingIgPosts] = useState(false);
   const [loadingFbPosts, setLoadingFbPosts] = useState(false);
 
-  // map postId -> comments[]
+  // comments map and quick composer
   const [postComments, setPostComments] = useState<Record<string, any[]>>({});
-  // map postId -> input comment text (for quick comment UI)
   const [newCommentText, setNewCommentText] = useState<Record<string, string>>({});
 
-  // --- Ads dashboard state (kept) ---
+  // Ads dashboard state
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
-  const [adSetsByCampaign, setAdSetsByCampaign] = useState<Record<string, AdSet[]>>({});
+  const [adSetsByCampaign, setAdSetsByCampaign] = useState<Record<
+    string,
+    AdSet[]
+  >>({});
   const [adsByAdSet, setAdsByAdSet] = useState<Record<string, Ad[]>>({});
   const [insightsByKey, setInsightsByKey] = useState<Record<string, any>>({});
   const [loadingCampaigns, setLoadingCampaigns] = useState(false);
-  const [loadingAdSets, setLoadingAdSets] = useState<Record<string, boolean>>({});
+  const [loadingAdSets, setLoadingAdSets] = useState<Record<string, boolean>>(
+    {}
+  );
   const [loadingAds, setLoadingAds] = useState<Record<string, boolean>>({});
-  const [loadingInsights, setLoadingInsights] = useState<Record<string, boolean>>({});
+  const [loadingInsights, setLoadingInsights] = useState<Record<string, boolean>>(
+    {}
+  );
 
-  // fetch me
+  // fetch me (connection status) on mount
   useEffect(() => {
-    fetch("/api/auth/instagram/me")
-      .then((r) => r.json().then((j) => j as MeData))
-      .then(setMe)
-      .catch((err) => {
+    (async () => {
+      try {
+        const res = await apiFetch("/api/auth/instagram/me");
+        const json = await res.json();
+        setMe(json as MeData);
+      } catch (err) {
         console.error("me fetch err", err);
         setMe(null);
-      });
+      }
+    })();
   }, []);
 
   // ---------------- NEW: helper to upload file to Supabase storage and return public URL ----------------
   async function uploadFileToSupabase(file: File) {
     setUploadingFile(true);
     try {
-      const {
-        data: { user },
-        error: userErr,
-      } = await supabase.auth.getUser();
-      if (userErr || !user) throw new Error("Not authenticated.");
+      // get session (v2 supabase)
+      const sessionResp = await supabase.auth.getSession();
+      const user = (sessionResp as any)?.data?.session?.user ?? null;
+      if (!user) throw new Error("Not authenticated. Please sign in.");
 
       // safe filename & path
       const safeName = file.name.replace(/[^a-z0-9_\-\.]/gi, "_").toLowerCase();
-      const path = `campaigns/${user.id}/uploads/${Date.now()}_${safeName}`;
+      const filePath = `campaigns/${user.id}/uploads/${Date.now()}_${safeName}`;
 
-      // upload
+      // upload to 'campaign-assets' bucket (must exist)
       const { error: uploadError } = await supabase.storage
         .from("campaign-assets")
-        .upload(path, file, { cacheControl: "3600", upsert: false });
+        .upload(filePath, file, { cacheControl: "3600", upsert: false });
 
-      // if conflict (file exists), try upsert
+      // If conflict, attempt upsert
       if (uploadError && /already exists/i.test(String(uploadError.message || ""))) {
         const { error: upsertErr } = await supabase.storage
           .from("campaign-assets")
-          .upload(path, file, { cacheControl: "3600", upsert: true });
+          .upload(filePath, file, { cacheControl: "3600", upsert: true });
         if (upsertErr) throw upsertErr;
       } else if (uploadError) {
         throw uploadError;
       }
 
-      // get public url
-      const { data: publicData } = supabase.storage.from("campaign-assets").getPublicUrl(path);
-      const publicUrl = (publicData as any)?.publicUrl;
-      if (!publicUrl) throw new Error("Could not obtain public URL after upload.");
+      // get public URL (handle SDK variations)
+      const publicData = supabase.storage.from("campaign-assets").getPublicUrl(filePath);
+      // some SDKs return { data: { publicUrl }} others return { publicUrl } — be defensive:
+      const publicUrl =
+        (publicData as any)?.data?.publicUrl ??
+        (publicData as any)?.publicUrl ??
+        (publicData as any)?.publicURL ??
+        null;
 
-      return { publicUrl, path };
+      if (!publicUrl) {
+        throw new Error("Could not obtain public URL after upload.");
+      }
+
+      return { publicUrl, path: filePath };
     } finally {
       setUploadingFile(false);
     }
   }
 
-  // When user selects a file, store it and create local preview
   function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0] ?? null;
     setFileToUpload(f);
-    setFilePreviewUrl(f ? URL.createObjectURL(f) : null);
+    if (f) setFilePreviewUrl(URL.createObjectURL(f));
+    else setFilePreviewUrl(null);
   }
 
-  // ---------------- Existing (posting / generate caption / old comment by id) ----------------
+  // ---------------- Posting / Commenting / Caption generation ----------------
   async function handlePost(e: React.FormEvent) {
     e.preventDefault();
     setResult(null);
     try {
       let urlToSend = imageUrl?.trim();
 
-      // If a file is selected, upload it first and use its public URL
+      // upload if file selected
       if (fileToUpload) {
         const uploadRes = await uploadFileToSupabase(fileToUpload);
         urlToSend = uploadRes.publicUrl;
@@ -194,7 +220,7 @@ export default function IntegrationsInstagram() {
         return;
       }
 
-      const r = await fetch("/api/auth/instagram/post", {
+      const res = await apiFetch("/api/auth/instagram/post", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -203,8 +229,9 @@ export default function IntegrationsInstagram() {
           alsoPostToFacebook,
         }),
       });
-      const j = (await r.json()) as any;
+      const j = await res.json();
       setResult(j);
+      // refresh lists after small delay
       setTimeout(() => {
         fetchIgPosts(true);
         fetchFbPosts(true);
@@ -219,7 +246,7 @@ export default function IntegrationsInstagram() {
     e.preventDefault();
     setResult(null);
     try {
-      const r = await fetch("/api/auth/instagram/comment", {
+      const res = await apiFetch("/api/auth/instagram/comment", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -227,7 +254,7 @@ export default function IntegrationsInstagram() {
           message: comment,
         }),
       });
-      const j = (await r.json()) as any;
+      const j = await res.json();
       setResult(j);
       if (mediaIdForComment) openCommentsFor(mediaIdForComment, "instagram");
     } catch (err: any) {
@@ -248,7 +275,7 @@ export default function IntegrationsInstagram() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt: caption, mode }),
       });
-      const json = (await res.json()) as any;
+      const json = await res.json();
       setResult(json);
       if (res.ok && json.caption) {
         if (mode === "replace") setCaption(json.caption);
@@ -262,11 +289,12 @@ export default function IntegrationsInstagram() {
     }
   }
 
+  // ---------------- Run Ad (simplified example) ----------------
   async function handleRunAd(e: React.FormEvent) {
     e.preventDefault();
     setResult(null);
     try {
-      const r = await fetch("/api/auth/facebook/ads", {
+      const r = await apiFetch("/api/auth/facebook/ads", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -278,7 +306,7 @@ export default function IntegrationsInstagram() {
           creativeCaption,
         }),
       });
-      const j = (await r.json()) as any;
+      const j = await r.json();
       setResult(j);
       setTimeout(() => fetchCampaigns(), 1500);
     } catch (err: any) {
@@ -291,9 +319,12 @@ export default function IntegrationsInstagram() {
     setLoadingLeads(true);
     setResult(null);
     try {
-      const url = filter === "all" ? "/api/auth/facebook/getLeads" : `/api/auth/facebook/getLeads?status=${encodeURIComponent(filter)}`;
-      const res = await fetch(url);
-      const json = (await res.json()) as any;
+      const url =
+        filter === "all"
+          ? "/api/auth/facebook/getLeads"
+          : `/api/auth/facebook/getLeads?status=${encodeURIComponent(filter)}`;
+      const res = await apiFetch(url);
+      const json = await res.json();
 
       const raw = json.data ?? json.leads ?? json.body?.data ?? json.body?.leads ?? [];
 
@@ -346,8 +377,8 @@ export default function IntegrationsInstagram() {
       setLeads(normalized);
       setResult(json);
     } catch (err: any) {
-      setResult({ error: err.message || String(err) });
       setLeads([]);
+      setResult({ error: err.message || String(err) });
     } finally {
       setLoadingLeads(false);
     }
@@ -360,12 +391,12 @@ export default function IntegrationsInstagram() {
     }
     setResult(null);
     try {
-      const r = await fetch("/api/auth/facebook/updateLeadStatus", {
+      const r = await apiFetch("/api/auth/facebook/updateLeadStatus", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ lead_id, status }),
       });
-      const j = (await r.json()) as any;
+      const j = await r.json();
       setResult(j);
       fetchLeads();
     } catch (err: any) {
@@ -374,14 +405,13 @@ export default function IntegrationsInstagram() {
   }
 
   // ---------------- Posts management (IG + FB) ----------------
-
   async function fetchIgPosts(refresh = false) {
     setLoadingIgPosts(true);
     setResult(null);
     try {
       const url = "/api/auth/instagram/getMedia";
-      const res = await fetch(url);
-      const json = (await res.json()) as any;
+      const res = await apiFetch(url);
+      const json = await res.json();
       if (json?.error) {
         setResult(json);
         setIgPosts([]);
@@ -402,8 +432,8 @@ export default function IntegrationsInstagram() {
       setIgPosts(posts);
       setResult(json);
     } catch (err: any) {
-      setResult({ error: err.message || String(err) });
       setIgPosts([]);
+      setResult({ error: err.message || String(err) });
     } finally {
       setLoadingIgPosts(false);
     }
@@ -414,8 +444,8 @@ export default function IntegrationsInstagram() {
     setResult(null);
     try {
       const url = "/api/auth/facebook/getPosts";
-      const res = await fetch(url);
-      const json = (await res.json()) as any;
+      const res = await apiFetch(url);
+      const json = await res.json();
       if (json?.error) {
         setResult(json);
         setFbPosts([]);
@@ -435,8 +465,8 @@ export default function IntegrationsInstagram() {
       setFbPosts(posts);
       setResult(json);
     } catch (err: any) {
-      setResult({ error: err.message || String(err) });
       setFbPosts([]);
+      setResult({ error: err.message || String(err) });
     } finally {
       setLoadingFbPosts(false);
     }
@@ -445,8 +475,8 @@ export default function IntegrationsInstagram() {
   async function openCommentsFor(postId: string, provider: "instagram" | "facebook") {
     setResult(null);
     try {
-      const res = await fetch(`/api/auth/${provider}/getPostComments?postId=${encodeURIComponent(postId)}`);
-      const json = (await res.json()) as any;
+      const res = await apiFetch(`/api/auth/${provider}/getPostComments?postId=${encodeURIComponent(postId)}`);
+      const json = await res.json();
       setPostComments((prev) => ({ ...prev, [postId]: json?.data ?? json?.body?.data ?? json ?? [] }));
       setResult(json);
     } catch (err: any) {
@@ -462,18 +492,21 @@ export default function IntegrationsInstagram() {
     }
     setResult(null);
     try {
-      const res = await fetch(`/api/auth/${provider}/comment`, {
+      const res = await apiFetch(`/api/auth/${provider}/comment`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(provider === "instagram" ? { mediaId: postId, message: text } : { postId, message: text }),
+        body:
+          provider === "instagram"
+            ? JSON.stringify({ mediaId: postId, message: text })
+            : JSON.stringify({ postId, message: text }),
       });
-      const j = (await res.json()) as any;
+      const j = await res.json();
       setResult(j);
       await openCommentsFor(postId, provider);
       if (provider === "instagram") {
-        setIgPosts((prev) => prev.map(p => p.id === postId ? { ...p, comments_count: (p.comments_count ?? 0) + 1 } : p));
+        setIgPosts((prev) => prev.map((p) => (p.id === postId ? { ...p, comments_count: (p.comments_count ?? 0) + 1 } : p)));
       } else {
-        setFbPosts((prev) => prev.map(p => p.id === postId ? { ...p, comments_count: (p.comments_count ?? 0) + 1 } : p));
+        setFbPosts((prev) => prev.map((p) => (p.id === postId ? { ...p, comments_count: (p.comments_count ?? 0) + 1 } : p)));
       }
       setNewCommentText((prev) => ({ ...prev, [postId]: "" }));
     } catch (err: any) {
@@ -485,33 +518,29 @@ export default function IntegrationsInstagram() {
     if (!confirm("Delete this post? This cannot be undone.")) return;
     setResult(null);
     try {
-      const res = await fetch(`/api/auth/${provider}/${provider === "instagram" ? "deleteMedia" : "deletePost"}`, {
+      const res = await apiFetch(`/api/auth/${provider}/${provider === "instagram" ? "deleteMedia" : "deletePost"}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ postId }),
       });
-      const json = (await res.json()) as any;
+      const json = await res.json();
       setResult(json);
-      if (json.success || json.id || json === true) {
-        if (provider === "instagram") setIgPosts((p) => p.filter(x => x.id !== postId));
-        else setFbPosts((p) => p.filter(x => x.id !== postId));
-      } else if (json?.data?.success || json?.data?.id) {
-        if (provider === "instagram") setIgPosts((p) => p.filter(x => x.id !== postId));
-        else setFbPosts((p) => p.filter(x => x.id !== postId));
+      if (json.success || json.id || json === true || json?.data?.success || json?.data?.id) {
+        if (provider === "instagram") setIgPosts((p) => p.filter((x) => x.id !== postId));
+        else setFbPosts((p) => p.filter((x) => x.id !== postId));
       }
     } catch (err: any) {
       setResult({ error: err.message || String(err) });
     }
   }
 
-  // ---------------- Ads management (fetch campaigns / adsets / ads / insights) ----------------
-
+  // ---------------- Ads functions ----------------
   async function fetchCampaigns() {
     setLoadingCampaigns(true);
     setResult(null);
     try {
-      const res = await fetch("/api/auth/facebook/getCampaigns");
-      const json = (await res.json()) as any;
+      const res = await apiFetch("/api/auth/facebook/getCampaigns");
+      const json = await res.json();
       if (!res.ok) {
         setResult(json);
         setCampaigns([]);
@@ -532,23 +561,23 @@ export default function IntegrationsInstagram() {
       setCampaigns(list);
       setResult(json);
     } catch (err: any) {
-      setResult({ error: err.message || String(err) });
       setCampaigns([]);
+      setResult({ error: err.message || String(err) });
     } finally {
       setLoadingCampaigns(false);
     }
   }
 
   async function fetchAdSets(campaignId: string) {
-    setLoadingAdSets(prev => ({ ...prev, [campaignId]: true }));
+    setLoadingAdSets((prev) => ({ ...prev, [campaignId]: true }));
     setResult(null);
     try {
-      const res = await fetch(`/api/auth/facebook/getAdSets?campaignId=${encodeURIComponent(campaignId)}`);
-      const json = (await res.json()) as any;
+      const res = await apiFetch(`/api/auth/facebook/getAdSets?campaignId=${encodeURIComponent(campaignId)}`);
+      const json = await res.json();
       if (!res.ok) {
         setResult(json);
-        setAdSetsByCampaign(prev => ({ ...prev, [campaignId]: [] }));
-        setLoadingAdSets(prev => ({ ...prev, [campaignId]: false }));
+        setAdSetsByCampaign((prev) => ({ ...prev, [campaignId]: [] }));
+        setLoadingAdSets((prev) => ({ ...prev, [campaignId]: false }));
         return;
       }
       const raw = json.data ?? json.body?.data ?? [];
@@ -562,26 +591,26 @@ export default function IntegrationsInstagram() {
         end_time: a.end_time ?? null,
         ...a,
       }));
-      setAdSetsByCampaign(prev => ({ ...prev, [campaignId]: list }));
+      setAdSetsByCampaign((prev) => ({ ...prev, [campaignId]: list }));
       setResult(json);
     } catch (err: any) {
+      setAdSetsByCampaign((prev) => ({ ...prev, [campaignId]: [] }));
       setResult({ error: err.message || String(err) });
-      setAdSetsByCampaign(prev => ({ ...prev, [campaignId]: [] }));
     } finally {
-      setLoadingAdSets(prev => ({ ...prev, [campaignId]: false }));
+      setLoadingAdSets((prev) => ({ ...prev, [campaignId]: false }));
     }
   }
 
   async function fetchAds(adSetId: string) {
-    setLoadingAds(prev => ({ ...prev, [adSetId]: true }));
+    setLoadingAds((prev) => ({ ...prev, [adSetId]: true }));
     setResult(null);
     try {
-      const res = await fetch(`/api/auth/facebook/getAds?adSetId=${encodeURIComponent(adSetId)}`);
-      const json = (await res.json()) as any;
+      const res = await apiFetch(`/api/auth/facebook/getAds?adSetId=${encodeURIComponent(adSetId)}`);
+      const json = await res.json();
       if (!res.ok) {
         setResult(json);
-        setAdsByAdSet(prev => ({ ...prev, [adSetId]: [] }));
-        setLoadingAds(prev => ({ ...prev, [adSetId]: false }));
+        setAdsByAdSet((prev) => ({ ...prev, [adSetId]: [] }));
+        setLoadingAds((prev) => ({ ...prev, [adSetId]: false }));
         return;
       }
       const raw = json.data ?? json.body?.data ?? [];
@@ -592,27 +621,27 @@ export default function IntegrationsInstagram() {
         effective_status: a.effective_status,
         ...a,
       }));
-      setAdsByAdSet(prev => ({ ...prev, [adSetId]: list }));
+      setAdsByAdSet((prev) => ({ ...prev, [adSetId]: list }));
       setResult(json);
     } catch (err: any) {
+      setAdsByAdSet((prev) => ({ ...prev, [adSetId]: [] }));
       setResult({ error: err.message || String(err) });
-      setAdsByAdSet(prev => ({ ...prev, [adSetId]: [] }));
     } finally {
-      setLoadingAds(prev => ({ ...prev, [adSetId]: false }));
+      setLoadingAds((prev) => ({ ...prev, [adSetId]: false }));
     }
   }
 
   async function fetchInsights(level: "campaign" | "adset" | "ad", id: string) {
     const key = `${level}:${id}`;
-    setLoadingInsights(prev => ({ ...prev, [key]: true }));
+    setLoadingInsights((prev) => ({ ...prev, [key]: true }));
     setResult(null);
     try {
-      const res = await fetch(`/api/auth/facebook/getAdInsights?level=${encodeURIComponent(level)}&id=${encodeURIComponent(id)}`);
-      const json = (await res.json()) as any;
+      const res = await apiFetch(`/api/auth/facebook/getAdInsights?level=${encodeURIComponent(level)}&id=${encodeURIComponent(id)}`);
+      const json = await res.json();
       if (!res.ok) {
         setResult(json);
-        setInsightsByKey(prev => ({ ...prev, [key]: { error: json } }));
-        setLoadingInsights(prev => ({ ...prev, [key]: false }));
+        setInsightsByKey((prev) => ({ ...prev, [key]: { error: json } }));
+        setLoadingInsights((prev) => ({ ...prev, [key]: false }));
         return;
       }
 
@@ -642,40 +671,36 @@ export default function IntegrationsInstagram() {
         metricsObj = json;
       }
 
-      setInsightsByKey(prev => ({ ...prev, [key]: metricsObj }));
+      setInsightsByKey((prev) => ({ ...prev, [key]: metricsObj }));
       setResult(json);
     } catch (err: any) {
+      setInsightsByKey((prev) => ({ ...prev, [key]: { error: String(err) } }));
       setResult({ error: err.message || String(err) });
-      setInsightsByKey(prev => ({ ...prev, [key]: { error: String(err) } }));
     } finally {
-      setLoadingInsights(prev => ({ ...prev, [key]: false }));
+      setLoadingInsights((prev) => ({ ...prev, [key]: false }));
     }
   }
 
-  // ---------------- init ----------------
+  // init -- fetch lists
   useEffect(() => {
     fetchIgPosts();
     fetchFbPosts();
     fetchCampaigns();
-    // leads are fetched manually by user clicking "Fetch Leads"
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ---------------- UI ----------------
   return (
     <div className="min-h-screen p-6 bg-gray-50">
-      <div className="max-w-5xl mx-auto bg-white p-6 rounded-xl shadow">
+      <div className="max-w-6xl mx-auto bg-white p-6 rounded-xl shadow">
         <h2 className="text-2xl font-semibold mb-4">Instagram / Facebook Integration + Ads</h2>
 
         <div className="mb-6">
           {me?.connected ? (
             <div>
-              <p className="text-sm">
-                Connected to Page ID: <strong>{me.pageId}</strong>
-              </p>
-              <p className="text-sm">
-                IG User ID: <strong>{me.igUserId}</strong>
-              </p>
+              <p className="text-sm">Connected to Page ID: <strong>{me.pageId}</strong></p>
+              <p className="text-sm">IG User ID: <strong>{me.igUserId}</strong></p>
+              <p className="text-xs text-gray-500">Connected at {me.createdAt ?? "unknown"}</p>
             </div>
           ) : (
             <div>
@@ -691,12 +716,11 @@ export default function IntegrationsInstagram() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-2">
             <input
               value={imageUrl}
-              onChange={e => setImageUrl(e.target.value)}
+              onChange={(e) => setImageUrl(e.target.value)}
               placeholder="https://... (leave empty if uploading a file)"
               className="md:col-span-2 w-full p-2 border rounded"
             />
 
-            {/* File input */}
             <div className="md:col-span-1 flex flex-col gap-2">
               <input type="file" accept="image/*" onChange={handleFileSelect} />
               {filePreviewUrl && (
@@ -709,7 +733,7 @@ export default function IntegrationsInstagram() {
 
           <textarea
             value={caption}
-            onChange={e => setCaption(e.target.value)}
+            onChange={(e) => setCaption(e.target.value)}
             placeholder="Caption"
             className="w-full p-2 border rounded mb-2"
           />
@@ -738,7 +762,7 @@ export default function IntegrationsInstagram() {
             <input
               type="checkbox"
               checked={alsoPostToFacebook}
-              onChange={e => setAlsoPostToFacebook(e.target.checked)}
+              onChange={(e) => setAlsoPostToFacebook(e.target.checked)}
               className="mr-2"
             />
             Also post to Facebook Page
@@ -771,18 +795,18 @@ export default function IntegrationsInstagram() {
           </div>
         </form>
 
-        {/* Manual comment by ID (legacy UI) */}
+        {/* Manual comment by ID */}
         <form onSubmit={handleCommentById} className="mb-6">
           <h3 className="font-medium mb-2">Create a Comment (by Media ID)</h3>
           <input
             value={mediaIdForComment}
-            onChange={e => setMediaIdForComment(e.target.value)}
+            onChange={(e) => setMediaIdForComment(e.target.value)}
             placeholder="IG media ID (e.g. 179...)"
             className="w-full p-2 border rounded mb-2"
           />
           <input
             value={comment}
-            onChange={e => setComment(e.target.value)}
+            onChange={(e) => setComment(e.target.value)}
             placeholder="Comment text"
             className="w-full p-2 border rounded mb-2"
           />
@@ -793,37 +817,11 @@ export default function IntegrationsInstagram() {
         <div className="mb-6">
           <h3 className="font-medium mb-2">Run an Ad</h3>
           <form onSubmit={handleRunAd}>
-            <input
-              value={campaignName}
-              onChange={e => setCampaignName(e.target.value)}
-              placeholder="Campaign Name"
-              className="w-full p-2 border rounded mb-2"
-            />
-            <input
-              value={dailyBudget}
-              onChange={e => setDailyBudget(e.target.value)}
-              placeholder="Daily Budget"
-              type="number"
-              className="w-full p-2 border rounded mb-2"
-            />
-            <input
-              value={adSetName}
-              onChange={e => setAdSetName(e.target.value)}
-              placeholder="Ad Set Name"
-              className="w-full p-2 border rounded mb-2"
-            />
-            <input
-              value={creativeImageUrl}
-              onChange={e => setCreativeImageUrl(e.target.value)}
-              placeholder="Creative Image URL"
-              className="w-full p-2 border rounded mb-2"
-            />
-            <textarea
-              value={creativeCaption}
-              onChange={e => setCreativeCaption(e.target.value)}
-              placeholder="Creative Caption / Message"
-              className="w-full p-2 border rounded mb-2"
-            />
+            <input value={campaignName} onChange={(e) => setCampaignName(e.target.value)} placeholder="Campaign Name" className="w-full p-2 border rounded mb-2" />
+            <input value={dailyBudget} onChange={(e) => setDailyBudget(e.target.value)} placeholder="Daily Budget" type="number" className="w-full p-2 border rounded mb-2" />
+            <input value={adSetName} onChange={(e) => setAdSetName(e.target.value)} placeholder="Ad Set Name" className="w-full p-2 border rounded mb-2" />
+            <input value={creativeImageUrl} onChange={(e) => setCreativeImageUrl(e.target.value)} placeholder="Creative Image URL" className="w-full p-2 border rounded mb-2" />
+            <textarea value={creativeCaption} onChange={(e) => setCreativeCaption(e.target.value)} placeholder="Creative Caption / Message" className="w-full p-2 border rounded mb-2" />
             <button className="px-4 py-2 bg-purple-600 text-white rounded">Create Ad</button>
           </form>
         </div>
@@ -919,21 +917,16 @@ export default function IntegrationsInstagram() {
                         <div className="text-sm">💬 {post.comments_count ?? "-"}</div>
                       </div>
                     </div>
+
                     <div className="mt-3 flex gap-2">
                       <button onClick={() => openCommentsFor(post.id, "instagram")} className="px-3 py-1 bg-blue-600 text-white rounded">View Comments</button>
-                      <button onClick={() => setNewCommentText(prev => ({ ...prev, [post.id]: "" }))} className="px-3 py-1 bg-green-600 text-white rounded">Quick Comment</button>
+                      <button onClick={() => setNewCommentText((prev) => ({ ...prev, [post.id]: "" }))} className="px-3 py-1 bg-green-600 text-white rounded">Quick Comment</button>
                       <button onClick={() => deletePost("instagram", post.id)} className="px-3 py-1 bg-red-500 text-white rounded">Delete</button>
                       {post.permalink && <a href={post.permalink} target="_blank" rel="noreferrer" className="px-3 py-1 bg-gray-200 rounded">Open</a>}
                     </div>
 
-                    {/* quick composer inline */}
                     <div className="mt-2 flex gap-2">
-                      <input
-                        value={newCommentText[post.id] ?? ""}
-                        onChange={e => setNewCommentText(prev => ({ ...prev, [post.id]: e.target.value }))}
-                        placeholder="Write a comment..."
-                        className="flex-1 p-2 border rounded"
-                      />
+                      <input value={newCommentText[post.id] ?? ""} onChange={(e) => setNewCommentText((prev) => ({ ...prev, [post.id]: e.target.value }))} placeholder="Write a comment..." className="flex-1 p-2 border rounded" />
                       <button onClick={() => postCommentTo(post.id, "instagram")} className="px-3 py-1 bg-green-700 text-white rounded">Post</button>
                     </div>
                   </div>
@@ -974,21 +967,16 @@ export default function IntegrationsInstagram() {
                         <div className="text-sm">💬 {post.comments_count ?? "-"}</div>
                       </div>
                     </div>
+
                     <div className="mt-3 flex gap-2">
                       <button onClick={() => openCommentsFor(post.id, "facebook")} className="px-3 py-1 bg-blue-600 text-white rounded">View Comments</button>
-                      <button onClick={() => setNewCommentText(prev => ({ ...prev, [post.id]: "" }))} className="px-3 py-1 bg-green-600 text-white rounded">Quick Comment</button>
+                      <button onClick={() => setNewCommentText((prev) => ({ ...prev, [post.id]: "" }))} className="px-3 py-1 bg-green-600 text-white rounded">Quick Comment</button>
                       <button onClick={() => deletePost("facebook", post.id)} className="px-3 py-1 bg-red-500 text-white rounded">Delete</button>
                       {post.permalink && <a href={post.permalink} target="_blank" rel="noreferrer" className="px-3 py-1 bg-gray-200 rounded">Open</a>}
                     </div>
 
-                    {/* quick composer inline */}
                     <div className="mt-2 flex gap-2">
-                      <input
-                        value={newCommentText[post.id] ?? ""}
-                        onChange={e => setNewCommentText(prev => ({ ...prev, [post.id]: e.target.value }))}
-                        placeholder="Write a comment..."
-                        className="flex-1 p-2 border rounded"
-                      />
+                      <input value={newCommentText[post.id] ?? ""} onChange={(e) => setNewCommentText((prev) => ({ ...prev, [post.id]: e.target.value }))} placeholder="Write a comment..." className="flex-1 p-2 border rounded" />
                       <button onClick={() => postCommentTo(post.id, "facebook")} className="px-3 py-1 bg-green-700 text-white rounded">Post</button>
                     </div>
                   </div>
@@ -998,7 +986,7 @@ export default function IntegrationsInstagram() {
           )}
         </div>
 
-        {/* Ads Dashboard (kept same) */}
+        {/* Ads Dashboard */}
         <div className="mb-6">
           <div className="flex items-center justify-between mb-3">
             <h3 className="font-medium">Facebook Ads — Campaigns, Ad Sets & Ads</h3>
@@ -1022,12 +1010,8 @@ export default function IntegrationsInstagram() {
                       <div className="text-xs text-gray-500">Status: {c.status ?? "-"}</div>
                     </div>
                     <div className="flex gap-2">
-                      <button onClick={() => fetchAdSets(c.id)} className="px-3 py-1 bg-blue-600 text-white rounded">
-                        {loadingAdSets[c.id] ? "Loading…" : "View Ad Sets"}
-                      </button>
-                      <button onClick={() => fetchInsights("campaign", c.id)} className="px-3 py-1 bg-green-600 text-white rounded">
-                        {loadingInsights[`campaign:${c.id}`] ? "Loading…" : "View Insights"}
-                      </button>
+                      <button onClick={() => fetchAdSets(c.id)} className="px-3 py-1 bg-blue-600 text-white rounded">{loadingAdSets[c.id] ? "Loading…" : "View Ad Sets"}</button>
+                      <button onClick={() => fetchInsights("campaign", c.id)} className="px-3 py-1 bg-green-600 text-white rounded">{loadingInsights[`campaign:${c.id}`] ? "Loading…" : "View Insights"}</button>
                     </div>
                   </div>
 
@@ -1052,12 +1036,8 @@ export default function IntegrationsInstagram() {
                               <div className="text-xs text-gray-500">Start: {as.start_time ?? "-"} • End: {as.end_time ?? "-"}</div>
                             </div>
                             <div className="flex gap-2">
-                              <button onClick={() => fetchAds(as.id)} className="px-2 py-1 bg-blue-600 text-white rounded">
-                                {loadingAds[as.id] ? "Loading…" : "View Ads"}
-                              </button>
-                              <button onClick={() => fetchInsights("adset", as.id)} className="px-2 py-1 bg-green-600 text-white rounded">
-                                {loadingInsights[`adset:${as.id}`] ? "Loading…" : "View Insights"}
-                              </button>
+                              <button onClick={() => fetchAds(as.id)} className="px-2 py-1 bg-blue-600 text-white rounded">{loadingAds[as.id] ? "Loading…" : "View Ads"}</button>
+                              <button onClick={() => fetchInsights("adset", as.id)} className="px-2 py-1 bg-green-600 text-white rounded">{loadingInsights[`adset:${as.id}`] ? "Loading…" : "View Insights"}</button>
                             </div>
                           </div>
 
@@ -1080,9 +1060,7 @@ export default function IntegrationsInstagram() {
                                       <div className="text-xs text-gray-500">ID: {ad.id} • Status: {ad.status ?? ad.effective_status ?? "-"}</div>
                                     </div>
                                     <div className="flex gap-2 items-center">
-                                      <button onClick={() => fetchInsights("ad", ad.id)} className="px-2 py-1 bg-green-600 text-white rounded">
-                                        {loadingInsights[`ad:${ad.id}`] ? "Loading…" : "View Insights"}
-                                      </button>
+                                      <button onClick={() => fetchInsights("ad", ad.id)} className="px-2 py-1 bg-green-600 text-white rounded">{loadingInsights[`ad:${ad.id}`] ? "Loading…" : "View Insights"}</button>
                                       <a href={`https://www.facebook.com/ads/manager/creation/?act=YOUR_ACT_ID&adgroup_id=${encodeURIComponent(ad.id)}`} target="_blank" rel="noreferrer" className="px-2 py-1 bg-gray-200 rounded">Open in Ads Manager</a>
                                     </div>
                                   </div>
@@ -1100,7 +1078,7 @@ export default function IntegrationsInstagram() {
           )}
         </div>
 
-        {/* Comments viewer for selected posts (compact) */}
+        {/* Comments viewer */}
         <div className="mb-6 border p-4 rounded">
           <h4 className="font-medium mb-2">Comments Viewer (click "View Comments")</h4>
           {Object.keys(postComments).length === 0 ? (
@@ -1125,9 +1103,7 @@ export default function IntegrationsInstagram() {
         {/* Result / Response */}
         <div>
           <h4 className="font-medium mb-2">Result / Response</h4>
-          <pre className="bg-gray-100 p-3 rounded max-h-64 overflow-auto text-xs">
-            {JSON.stringify(result, null, 2)}
-          </pre>
+          <pre className="bg-gray-100 p-3 rounded max-h-64 overflow-auto text-xs">{JSON.stringify(result, null, 2)}</pre>
         </div>
       </div>
     </div>

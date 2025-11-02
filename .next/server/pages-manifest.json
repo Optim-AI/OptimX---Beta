@@ -2,9 +2,9 @@
   "/_app": "pages/_app.js",
   "/_error": "pages/_error.js",
   "/_document": "pages/_document.js",
+  "/dashboard": "pages/dashboard.js",
   "/integrations": "pages/integrations.js",
-  "/analytics": "pages/analytics.js",
-  "/settings": "pages/settings.js",
-  "/api/integrations/status": "pages/api/integrations/status.js",
-  "/api/auth/facebook/summaryMetrics": "pages/api/auth/facebook/summaryMetrics.js"
+  "/api/auth/facebook/ads": "pages/api/auth/facebook/ads.js",
+  "/integrationsInstagram": "pages/integrationsInstagram.js",
+  "/api/auth/facebook/getCampaigns": "pages/api/auth/facebook/getCampaigns.js"
 }

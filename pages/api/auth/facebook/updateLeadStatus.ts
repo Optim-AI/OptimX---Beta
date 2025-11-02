@@ -1,18 +1,8 @@
 // pages/api/auth/facebook/updateLeadStatus.ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import { promises as fs } from "fs";
-import path from "path";
-
-const DATA_FILE = path.join(process.cwd(), "data/instagram.json");
-
-async function readSaved() {
-  try {
-    const raw = await fs.readFile(DATA_FILE, "utf8");
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
-}
+import { getUserIdFromRequest } from "../../../../lib/requestHelpers";
+import { readSavedIntegration } from "../../../../lib/integrationStore";
+import { supabaseAdmin } from "../../../../lib/supabaseClient";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed: use POST" });
@@ -22,21 +12,36 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!lead_id) return res.status(400).json({ error: "lead_id is required in body" });
     if (!status) return res.status(400).json({ error: "status is required in body" });
 
-    const saved = (await readSaved()) ?? {};
+    const userId = await getUserIdFromRequest(req);
+    if (!userId) return res.status(401).json({ error: "missing_user" });
 
-    // Ensure leadStatuses map exists
-    saved.leadStatuses = saved.leadStatuses ?? {};
+    // find the integration row for this user/provider
+    const savedRow = await readSavedIntegration({ provider: "meta", userId });
+    if (!savedRow || !savedRow.savedRowId) {
+      return res.status(400).json({ error: "no_integration" });
+    }
 
-    // Update status
-    saved.leadStatuses[String(lead_id)] = String(status);
+    const rowId = savedRow.savedRowId;
 
-    // Persist back to disk (overwrite file)
-    await fs.writeFile(DATA_FILE, JSON.stringify(saved, null, 2), "utf8");
+    // fetch existing row to merge metadata safely
+    const { data: existingRows, error: selErr } = await supabaseAdmin.from("integrations").select("metadata").eq("id", rowId).maybeSingle();
+    if (selErr) {
+      console.error("updateLeadStatus - select error:", selErr);
+      return res.status(500).json({ error: "Database read error" });
+    }
+    const metadata = (existingRows?.metadata ?? {}) as any;
+    metadata.leadStatuses = metadata.leadStatuses ?? {};
+    metadata.leadStatuses[String(lead_id)] = String(status);
+
+    const { error: updErr } = await supabaseAdmin.from("integrations").update({ metadata }).eq("id", rowId);
+    if (updErr) {
+      console.error("updateLeadStatus - update error:", updErr);
+      return res.status(500).json({ error: "Database update error" });
+    }
 
     return res.status(200).json({ ok: true, lead_id: String(lead_id), status: String(status) });
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
+  } catch (err: any) {
     console.error("facebook/updateLeadStatus error:", err);
-    return res.status(500).json({ error: message });
+    return res.status(500).json({ error: String(err) });
   }
 }
