@@ -3,7 +3,8 @@
   "/_error": "pages/_error.js",
   "/_document": "pages/_document.js",
   "/integrations": "pages/integrations.js",
-  "/create-campaign": "pages/create-campaign.js",
+  "/analytics": "pages/analytics.js",
   "/settings": "pages/settings.js",
-  "/api/generate-campaign": "pages/api/generate-campaign.js"
+  "/api/integrations/status": "pages/api/integrations/status.js",
+  "/api/auth/facebook/summaryMetrics": "pages/api/auth/facebook/summaryMetrics.js"
 }

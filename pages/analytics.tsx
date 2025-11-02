@@ -39,11 +39,25 @@ type Recommendation = {
 };
 
 export default function Analytics() {
+  // --- connection & loading states ---
   const [loadingMeta, setLoadingMeta] = useState(false);
   const [metaSummary, setMetaSummary] = useState<SummaryResp | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [statuses, setStatuses] = useState<Record<string, any> | null>(null);
+  const [statusLoading, setStatusLoading] = useState(false);
 
-  // Hardcoded Google metrics for now
+  // --- recommendation & ai states (unchanged) ---
+  const [recList, setRecList] = useState<Recommendation[]>([]);
+  const [aiRaw, setAiRaw] = useState<any | null>(null);
+  const [recLoading, setRecLoading] = useState(false);
+
+  // --- range picker state ---
+  const ranges = ["1d", "7d", "15d", "1m", "3m", "6m", "1y", "custom"] as const;
+  const [selectedRange, setSelectedRange] = useState<typeof ranges[number]>("7d");
+  const [customStart, setCustomStart] = useState<string>("");
+  const [customEnd, setCustomEnd] = useState<string>("");
+
+  // Hardcoded Google metrics for now (kept as-is)
   const google = {
     total_spend: 5200,
     budget: 7000,
@@ -60,20 +74,74 @@ export default function Analytics() {
     },
   };
 
-  const [recList, setRecList] = useState<Recommendation[]>([]);
-  const [aiRaw, setAiRaw] = useState<any | null>(null);
-  const [recLoading, setRecLoading] = useState(false);
-
   useEffect(() => {
-    fetchMetaSummary();
+    // fetch statuses first, then fetch meta summary when appropriate
+    (async () => {
+      await fetchStatuses();
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function fetchMetaSummary() {
+  // --- helper to detect connections robustly ---
+  function platformConnectedFor(keys: string[]) {
+    if (!statuses) return false;
+    // Look for any truthy property whose key includes any of the substrings
+    for (const k of Object.keys(statuses)) {
+      if (k === "__debug_cookies") continue;
+      const low = k.toLowerCase();
+      for (const subs of keys) {
+        if (low.includes(subs) && !!statuses[k]) return true;
+      }
+    }
+    return false;
+  }
+  const isMetaConnected = () => platformConnectedFor(["meta", "facebook", "instagram"]);
+  const isGoogleConnected = () => platformConnectedFor(["google", "google-ads", "ga"]);
+
+  // --- fetch statuses ---
+  async function fetchStatuses() {
+    setStatusLoading(true);
+    try {
+      const res = await fetch("/api/integrations/status");
+      const j = await res.json();
+      setStatuses(j);
+      // after we know statuses, fetch meta summary if connected (or fetch anyway but will hide)
+      if (isMetaConnectedFromObject(j)) {
+        await fetchMetaSummary({ range: selectedRange });
+      } else {
+        // clear any previous metaSummary if we become disconnected
+        setMetaSummary(null);
+      }
+    } catch (err: any) {
+      console.error("failed to fetch integration statuses", err);
+      setStatuses(null);
+    } finally {
+      setStatusLoading(false);
+    }
+  }
+
+  // Helper: check meta presence directly on an arbitrary statuses object (used inside fetchStatuses)
+  function isMetaConnectedFromObject(obj: any) {
+    if (!obj) return false;
+    for (const k of Object.keys(obj)) {
+      if (k === "__debug_cookies") continue;
+      const low = k.toLowerCase();
+      if ((low.includes("meta") || low.includes("facebook") || low.includes("instagram")) && !!obj[k]) return true;
+    }
+    return false;
+  }
+
+  // --- fetch meta summary (accepts optional params) ---
+  async function fetchMetaSummary(opts?: { range?: string; start?: string; end?: string }) {
     setLoadingMeta(true);
     setError(null);
     try {
-      const res = await fetch("/api/auth/facebook/summaryMetrics");
+      const qs = new URLSearchParams();
+      if (opts?.range) qs.set("range", opts.range);
+      if (opts?.start) qs.set("start", opts.start);
+      if (opts?.end) qs.set("end", opts.end);
+      const url = "/api/auth/facebook/summaryMetrics" + (qs.toString() ? `?${qs.toString()}` : "");
+      const res = await fetch(url);
       const text = await res.text();
       try {
         const json = JSON.parse(text);
@@ -96,6 +164,7 @@ export default function Analytics() {
     }
   }
 
+  // --- UI helpers (unchanged) ---
   function pctDisplay(n: number | null | undefined) {
     if (n === null || n === undefined) return "—";
     const r = Math.round(n * 10) / 10;
@@ -124,12 +193,10 @@ export default function Analytics() {
     }
   };
 
-  // --- Recommendations logic: ask / parse / normalize ---
+  // --- Recommendations logic: ask / parse / normalize (unchanged) ---
   function extractJsonFromText(text: string): any | null {
     if (!text) return null;
-    // strip code fences and leading/trailing whitespace
     const cleaned = text.replace(/^\s*```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim();
-    // try to find first object
     const firstBrace = cleaned.indexOf("{");
     const lastBrace = cleaned.lastIndexOf("}");
     if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
@@ -215,6 +282,37 @@ export default function Analytics() {
     }
   }
 
+  // --- range UI handling ---
+  function handleRangeClick(r: typeof ranges[number]) {
+    setSelectedRange(r);
+    if (r !== "custom") {
+      // clear custom dates when selecting a preset
+      setCustomStart("");
+      setCustomEnd("");
+      fetchMetaSummary({ range: r });
+    }
+  }
+
+  function handleApplyCustomRange() {
+    if (!customStart || !customEnd) {
+      setError("Please pick both start and end for custom range.");
+      return;
+    }
+    // basic validation: start <= end
+    if (customStart > customEnd) {
+      setError("Start date must be before end date.");
+      return;
+    }
+    setError(null);
+    fetchMetaSummary({ start: customStart, end: customEnd });
+  }
+
+  // --- UI: connect button handler ---
+  function goToIntegrations(platform?: "meta" | "google") {
+    // route to your integrations page. adjust path if you have dedicated pages
+    window.location.href = "/integrations";
+  }
+
   return (
     <div className="min-h-screen flex bg-slate-50">
       <Sidebar />
@@ -222,7 +320,8 @@ export default function Analytics() {
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-2xl font-bold text-slate-800">AI Analytics</h2>
           <div className="flex items-center gap-3">
-            <button onClick={() => fetchMetaSummary()} className="px-3 py-2 text-sm rounded-lg border border-slate-300 hover:bg-slate-100">Refresh Meta</button>
+            <button onClick={() => { fetchStatuses(); }} className="px-3 py-2 text-sm rounded-lg border border-slate-300 hover:bg-slate-100">Refresh Status</button>
+            <button onClick={() => fetchMetaSummary({ range: selectedRange })} className="px-3 py-2 text-sm rounded-lg border border-slate-300 hover:bg-slate-100">Refresh Meta</button>
             <button className="px-4 py-2 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700">Generate Report</button>
           </div>
         </div>
@@ -230,6 +329,7 @@ export default function Analytics() {
         <h3 className="text-lg font-semibold text-slate-700 mb-3">Overview</h3>
 
         <div className="space-y-4 mb-8">
+          {/* --- Meta card --- */}
           <div className="p-4 bg-white rounded-xl shadow">
             <div className="flex justify-between items-center mb-4">
               <div className="flex items-center gap-3">
@@ -239,10 +339,46 @@ export default function Analytics() {
                   <div className="text-lg font-semibold">Live account metrics</div>
                 </div>
               </div>
-              <div className="text-sm text-gray-500">Period: last 7 days vs previous 7 days</div>
+
+              <div className="flex items-center gap-4">
+                <div className="text-sm text-gray-500">Period: {selectedRange === "custom" ? (customStart && customEnd ? `${customStart} → ${customEnd}` : "Custom range") : selectedRange}</div>
+                <div className="flex items-center gap-2">
+                  {ranges.map(r => (
+                    <button
+                      key={r}
+                      onClick={() => handleRangeClick(r)}
+                      className={`text-xs px-2 py-1 rounded ${selectedRange === r ? "bg-blue-600 text-white" : "border border-slate-200 bg-white"}`}
+                    >
+                      {r}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
 
-            {loadingMeta ? (
+            {/* custom range inputs */}
+            {selectedRange === "custom" ? (
+              <div className="mb-4 flex items-center gap-3">
+                <label className="text-sm text-slate-600">Start</label>
+                <input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)} className="px-2 py-1 border rounded" />
+                <label className="text-sm text-slate-600">End</label>
+                <input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)} className="px-2 py-1 border rounded" />
+                <button onClick={handleApplyCustomRange} className="px-3 py-1 bg-blue-600 text-white rounded">Apply</button>
+              </div>
+            ) : null}
+
+            {statusLoading ? (
+              <div>Checking connection status…</div>
+            ) : !isMetaConnected() ? (
+              <div className="p-6 text-center">
+                <div className="text-lg font-semibold text-slate-800">Please connect Meta</div>
+                <div className="text-sm text-slate-600 mt-2">No connected Facebook / Instagram account found. Connect to view live metrics.</div>
+                <div className="mt-4">
+                  <button onClick={() => goToIntegrations("meta")} className="px-4 py-2 rounded bg-blue-600 text-white">Connect Meta</button>
+                </div>
+                {statuses ? <pre className="text-xs mt-3 bg-gray-50 p-2 rounded text-left overflow-auto">{JSON.stringify(statuses, null, 2)}</pre> : null}
+              </div>
+            ) : loadingMeta ? (
               <div>Loading Meta metrics…</div>
             ) : metaSummary ? (
               <div className="grid grid-cols-6 gap-4">
@@ -267,7 +403,7 @@ export default function Analytics() {
                 <div className="p-4 bg-gray-50 rounded">
                   <div className="text-sm text-slate-500">Avg CTR</div>
                   <div className="text-xl font-bold text-slate-800">{(metaSummary.meta.current.avg_ctr ?? 0).toFixed(2)}%</div>
-                  <div className={`text-xs mt-1 ${pctColor(metaSummary.meta.change.avg_ctr_pct)}`}>{pctDisplay(metaSummary.meta.change.avg_ctr_pct)}</div>
+                  <div className="text-xs mt-1 ${pctColor(metaSummary.meta.change.avg_ctr_pct)}">{pctDisplay(metaSummary.meta.change.avg_ctr_pct)}</div>
                 </div>
 
                 <div className="p-4 bg-gray-50 rounded">
@@ -287,6 +423,7 @@ export default function Analytics() {
             )}
           </div>
 
+          {/* --- Google card --- */}
           <div className="p-4 bg-white rounded-xl shadow">
             <div className="flex justify-between items-center mb-4">
               <div className="flex items-center gap-3">
@@ -299,43 +436,55 @@ export default function Analytics() {
               <div className="text-sm text-gray-500">Static demo numbers</div>
             </div>
 
-            <div className="grid grid-cols-6 gap-4">
-              <div className="p-4 bg-gray-50 rounded">
-                <div className="text-sm text-slate-500">Total Spend</div>
-                <div className="text-xl font-bold text-slate-800">₹{google.total_spend.toLocaleString()}</div>
-                <div className={`text-xs mt-1 ${pctColor(google.change.total_spend_pct)}`}>{pctDisplay(google.change.total_spend_pct)}</div>
+            {statusLoading ? (
+              <div>Checking connection status…</div>
+            ) : !isGoogleConnected() ? (
+              <div className="p-6 text-center">
+                <div className="text-lg font-semibold text-slate-800">Please connect Google Ads</div>
+                <div className="text-sm text-slate-600 mt-2">No connected Google Ads account found. Connect to view live metrics (demo numbers are hidden when disconnected).</div>
+                <div className="mt-4">
+                  <button onClick={() => goToIntegrations("google")} className="px-4 py-2 rounded bg-blue-600 text-white">Connect Google Ads</button>
+                </div>
               </div>
+            ) : (
+              <div className="grid grid-cols-6 gap-4">
+                <div className="p-4 bg-gray-50 rounded">
+                  <div className="text-sm text-slate-500">Total Spend</div>
+                  <div className="text-xl font-bold text-slate-800">₹{google.total_spend.toLocaleString()}</div>
+                  <div className={`text-xs mt-1 ${pctColor(google.change.total_spend_pct)}`}>{pctDisplay(google.change.total_spend_pct)}</div>
+                </div>
 
-              <div className="p-4 bg-gray-50 rounded">
-                <div className="text-sm text-slate-500">Budget (daily)</div>
-                <div className="text-xl font-bold text-slate-800">₹{google.budget.toLocaleString()}</div>
-                <div className="text-xs mt-1 text-gray-500">Hardcoded</div>
-              </div>
+                <div className="p-4 bg-gray-50 rounded">
+                  <div className="text-sm text-slate-500">Budget (daily)</div>
+                  <div className="text-xl font-bold text-slate-800">₹{google.budget.toLocaleString()}</div>
+                  <div className="text-xs mt-1 text-gray-500">Hardcoded</div>
+                </div>
 
-              <div className="p-4 bg-gray-50 rounded">
-                <div className="text-sm text-slate-500">Total Reach</div>
-                <div className="text-xl font-bold text-slate-800">{google.total_reach.toLocaleString()}</div>
-                <div className={`text-xs mt-1 ${pctColor(google.change.total_reach_pct)}`}>{pctDisplay(google.change.total_reach_pct)}</div>
-              </div>
+                <div className="p-4 bg-gray-50 rounded">
+                  <div className="text-sm text-slate-500">Total Reach</div>
+                  <div className="text-xl font-bold text-slate-800">{google.total_reach.toLocaleString()}</div>
+                  <div className={`text-xs mt-1 ${pctColor(google.change.total_reach_pct)}`}>{pctDisplay(google.change.total_reach_pct)}</div>
+                </div>
 
-              <div className="p-4 bg-gray-50 rounded">
-                <div className="text-sm text-slate-500">Avg CTR</div>
-                <div className="text-xl font-bold text-slate-800">{google.avg_ctr}%</div>
-                <div className={`text-xs mt-1 ${pctColor(google.change.avg_ctr_pct)}`}>{pctDisplay(google.change.avg_ctr_pct)}</div>
-              </div>
+                <div className="p-4 bg-gray-50 rounded">
+                  <div className="text-sm text-slate-500">Avg CTR</div>
+                  <div className="text-xl font-bold text-slate-800">{google.avg_ctr}%</div>
+                  <div className={`text-xs mt-1 ${pctColor(google.change.avg_ctr_pct)}`}>{pctDisplay(google.change.avg_ctr_pct)}</div>
+                </div>
 
-              <div className="p-4 bg-gray-50 rounded">
-                <div className="text-sm text-slate-500">Conversions</div>
-                <div className="text-xl font-bold text-slate-800">{google.conversions}</div>
-                <div className="text-xs mt-1">{pctDisplay(google.change.conversions_pct)}</div>
-              </div>
+                <div className="p-4 bg-gray-50 rounded">
+                  <div className="text-sm text-slate-500">Conversions</div>
+                  <div className="text-xl font-bold text-slate-800">{google.conversions}</div>
+                  <div className="text-xs mt-1">{pctDisplay(google.change.conversions_pct)}</div>
+                </div>
 
-              <div className="p-4 bg-gray-50 rounded">
-                <div className="text-sm text-slate-500">ROAS</div>
-                <div className="text-xl font-bold text-slate-800">{google.roas}x</div>
-                <div className="text-xs mt-1">{pctDisplay(google.change.roas_pct)}</div>
+                <div className="p-4 bg-gray-50 rounded">
+                  <div className="text-sm text-slate-500">ROAS</div>
+                  <div className="text-xl font-bold text-slate-800">{google.roas}x</div>
+                  <div className="text-xs mt-1">{pctDisplay(google.change.roas_pct)}</div>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
 
