@@ -1,37 +1,12 @@
 // pages/api/auth/facebook/deletePost.ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import { promises as fs } from "fs";
-import path from "path";
 import crypto from "crypto";
+import { getUserIdFromRequest } from "../../../../lib/requestHelpers";
+import { readSavedIntegration } from "../../../../lib/integrationStore";
 
-const DATA_FILE = path.join(process.cwd(), "data", "instagram.json");
 const VERSION = process.env.FACEBOOK_API_VERSION || "23.0";
-const APP_ID = process.env.FACEBOOK_APP_ID;
 const APP_SECRET = process.env.FACEBOOK_APP_SECRET;
-
-type SavedCreds = {
-  pageAccessToken?: string;
-  userAccessToken?: string;
-  longUserToken?: string;
-  [k: string]: any;
-};
-
-async function readSaved(): Promise<SavedCreds | null> {
-  try {
-    const raw = await fs.readFile(DATA_FILE, "utf8");
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
-}
-
-function redactToken(t?: string | null) {
-  if (!t) return null;
-  if (t.length <= 10) return t[0] + "...";
-  return `${t.slice(0, 6)}...${t.slice(-4)}`;
-}
-
-function appSecretProof(token?: string | null) {
+function appSecretProof(token?: string) {
   if (!token || !APP_SECRET) return undefined;
   return crypto.createHmac("sha256", APP_SECRET).update(token).digest("hex");
 }
@@ -40,7 +15,7 @@ async function fetchJson(url: string, opts?: RequestInit) {
   const r = await fetch(url, opts);
   const text = await r.text();
   let body: any = text;
-  try { body = JSON.parse(text); } catch { /* leave text as string */ }
+  try { body = JSON.parse(text); } catch { /* keep text */ }
   return { status: r.status, ok: r.ok, body, url };
 }
 
@@ -50,19 +25,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    const reqBody = (req.method === "POST" ? req.body : req.body) as Record<string, any>;
+    const reqBody = req.method === "POST" ? req.body : req.body as any;
     const maybePostId = (reqBody?.postId ?? reqBody?.id) as string | undefined;
-
     if (!maybePostId) return res.status(400).json({ error: "postId required in body" });
+    const postId = String(maybePostId);
 
-    const postId: string = String(maybePostId);
+    const userId = await getUserIdFromRequest(req);
+    if (!userId) return res.status(401).json({ error: "missing_user" });
 
-    const saved = await readSaved();
-    if (!saved) return res.status(500).json({ error: `Missing or unreadable ${DATA_FILE}` });
+    const saved = await readSavedIntegration({ provider: "meta", userId });
+    if (!saved) return res.status(400).json({ error: "no_integration" });
 
     const pageAccessToken = saved.pageAccessToken ?? null;
-    const userAccessToken = saved.userAccessToken ?? null;
     const longUserToken = saved.longUserToken ?? null;
+    const userAccessToken = saved.userAccessToken ?? null;
 
     const attempts: any[] = [];
 
@@ -77,7 +53,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     async function diagnosticGet(tokenName: string, token: string) {
       const url = `${buildUrl(postId, token)}&fields=id,permalink_url,message,created_time`;
       const r = await fetchJson(url);
-      attempts.push({ attempt: "diag_get", usedToken: tokenName, tokenRedacted: redactToken(token), urlCalled: url, ...r });
+      attempts.push({ attempt: "diag_get", usedToken: tokenName, tokenRedacted: token ? token.slice(0,6) + "..." : null, urlCalled: url, ...r });
       return r;
     }
 
@@ -86,7 +62,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       await diagnosticGet(tokenName, token);
       const url = buildUrl(postId, token);
       const r = await fetchJson(url, { method: "DELETE" });
-      attempts.push({ attempt: "delete", usedToken: tokenName, tokenRedacted: redactToken(token), urlCalled: url, ...r });
+      attempts.push({ attempt: "delete", usedToken: tokenName, tokenRedacted: token ? token.slice(0,6) + "..." : null, urlCalled: url, ...r });
       return r;
     }
 
@@ -103,12 +79,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (r?.ok) return res.status(200).json({ success: true, attempts });
     }
 
-    // provide token debug info if possible
+    // token debug if possible
     const tokenDebug: any[] = [];
+    const APP_ID = process.env.FACEBOOK_APP_ID;
+    const APP_SECRET = process.env.FACEBOOK_APP_SECRET;
     if (pageAccessToken && APP_ID && APP_SECRET) {
       const dbgUrl = `https://graph.facebook.com/debug_token?input_token=${encodeURIComponent(pageAccessToken)}&access_token=${encodeURIComponent(`${APP_ID}|${APP_SECRET}`)}`;
       const d = await fetchJson(dbgUrl);
-      tokenDebug.push({ which: "pageAccessToken", debugUrl: dbgUrl, ...d, tokenRedacted: redactToken(pageAccessToken) });
+      tokenDebug.push({ which: "pageAccessToken", debugUrl: dbgUrl, ...d, tokenRedacted: pageAccessToken ? pageAccessToken.slice(0,6) + "..." : null });
     }
 
     return res.status(500).json({
@@ -116,11 +94,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       reason: "All deletion attempts failed",
       attempts,
       tokenDebug,
-      note: "We included appsecret_proof when possible. If this persists share attempts[].body.error.fbtrace_id and I'll decode it.",
+      note: "If this persists share attempts[].body.error.fbtrace_id for deeper debugging.",
     });
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
+  } catch (err: any) {
     console.error("facebook/deletePost handler error:", err);
-    return res.status(500).json({ error: msg });
+    return res.status(500).json({ error: String(err) });
   }
 }

@@ -1,24 +1,9 @@
-// pages/api/auth/facebook/summaryMetrics.ts
+// pages/api/integrations/metrics.ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import { createServerSupabaseClient } from "@supabase/auth-helpers-nextjs";
+import { getUserIdFromRequest } from "../../../lib/requestHelpers";
+import { supabaseAdmin } from "../../../lib/supabaseClient";
 
 const VERSION = process.env.FACEBOOK_API_VERSION || "23.0";
-
-async function getContext(req: NextApiRequest, res: NextApiResponse) {
-  const supabase = createServerSupabaseClient({ req, res });
-  const { data: { user }, error: userErr } = await supabase.auth.getUser();
-  if (userErr || !user) return { error: "missing_user", details: userErr?.message ?? "no session" };
-  const { data: integration, error: intErr } = await supabase
-    .from("integrations")
-    .select("*")
-    .eq("user_id", user.id)
-    .eq("provider", "meta")
-    .limit(1)
-    .maybeSingle();
-  if (intErr) return { error: "db_error", details: intErr.message };
-  if (!integration) return { error: "no_integration", details: "No meta integration for user" };
-  return { supabase, user, integration };
-}
 
 function sumNumeric(v: any): number {
   if (v === undefined || v === null) return 0;
@@ -28,7 +13,7 @@ function sumNumeric(v: any): number {
 }
 function normalizeCurrencyValueMaybeMinorUnit(n: number): number {
   if (!Number.isFinite(n)) return 0;
-  if (Number.isInteger(n) && Math.abs(n) >= 1000) return n / 100;
+  if (Number.isInteger(n) && Math.abs(n) >= 1000) return n / 100; // cents -> major units
   return n;
 }
 function stripActPrefix(id?: string | null) {
@@ -64,21 +49,47 @@ function daysForPreset(preset: string) {
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
-    const ctx = await getContext(req, res);
-    if ((ctx as any).error) return res.status(401).json(ctx);
-    const { integration } = ctx as any;
+    const userId = await getUserIdFromRequest(req);
+    if (!userId) return res.status(401).json({ error: "missing_user", details: "Auth session missing!" });
 
-    const userAccessToken = integration?.access_token || integration?.metadata?.userAccessToken || integration?.metadata?.pageAccessToken || integration?.raw?.tokenJson?.access_token;
-    let rawAdAccount = integration?.ad_account_id || integration?.metadata?.adAccountId || integration?.raw?.adAccountsJson?.data?.[0]?.account_id || process.env.AD_ACCOUNT_ID || null;
+    // Fetch the user's meta integration row
+    const { data: integration, error: intErr } = await supabaseAdmin
+      .from("integrations")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("provider", "meta")
+      .limit(1)
+      .maybeSingle();
+
+    if (intErr) {
+      console.error("integrations.metrics db error:", intErr);
+      return res.status(500).json({ error: "db_error", details: intErr.message });
+    }
+    if (!integration) return res.status(404).json({ error: "no_integration", details: "No meta integration row for this user" });
+
+    // Attempt to build a response from stored fields (raw / metadata) if already present
+    const raw = integration.raw ?? integration.metadata ?? integration;
+
+    // If integration raw already contains a meta summary shape, return it
+    if (raw?.meta?.current) {
+      return res.status(200).json({ ok: true, meta: raw.meta, ranges: null, raw: { source: "row" } });
+    }
+
+    // Determine access token and ad account id from integration row
+    // Prefer: refresh_token (long user token) -> access_token (page token) -> metadata fields -> raw.tokenJson.access_token
+    const userAccessToken = integration.refresh_token ?? integration.access_token ?? integration.metadata?.userAccessToken ?? integration.metadata?.pageAccessToken ?? integration.raw?.tokenJson?.access_token ?? null;
+    let rawAdAccount = integration.ad_account_id ?? integration.metadata?.adAccountId ?? integration.raw?.adAccountsJson?.data?.[0]?.account_id ?? process.env.AD_ACCOUNT_ID ?? null;
 
     if (!userAccessToken || !rawAdAccount) {
-      return res.status(400).json({ error: "Missing userAccessToken or adAccountId in integration or env" });
+      // If metrics not precomputed and no token/adAccount, can't call Graph. Return stored info (if any) or error
+      return res.status(400).json({ error: "missing_token_or_adaccount", details: "Integration row missing access token or ad account id" });
     }
 
     const numericAdId = String(stripActPrefix(rawAdAccount));
-    if (!numericAdId) return res.status(400).json({ error: "adAccountId could not be parsed" });
+    if (!numericAdId) return res.status(400).json({ error: "adAccountId_unparsable" });
     const graphAdAccount = `act_${numericAdId}`;
 
+    // compute ranges
     const { range: rangeQ, start: startQ, end: endQ } = req.query;
     let currRange: { since: string; until: string };
     let prevRange: { since: string; until: string };
@@ -87,7 +98,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     if (startQ && endQ) {
       const startDate = parseISODateString(startQ); const endDate = parseISODateString(endQ);
-      if (!startDate || !endDate) return res.status(400).json({ error: "Invalid start or end. Use YYYY-MM-DD." });
+      if (!startDate || !endDate) return res.status(400).json({ error: "Invalid start/end" });
       if (startDate.getTime() > endDate.getTime()) return res.status(400).json({ error: "start must be <= end" });
       const msPerDay = 24 * 60 * 60 * 1000;
       const lengthDays = Math.round((endDate.getTime() - startDate.getTime()) / msPerDay) + 1;
@@ -201,13 +212,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         current: { total_spend: currAgg.spend, budget_estimate_daily: budgetInfo?.daily_budget_sum ?? 0, total_reach: currAgg.reach, avg_ctr: currAgg.ctr, conversions: currAgg.conversions, roas: currAgg.roas, purchase_value: currAgg.purchase_value },
         previous: { total_spend: prevAgg.spend, total_reach: prevAgg.reach, avg_ctr: prevAgg.ctr, conversions: prevAgg.conversions, roas: prevAgg.roas, purchase_value: prevAgg.purchase_value },
         change: { total_spend_pct: changePct(currAgg.spend, prevAgg.spend), total_reach_pct: changePct(currAgg.reach, prevAgg.reach), avg_ctr_pct: changePct(currAgg.ctr, prevAgg.ctr), conversions_pct: changePct(currAgg.conversions, prevAgg.conversions), roas_pct: currAgg.roas === null || prevAgg.roas === null ? null : changePct(currAgg.roas, prevAgg.roas) },
-        raw: { currentRaw: currRaw ?? null, previousRaw: prevRaw ?? null, budgetInfo, adAccountUsed: { numericAdId, graphAdAccount, original: rawAdAccount } },
       },
+      raw: { currentRaw: currRaw ?? null, previousRaw: prevRaw ?? null, budgetInfo, adAccountUsed: { numericAdId, graphAdAccount, original: rawAdAccount } },
     };
 
     return res.status(200).json(response);
   } catch (err: any) {
-    console.error("summaryMetrics error:", err);
+    console.error("integrations/metrics error:", err);
     return res.status(500).json({ error: err?.message ?? String(err), stack: err?.stack ?? null });
   }
 }

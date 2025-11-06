@@ -1,60 +1,55 @@
 // pages/api/integrations/disconnect.ts
 import type { NextApiRequest, NextApiResponse } from "next";
+import { getUserIdFromRequest } from "../../../lib/requestHelpers";
+import { supabaseAdmin } from "../../../lib/supabaseClient";
 import { setStatus } from "../../../lib/integrationStore";
-import * as cookie from "cookie";
+import { PLATFORMS } from "../../../lib/integrationStore";
 
-async function revokeGoogleToken(token: string) {
-  // RFC7009 revoke endpoint
-  const params = new URLSearchParams({ token });
-  const resp = await fetch("https://oauth2.googleapis.com/revoke", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: params.toString(),
-  });
-  return { status: resp.status, text: await resp.text() };
-}
-
+/**
+ * POST { platform: string }
+ * Deletes the integration row for the authenticated user and provider,
+ * then updates app_settings.integrations_flags to false for that platform.
+ */
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== "POST") {
-    res.setHeader("Allow", "POST");
-    return res.status(405).end("Method Not Allowed");
-  }
+  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
   try {
-    const { platform } = req.body;
-    if (!platform) return res.status(400).json({ error: "platform required" });
+    const userId = await getUserIdFromRequest(req);
+    if (!userId) return res.status(401).json({ error: "missing_user" });
 
-    // If Google, attempt to revoke tokens found in cookies
-    const cookies = req.headers.cookie ? cookie.parse(req.headers.cookie) : {};
-    const googleRefresh = cookies["ga_refresh_token"];
-    const googleAccess = cookies["ga_access_token"];
-
-    const revokeResults: Record<string, any> = {};
-
-    if (platform === "google-ads" && (googleRefresh || googleAccess)) {
-      try {
-        if (googleRefresh) revokeResults.refresh = await revokeGoogleToken(googleRefresh);
-        else if (googleAccess) revokeResults.access = await revokeGoogleToken(googleAccess);
-      } catch (err) {
-        revokeResults.error = String(err);
-      }
+    const { platform } = req.body ?? {};
+    if (!platform || typeof platform !== "string") {
+      return res.status(400).json({ error: "platform required" });
     }
 
-    // Clear cookies in response (expire)
-    const clearCookies: string[] = [];
-    const expireOpts = { path: "/", httpOnly: true, maxAge: 0, sameSite: "lax" as const };
-    clearCookies.push(cookie.serialize("ga_access_token", "", expireOpts));
-    clearCookies.push(cookie.serialize("ga_refresh_token", "", expireOpts));
-    clearCookies.push(cookie.serialize("ga_token_time", "", expireOpts));
-    // set header to clear them
-    res.setHeader("Set-Cookie", clearCookies);
+    // Validate platform is one we know about
+    if (!PLATFORMS.includes(platform as any)) {
+      return res.status(400).json({ error: "invalid_platform" });
+    }
 
-    // update server-side status
-    await setStatus(platform, false);
+    // Delete integration rows for this user + provider
+    const { error: deleteError } = await supabaseAdmin
+      .from("integrations")
+      .delete()
+      .eq("user_id", userId)
+      .eq("provider", platform);
 
-    return res.status(200).json({ ok: true, revokeResults });
+    if (deleteError) {
+      console.error("integrations.disconnect db delete error:", deleteError);
+      return res.status(500).json({ error: "db_error", details: deleteError.message });
+    }
+
+    // Update global flag in app_settings (best-effort)
+    try {
+      await setStatus(platform, false);
+    } catch (e) {
+      // don't fail the whole request if this fails, but log for observability
+      console.warn("Failed to update integrations_flags after disconnect:", e);
+    }
+
+    return res.status(200).json({ ok: true });
   } catch (err) {
-    console.error("disconnect error", err);
-    return res.status(500).json({ error: "disconnect failed", details: String(err) });
+    console.error("disconnect error:", err);
+    return res.status(500).json({ error: "server_error" });
   }
 }

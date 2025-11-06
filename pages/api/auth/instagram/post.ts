@@ -1,15 +1,8 @@
 // pages/api/auth/instagram/post.ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import { promises as fs } from "fs";
-import path from "path";
+import { readSavedIntegration } from "../../../../lib/integrationStore";
 
-const DATA_FILE = path.join(process.cwd(), "data", "instagram.json");
 const version = process.env.FACEBOOK_API_VERSION || "23.0";
-
-async function readSaved() {
-  const raw = await fs.readFile(DATA_FILE, "utf8");
-  return JSON.parse(raw);
-}
 
 export default async function handler(
   req: NextApiRequest,
@@ -26,10 +19,16 @@ export default async function handler(
   }
 
   try {
-    const saved = await readSaved();
+    const saved = await readSavedIntegration({ provider: "meta" });
+    if (!saved) return res.status(500).json({ error: "Missing integration in Supabase" });
+
     const igUserId = saved.igUserId;
     const pageAccessToken = saved.pageAccessToken;
     const pageId = saved.pageId;
+
+    if (!igUserId || !pageAccessToken) {
+      return res.status(500).json({ error: "Missing igUserId or pageAccessToken" });
+    }
 
     const createUrl = `https://graph.facebook.com/v${version}/${igUserId}/media`;
     const createParams = new URLSearchParams({
@@ -60,7 +59,7 @@ export default async function handler(
     const publishJson = await publishResp.json();
 
     let fbPostResult = null;
-    if (alsoPostToFacebook) {
+    if (alsoPostToFacebook && pageId) {
       const fbUrl = `https://graph.facebook.com/v${version}/${pageId}/photos`;
       const fbParams = new URLSearchParams({
         url: image_url,

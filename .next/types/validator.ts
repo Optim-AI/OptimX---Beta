@@ -346,6 +346,12 @@ type ApiRouteConfig = {
   handler satisfies ApiRouteConfig
 }
 
+// Validate ../../pages/api/debug/saveTest.ts
+{
+  const handler = {} as typeof import("../../pages/api/debug/saveTest.js")
+  handler satisfies ApiRouteConfig
+}
+
 // Validate ../../pages/api/generate-campaign.ts
 {
   const handler = {} as typeof import("../../pages/api/generate-campaign.js")
@@ -361,6 +367,18 @@ type ApiRouteConfig = {
 // Validate ../../pages/api/integrations/disconnect.ts
 {
   const handler = {} as typeof import("../../pages/api/integrations/disconnect.js")
+  handler satisfies ApiRouteConfig
+}
+
+// Validate ../../pages/api/integrations/get.ts
+{
+  const handler = {} as typeof import("../../pages/api/integrations/get.js")
+  handler satisfies ApiRouteConfig
+}
+
+// Validate ../../pages/api/integrations/metrics.ts
+{
+  const handler = {} as typeof import("../../pages/api/integrations/metrics.js")
   handler satisfies ApiRouteConfig
 }
 
