@@ -41,6 +41,15 @@ export default function SignInPage() {
     else if (data?.url) window.location.href = data.url;
   };
 
+  const handleFacebookLogin = async () => {
+    const { data, error: err } = await supabase.auth.signInWithOAuth({
+      provider: 'facebook',
+      options: { redirectTo: 'http://localhost:3000/onboardingInfo' },
+    });
+    if (err) alert(err.message);
+    else if (data?.url) window.location.href = data.url;
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 p-4">
       <div className="w-full max-w-md rounded-2xl bg-white shadow-lg p-8">
@@ -73,8 +82,11 @@ export default function SignInPage() {
         <div className="my-6 flex items-center gap-3 text-xs text-slate-400">
           <div className="h-px flex-1 bg-slate-200" /><span>OR CONTINUE WITH</span><div className="h-px flex-1 bg-slate-200" />
         </div>
-        <button onClick={handleGoogleLogin} className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 font-medium hover:bg-slate-50">
+        <button onClick={handleGoogleLogin} className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 font-medium hover:bg-slate-50 mb-3">
           <span className="mr-2">🟢</span> Continue with Google
+        </button>
+        <button onClick={handleFacebookLogin} className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 font-medium hover:bg-slate-50">
+          <span className="mr-2">🔵</span> Continue with Facebook
         </button>
         <p className="mt-6 text-center text-xs text-slate-500">By continuing, you agree to our Terms of Service and Privacy Policy.</p>
       </div>

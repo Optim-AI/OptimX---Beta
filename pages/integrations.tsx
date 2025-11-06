@@ -29,20 +29,84 @@ export default function IntegrationsPage() {
     try { return !popup || popup.closed; } catch { return true; }
   }
 
+  /**
+   * New: prefer reading flags from app_settings.integrations_flags
+   * Falls back to the older API/localStorage if needed.
+   */
   const fetchStatuses = async () => {
     setLoading(true);
+    // 1) Try to read the integrations_flags from app_settings via Supabase client
+    try {
+      const { data, error } = await supabase
+        .from("app_settings")
+        .select("value")
+        .eq("key", "integrations_flags")
+        .maybeSingle();
+
+      if (!error && data && typeof data.value !== "undefined" && data.value !== null) {
+        let val: any = data.value;
+        // sometimes value is stored as JSON-string; try parsing
+        if (typeof val === "string") {
+          try { val = JSON.parse(val); } catch { /* keep string if parse fails */ }
+        }
+
+        // Normalize into an object of platformId => boolean
+        const normalized: Record<string, boolean> = {};
+        PLATFORMS.forEach((p) => {
+          normalized[p.id] = !!(val && typeof val[p.id] !== "undefined" ? val[p.id] : false);
+        });
+
+        setStatuses(normalized);
+        if (typeof window !== "undefined") localStorage.setItem(LS_KEY, JSON.stringify(normalized));
+        setLoading(false);
+        return;
+      }
+    } catch (err) {
+      // Supabase read failed — we'll fall back below
+      // console.warn("Failed to read app_settings.integrations_flags", err);
+    }
+
+    // 2) Fallback: try the existing status API endpoint (keeps compatibility)
     try {
       const res = await apiFetch("/api/integrations/status");
       if (!res.ok) throw new Error("status endpoint returned " + res.status);
       const data = await res.json();
-      setStatuses(data || {});
-      if (typeof window !== "undefined") localStorage.setItem(LS_KEY, JSON.stringify(data || {}));
+
+      // data may be either a flags object or { meta: boolean } from older endpoint
+      const next: Record<string, boolean> = {};
+      // if the API returned platform-level keys, use them
+      const hasPlatformKeys = PLATFORMS.some((p) => typeof (data || {})[p.id] !== "undefined");
+      if (hasPlatformKeys) {
+        PLATFORMS.forEach((p) => (next[p.id] = !!(data[p.id])));
+      } else {
+        // older behaviour: only meta available — map meta to meta and keep others false
+        PLATFORMS.forEach((p) => (next[p.id] = p.id === "meta" ? !!data.meta : false));
+      }
+
+      setStatuses(next);
+      if (typeof window !== "undefined") localStorage.setItem(LS_KEY, JSON.stringify(next));
+      setLoading(false);
+      return;
     } catch {
-      const raw = typeof window !== "undefined" ? localStorage.getItem(LS_KEY) : null;
-      if (raw) {
-        try { setStatuses(JSON.parse(raw)); } catch { initStatusesFallback(); }
-      } else initStatusesFallback();
-    } finally { setLoading(false); }
+      // continue to fallback localStorage / default
+    }
+
+    // 3) Fallback: localStorage or default false map
+    const raw = typeof window !== "undefined" ? localStorage.getItem(LS_KEY) : null;
+    if (raw) {
+      try {
+        setStatuses(JSON.parse(raw));
+        setLoading(false);
+        return;
+      } catch { /* ignore */ }
+    }
+
+    // 4) Final fallback: initialize false for all platforms
+    const initial: Record<string, boolean> = {};
+    PLATFORMS.forEach((p) => (initial[p.id] = false));
+    setStatuses(initial);
+    if (typeof window !== "undefined") localStorage.setItem(LS_KEY, JSON.stringify(initial));
+    setLoading(false);
   };
 
   const initStatusesFallback = () => {

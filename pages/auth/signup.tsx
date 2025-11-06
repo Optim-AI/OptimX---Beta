@@ -90,6 +90,20 @@ export default function SignUpPage() {
     if (data?.url) window.location.href = data.url;
   };
 
+  const handleFacebookSignup = async () => {
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'facebook',
+      options: {
+        redirectTo: 'http://localhost:3000/onboardingInfo'
+      }
+    });
+    if (error) {
+      alert(error.message);
+      return;
+    }
+    if (data?.url) window.location.href = data.url;
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 p-4">
       <div className="w-full max-w-md rounded-2xl bg-white shadow-lg p-8">
@@ -160,8 +174,12 @@ export default function SignUpPage() {
           <div className="h-px flex-1 bg-slate-200" /><span>OR CONTINUE WITH</span><div className="h-px flex-1 bg-slate-200" />
         </div>
 
-        <button onClick={handleGoogleSignup} className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 font-medium hover:bg-slate-50">
+        <button onClick={handleGoogleSignup} className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 font-medium hover:bg-slate-50 mb-3">
           <span className="mr-2">🟢</span> Continue with Google
+        </button>
+
+        <button onClick={handleFacebookSignup} className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 font-medium hover:bg-slate-50">
+          <span className="mr-2">🔵</span> Continue with Facebook
         </button>
 
         <p className="mt-6 text-center text-xs text-slate-500">By continuing, you agree to our Terms of Service and Privacy Policy.</p>

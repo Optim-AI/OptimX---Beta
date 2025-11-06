@@ -1,21 +1,30 @@
 // pages/create-campaign.tsx
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import React, { useEffect, useState } from "react";
 import Sidebar from '../app/web/src/components/Sidebar';
+import { supabase } from "../lib/supabaseClient";
 
 type APIReturn = {
   ok: boolean;
   image?: string;    // url or data:image/png;base64,...
   images?: string[]; // array with url(s)
   copy?: any;
-  imageId?: string;  // optional server side id (ignored here)
+  imageId?: string;
   error?: string;
 };
+
+const DIMENSION_OPTIONS = [
+  { id: 'insta_feed', label: 'Instagram Post (1:1) — 1080×1080', width: 1080, height: 1080 },
+  { id: 'insta_story', label: 'Instagram Story (9:16) — 1080×1920', width: 1080, height: 1920 },
+  { id: 'facebook_feed', label: 'Facebook Feed (1.91:1) — 1200×630', width: 1200, height: 630 },
+  { id: 'youtube_thumb', label: 'YouTube Thumb (16:9) — 1280×720', width: 1280, height: 720 },
+];
 
 export default function CreateCampaign() {
   const router = useRouter();
 
+  // main fields (existing)
   const [name, setName] = useState("");
   const [audience, setAudience] = useState("");
   const [campaignType, setCampaignType] = useState("");
@@ -23,13 +32,28 @@ export default function CreateCampaign() {
   const [contentTypes, setContentTypes] = useState<string[]>([]);
   const [vision, setVision] = useState("");
   const [loading, setLoading] = useState(false);
-  const [aiLoading, setAiLoading] = useState(false); // for AI helper
+  const [aiLoading, setAiLoading] = useState(false);
 
-  const toggleContentType = (t: string) => {
-    setContentTypes(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t]);
-  };
+  // ---------- AI customization & onboarding-derived inputs ----------
+  const [profileLoaded, setProfileLoaded] = useState(false);
+  const [profile, setProfile] = useState<any>(null);
+  const [logoPublicUrl, setLogoPublicUrl] = useState<string | null>(null); // stored logo public URL from onboarding (if any)
+  const [refPublicUrls, setRefPublicUrls] = useState<string[]>([]); // stored ref images public urls from onboarding
 
-  // ---------- IndexedDB helpers ----------
+  // local edits/uploads (overrides)
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoDataUrl, setLogoDataUrl] = useState<string | null>(null); // preview & send to API as data URL (if provided)
+  const [refFiles, setRefFiles] = useState<File[]>([]);
+  const [refDataUrls, setRefDataUrls] = useState<string[]>([]);
+
+  // colors only (kept)
+  const [colorPrimary, setColorPrimary] = useState("#0ea5e9");
+  const [colorSecondary, setColorSecondary] = useState("#0b74ff");
+
+  // output dimension choice
+  const [selectedDimensionId, setSelectedDimensionId] = useState(DIMENSION_OPTIONS[0].id);
+
+  // IndexedDB keys / helpers (same names you had)
   const DB_NAME = "optim-app-db";
   const STORE_NAME = "images";
 
@@ -97,7 +121,7 @@ export default function CreateCampaign() {
     });
   }
 
-  // ---------- util: convert dataURL -> Blob ----------
+  // util: convert dataURL -> Blob
   function dataURLtoBlob(dataurl: string): Blob {
     const arr = dataurl.split(',');
     const mimeMatch = arr[0].match(/:(.*?);/);
@@ -109,7 +133,94 @@ export default function CreateCampaign() {
     return new Blob([u8arr], { type: mime });
   }
 
-  // safe sessionStorage setter that stores only small metadata; image stored in IndexedDB if needed
+  // convert blob -> dataURL
+  function blobToDataURL(blob: Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const fr = new FileReader();
+      fr.onload = () => resolve(String(fr.result));
+      fr.onerror = reject;
+      fr.readAsDataURL(blob);
+    });
+  }
+
+  // load onboarding profile (logo_path and ref_images from profiles)
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data: userData } = await supabase.auth.getUser();
+        const user = (userData as any)?.user;
+        if (!user) return; // not signed in; keep going but don't block UI
+        const { data, error } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+        if (!error && data) {
+          setProfile(data);
+          // colors defaults if present
+          if (data.color_primary) setColorPrimary(data.color_primary);
+          if (data.color_secondary) setColorSecondary(data.color_secondary);
+          // logo/ref paths -> get public urls
+          if (data.logo_path) {
+            try {
+              const { data: pub } = supabase.storage.from('user-uploads').getPublicUrl(data.logo_path);
+              if ((pub as any)?.publicUrl) setLogoPublicUrl((pub as any).publicUrl);
+            } catch (e) {
+              console.warn('logo public url failed', e);
+            }
+          }
+          if (Array.isArray(data.ref_images) && data.ref_images.length) {
+            const arr: string[] = [];
+            for (const p of data.ref_images) {
+              try {
+                const { data: pd } = supabase.storage.from('user-uploads').getPublicUrl(p);
+                if ((pd as any)?.publicUrl) arr.push((pd as any).publicUrl);
+              } catch (e) {
+                console.warn('ref public url failed', e);
+              }
+            }
+            setRefPublicUrls(arr);
+          }
+        }
+      } catch (err) {
+        console.warn('profile load failed', err);
+      } finally {
+        setProfileLoaded(true);
+      }
+    })();
+  }, []);
+
+  // file previews -> set dataURLs
+  useEffect(() => {
+    if (logoFile) {
+      const fr = new FileReader();
+      fr.onload = () => setLogoDataUrl(String(fr.result));
+      fr.readAsDataURL(logoFile);
+    } else {
+      setLogoDataUrl(null);
+    }
+  }, [logoFile]);
+
+  useEffect(() => {
+    if (refFiles && refFiles.length > 0) {
+      const readers = refFiles.map(f => {
+        return new Promise<string>((resolve, reject) => {
+          const fr = new FileReader();
+          fr.onload = () => resolve(String(fr.result));
+          fr.onerror = reject;
+          fr.readAsDataURL(f);
+        });
+      });
+      Promise.all(readers).then((res) => setRefDataUrls(res)).catch(e => {
+        console.warn('ref file read failed', e);
+        setRefDataUrls([]);
+      });
+    } else {
+      setRefDataUrls([]);
+    }
+  }, [refFiles]);
+
+  const toggleContentType = (t: string) => {
+    setContentTypes(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t]);
+  };
+
+  // small helper to set preview in session (keeps your original structure)
   function setPreviewInSession(payload: any, apiResponse: APIReturn, imageKey?: string | null) {
     const previewObj: any = {
       inputs: payload,
@@ -117,16 +228,13 @@ export default function CreateCampaign() {
     };
 
     if (apiResponse?.image && typeof apiResponse.image === "string" && !apiResponse.image.startsWith("data:")) {
-      // open URL returned from server -> safe to store directly
       previewObj.image = apiResponse.image;
       previewObj.images = Array.isArray(apiResponse.images) && apiResponse.images.length ? apiResponse.images : [apiResponse.image];
     } else if (imageKey) {
-      // we stored the blob in IndexedDB under imageKey
-      previewObj.image = null; // avoid large string
+      previewObj.image = null;
       previewObj.images = [];
       previewObj.imageKey = imageKey;
     } else {
-      // no image (or couldn't store)
       previewObj.image = null;
       previewObj.images = [];
     }
@@ -144,6 +252,32 @@ export default function CreateCampaign() {
     }
   }
 
+  // Canvas resize & center-crop to target width/height, returns dataURL (png)
+  async function resizeAndCropDataUrl(sourceDataUrl: string, targetW: number, targetH: number): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => {
+        const sw = img.naturalWidth, sh = img.naturalHeight;
+        const scale = Math.max(targetW / sw, targetH / sh);
+        const dw = Math.round(sw * scale), dh = Math.round(sh * scale);
+        const offsetX = Math.round((dw - targetW) / 2);
+        const offsetY = Math.round((dh - targetH) / 2);
+
+        const tmpCanvas = document.createElement('canvas');
+        tmpCanvas.width = targetW;
+        tmpCanvas.height = targetH;
+        const ctx = tmpCanvas.getContext('2d');
+        if (!ctx) return reject(new Error('Canvas not supported'));
+        ctx.drawImage(img, -offsetX, -offsetY, dw, dh);
+        const outDataUrl = tmpCanvas.toDataURL('image/png');
+        resolve(outDataUrl);
+      };
+      img.onerror = (e) => reject(new Error('Failed to load image for resize'));
+      img.src = sourceDataUrl;
+    });
+  }
+
   // ---------- generate flow ----------
   const handleGenerate = async () => {
     if (!name || !vision || contentTypes.length === 0) {
@@ -152,7 +286,25 @@ export default function CreateCampaign() {
     }
     setLoading(true);
 
-    const payload = { name, audience, campaignType, brandVoice, contentTypes, vision, mode: "generate" };
+    const selectedDimension = DIMENSION_OPTIONS.find(d => d.id === selectedDimensionId) || DIMENSION_OPTIONS[0];
+
+    const aiCustomization: any = {
+      colorPrimary,
+      colorSecondary,
+      // include onboarding stored URLs if no upload override
+      logoUrl: logoDataUrl ? null : logoPublicUrl ?? null,
+      refUrls: refDataUrls.length ? [] : (refPublicUrls && refPublicUrls.length ? refPublicUrls : []),
+    };
+
+    const payload: any = {
+      name, audience, campaignType, brandVoice, contentTypes, vision,
+      mode: "generate",
+      aiCustomization,
+      target: { id: selectedDimension.id, width: selectedDimension.width, height: selectedDimension.height },
+    };
+
+    if (logoDataUrl) payload.logoDataUrl = logoDataUrl;
+    if (refDataUrls && refDataUrls.length) payload.refDataUrls = refDataUrls;
 
     try {
       const resp = await fetch("/api/generate-campaign", {
@@ -166,17 +318,47 @@ export default function CreateCampaign() {
         throw new Error(data?.error || `API failed: ${resp.status} ${resp.statusText}`);
       }
 
-      // If API returned a public/small URL -> store it in session and continue
+      // handle remote url or data url similar to previous logic
       if (data.image && typeof data.image === "string" && !data.image.startsWith("data:")) {
-        setPreviewInSession(payload, data, null);
-        router.push("/create-campaign-preview");
-        return;
+        try {
+          const fetched = await fetch(data.image);
+          if (!fetched.ok) throw new Error(`Failed to fetch returned image: ${fetched.status}`);
+          const blob = await fetched.blob();
+          const origDataUrl = await blobToDataURL(blob);
+
+          if (selectedDimension.width && selectedDimension.height) {
+            const resizedDataUrl = await resizeAndCropDataUrl(origDataUrl, selectedDimension.width, selectedDimension.height);
+            const resizedBlob = dataURLtoBlob(resizedDataUrl);
+            const imageKey = `preview_image_${Date.now()}`;
+            await idbPut(imageKey, resizedBlob);
+            setPreviewInSession(payload, { ok: true, copy: data.copy }, imageKey);
+            router.push("/create-campaign-preview");
+            return;
+          } else {
+            setPreviewInSession(payload, data, null);
+            router.push("/create-campaign-preview");
+            return;
+          }
+        } catch (e) {
+          console.warn("Failed to fetch/resize remote image, falling back to public URL session", e);
+          setPreviewInSession(payload, data, null);
+          router.push("/create-campaign-preview");
+          return;
+        }
       }
 
-      // If API returned a data URL (huge base64), store blob in IndexedDB and keep only key in session
       if (data.image && typeof data.image === "string" && data.image.startsWith("data:")) {
         try {
-          const blob = dataURLtoBlob(data.image);
+          let finalDataUrl = data.image;
+          if (selectedDimension.width && selectedDimension.height) {
+            try {
+              finalDataUrl = await resizeAndCropDataUrl(data.image, selectedDimension.width, selectedDimension.height);
+            } catch (resizeErr) {
+              console.warn("resize failed, using original data URL", resizeErr);
+            }
+          }
+
+          const blob = dataURLtoBlob(finalDataUrl);
           const imageKey = `preview_image_${Date.now()}`;
           await idbPut(imageKey, blob);
           setPreviewInSession(payload, data, imageKey);
@@ -184,14 +366,12 @@ export default function CreateCampaign() {
           return;
         } catch (e) {
           console.error("Failed to store image in IndexedDB:", e);
-          // fallback: don't store image (but store copy)
           setPreviewInSession(payload, data, null);
           router.push("/create-campaign-preview");
           return;
         }
       }
 
-      // fallback: no image returned
       setPreviewInSession(payload, data, null);
       router.push("/create-campaign-preview");
     } catch (err: any) {
@@ -202,7 +382,7 @@ export default function CreateCampaign() {
     }
   };
 
-  // AI Assist (calls same API with mode assist)
+  // AI Assist
   const handleAiAssist = async () => {
     if (!vision) {
       alert("Please type something first for AI assistance.");
@@ -239,7 +419,7 @@ export default function CreateCampaign() {
 
       <div className="flex-1 p-8">
         <h2 className="text-2xl font-bold mb-1">Create AI Campaign</h2>
-        <p className="text-slate-500 mb-6">Describe your vision and let the OpenAI image service generate a visual.</p>
+        <p className="text-slate-500 mb-6">Describe your vision and include your brand assets & theme — we'll feed these to the image generator.</p>
 
         <div className="w-full bg-slate-200 h-2 rounded mb-8">
           <div className="bg-blue-600 h-2 w-1/3 rounded" />
@@ -300,6 +480,72 @@ export default function CreateCampaign() {
               <button onClick={() => setVision("")} className="px-4 py-2 rounded-lg border text-slate-600 hover:bg-slate-100">Clear</button>
             </div>
             <textarea rows={2} placeholder="Additional Requirements (Optional)" className="w-full border rounded-lg px-3 py-2" />
+          </div>
+
+          {/* AI Customization (colors, logo & refs only) */}
+          <div className="bg-white rounded-xl shadow p-6 space-y-4">
+            <h3 className="font-semibold">🎨 AI Customization (brand assets & theme)</h3>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-sm font-medium">Primary color</p>
+                <input type="color" value={colorPrimary} onChange={e => setColorPrimary(e.target.value)} className="mt-2 h-10 w-20 p-0 border rounded" />
+              </div>
+              <div>
+                <p className="text-sm font-medium">Secondary color</p>
+                <input type="color" value={colorSecondary} onChange={e => setColorSecondary(e.target.value)} className="mt-2 h-10 w-20 p-0 border rounded" />
+              </div>
+            </div>
+
+            {/* Logo selection / upload */}
+            <div>
+              <p className="text-sm font-medium">Logo (from onboarding or upload)</p>
+              <div className="mt-2 flex items-center gap-3">
+                <div className="w-28 h-20 bg-white border rounded flex items-center justify-center overflow-hidden">
+                  {logoDataUrl ? (
+                    <img src={logoDataUrl} alt="logo-preview" className="w-full h-full object-contain" />
+                  ) : logoPublicUrl ? (
+                    <img src={logoPublicUrl} alt="logo-public" className="w-full h-full object-contain" />
+                  ) : (
+                    <div className="text-xs text-slate-400">No logo</div>
+                  )}
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <input type="file" accept="image/*" onChange={e => setLogoFile(e.target.files ? e.target.files[0] : null)} />
+                  <button onClick={() => { setLogoFile(null); setLogoDataUrl(null); }} className="px-2 py-1 border rounded text-sm">Remove Upload</button>
+                </div>
+              </div>
+            </div>
+
+            {/* Reference images */}
+            <div>
+              <p className="text-sm font-medium">Reference images (from onboarding or upload)</p>
+              <div className="mt-2 flex gap-2 items-center overflow-auto">
+                {[...refDataUrls, ...refPublicUrls].map((u, i) => (
+                  <div key={u + i} className="w-20 h-20 rounded overflow-hidden border">
+                    <img src={u} alt={`ref-${i}`} className="w-full h-full object-cover" />
+                  </div>
+                ))}
+                {(!refDataUrls.length && !refPublicUrls.length) && <div className="text-xs text-slate-500">No reference images</div>}
+              </div>
+
+              <div className="mt-2">
+                <input type="file" accept="image/*" multiple onChange={e => setRefFiles(e.target.files ? Array.from(e.target.files) : [])} />
+                <div className="mt-2 text-xs text-slate-500">Upload reference images that the AI should use for style/brand clues.</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Output dimensions */}
+          <div className="bg-white rounded-xl shadow p-6 space-y-4">
+            <h3 className="font-semibold">🖼️ Output size</h3>
+            <div className="flex gap-3 items-center flex-wrap">
+              <select value={selectedDimensionId} onChange={e => setSelectedDimensionId(e.target.value)} className="rounded border px-3 py-2">
+                {DIMENSION_OPTIONS.map(d => <option key={d.id} value={d.id}>{d.label}</option>)}
+              </select>
+            </div>
+            <div className="text-xs text-slate-500">Note: the image generator might return a square; client-side will crop/resize to the selected target ratio for preview/download.</div>
           </div>
 
           {/* Actions */}

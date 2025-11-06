@@ -15,6 +15,12 @@
     "id": "node_modules\\@supabase\\storage-js\\dist\\module\\lib\\helpers.js -> @supabase/node-fetch",
     "files": []
   },
+  "node_modules\\next\\dist\\client\\dev\\hot-reloader\\app\\use-websocket.js -> @vercel/turbopack-ecmascript-runtime/browser/dev/hmr-client/hmr-client.ts": {
+    "id": "node_modules\\next\\dist\\client\\dev\\hot-reloader\\app\\use-websocket.js -> @vercel/turbopack-ecmascript-runtime/browser/dev/hmr-client/hmr-client.ts",
+    "files": [
+      "static/chunks/_app-pages-browser_node_modules_next_dist_client_dev_noop-turbopack-hmr_js.js"
+    ]
+  },
   "node_modules\\next\\dist\\client\\index.js -> ../pages/_app": {
     "id": "node_modules\\next\\dist\\client\\index.js -> ../pages/_app",
     "files": [
@@ -26,5 +32,13 @@
     "files": [
       "static/chunks/_pages-dir-browser_node_modules_next_dist_pages__error_js.js"
     ]
+  },
+  "pages\\onboardingInfo.tsx -> ../lib/supabaseClient": {
+    "id": "pages\\onboardingInfo.tsx -> ../lib/supabaseClient",
+    "files": []
+  },
+  "pages\\onboardingInfo.tsx -> firebase/auth": {
+    "id": "pages\\onboardingInfo.tsx -> firebase/auth",
+    "files": []
   }
 }
