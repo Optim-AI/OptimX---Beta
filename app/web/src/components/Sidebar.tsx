@@ -1,35 +1,104 @@
-// components/Sidebar.tsx
-import Link from "next/link";
-import { useRouter } from "next/router";
+'use client';
 
-export default function Sidebar() {
+import React from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import colors from '../../../../lib/colors';
+
+const Sidebar: React.FC = () => {
   const router = useRouter();
 
   return (
-    <aside className="w-64 bg-white shadow-lg flex flex-col">
-      <div className="px-6 py-4 border-b">
-        <h1 className="text-xl font-bold text-slate-800">OptimAI</h1>
-        <p className="text-xs text-slate-500">Campaign Manager</p>
+    <aside
+      className="w-64 flex flex-col"
+      style={{
+        backgroundColor: colors.sidebarBackground,
+        color: colors.sidebarForeground,
+        boxShadow: colors.shadowSoft,
+        borderRight: `1px solid ${colors.sidebarBorder}`,
+      }}
+    >
+      {/* Header */}
+      <div
+        className="px-6 py-4 border-b"
+        style={{ borderColor: colors.sidebarBorder }}
+      >
+        <h1
+          className="text-xl font-bold"
+          style={{ color: colors.sidebarPrimary }}
+        >
+          OptimAI
+        </h1>
+        <p style={{ color: colors.sidebarForeground, fontSize: 12 }}>
+          Campaign Manager
+        </p>
       </div>
-      <nav className="flex-1 p-4 space-y-2 text-slate-700">
-        <Link href="/dashboard" className="block px-3 py-2 rounded-lg hover:bg-slate-100">📊 Dashboard</Link>
-        <Link href="/create-campaign" className="block px-3 py-2 rounded-lg hover:bg-slate-100">➕ Create Campaign</Link>
-        <Link href="/insights" className="block px-3 py-2 rounded-lg hover:bg-slate-100">🤖 AI Insights</Link>
-        <Link href="/analytics" className="block px-3 py-2 rounded-lg hover:bg-slate-100">📈 Analytics</Link>
-        <Link href="/library" className="block px-3 py-2 rounded-lg hover:bg-slate-100">📚 Campaign Library</Link>
-        <Link href="/publish" className="block px-3 py-2 rounded-lg hover:bg-slate-100">📤 Publishing</Link>
-        <Link href="/integrations" className="block px-3 py-2 rounded-lg hover:bg-slate-100">🔗 Integrations</Link>
-        <Link href="/notifications" className="block px-3 py-2 rounded-lg hover:bg-slate-100">🔔 Notifications</Link>
-        <Link href="/settings" className="block px-3 py-2 rounded-lg hover:bg-slate-100">⚙️ Settings</Link>
+
+      {/* Navigation */}
+      <nav className="flex-1 p-4 space-y-2">
+        {[
+          { href: '/dashboard', label: '📊 Dashboard' },
+          { href: '/create-campaign', label: '➕ Create Campaign' },
+          { href: '/insights', label: '🤖 AI Insights' },
+          { href: '/analytics', label: '📈 Analytics' },
+          { href: '/library', label: '📚 Campaign Library' },
+          { href: '/publish', label: '📤 Publishing' },
+          { href: '/integrations', label: '🔗 Integrations' },
+          { href: '/notifications', label: '🔔 Notifications' },
+          { href: '/settings', label: '⚙️ Settings' },
+        ].map((item) => (
+          <Link
+            key={item.href}
+            href={item.href}
+            className="block px-3 py-2 rounded-lg transition-colors duration-150"
+            style={{
+              color: colors.sidebarForeground,
+              background: 'transparent',
+            }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLElement).style.backgroundColor =
+                colors.sidebarAccent;
+              (e.currentTarget as HTMLElement).style.color =
+                colors.sidebarAccentForeground;
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLElement).style.backgroundColor =
+                'transparent';
+              (e.currentTarget as HTMLElement).style.color =
+                colors.sidebarForeground;
+            }}
+          >
+            {item.label}
+          </Link>
+        ))}
       </nav>
-      <div className="p-4 border-t">
+
+      {/* Footer Button */}
+      <div
+        className="p-4 border-t"
+        style={{ borderColor: colors.sidebarBorder }}
+      >
         <button
           onClick={() => router.push('/create-campaign')}
-          className="w-full rounded-lg bg-blue-600 px-4 py-2 text-white font-medium hover:bg-blue-700"
+          className="w-full rounded-lg px-4 py-2 font-medium transition"
+          style={{
+            backgroundColor: colors.sidebarPrimary,
+            color: colors.sidebarPrimaryForeground,
+            border: 'none',
+            boxShadow: colors.shadowMedium,
+          }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLElement).style.filter = 'brightness(0.98)';
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLElement).style.filter = 'none';
+          }}
         >
           Start Campaign
         </button>
       </div>
     </aside>
   );
-}
+};
+
+export default Sidebar;

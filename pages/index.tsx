@@ -1,16 +1,32 @@
 import React from 'react';
-import { Hero } from '../app/web/src/components/Hero';
-import { Trusted } from '../app/web/src/components/Trusted';
-import { CTA } from '../app/web/src/components/CTA';
-import { Footer } from '../app/web/src/components/Footer';
+// import { Footer } from '../app/web/src/components/Footer';
 import '../styles/globals.css';
+
+
+import Header from "../app/web/src/components/Header";
+import Hero from "../app/web/src/components/Hero";
+import Problem from "../app/web/src/components/Problem";
+import Features from "../app/web/src/components/Features";
+import HowItWorks from "../app/web/src/components/HowItWorks";
+import ContactForPricing from "../app/web/src/components/ContactForPricing";
+import FAQ from "../app/web/src/components/FAQ";
+import FinalCTA from "../app/web/src/components/FinalCTA";
+import Footer from "../app/web/src/components/Footer";
+
 const Home: React.FC = () => (
-  <div>
-    <Hero />
-    <Trusted />
-    <CTA />
-    <Footer />
-  </div>
+  <div className="min-h-screen">
+      <Header />
+      <main>
+        <Hero />
+        <Problem />
+        <Features />
+        <HowItWorks />
+        <ContactForPricing />
+        <FAQ />
+        <FinalCTA />
+      </main>
+      <Footer />
+    </div>
 );
 
 export default Home;
