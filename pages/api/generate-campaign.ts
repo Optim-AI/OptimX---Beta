@@ -5,7 +5,7 @@ import sharp from "sharp";
 import { supabaseAdmin } from "../../lib/supabaseClient"; // must be server-side admin client
 
 const LEO_API_KEY = process.env.LEO_API_KEY;
-const LEONARDO_MODEL_ID = process.env.LEONARDO_MODEL_ID || "05ce0082-2d80-4a2d-8653-4d1c85e2418e";
+const LEONARDO_MODEL_ID = process.env.LEONARDO_MODEL_ID || "de7d3faf-762f-48e0-b3b7-9d0ac3a3fcf3";
 const LEO_BASE = "https://cloud.leonardo.ai/api/rest/v1";
 
 if (!LEO_API_KEY) {
