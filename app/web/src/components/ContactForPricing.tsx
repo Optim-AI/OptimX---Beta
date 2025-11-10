@@ -165,7 +165,7 @@ export default function ContactForPricing() {
                       </Button>
 
                       <Button
-                        href="/signup"
+                        href="/auth/signin"
                         variant="outline"
                         className="w-full"
                         size="lg"

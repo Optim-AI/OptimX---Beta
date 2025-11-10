@@ -56,7 +56,7 @@ export default function SignInPage(): React.ReactElement {
     }
     setLoading(true);
     try {
-      const redirectTo = `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3001'}/welcome`;
+      const redirectTo = `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/welcome`;
       const { error: signError } = await supabase.auth.signInWithOtp({
         email,
         options: { emailRedirectTo: redirectTo },
@@ -99,7 +99,7 @@ export default function SignInPage(): React.ReactElement {
     setError(null);
     setInfo(null);
     try {
-      const redirectTo = `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3001'}/welcome`;
+      const redirectTo = `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/welcome`;
       const { data, error: oauthError } = await supabase.auth.signInWithOAuth({
         provider,
         options: { redirectTo },

@@ -211,7 +211,7 @@ const Hero: React.FC = () => {
                 <a
                   ref={buttonRef}
                   style={getMagneticStyle(buttonRef.current, 0.25)}
-                  href="/signup"
+                  href="/auth/signin"
                 >
                   Start Free Trial
                   <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />

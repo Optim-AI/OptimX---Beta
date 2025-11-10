@@ -121,7 +121,7 @@ const Header: React.FC = () => {
 
           {/* Desktop Actions */}
           <div className="hidden lg:flex items-center space-x-4">
-            <Link href="/signup">
+            <Link href="/auth/signin">
               <Button variant="cta">Get Started Free</Button>
             </Link>
           </div>
@@ -208,7 +208,7 @@ const Header: React.FC = () => {
               })}
 
               <div className="flex flex-col space-y-2 pt-4">
-                <Link href="/signup" onClick={() => setIsMenuOpen(false)}>
+                <Link href="/auth/signin" onClick={() => setIsMenuOpen(false)}>
                   <Button variant="cta" className="justify-start w-full">
                     Get Started Free
                   </Button>

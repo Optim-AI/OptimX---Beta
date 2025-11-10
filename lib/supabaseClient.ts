@@ -1,15 +1,34 @@
 // lib/supabaseClient.ts
-import { createClient } from "@supabase/supabase-js";
+import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
-const SUPABASE_URL = 'https://jjfoymnhchfpjstomipr.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpqZm95bW5oY2hmcGpzdG9taXByIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE0NTk1MDUsImV4cCI6MjA3NzAzNTUwNX0.VaUzagxiKKxzA6r9EFkdPN42_3mT8JjfKO-oG1WjiSY';
-const SUPABASE_SERVICE_ROLE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpqZm95bW5oY2hmcGpzdG9taXByIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MTQ1OTUwNSwiZXhwIjoyMDc3MDM1NTA1fQ.Rry3VbRnWialnVj40ywzVUxsl8Jt4DXZaWWBLvDpMBE';
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE;
 
-export const supabase = createClient(String(SUPABASE_URL), String(SUPABASE_ANON_KEY));
+// Basic sanity checks (won't crash in client builds, but helpful server-side)
+if (!SUPABASE_URL) {
+  console.warn("Missing SUPABASE_URL env var (NEXT_PUBLIC_SUPABASE_URL or SUPABASE_URL).");
+}
+if (!SUPABASE_ANON_KEY) {
+  console.warn("Missing SUPABASE_ANON_KEY env var (NEXT_PUBLIC_SUPABASE_ANON_KEY or SUPABASE_ANON_KEY).");
+}
 
-// Server-side admin instance (use service role key)
-export const supabaseAdmin = SUPABASE_SERVICE_ROLE_KEY
-  ? createClient(String(SUPABASE_URL), String(SUPABASE_SERVICE_ROLE_KEY))
-  : createClient(String(SUPABASE_URL), String(SUPABASE_ANON_KEY));
+// Browser / client safe Supabase instance (use this in React components)
+export const supabase: SupabaseClient =
+  (typeof window !== "undefined")
+    ? createClient(String(SUPABASE_URL), String(SUPABASE_ANON_KEY))
+    : createClient(String(SUPABASE_URL), String(SUPABASE_ANON_KEY)); // safe fallback for SSR
 
-export default supabase;
+// Admin server-side client — use **only** in server code (API routes, server functions).
+// WARNING: keep SERVICE_ROLE_KEY secret; do NOT import/use this inside client-side code.
+export const supabaseAdmin: SupabaseClient = createClient(
+  String(SUPABASE_URL),
+  String(SUPABASE_SERVICE_ROLE_KEY),
+  {
+    auth: {
+      // don't persist sessions server-side
+      persistSession: false,
+      detectSessionInUrl: false,
+    },
+  }
+);

@@ -382,7 +382,7 @@ export default function About() {
                 Ready to transform your marketing approach? Join us in making marketing simple, powerful, and human.
               </p>
               <a
-                href="/signup"
+                href="/auth/signin"
                 className="inline-block px-12 py-4 rounded-full text-lg font-normal transition-all duration-300"
                 style={{
                   background: colors.primary,

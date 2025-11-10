@@ -15,7 +15,7 @@ import { supabase } from "../lib/supabaseClient";
  * - Continue redirects to /dashboard.
  */
 
-const OAUTH_PATH = "/api/auth/meta/start"; // adjust if your server uses a different path for meta/facebook
+const OAUTH_PATH = "/api/auth/instagram/start"; // adjust if your server uses a different path for meta/facebook
 const STATUS_API = "/api/integrations/status";
 const PLATFORM_KEY = "meta";
 

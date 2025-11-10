@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import colors from '../../../../lib/colors';
 import { 
   Wand2, 
   Target, 
@@ -14,7 +15,6 @@ import {
   TrendingUp
 } from 'lucide-react';
 import { useScrollAnimation } from '../hooks/use-scroll-animation';
-import colors from "../../../../lib/colors";
 
 type Feature = {
   icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
