@@ -1,7 +1,7 @@
 // pages/create-campaign.tsx
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Sidebar from "../app/web/src/components/Sidebar";
 import { Button } from "../app/web/src/components/ui/button";
@@ -36,6 +36,8 @@ import {
   Save,
   Rocket,
   Sparkles,
+  Mic,
+  Square,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -44,6 +46,7 @@ import colors from "C:/Users/jpsha/Documents/OPTIM - Copy/demo-repository/lib/co
 
 // supabase client for browser usage (assumes you have this export)
 import { supabase } from "../lib/supabaseClient";
+import NavBar from "../app/web/src/components/navBar";
 
 /* -------------------- color tokens (fallback-safe) -------------------- */
 const { primary, primary5 } = (colors as any) || {};
@@ -147,6 +150,49 @@ function optimizationGoalForObjective(obj: string): string {
   return "LINK_CLICKS";
 }
 
+/* -------------------- TRANSLATION HELPERS (NEW) -------------------- */
+
+function isLikelyTamil(text: string): boolean {
+  // Tamil Unicode block: 0B80–0BFF
+  return /[\u0B80-\u0BFF]/.test(text);
+}
+
+// Reuse your existing /api/generateCaption endpoint to safely run ChatGPT on the server
+async function translateToEnglishViaCaptionAPI(text: string): Promise<string> {
+  try {
+    const tokenRes = await supabase.auth.getSession();
+    const session: any = tokenRes?.data?.session || null;
+    const token = session?.access_token || session?.accessToken || session?.provider_token || null;
+    if (!token) {
+      toast.error("Sign in to translate.");
+      return text;
+    }
+    const prompt = `Translate the following to clear, natural English suitable for an image-generation prompt. Keep product/brand names intact. Only return the translation.\n\n---\n${text}`;
+    const resp = await fetch("/api/generateCaption", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ prompt }),
+    });
+    const json = await resp.json();
+    if (!resp.ok) throw new Error(json?.error || "Translation failed");
+    const translated = json?.caption || "";
+    return translated.trim() || text;
+  } catch (e: any) {
+    console.warn("translateToEnglishViaCaptionAPI error", e);
+    toast.error("Translation failed — sending original text");
+    return text;
+  }
+}
+
+async function translateIfTamil(text: string): Promise<string> {
+  if (!text || !text.trim()) return text;
+  if (isLikelyTamil(text)) {
+    const translated = await translateToEnglishViaCaptionAPI(text);
+    return translated || text;
+  }
+  return text;
+}
+
 /* -------------------- prompt builder -------------------- */
 function buildPromptClient(adFormData: any) {
   const parts: string[] = [];
@@ -158,9 +204,101 @@ function buildPromptClient(adFormData: any) {
   if (adFormData.offerInfo) parts.push(`Offer: ${adFormData.offerInfo}`);
   if (Array.isArray(adFormData.platforms) && adFormData.platforms.length)
     parts.push(`Platforms: ${adFormData.platforms.join(", ")}`);
-  parts.push(`Produce a high-quality social media image suitable for 1080x1080. Keep central composition and negative space for headline text. Do not copy copyrighted work.`);
+  parts.push(
+    `Produce a high-quality social media image suitable for 1080x1080. Keep central composition and negative space for headline text. Do not copy copyrighted work.`
+  );
   return parts.join("\n\n");
 }
+
+/* -------------------- Mic Recorder (NEW) -------------------- */
+
+type MicRecorderProps = {
+  onText: (chunk: string) => void; // append or set text
+  lang?: string; // default "ta-IN"
+  className?: string;
+  small?: boolean;
+};
+
+const MicRecorder: React.FC<MicRecorderProps> = ({ onText, lang = "ta-IN", className, small }) => {
+  const [recording, setRecording] = useState(false);
+  const recognitionRef = useRef<any>(null);
+
+  const supported = typeof window !== "undefined" && (window as any).webkitSpeechRecognition;
+
+  const start = () => {
+    if (!supported) {
+      toast.error("Speech recognition not supported in this browser.");
+      return;
+    }
+    try {
+      const Rec = (window as any).webkitSpeechRecognition;
+      const rec = new Rec();
+      rec.lang = lang;
+      rec.interimResults = true;
+      rec.continuous = true;
+
+      rec.onresult = (e: any) => {
+        let finalText = "";
+        for (let i = e.resultIndex; i < e.results.length; i++) {
+          const r = e.results[i];
+          if (r.isFinal) {
+            finalText += r[0].transcript;
+          }
+        }
+        if (finalText.trim().length) {
+          onText(finalText.trim());
+        }
+      };
+      rec.onerror = (err: any) => {
+        console.warn("speech error", err);
+        toast.error("Mic error — check permissions.");
+        setRecording(false);
+        try { rec.stop(); } catch {}
+      };
+      rec.onend = () => {
+        setRecording(false);
+      };
+      recognitionRef.current = rec;
+      rec.start();
+      setRecording(true);
+      toast.success("Listening… speak in Tamil");
+    } catch (e) {
+      console.warn("speech start failed", e);
+      toast.error("Could not start mic.");
+      setRecording(false);
+    }
+  };
+
+  const stop = () => {
+    try {
+      recognitionRef.current?.stop?.();
+    } catch {}
+    setRecording(false);
+  };
+
+  return (
+    <Button
+      type="button"
+      variant={recording ? "destructive" : "outline"}
+      onClick={recording ? stop : start}
+      className={className}
+      size={small ? "sm" : "default"}
+      title="Speak in Tamil — will be transcribed to text"
+    >
+      {recording ? (
+        <>
+          <Square className="h-4 w-4 mr-2" />
+          Stop
+        </>
+      ) : (
+        <>
+          <Mic className="h-4 w-4 mr-2" />
+          Mic (TA)
+        </>
+      )}
+    </Button>
+  );
+};
 
 /* -------------------- Component -------------------- */
 const CampaignCreate: React.FC = () => {
@@ -497,6 +635,10 @@ const CampaignCreate: React.FC = () => {
         setGenerationPrompt(p);
       }
 
+      // --- NEW: ensure the editable prompt is translated to English before sending
+      const editable = options?.promptOverride || generationPrompt || buildPromptClient(adFormData);
+      const translatedPrompt = await translateIfTamil(editable);
+
       const payload: any = {
         mode: "generate",
         campaignName: adFormData.campaignName,
@@ -520,8 +662,8 @@ const CampaignCreate: React.FC = () => {
         description: adFormData.description,
         emotion: adFormData.emotion,
         offerInfo: adFormData.offerInfo,
-        // send the prompt we're using (editable by user)
-        prompt: options?.promptOverride || generationPrompt || buildPromptClient(adFormData),
+        // IMPORTANT: send translated English prompt to Leonardo
+        prompt: translatedPrompt,
         target: { id: "insta_feed", width: 1080, height: 1080 },
         aiCustomization: {
           colorPrimary: undefined,
@@ -595,7 +737,9 @@ const CampaignCreate: React.FC = () => {
         return null;
       }
 
-      const promptToUse = overridePrompt ?? (postGenerationPrompt || postFormData.prompt || `Create a social post for ${postFormData.postName || "my brand"}`);
+      const promptRaw = overridePrompt ?? (postGenerationPrompt || postFormData.prompt || `Create a social post for ${postFormData.postName || "my brand"}`);
+      // --- NEW: translate Tamil → English before sending to Leonardo
+      const promptToUse = await translateIfTamil(promptRaw);
 
       const payload: any = {
         postName: postFormData.postName,
@@ -627,11 +771,9 @@ const CampaignCreate: React.FC = () => {
         throw new Error(json?.error || "Generation failed");
       }
 
-      // Expect exactly one image — prefer savedPublicUrl if provided
       const first = typeof json.image === "string" ? json.image : (Array.isArray(json.images) && json.images.length ? json.images[0] : null);
       if (!first) throw new Error("No image returned");
 
-      // If savedPublicUrl present — we can store that directly in session
       if (json.savedPublicUrl && typeof json.savedPublicUrl === "string") {
         const preview = { inputs: payload, image: json.savedPublicUrl, images: [json.savedPublicUrl], output: json.output ?? null };
         try {
@@ -644,7 +786,6 @@ const CampaignCreate: React.FC = () => {
         return json.savedPublicUrl;
       }
 
-      // If image is data: URL, store blob in IDB and place pointer into sessionStorage
       if (first.startsWith("data:")) {
         try {
           const blob = dataURLtoBlob(first);
@@ -662,7 +803,6 @@ const CampaignCreate: React.FC = () => {
           return first;
         } catch (e) {
           console.warn("idb put failed, falling back to session dataUrl", e);
-          // fallback: put dataUrl directly in session (could hit quota)
           const preview = { inputs: payload, image: first, images: [first], output: json.output ?? null };
           try {
             sessionStorage.setItem("preview", JSON.stringify(preview));
@@ -676,7 +816,6 @@ const CampaignCreate: React.FC = () => {
         }
       }
 
-      // else it's a public URL
       const preview = { inputs: payload, image: first, images: [first], output: json.output ?? null };
       try {
         sessionStorage.setItem("preview", JSON.stringify(preview));
@@ -712,7 +851,6 @@ const CampaignCreate: React.FC = () => {
         toast.success("Downloaded image");
         return;
       }
-      // public url - open in new tab / let user save
       window.open(generatedPostImage, "_blank", "noopener,noreferrer");
     } catch (e) {
       console.error("downloadGeneratedPostImage error", e);
@@ -721,12 +859,16 @@ const CampaignCreate: React.FC = () => {
   };
 
   // navigate to finalize — create-campaign-finalize reads sessionStorage.preview
-  const goToFinalize = () => {
-    const raw = sessionStorage.getItem("preview");
-    if (!raw) {
-      toast.error("No preview saved. Generate an image first.");
-      return;
-    }
+  const goToFinalize = async () => {
+    // Ensure we also translate the prompt saved in preview if needed
+    try {
+      const raw = sessionStorage.getItem("preview");
+      if (!raw) {
+        toast.error("No preview saved. Generate an image first.");
+        return;
+      }
+      // It's okay if inputs already contain translated prompt from generation.
+    } catch {}
     router.push("/create-campaign-finalize");
   };
 
@@ -754,28 +896,19 @@ const CampaignCreate: React.FC = () => {
     return publicUrl;
   };
 
-  /* -------------------- POST AD TO FACEBOOK (client) --------------------
-   * - Prepares payload using current adFormData + generated image (first).
-   * - Uploads data: images to Supabase if necessary.
-   * - Calls /api/auth/facebook/ads with token.
-   * - On success, shows toast + redirect to /dashboard.
-   * - Logs entire request/response to console for debugging.
-   * ----------------------------------------------------------------- */
+  /* -------------------- POST AD TO FACEBOOK (client) -------------------- */
   const postAdToFacebook = async () => {
     setPostingNow(true);
     try {
-      // required checks
       if (!adFormData.campaignName || !adFormData.budget) {
         toast.error("Campaign name and budget required.");
         setPostingNow(false);
         return;
       }
 
-      // map objective -> Graph API objective
       const mappedObjective = mapObjective(adFormData.objective);
       const optimizationGoal = optimizationGoalForObjective(mappedObjective);
 
-      // prepare base payload
       const body: any = {
         campaignName: adFormData.campaignName,
         adSetName: `${adFormData.campaignName || "Campaign"} - AdSet`,
@@ -798,18 +931,15 @@ const CampaignCreate: React.FC = () => {
         optimization_goal: optimizationGoal,
       };
 
-      // Validate numeric budget
       const budgetNumber = Number(body.budget);
       if (!Number.isFinite(budgetNumber) || budgetNumber <= 0) {
         toast.error("Invalid budget value.");
         setPostingNow(false);
         return;
       }
-      // convert to minor units (e.g., INR -> paise). Adjust multiplier per your account currency
       const budgetMultiplier = 100;
       body.budgetMinor = Math.round(budgetNumber * budgetMultiplier);
 
-      // Validate and normalize dates
       if (body.startDate) {
         const start = new Date(body.startDate);
         if (isNaN(start.getTime())) {
@@ -818,7 +948,6 @@ const CampaignCreate: React.FC = () => {
           return;
         }
         if (start.getTime() < Date.now() - 60 * 1000) {
-          // remove start if in past (prevents Graph rejection)
           delete body.startDate;
         } else {
           body.startDateISO = start.toISOString();
@@ -834,7 +963,6 @@ const CampaignCreate: React.FC = () => {
         body.endDateISO = end.toISOString();
       }
 
-      // Build targeting
       let finalTargeting: any = null;
       if (adFormData.autoTarget) {
         finalTargeting = { geo_locations: { countries: ["IN"] }, age_min: 18, age_max: 65 };
@@ -867,7 +995,6 @@ const CampaignCreate: React.FC = () => {
       }
       body.targeting = finalTargeting;
 
-      // Determine creative image public URL (prefer generatedImages[0] or generatedPostImage)
       let creativePublicUrl: string | null = null;
       if (generatedImages && generatedImages.length) {
         const cand = generatedImages[0];
@@ -875,7 +1002,6 @@ const CampaignCreate: React.FC = () => {
       }
       if (!creativePublicUrl && generatedPostImage && !generatedPostImage.startsWith("data:")) creativePublicUrl = generatedPostImage;
 
-      // fallback: check session preview
       if (!creativePublicUrl) {
         try {
           const raw = sessionStorage.getItem("preview");
@@ -889,7 +1015,6 @@ const CampaignCreate: React.FC = () => {
         }
       }
 
-      // If creative is data: URL, upload to supabase to get public URL
       if (!creativePublicUrl) {
         if (generatedPostImage && generatedPostImage.startsWith("data:")) {
           const blob = dataURLtoBlob(generatedPostImage);
@@ -916,7 +1041,6 @@ const CampaignCreate: React.FC = () => {
         }
       }
 
-      // IDB fallback
       if (!creativePublicUrl) {
         try {
           const raw = sessionStorage.getItem("preview");
@@ -951,9 +1075,6 @@ const CampaignCreate: React.FC = () => {
       body.creativeImageUrl = creativePublicUrl;
       body.creativeCaption = adFormData.tagline || adFormData.description || "";
 
-      // final debug
-      console.debug("[postAdToFacebook] final payload:", body);
-
       const token = await getAccessToken();
       if (!token) {
         toast.error("You must be signed in to run ads.");
@@ -961,7 +1082,6 @@ const CampaignCreate: React.FC = () => {
         return;
       }
 
-      // Call server endpoint (your pages/api/auth/facebook/ads.ts)
       let resp: Response;
       try {
         resp = await fetch("/api/auth/facebook/ads", {
@@ -994,8 +1114,6 @@ const CampaignCreate: React.FC = () => {
         return;
       }
 
-      // success
-      console.debug("[postAdToFacebook] success response:", json);
       toast.success("Facebook ad created successfully. Redirecting to dashboard...");
       try {
         sessionStorage.removeItem("preview");
@@ -1029,14 +1147,7 @@ const CampaignCreate: React.FC = () => {
     }
   };
 
-  /* --------------------
-     NEW: Unified publish/post logic (from create-campaign-post)
-     - ensures sign-in
-     - ensures image to publish
-     - uploads to Supabase 'campaign-assets'
-     - inserts campaigns row
-     - optionally posts to Instagram / Facebook
-  --------------------- */
+  /* -------------------- Unified publish/post (unchanged except generation uses translated prompt) -------------------- */
   const handlePublishPost = async () => {
     let postingNowLocal = false;
     try {
@@ -1045,9 +1156,9 @@ const CampaignCreate: React.FC = () => {
         return;
       }
 
-      // Ensure we have an image; if not, try to generate one first
       let imageToPublish = generatedPostImage;
       if (!imageToPublish) {
+        // When auto-generating here, it will translate prompt internally as well
         const gen = await generatePostImage(postGenerationPrompt || undefined);
         imageToPublish = gen || generatedPostImage;
         if (!imageToPublish) {
@@ -1057,7 +1168,6 @@ const CampaignCreate: React.FC = () => {
       }
 
       postingNowLocal = true;
-      // ensure user logged in
       const { data: userData } = await supabase.auth.getUser();
       const user = (userData as any)?.user;
       if (!user) {
@@ -1066,11 +1176,9 @@ const CampaignCreate: React.FC = () => {
         return;
       }
 
-      // Upload the image to Supabase 'campaign-assets'
       const image_url: string[] = [];
       const image_path: string[] = [];
 
-      // single image case — build filename & path
       const safeName = (postFormData.postName || "post").replace(/[^a-z0-9_\-]/gi, "_").toLowerCase();
       const filename = `${user.id}_${Date.now()}_1_${safeName}.png`;
       const path = `campaigns/${user.id}/${filename}`;
@@ -1080,7 +1188,6 @@ const CampaignCreate: React.FC = () => {
       if (typeof imageToPublish === "string" && imageToPublish.startsWith("data:")) {
         fileToUpload = dataURLtoFile(imageToPublish, filename);
       } else if (typeof imageToPublish === "string" && (imageToPublish.startsWith("http") || imageToPublish.startsWith("blob:"))) {
-        // public url or blob url - fetch
         const resp = await fetch(imageToPublish);
         if (!resp.ok) {
           throw new Error(`Failed to fetch image for upload: ${resp.status} ${resp.statusText}`);
@@ -1088,7 +1195,6 @@ const CampaignCreate: React.FC = () => {
         const blob = await resp.blob();
         fileToUpload = new File([blob], filename, { type: blob.type || "image/png" });
       } else if (generatedPostImageKey) {
-        // read from IDB
         try {
           const stored = await idbGet(generatedPostImageKey);
           if (stored instanceof Blob) {
@@ -1096,7 +1202,6 @@ const CampaignCreate: React.FC = () => {
           } else if (typeof stored === "string" && stored.startsWith("data:")) {
             fileToUpload = dataURLtoFile(stored, filename);
           } else if (typeof stored === "string") {
-            // maybe a public url string
             const resp2 = await fetch(stored);
             if (!resp2.ok) throw new Error(`Failed to fetch stored image: ${resp2.status}`);
             const blob2 = await resp2.blob();
@@ -1108,10 +1213,9 @@ const CampaignCreate: React.FC = () => {
       }
 
       if (!fileToUpload) {
-        // fallback: if imageToPublish is a public url, we won't upload file but will store url directly
         if (typeof imageToPublish === "string" && imageToPublish.startsWith("http")) {
           image_url.push(imageToPublish);
-          image_path.push(""); // no path
+          image_path.push("");
         } else {
           throw new Error("Could not obtain a file to upload for the image.");
         }
@@ -1132,7 +1236,6 @@ const CampaignCreate: React.FC = () => {
         image_path.push(path);
       }
 
-      // insert campaign row
       const payload = {
         user_id: user.id,
         name: postFormData.postName || null,
@@ -1157,7 +1260,6 @@ const CampaignCreate: React.FC = () => {
         throw insertError;
       }
 
-      // posting: prefer Instagram endpoint (it supports cross-post to Facebook)
       const doPostToInstagram = postFormData.platforms.includes("Instagram");
       const doCrosspostToFacebook = postFormData.platforms.includes("Facebook");
 
@@ -1190,8 +1292,6 @@ const CampaignCreate: React.FC = () => {
           }
         }
       } else if (!doPostToInstagram && doCrosspostToFacebook) {
-        // Facebook-only: best-effort call to a facebook post endpoint if exists
-        // backend should accept { image_url, caption }
         const caption = postFormData.generatedCaption || postFormData.postName || "";
         for (let i = 0; i < image_url.length; i++) {
           const imgUrl = image_url[i];
@@ -1214,7 +1314,6 @@ const CampaignCreate: React.FC = () => {
         }
       }
 
-      // finalize
       try {
         sessionStorage.removeItem("preview");
       } catch (e) {
@@ -1233,16 +1332,13 @@ const CampaignCreate: React.FC = () => {
           console.warn("Post Results:", postResults);
         }
       } else {
-        // no posting attempted (image URL saved but no platform endpoint called) — still treat as success of saving & uploading
         toast.success(finalMsg);
       }
 
-      // Always redirect to /dashboard after post flow (per request)
       router.push("/dashboard");
     } catch (err: any) {
       console.error("handlePublishPost error", err);
       toast.error("Publish failed: " + (err?.message || String(err)));
-      // still redirect to dashboard so user can continue (optional)
       try {
         router.push("/dashboard");
       } catch (e) {
@@ -1253,7 +1349,7 @@ const CampaignCreate: React.FC = () => {
     }
   };
 
-  // Publish Post: legacy /api/publish flow (kept for compatibility)
+  // Publish Post: legacy /api/publish flow (kept)
   const publishPost = async () => {
     try {
       if (!postFormData.postName || postFormData.platforms.length === 0) {
@@ -1261,7 +1357,6 @@ const CampaignCreate: React.FC = () => {
         return;
       }
 
-      // Ensure we have an image; if not, try to generate one first
       let imageToPublish = generatedPostImage;
       if (!imageToPublish) {
         const gen = await generatePostImage(postGenerationPrompt || undefined);
@@ -1278,7 +1373,6 @@ const CampaignCreate: React.FC = () => {
         return;
       }
 
-      // Build a FormData which allows file upload or URL
       const form = new FormData();
       form.append("postName", postFormData.postName);
       form.append("platforms", JSON.stringify(postFormData.platforms));
@@ -1288,18 +1382,15 @@ const CampaignCreate: React.FC = () => {
       form.append("caption", postFormData.generatedCaption || "");
       form.append("hashtags", postFormData.hashtags || "");
 
-      // If image is a data: URL, convert to Blob and append as file
       if (imageToPublish.startsWith("data:")) {
         const blob = dataURLtoBlob(imageToPublish);
         form.append("image", blob, `post_${Date.now()}.png`);
       } else if (generatedPostImageKey) {
-        // attempt to read from IDB
         try {
           const stored = await idbGet(generatedPostImageKey);
           if (stored instanceof Blob) {
             form.append("image", stored, `post_${Date.now()}.png`);
           } else if (typeof stored === "string") {
-            // fallback string (data url)
             if (stored.startsWith("data:")) {
               const blob = dataURLtoBlob(stored);
               form.append("image", blob, `post_${Date.now()}.png`);
@@ -1314,14 +1405,11 @@ const CampaignCreate: React.FC = () => {
           form.append("imageUrl", imageToPublish);
         }
       } else {
-        // public url
         form.append("imageUrl", imageToPublish);
       }
 
-      // attach platform-specific brief metadata
       form.append("selectedPlatforms", JSON.stringify(postFormData.platforms));
 
-      // send to unified publish endpoint — backend should handle per-platform posting using stored credentials
       const resp = await fetch("/api/publish", {
         method: "POST",
         headers: { Authorization: `Bearer ${await getAccessToken()}` },
@@ -1336,7 +1424,6 @@ const CampaignCreate: React.FC = () => {
       toast.success("Post published (or queued) to selected platforms.");
       console.log("publish response", json);
 
-      // optionally: save as draft / record
       try {
         await fetch("/api/campaigns/save-draft", {
           method: "POST",
@@ -1344,10 +1431,9 @@ const CampaignCreate: React.FC = () => {
           body: JSON.stringify({ mode: "post", postName: postFormData.postName, inputs: postFormData, publishedTo: postFormData.platforms }),
         });
       } catch (e) {
-        /* ignore save-fail */
+        /* ignore */
       }
 
-      // Redirect to dashboard after publish
       router.push("/dashboard");
     } catch (err: any) {
       console.error("publishPost error", err);
@@ -1375,13 +1461,15 @@ const CampaignCreate: React.FC = () => {
     });
   };
 
-  /* -------------------- UI (kept intact with requested small edits) -------------------- */
+  /* -------------------- UI -------------------- */
 
   return (
     <div className="min-h-screen flex bg-slate-50">
+      
       <Sidebar />
 
       <div className="flex-1">
+        <NavBar />
         <div className="sticky top-0 z-50 backdrop-blur-xl bg-background/80 border-b border-border/50">
           <div className="max-w-7xl mx-auto px-6 py-4">
             <div className="flex items-center justify-between mb-4">
@@ -1775,17 +1863,23 @@ const CampaignCreate: React.FC = () => {
 
                     {step === 5 && (
                       <div className="space-y-6">
-                        <div>
+                        <div className="flex items-center justify-between">
                           <Label htmlFor="description">Campaign Description</Label>
-                          <Textarea
-                            id="description"
-                            placeholder="Promoting our Diwali discounts on home decor products in Chennai."
-                            value={adFormData.description}
-                            onChange={(e) => setAdFormData({ ...adFormData, description: e.target.value })}
-                            rows={4}
-                            className="mt-2"
+                          {/* NEW: Mic button for Tamil speech → text */}
+                          <MicRecorder
+                            onText={(chunk) => setAdFormData((p) => ({ ...p, description: (p.description ? p.description + " " : "") + chunk }))}
+                            lang="ta-IN"
+                            small
                           />
                         </div>
+                        <Textarea
+                          id="description"
+                          placeholder="Promoting our Diwali discounts on home decor products in Chennai."
+                          value={adFormData.description}
+                          onChange={(e) => setAdFormData({ ...adFormData, description: e.target.value })}
+                          rows={4}
+                          className="mt-2"
+                        />
 
                         <div>
                           <Button
@@ -1877,13 +1971,31 @@ const CampaignCreate: React.FC = () => {
                                 className="mt-2"
                               />
                               <div className="flex gap-2 mt-2">
-                                <Button onClick={async () => { if (!generationPrompt) setGenerationPrompt(buildPromptClient(adFormData)); await handleGenerateCampaign(); }} disabled={generating}>
+                                <Button
+                                  onClick={async () => {
+                                    if (!generationPrompt) setGenerationPrompt(buildPromptClient(adFormData));
+                                    await handleGenerateCampaign();
+                                  }}
+                                  disabled={generating}
+                                >
                                   {generating ? "Generating..." : "Generate & Preview"}
                                 </Button>
-                                <Button variant="outline" onClick={() => { handleGenerateCampaign({ promptOverride: generationPrompt || buildPromptClient(adFormData) }); }}>
+                                <Button
+                                  variant="outline"
+                                  onClick={() => {
+                                    // Regenerate should also respect translation (handled in handleGenerateCampaign)
+                                    handleGenerateCampaign({ promptOverride: generationPrompt || buildPromptClient(adFormData) });
+                                  }}
+                                >
                                   Regenerate
                                 </Button>
-                                <Button onClick={() => { const p = buildPromptClient(adFormData); setGenerationPrompt(p); toast.success("Prompt reset to auto-generated version"); }}>
+                                <Button
+                                  onClick={() => {
+                                    const p = buildPromptClient(adFormData);
+                                    setGenerationPrompt(p);
+                                    toast.success("Prompt reset to auto-generated version");
+                                  }}
+                                >
                                   Reset Prompt
                                 </Button>
                               </div>
@@ -1899,26 +2011,30 @@ const CampaignCreate: React.FC = () => {
                                     {/* eslint-disable-next-line @next/next/no-img-element */}
                                     <img src={generatedImages[0]} alt="generated" className="w-full h-64 object-contain rounded" />
                                     <div className="mt-3 flex gap-2">
-                                      <Button onClick={async () => {
-                                        try {
-                                          if (generatedImages[0].startsWith("data:")) {
-                                            const blob = dataURLtoBlob(generatedImages[0]);
-                                            const key = `generated_${Date.now()}`;
-                                            await idbPut(key, blob);
-                                            toast.success("Saved generated image to IndexedDB (preview key).");
-                                          } else {
-                                            const a = document.createElement("a");
-                                            a.href = generatedImages[0];
-                                            a.download = `generated_${Date.now()}.png`;
-                                            document.body.appendChild(a);
-                                            a.click();
-                                            a.remove();
+                                      <Button
+                                        onClick={async () => {
+                                          try {
+                                            if (generatedImages[0].startsWith("data:")) {
+                                              const blob = dataURLtoBlob(generatedImages[0]);
+                                              const key = `generated_${Date.now()}`;
+                                              await idbPut(key, blob);
+                                              toast.success("Saved generated image to IndexedDB (preview key).");
+                                            } else {
+                                              const a = document.createElement("a");
+                                              a.href = generatedImages[0];
+                                              a.download = `generated_${Date.now()}.png`;
+                                              document.body.appendChild(a);
+                                              a.click();
+                                              a.remove();
+                                            }
+                                          } catch (e) {
+                                            console.warn("save image failed", e);
+                                            toast.error("Save failed");
                                           }
-                                        } catch (e) {
-                                          console.warn("save image failed", e);
-                                          toast.error("Save failed");
-                                        }
-                                      }}>Download</Button>
+                                        }}
+                                      >
+                                        Download
+                                      </Button>
                                       <Button variant="outline" onClick={() => publishCampaignOnly()}>Publish Campaign</Button>
                                       <Button onClick={() => postAdToFacebook()} disabled={postingNow}>
                                         {postingNow ? "Posting…" : "Post Ad in Facebook"}
@@ -2094,17 +2210,23 @@ const CampaignCreate: React.FC = () => {
 
                     {step === 3 && (
                       <div className="space-y-6">
-                        <div>
+                        <div className="flex items-center justify-between">
                           <Label htmlFor="prompt">Describe your post or campaign idea</Label>
-                          <Textarea
-                            id="prompt"
-                            placeholder="Create an engaging post about our new summer collection launch. Focus on vibrant colors and beach vibes..."
-                            value={postFormData.prompt}
-                            onChange={(e) => setPostFormData({ ...postFormData, prompt: e.target.value })}
-                            rows={6}
-                            className="mt-2"
+                          {/* NEW: Mic for Tamil speech → text */}
+                          <MicRecorder
+                            onText={(chunk) => setPostFormData((p) => ({ ...p, prompt: (p.prompt ? p.prompt + " " : "") + chunk }))}
+                            lang="ta-IN"
+                            small
                           />
                         </div>
+                        <Textarea
+                          id="prompt"
+                          placeholder="Create an engaging post about our new summer collection launch. Focus on vibrant colors and beach vibes..."
+                          value={postFormData.prompt}
+                          onChange={(e) => setPostFormData({ ...postFormData, prompt: e.target.value })}
+                          rows={6}
+                          className="mt-2"
+                        />
 
                         <div className="flex items-center justify-between">
                           <Label>Generate multiple versions</Label>
@@ -2149,7 +2271,7 @@ const CampaignCreate: React.FC = () => {
                           </div>
                         </div>
 
-                        {/* NEW: Post Review & Generate area */}
+                        {/* Post Review & Generate */}
                         <div className="p-6 bg-primary/5 rounded-xl border border-primary/20">
                           <h4 className="font-semibold mb-3">Post Preview & Publish</h4>
 
@@ -2166,10 +2288,21 @@ const CampaignCreate: React.FC = () => {
                                 <Button onClick={() => { setPostGenerationPrompt(postFormData.prompt || `Create a social post for ${postFormData.postName || "my brand"}`); toast.success("Prompt initialized"); }}>
                                   Init Prompt
                                 </Button>
-                                <Button onClick={() => generatePostImage(postGenerationPrompt || undefined)} disabled={isGeneratingPostImage}>
+                                <Button
+                                  onClick={() => generatePostImage(postGenerationPrompt || undefined)}
+                                  disabled={isGeneratingPostImage}
+                                >
                                   {isGeneratingPostImage ? "Generating…" : "Generate & Review"}
                                 </Button>
-                                <Button variant="outline" onClick={() => { setPostGenerationPrompt(""); setGeneratedPostImage(null); setGeneratedPostImageKey(null); try { sessionStorage.removeItem("preview"); } catch (e) { } }}>
+                                <Button
+                                  variant="outline"
+                                  onClick={() => {
+                                    setPostGenerationPrompt("");
+                                    setGeneratedPostImage(null);
+                                    setGeneratedPostImageKey(null);
+                                    try { sessionStorage.removeItem("preview"); } catch (e) { }
+                                  }}
+                                >
                                   Clear
                                 </Button>
                               </div>

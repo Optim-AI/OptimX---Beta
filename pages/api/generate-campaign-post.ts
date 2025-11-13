@@ -4,12 +4,13 @@ import axios from "axios";
 import sharp from "sharp";
 import { supabaseAdmin } from "../../lib/supabaseClient";
 
-const LEO_API_KEY = process.env.LEO_API_KEY;
-const LEONARDO_MODEL_ID = process.env.LEONARDO_MODEL_ID || "de7d3faf-762f-48e0-b3b7-9d0ac3a3fcf3";
-const LEO_BASE = "https://cloud.leonardo.ai/api/rest/v1";
+const NANO_API_KEY = process.env.NANO_API_KEY;
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash-image";
+const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
 
-if (!LEO_API_KEY) console.warn("LEO_API_KEY not set");
+if (!NANO_API_KEY) console.warn("NANO_API_KEY not set");
 
+/* --------------------- helpers --------------------- */
 function dataUrlToBuffer(dataUrl: string) {
   const m = dataUrl.match(/^data:(.+);base64,(.+)$/);
   if (!m) throw new Error("Invalid data URL");
@@ -29,6 +30,7 @@ async function uploadBufferToSupabase(buffer: Buffer, path: string, contentType 
   return (data as any)?.publicUrl ?? null;
 }
 
+/** Search for any data: or url image strings anywhere in an object (fallback) */
 function findImageReference(obj: any): { kind: "data" | "url" | null; value: string | null } {
   if (!obj || typeof obj !== "object") return { kind: null, value: null };
   for (const k of Object.keys(obj)) {
@@ -36,6 +38,7 @@ function findImageReference(obj: any): { kind: "data" | "url" | null; value: str
     if (typeof v === "string") {
       if (v.startsWith("data:")) return { kind: "data", value: v };
       if (/^https?:\/\//.test(v) && /\.(png|jpe?g|webp|gif)(\?.*)?$/i.test(v)) return { kind: "url", value: v };
+      // generic url likely pointing to generated image location
       if (/^https?:\/\//.test(v) && (v.includes("/outputs/") || v.includes("/generated/") || v.includes("/images/"))) return { kind: "url", value: v };
     } else if (Array.isArray(v)) {
       for (const el of v) {
@@ -57,7 +60,7 @@ function findImageReference(obj: any): { kind: "data" | "url" | null; value: str
 
 function buildPromptFromPostInputs(body: any) {
   const parts: string[] = [];
-  parts.push("Create a single, high-quality social media image suitable for feed (1080x1080).");
+  parts.push("Create a single, high-quality social media image suitable for feed (square composition preferred).");
   if (body.postName) parts.push(`Post name: ${body.postName}`);
   if (body.brandName) parts.push(`Brand: ${body.brandName}`);
   if (body.prompt) parts.push(`Brief: ${body.prompt}`);
@@ -67,6 +70,59 @@ function buildPromptFromPostInputs(body: any) {
   return parts.join("\n\n");
 }
 
+/** Extract image from Gemini response (common shapes) */
+function extractImageFromGeminiResponse(respJson: any): { kind: "inline" | "url" | null; data?: string; url?: string } {
+  try {
+    // Preferred path: response.candidates[0].content.parts[*].inline_data.data (or response.parts in SDK)
+    const candidates = respJson?.response?.candidates ?? respJson?.candidates ?? respJson?.result?.candidates ?? respJson?.parts ?? null;
+    if (Array.isArray(candidates) && candidates.length > 0) {
+      // candidates can be array of objects with content.parts
+      for (const c of candidates) {
+        const parts = c?.content?.parts ?? c?.content ?? c?.parts ?? null;
+        if (Array.isArray(parts)) {
+          for (const p of parts) {
+            // inline_data.data -> base64
+            if (p?.inline_data?.data) return { kind: "inline", data: p.inline_data.data };
+            // older/other shape: inlineData / inlineData.data
+            if (p?.inlineData?.data) return { kind: "inline", data: p.inlineData.data };
+            // files array: files[0].data or files[0].uri
+            if (p?.files && Array.isArray(p.files) && p.files.length > 0) {
+              const f = p.files[0];
+              if (f?.data) return { kind: "inline", data: f.data };
+              if (f?.uri) return { kind: "url", url: f.uri };
+            }
+            // top-level data field (some REST responses include "data": "<base64>")
+            if (p?.data && typeof p.data === "string") {
+              const s = p.data;
+              if (s.startsWith("data:")) return { kind: "inline", data: s };
+              // maybe raw base64
+              return { kind: "inline", data: s };
+            }
+          }
+        }
+      }
+    }
+
+    // fallback to top-level arrays like outputs/files/images
+    const topFiles = respJson?.files ?? respJson?.outputs ?? respJson?.generated_images ?? respJson?.images;
+    if (Array.isArray(topFiles) && topFiles.length > 0) {
+      const f = topFiles[0];
+      if (typeof f === "string") {
+        if (f.startsWith("data:")) return { kind: "inline", data: f };
+        if (f.startsWith("http")) return { kind: "url", url: f };
+      } else if (f?.data) {
+        return { kind: "inline", data: f.data };
+      } else if (f?.uri) {
+        return { kind: "url", url: f.uri };
+      }
+    }
+  } catch (e) {
+    // swallow
+  }
+  return { kind: null };
+}
+
+/* --------------------- handler --------------------- */
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") { res.setHeader("Allow", "POST"); return res.status(405).json({ ok: false, error: "Method not allowed" }); }
   try {
@@ -74,9 +130,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const { postName, brandName, prompt, hashtags, tone, logoDataUrl, target = { width: 1080, height: 1080 } } = body;
 
     if (!prompt && !postName) return res.status(400).json({ ok: false, error: "Missing prompt or postName" });
-    if (!LEO_API_KEY) return res.status(500).json({ ok: false, error: "Server missing LEO_API_KEY" });
+    if (!NANO_API_KEY) return res.status(500).json({ ok: false, error: "Server missing NANO_API_KEY" });
 
-    // if logoDataUrl provided as data:, upload so Leonardo can reference public url
+    // Upload logo dataURL (if provided) so Gemini can reference public URL during generation or for watermarking later
     let logoPublicUrl: string | null = null;
     if (logoDataUrl && typeof logoDataUrl === "string" && logoDataUrl.startsWith("data:")) {
       try {
@@ -93,88 +149,126 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // build prompt
     const finalPrompt = buildPromptFromPostInputs({ ...merged, prompt });
 
-    const width = Number(target?.width || 1080);
-    const height = Number(target?.height || 1080);
+    // Determine aspect ratio for Gemini (Gemini supports specific aspect ratios; doc maps ratio -> px).
+    // We prefer square for 1080x1080 target -> '1:1'
+    const w = Number(target?.width || 1080);
+    const h = Number(target?.height || 1080);
+    let aspectRatio = "1:1";
+    if (w && h) {
+      const ratio = Math.round((w / h) * 1000) / 1000;
+      // basic mapping to common allowed aspect ratios supported by Gemini (use nearest):
+      const candidates = ["1:1","2:3","3:2","3:4","4:3","4:5","5:4","9:16","16:9","21:9"];
+      // map candidate -> numeric
+      const numMap: Record<string, number> = {
+        "1:1": 1.0, "2:3": 0.6667, "3:2": 1.5, "3:4": 0.75, "4:3": 1.3333,
+        "4:5": 0.8, "5:4": 1.25, "9:16": 0.5625, "16:9": 1.7778, "21:9": 2.3333
+      };
+      let best = "1:1";
+      let bestDiff = Math.abs(numMap[best] - ratio);
+      for (const c of candidates) {
+        const d = Math.abs(numMap[c] - ratio);
+        if (d < bestDiff) { best = c; bestDiff = d; }
+      }
+      aspectRatio = best;
+    }
 
-    const createPayload: any = {
-      modelId: LEONARDO_MODEL_ID,
-      prompt: finalPrompt,
-      width,
-      height,
-      num_images: 1,
-      alchemy: false,
-      ultra: false,
+    // Build Gemini REST payload using correct fields:
+    // generationConfig (REST examples show "generationConfig") with imageConfig.aspectRatio.
+    const payload: any = {
+      contents: [
+        {
+          parts: [
+            {
+              text: finalPrompt,
+            },
+          ],
+        },
+      ],
+      generationConfig: {
+        // ask for image output only (or include "Text" if you want interleaved text)
+        responseModalities: ["Image"],
+        // specify only aspectRatio (Gemini will pick a supported pixel size for that ratio)
+        imageConfig: {
+          aspectRatio,
+        },
+        // return 1 candidate
+        candidateCount: 1,
+      },
     };
 
-    const headers = { accept: "application/json", "content-type": "application/json", authorization: `Bearer ${LEO_API_KEY}` };
+    const url = `${GEMINI_BASE}/${encodeURIComponent(GEMINI_MODEL)}:generateContent`;
+    const headers = {
+      "content-type": "application/json",
+      "x-goog-api-key": NANO_API_KEY, // many examples use this header for developer API keys
+      accept: "application/json",
+    };
 
-    const createResp = await axios.post(`${LEO_BASE}/generations`, createPayload, { headers }).catch((err) => {
+    const createResp = await axios.post(url, payload, { headers }).catch((err) => {
       const r = err.response?.data ?? err.message;
-      console.error("Leonardo create error", r);
-      throw new Error(`Leonardo create failed: ${JSON.stringify(r)}`);
+      console.error("Gemini create error", r);
+      throw new Error(`Gemini create failed: ${JSON.stringify(r)}`);
     });
 
     const createJson = createResp.data;
-    const genId = createJson?.sdGenerationJob?.generationId ?? createJson?.id ?? createJson?.data?.id ?? null;
 
-    async function tryExtract(obj: any) {
-      const found = findImageReference(obj);
-      if (found && found.value) {
-        if (found.kind === "data") return { buffer: dataUrlToBuffer(found.value), src: found.value };
-        if (found.kind === "url") {
-          const b = await fetchUrlToBuffer(found.value);
-          return { buffer: b, src: found.value };
-        }
-      }
-      return null;
-    }
-
+    // Try to extract image from response (several shapes are possible)
     let imageBuffer: Buffer | null = null;
     let foundSrc: string | null = null;
 
-    const direct = await tryExtract(createJson);
-    if (direct) { imageBuffer = direct.buffer; foundSrc = direct.src!; }
-
-    if (!imageBuffer) {
-      if (!genId) return res.status(500).json({ ok: false, error: "No generation id and no image returned", rawLeonardoResponse: createJson });
-
-      const pollUrl = `${LEO_BASE}/generations/${encodeURIComponent(genId)}`;
-      const start = Date.now();
-      const timeoutMs = 60_000;
-      const pollInterval = 1500;
-      let lastRespJson: any = null;
-
-      while (Date.now() - start < timeoutMs) {
-        const pollResp = await axios.get(pollUrl, { headers }).catch((e) => { console.warn("poll error", e?.response?.data ?? e.message); return null; });
-        if (!pollResp) { await new Promise((r) => setTimeout(r, pollInterval)); continue; }
-        lastRespJson = pollResp.data;
-        const ext = await tryExtract(lastRespJson);
-        if (ext) { imageBuffer = ext.buffer; foundSrc = ext.src!; break; }
-
-        const alt = lastRespJson?.generated_images ?? lastRespJson?.outputs ?? lastRespJson?.result ?? lastRespJson?.data ?? lastRespJson;
-        const ext2 = await tryExtract(alt);
-        if (ext2) { imageBuffer = ext2.buffer; foundSrc = ext2.src!; break; }
-
-        const status = lastRespJson?.status ?? lastRespJson?.state ?? null;
-        if (status && typeof status === "string" && /fail|error/i.test(String(status))) {
-          console.error("Leonardo status indicates failure:", status, lastRespJson);
-          return res.status(500).json({ ok: false, error: "Leonardo generation failed", rawLeonardoResponse: lastRespJson });
-        }
-        await new Promise((r) => setTimeout(r, pollInterval));
+    // Preferred extraction
+    const extracted = extractImageFromGeminiResponse(createJson);
+    if (extracted.kind === "inline" && extracted.data) {
+      // extracted.data could be entire data-url or raw base64
+      const maybe = extracted.data;
+      if (maybe.startsWith("data:")) {
+        imageBuffer = dataUrlToBuffer(maybe);
+        foundSrc = maybe;
+      } else {
+        // treat as base64
+        imageBuffer = Buffer.from(maybe, "base64");
+        foundSrc = `data:image/png;base64,${maybe}`;
       }
-
-      if (!imageBuffer) return res.status(500).json({ ok: false, error: "No image returned from Leonardo (unable to extract).", rawLeonardoResponse: lastRespJson ?? createJson });
+    } else if (extracted.kind === "url" && extracted.url) {
+      try {
+        imageBuffer = await fetchUrlToBuffer(extracted.url);
+        foundSrc = extracted.url;
+      } catch (e) {
+        console.warn("Failed to fetch image url from Gemini response", e);
+      }
     }
 
-    // composite logo if provided (public URL)
+    // fallback generic search in response JSON
+    if (!imageBuffer) {
+      const direct = findImageReference(createJson);
+      if (direct && direct.value) {
+        if (direct.kind === "data") {
+          imageBuffer = dataUrlToBuffer(direct.value);
+          foundSrc = direct.value;
+        } else if (direct.kind === "url") {
+          try {
+            imageBuffer = await fetchUrlToBuffer(direct.value);
+            foundSrc = direct.value;
+          } catch (e) {
+            console.warn("Fallback fetch failed", e);
+          }
+        }
+      }
+    }
+
+    if (!imageBuffer) {
+      // give raw response for debugging to help adjust extractor
+      return res.status(500).json({ ok: false, error: "No image returned from Gemini (unable to extract).", rawGeminiResponse: createJson });
+    }
+
+    // Composite logo (if provided)
     let finalBuffer = imageBuffer!;
     const logoUrlToUse = merged.logoUrl ?? null;
     if (logoUrlToUse) {
       try {
         const logoBuf = await fetchUrlToBuffer(logoUrlToUse);
         const meta = await sharp(finalBuffer).metadata();
-        const gw = meta.width || width || 1080;
-        const gh = meta.height || height || 1080;
+        const gw = meta.width || 1024;
+        const gh = meta.height || 1024;
         const logoTargetWidth = Math.max(60, Math.round(gw * 0.12));
         const resizedLogo = await sharp(logoBuf).resize({ width: logoTargetWidth }).png().toBuffer();
         const logoMeta = await sharp(resizedLogo).metadata();
@@ -206,7 +300,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const dataUrl = `data:image/png;base64,${finalBuffer.toString("base64")}`;
 
-    // if caller asked for public saveTemp, upload and return public link
     if (body.saveTemp === true) {
       try {
         const path = `temp/generated_post_${Date.now()}.png`;
