@@ -4,14 +4,15 @@ import axios from "axios";
 import sharp from "sharp";
 import { supabaseAdmin } from "../../lib/supabaseClient"; // server admin client
 
-const LEO_API_KEY = process.env.LEO_API_KEY;
-const LEONARDO_MODEL_ID = process.env.LEONARDO_MODEL_ID || "16e7060a-803e-4df3-97ee-edcfa5dc9cc8";
-const LEO_BASE = "https://cloud.leonardo.ai/api/rest/v1";
+const NANO_API_KEY = process.env.NANO_API_KEY;
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash-image";
+const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
 
-if (!LEO_API_KEY) {
-  console.warn("LEO_API_KEY not set - Leonardo calls will fail.");
+if (!NANO_API_KEY) {
+  console.warn("NANO_API_KEY not set - Gemini calls will fail.");
 }
 
+/** Helpers **/
 function dataUrlToBuffer(dataUrl: string) {
   const m = dataUrl.match(/^data:(.+);base64,(.+)$/);
   if (!m) throw new Error("Invalid data URL");
@@ -35,7 +36,7 @@ async function uploadBufferToSupabase(buffer: Buffer, path: string, contentType 
   return (data as any)?.publicUrl ?? null;
 }
 
-/** Find image reference (same robust helper you had) */
+/** Find image reference (data: or urls) anywhere in an object (fallback) */
 function findImageReference(obj: any): { kind: "data" | "url" | null; value: string | null } {
   if (!obj || typeof obj !== "object") return { kind: null, value: null };
   for (const k of Object.keys(obj)) {
@@ -62,15 +63,13 @@ function findImageReference(obj: any): { kind: "data" | "url" | null; value: str
   return { kind: null, value: null };
 }
 
-/** Build a detailed prompt using the new inputs from UI */
+/** Build a detailed prompt using your UI inputs */
 function buildPromptFromInputs(body: any) {
   const parts: string[] = [];
 
-  // generic
   if (body.mode === "post") parts.push("Create a social media post visual and short caption.");
   else parts.push("Create a high impact ad visual suitable for feed and story placements.");
 
-  // campaign/post fields
   if (body.campaignName) parts.push(`Campaign name: ${body.campaignName}`);
   if (body.postName) parts.push(`Post name: ${body.postName}`);
   if (body.objective) parts.push(`Objective: ${body.objective}`);
@@ -90,7 +89,6 @@ function buildPromptFromInputs(body: any) {
   if (body.budget) parts.push(`Budget: ${body.budget} (${body.budgetType || "daily"})`);
   if (body.startDate || body.endDate) parts.push(`Schedule: ${body.startDate || "start"} → ${body.endDate || "end"}`);
 
-  // assets
   const refUrls = Array.isArray(body.refUrls) ? body.refUrls : body.aiCustomization?.refUrls ?? [];
   if (refUrls && refUrls.length) {
     parts.push(`Reference images: ${refUrls.join(", ")}. Use them as style reference — do not copy copyrighted elements exactly.`);
@@ -100,7 +98,6 @@ function buildPromptFromInputs(body: any) {
     parts.push(`Use brand logo (placed bottom-right with padding).`);
   }
 
-  // final instruction
   const width = body.target?.width || 1080;
   const height = body.target?.height || 1080;
   parts.push(`Produce a clear, high-quality visual sized approximately ${width}×${height}. Center composition with negative space for headline / CTA.`);
@@ -108,6 +105,88 @@ function buildPromptFromInputs(body: any) {
   return parts.filter(Boolean).join("\n\n");
 }
 
+/** Extract image from Gemini response (common shapes) */
+function extractImageFromGeminiResponse(respJson: any): { kind: "inline" | "url" | null; data?: string; url?: string } {
+  try {
+    // candidates path: response.candidates[*].content.parts[*]
+    const candidates = respJson?.response?.candidates ?? respJson?.candidates ?? respJson?.result?.candidates ?? respJson?.parts ?? null;
+    if (Array.isArray(candidates) && candidates.length > 0) {
+      for (const c of candidates) {
+        const parts = c?.content?.parts ?? c?.content ?? c?.parts ?? null;
+        if (Array.isArray(parts)) {
+          for (const p of parts) {
+            if (p?.inline_data?.data) return { kind: "inline", data: p.inline_data.data };
+            if (p?.inlineData?.data) return { kind: "inline", data: p.inlineData.data };
+            if (p?.files && Array.isArray(p.files) && p.files.length > 0) {
+              const f = p.files[0];
+              if (f?.data) return { kind: "inline", data: f.data };
+              if (f?.uri) return { kind: "url", url: f.uri };
+            }
+            if (p?.data && typeof p.data === "string") {
+              const s = p.data;
+              if (s.startsWith("data:")) return { kind: "inline", data: s };
+              return { kind: "inline", data: s };
+            }
+          }
+        }
+      }
+    }
+
+    const topFiles = respJson?.files ?? respJson?.outputs ?? respJson?.generated_images ?? respJson?.images;
+    if (Array.isArray(topFiles) && topFiles.length > 0) {
+      const f = topFiles[0];
+      if (typeof f === "string") {
+        if (f.startsWith("data:")) return { kind: "inline", data: f };
+        if (f.startsWith("http")) return { kind: "url", url: f };
+      } else if (f?.data) {
+        return { kind: "inline", data: f.data };
+      } else if (f?.uri) {
+        return { kind: "url", url: f.uri };
+      }
+    }
+  } catch (e) {
+    // ignore
+  }
+  return { kind: null };
+}
+
+/** Attempt to get user from Authorization header (Bearer token) **/
+async function getUserFromAuthHeader(req: NextApiRequest) {
+  try {
+    const auth = (req.headers.authorization || req.headers.Authorization) as string | undefined;
+    if (!auth) return { user: null, token: null };
+    const m = auth.match(/Bearer\s+(.+)/i);
+    const token = m ? m[1] : auth;
+    if (!token) return { user: null, token: null };
+
+    // Try both common shapes — supabase JS v2 accepts { access_token }
+    try {
+      // @ts-ignore - supabaseAdmin.auth.getUser may require different shapes depending on SDK version
+      const { data } = await supabaseAdmin.auth.getUser(token);
+      if ((data as any)?.user) return { user: (data as any).user, token };
+    } catch (e) {
+      // fallback to object shape
+      try {
+        // @ts-ignore
+        const { data } = await supabaseAdmin.auth.getUser({ access_token: token });
+        if ((data as any)?.user) return { user: (data as any).user, token };
+      } catch (e2) {
+        // final fallback - try admin.api.getUser? ignore error
+        try {
+          // @ts-ignore
+          const { data } = await (supabaseAdmin.auth as any).getUser?.({ access_token: token });
+          if ((data as any)?.user) return { user: (data as any).user, token };
+        } catch {}
+      }
+    }
+    return { user: null, token };
+  } catch (e) {
+    console.warn("getUserFromAuthHeader error", e);
+    return { user: null, token: null };
+  }
+}
+
+/** Main handler **/
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
@@ -117,21 +196,53 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     const body = req.body ?? {};
 
+    // Attempt to identify user from Authorization header
+    const { user, token } = await getUserFromAuthHeader(req);
+
+    if (!user || !user.id) {
+      // Require signed-in user to consume credits
+      return res.status(401).json({ ok: false, error: "Authentication required. Please sign in." });
+    }
+
+    // Check credits
+    const { data: creditRow, error: creditError } = await supabaseAdmin
+      .from("user_credits")
+      .select("credits")
+      .eq("id", user.id)
+      .single();
+
+    if (creditError && creditError.code !== "PGRST116") {
+      // PGRST116 = no rows? (PostgREST code varies), but just log other errors
+      console.warn("user_credits lookup error", creditError);
+    }
+
+    const currentCredits = (creditRow && (creditRow as any).credits !== undefined) ? Number((creditRow as any).credits) : null;
+
+    if (currentCredits === null) {
+      // If no row exists, treat as zero credits (or you can choose to create default)
+      return res.status(402).json({ ok: false, error: "No credits found for user. Please purchase credits." });
+    }
+
+    if (currentCredits <= 0) {
+      return res.status(402).json({ ok: false, error: "No credits available. Please buy new credits to generate images." });
+    }
+
+    // --- continue with your existing generation logic ---
     const {
       vision,
       target = { width: 1080, height: 1080 },
       logoDataUrl,
       refDataUrls = [],
       aiCustomization = {},
-      // plus all the new inputs from client (campaignName, brandName, description, etc.)
+      // other UI fields are read inside buildPromptFromInputs
     } = body;
 
     if (!vision && !body.description && !body.prompt) {
       return res.status(400).json({ ok: false, error: "Missing vision/description/prompt" });
     }
-    if (!LEO_API_KEY) return res.status(500).json({ ok: false, error: "Server missing LEO_API_KEY" });
+    if (!NANO_API_KEY) return res.status(500).json({ ok: false, error: "Server missing NANO_API_KEY" });
 
-    // 1) upload any inline data-urls we received (logo/ref) so Leonardo can access them if needed
+    // 1) upload inline logo/ref images to Supabase so Gemini can reference them (public URLs)
     let logoPublicUrl: string | null = null;
     if (logoDataUrl && typeof logoDataUrl === "string" && logoDataUrl.startsWith("data:")) {
       try {
@@ -174,118 +285,111 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       refUrls: refPublicUrls.length ? refPublicUrls : aiCustomization?.refUrls ?? [],
     };
 
-    // Build prompt using all inputs
+    // Build prompt
     const prompt = buildPromptFromInputs({ ...body, vision, aiCustomization: mergedAi, target });
 
-    // Leonardo generate payload
+    // map target width/height to an aspect ratio supported by Gemini
     const targetW = Number(target?.width || 1080);
     const targetH = Number(target?.height || 1080);
+    let aspectRatio = "1:1"; // default
+    if (targetW && targetH) {
+      const ratio = Math.round((targetW / targetH) * 1000) / 1000;
+      const candidates = ["1:1","2:3","3:2","3:4","4:3","4:5","5:4","9:16","16:9","21:9"];
+      const numMap: Record<string, number> = {
+        "1:1": 1.0, "2:3": 0.6667, "3:2": 1.5, "3:4": 0.75, "4:3": 1.3333,
+        "4:5": 0.8, "5:4": 1.25, "9:16": 0.5625, "16:9": 1.7778, "21:9": 2.3333
+      };
+      let best = "1:1";
+      let bestDiff = Math.abs(numMap[best] - ratio);
+      for (const c of candidates) {
+        const d = Math.abs(numMap[c] - ratio);
+        if (d < bestDiff) { best = c; bestDiff = d; }
+      }
+      aspectRatio = best;
+    }
 
-    const createPayload: any = {
-      modelId: LEONARDO_MODEL_ID,
-      prompt,
-      width: targetW,
-      height: targetH,
-      num_images: 1,
-      alchemy: false,
-      ultra: false,
+    // Build Gemini payload (correct REST shape — imageConfig uses aspectRatio)
+    const payload: any = {
+      contents: [
+        {
+          parts: [
+            { text: prompt },
+          ],
+        },
+      ],
+      generationConfig: {
+        responseModalities: ["Image"],
+        imageConfig: {
+          aspectRatio,
+        },
+        candidateCount: 1,
+      },
     };
 
-    if (mergedAi.styleUUID) createPayload.styleUUID = mergedAi.styleUUID;
-
-    const headers = {
-      accept: "application/json",
+    const url = `${GEMINI_BASE}/${encodeURIComponent(GEMINI_MODEL)}:generateContent`;
+    const headers: Record<string, string> = {
       "content-type": "application/json",
-      authorization: `Bearer ${LEO_API_KEY}`,
+      accept: "application/json",
+      // Most examples use x-goog-api-key for a developer API key:
+      "x-goog-api-key": NANO_API_KEY,
     };
+    // If your key is a bearer token, replace above with:
+    // headers["Authorization"] = `Bearer ${NANO_API_KEY}`; delete headers["x-goog-api-key"];
 
-    // create generation
-    const createResp = await axios.post(`${LEO_BASE}/generations`, createPayload, { headers }).catch((err) => {
+    // Call Gemini
+    const createResp = await axios.post(url, payload, { headers }).catch((err) => {
       const r = err.response?.data ?? err.message;
-      console.error("Leonardo create error", r);
-      throw new Error(`Leonardo create failed: ${JSON.stringify(r)}`);
+      console.error("Gemini create error", r);
+      throw new Error(`Gemini create failed: ${JSON.stringify(r)}`);
     });
 
     const createJson = createResp.data;
-    const genId = createJson?.sdGenerationJob?.generationId ?? createJson?.id ?? createJson?.data?.id ?? null;
 
-    // helper to extract image buffer from response shapes
-    async function tryExtract(obj: any) {
-      const found = findImageReference(obj);
-      if (found && found.value) {
-        if (found.kind === "data") return { buffer: dataUrlToBuffer(found.value), src: found.value };
-        if (found.kind === "url") {
-          const b = await fetchUrlToBuffer(found.value);
-          return { buffer: b, src: found.value };
-        }
-      }
-      return null;
-    }
-
+    // Try extracting image buffer
     let imageBuffer: Buffer | null = null;
     let foundSrc: string | null = null;
 
-    const direct = await tryExtract(createJson);
-    if (direct) {
-      imageBuffer = direct.buffer;
-      foundSrc = direct.src!;
+    // 1) Preferred extractor
+    const extracted = extractImageFromGeminiResponse(createJson);
+    if (extracted.kind === "inline" && extracted.data) {
+      const maybe = extracted.data;
+      if (typeof maybe === "string" && maybe.startsWith("data:")) {
+        imageBuffer = dataUrlToBuffer(maybe);
+        foundSrc = maybe;
+      } else {
+        // raw base64 or raw base64-like string
+        imageBuffer = Buffer.from(maybe, "base64");
+        foundSrc = `data:image/png;base64,${maybe}`;
+      }
+    } else if (extracted.kind === "url" && extracted.url) {
+      try {
+        imageBuffer = await fetchUrlToBuffer(extracted.url);
+        foundSrc = extracted.url;
+      } catch (e) {
+        console.warn("Failed to fetch image url from Gemini response", e);
+      }
+    }
+
+    // 2) fallback generic search
+    if (!imageBuffer) {
+      const direct = findImageReference(createJson);
+      if (direct && direct.value) {
+        if (direct.kind === "data") {
+          imageBuffer = dataUrlToBuffer(direct.value);
+          foundSrc = direct.value;
+        } else if (direct.kind === "url") {
+          try {
+            imageBuffer = await fetchUrlToBuffer(direct.value);
+            foundSrc = direct.value;
+          } catch (e) {
+            console.warn("Fallback fetch failed", e);
+          }
+        }
+      }
     }
 
     if (!imageBuffer) {
-      if (!genId) {
-        console.error("createJson has no generation id and no direct image", createJson);
-        return res.status(500).json({ ok: false, error: "No generation id and no image returned", rawLeonardoResponse: createJson });
-      }
-
-      const pollUrl = `${LEO_BASE}/generations/${encodeURIComponent(genId)}`;
-      const start = Date.now();
-      const timeoutMs = 60_000;
-      const pollInterval = 1500;
-      let lastRespJson: any = null;
-
-      while (Date.now() - start < timeoutMs) {
-        const pollResp = await axios.get(pollUrl, { headers }).catch((e) => {
-          console.warn("poll error", e?.response?.data ?? e.message);
-          return null;
-        });
-        if (!pollResp) {
-          await new Promise((r) => setTimeout(r, pollInterval));
-          continue;
-        }
-        lastRespJson = pollResp.data;
-
-        const ext = await tryExtract(lastRespJson);
-        if (ext) {
-          imageBuffer = ext.buffer;
-          foundSrc = ext.src!;
-          break;
-        }
-
-        const alt = lastRespJson?.generated_images ?? lastRespJson?.outputs ?? lastRespJson?.result ?? lastRespJson?.data ?? lastRespJson;
-        const ext2 = await tryExtract(alt);
-        if (ext2) {
-          imageBuffer = ext2.buffer;
-          foundSrc = ext2.src!;
-          break;
-        }
-
-        const status = lastRespJson?.status ?? lastRespJson?.state ?? null;
-        if (status && typeof status === "string" && /fail|error/i.test(String(status))) {
-          console.error("Leonardo status indicates failure:", status, lastRespJson);
-          return res.status(500).json({ ok: false, error: "Leonardo generation failed", rawLeonardoResponse: lastRespJson });
-        }
-
-        await new Promise((r) => setTimeout(r, pollInterval));
-      }
-
-      if (!imageBuffer) {
-        console.error("Polling finished but no image found", lastRespJson ?? createJson);
-        return res.status(500).json({
-          ok: false,
-          error: "No image returned from Leonardo (unable to extract).",
-          rawLeonardoResponse: lastRespJson ?? createJson,
-        });
-      }
+      return res.status(500).json({ ok: false, error: "No image returned from Gemini (unable to extract).", rawGeminiResponse: createJson });
     }
 
     // Composite logo (if we have a public URL)
@@ -295,8 +399,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       try {
         const logoBuf = await fetchUrlToBuffer(logoUrlToUse);
         const meta = await sharp(finalBuffer).metadata();
-        const gw = meta.width || targetW || 1080;
-        const gh = meta.height || targetH || 1080;
+        const gw = meta.width || targetW || 1024;
+        const gh = meta.height || targetH || 1024;
         const logoTargetWidth = Math.max(60, Math.round(gw * 0.15));
         const resizedLogo = await sharp(logoBuf).resize({ width: logoTargetWidth }).png().toBuffer();
         const logoMeta = await sharp(resizedLogo).metadata();
@@ -326,23 +430,55 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     }
 
-    // Return the data URL; client stores in IDB/session for preview & finalization
     const dataUrl = `data:image/png;base64,${finalBuffer.toString("base64")}`;
 
-    // Optionally: if caller asked for saving a temporary public copy, they could pass saveTemp: true
+    // After successful generation - consume 1 credit (best-effort)
+    let updatedCredits: number | null = null;
+    try {
+      // compute new credits value (simple subtract approach)
+      const newCredits = Math.max(0, (currentCredits ?? 0) - 1);
+      const { data: updatedRow, error: updateError } = await supabaseAdmin
+        .from("user_credits")
+        .update({ credits: newCredits })
+        .eq("id", user.id)
+        .select()
+        .single();
+
+      if (updateError) {
+        console.warn("Failed to update user_credits:", updateError);
+      } else if (updatedRow && (updatedRow as any).credits !== undefined) {
+        updatedCredits = Number((updatedRow as any).credits);
+      }
+    } catch (e) {
+      console.warn("Credit decrement failed", e);
+    }
+
+    // Optionally save temporary public copy
     if (body.saveTemp === true) {
       try {
-        const buf = finalBuffer;
         const path = `temp/generated_${Date.now()}.png`;
-        const publicUrl = await uploadBufferToSupabase(buf, path, "image/png");
-        return res.status(200).json({ ok: true, image: publicUrl ? publicUrl : dataUrl, images: [publicUrl ? publicUrl : dataUrl], dataUrl, savedPublicUrl: publicUrl ?? null });
+        const publicUrl = await uploadBufferToSupabase(finalBuffer, path, "image/png");
+        return res.status(200).json({
+          ok: true,
+          image: publicUrl ? publicUrl : dataUrl,
+          images: [publicUrl ? publicUrl : dataUrl],
+          dataUrl,
+          savedPublicUrl: publicUrl ?? null,
+          creditsRemaining: updatedCredits,
+          credits_depleted: updatedCredits !== null ? updatedCredits <= 0 : undefined,
+        });
       } catch (e) {
-        // ignore upload errors and return dataUrl
         console.warn("Temp upload failed", e);
       }
     }
 
-    return res.status(200).json({ ok: true, image: dataUrl, images: [dataUrl] });
+    return res.status(200).json({
+      ok: true,
+      image: dataUrl,
+      images: [dataUrl],
+      creditsRemaining: updatedCredits,
+      credits_depleted: updatedCredits !== null ? updatedCredits <= 0 : undefined,
+    });
   } catch (err: any) {
     console.error("Generation endpoint error:", err);
     const message = err?.message || String(err);
