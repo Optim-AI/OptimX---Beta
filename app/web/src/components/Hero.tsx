@@ -288,8 +288,8 @@ const Hero: React.FC = () => {
             <div className="flex flex-wrap gap-4 mb-8 justify-center lg:justify-start">
               {[
                 "Setup in 5 minutes",
-                "No credit card needed",
-                "14-day free trial",
+                "Cancel it anytime",
+                "7 days free trial",
               ].map((text, i) => (
                 <div
                   key={i}
@@ -365,7 +365,7 @@ const Hero: React.FC = () => {
                   ))}
                 </div>
                 <span style={{ color: colors.foreground, fontWeight: 600 }}>
-                  500+ businesses growing
+                  Many businesses growing
                 </span>
               </div>
 

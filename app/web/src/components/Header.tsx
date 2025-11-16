@@ -48,7 +48,7 @@ const Header: React.FC = () => {
       className="fixed top-0 w-full glass-header z-50 shadow-glow"
       style={{
         // color-only changes: use tokens for glass background and border
-        background: colors.glassBg,
+        background: "hsl(0 0% 99% / 2)",
         borderBottom: `1px solid ${colors.border}`,
         color: colors.foreground,
       }}

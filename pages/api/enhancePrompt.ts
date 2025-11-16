@@ -100,12 +100,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     // 2) Generate caption with Responses API
-    const systemInstruction = `You are a senior visual designer specializing in ad creatives. The user will give a short idea. Your job is to transform it into a detailed, production-ready prompt for high-quality poster generation. Think like a marketer: understand the intent, target audience, emotion, and call-to-action. Clearly describe the layout, subject focus, typography style, visual hierarchy, lighting, colors, mood, and overall composition of the poster. Make it conversion-focused and visually engaging. Do not add irrelevant objects. Output only the enhanced prompt with rich, precise visual details, not a caption or explanation.`;
+    const systemInstruction = `Provide enhanced AI prompt for this no captions and no hastag`;
 
     const response = await client.responses.create({
       model: "gpt-4o-mini", // change this if you use another model
       instructions: systemInstruction,
-      input: `User input: ${prompt}\n\nConstraints:\n- Keep under 2200 chars\n- Up to 2 hashtags\n- 1 CTA (short)\n- Use emojis sparingly`,
+      input: `User input: ${prompt}\n\nConstraints:\n- Keep under 2200 chars\n- enhance the prompt\n- Use emojis sparingly`,
       max_output_tokens: 200,
     });
 
