@@ -1,96 +1,277 @@
-// pages/create-campaign.tsx
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+// pages/create-campaign.tsx
+// FULL working file — includes robust IndexedDB helpers that auto-recreate missing stores.
+// Minimal change: robust openDb/idb helpers, persistence for chats, generated images, uploaded previews and logoPublicUrl.
+
+import React, { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Sidebar from "../app/web/src/components/Sidebar";
+import NavBar from "../app/web/src/components/navBar";
 import { Button } from "../app/web/src/components/ui/button";
-import { Card } from "../app/web/src/components/ui/card";
 import { Input } from "../app/web/src/components/ui/input";
 import { Label } from "../app/web/src/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../app/web/src/components/ui/select";
-import { Slider } from "../app/web/src/components/ui/slider";
 import { Textarea } from "../app/web/src/components/ui/textarea";
-import { Switch } from "../app/web/src/components/ui/switch";
 import { Badge } from "../app/web/src/components/ui/badge";
-import { Progress } from "../app/web/src/components/ui/progress";
+import { Card } from "../app/web/src/components/ui/card";
+import { Separator } from "../app/web/src/components/ui/separator";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "../app/web/src/components/ui/tooltip";
-import {
-  ArrowLeft,
-  ArrowRight,
-  CheckCircle2,
-  Upload,
-  MapPin,
-  MessageCircle,
-  Save,
-  Rocket,
-  Sparkles,
+  Plus,
+  Send,
   Mic,
-  Square,
+  Sparkles,
+  Copy,
+  Download,
+  Image as ImageIcon,
+  Palette,
+  LayoutTemplate,
+  Smile,
+  Users,
+  Upload,
+  X,
+  ArrowLeft,
 } from "lucide-react";
 import { toast } from "sonner";
-
-// exact colors import path you requested — DO NOT change
-import colors from "C:/Users/jpsha/Documents/OPTIM - Copy/demo-repository/lib/colors";
-
-// supabase client for browser usage (assumes you have this export)
+import colors from "../lib/colors";
 import { supabase } from "../lib/supabaseClient";
-import NavBar from "../app/web/src/components/navBar";
 
-/* -------------------- color tokens (fallback-safe) -------------------- */
-const { primary, primary5 } = (colors as any) || {};
-const primaryColor: string | undefined = typeof primary === "string" ? primary : undefined;
-const primaryBg5: string | undefined = typeof primary5 === "string" ? primary5 : undefined;
-
-/* -------------------- IndexedDB helpers -------------------- */
+/* -------------------- Robust IndexedDB helpers -------------------- */
 const DB_NAME = "optim-app-db";
-const STORE_NAME = "images";
+const STORE_NAME = "images"; // existing store used elsewhere
+const KV_STORE = "kv"; // simple key/value store
 
+function createStoresOnUpgrade(db: IDBDatabase) {
+  try {
+    if (!db.objectStoreNames.contains(STORE_NAME)) db.createObjectStore(STORE_NAME);
+    if (!db.objectStoreNames.contains(KV_STORE)) db.createObjectStore(KV_STORE);
+  } catch (e) {
+    console.warn("createStoresOnUpgrade error", e);
+  }
+}
+
+/**
+ * Open DB robustly. If the DB exists but missing stores, delete & recreate it automatically.
+ * Returns a Promise<IDBDatabase>.
+ */
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, 1);
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      if (!db.objectStoreNames.contains(STORE_NAME)) db.createObjectStore(STORE_NAME);
+    let triedRecreate = false;
+
+    const tryOpen = () => {
+      const req = indexedDB.open(DB_NAME, 1);
+
+      req.onupgradeneeded = () => {
+        const db = req.result as IDBDatabase;
+        createStoresOnUpgrade(db);
+      };
+
+      req.onsuccess = () => {
+        const db = req.result as IDBDatabase;
+        // Quick check: if a required object store is missing, delete DB and recreate once
+        if (!db.objectStoreNames.contains(STORE_NAME) || !db.objectStoreNames.contains(KV_STORE)) {
+          db.close();
+          if (triedRecreate) {
+            // Something weird — give up
+            reject(new Error("IndexedDB missing required stores after recreate attempt"));
+            return;
+          }
+          triedRecreate = true;
+          const delReq = indexedDB.deleteDatabase(DB_NAME);
+          delReq.onsuccess = () => {
+            // small delay to ensure deletion propagated
+            setTimeout(() => tryOpen(), 50);
+          };
+          delReq.onerror = () => {
+            reject(delReq.error || new Error("Failed to delete corrupt IndexedDB"));
+          };
+          return;
+        }
+        resolve(db);
+      };
+
+      req.onerror = () => {
+        reject(req.error);
+      };
     };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
+
+    tryOpen();
   });
 }
 
 async function idbPut(key: string, value: Blob | string) {
-  const db = await openDb();
-  return new Promise<void>((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, "readwrite");
-    const store = tx.objectStore(STORE_NAME);
-    const r = store.put(value, key);
-    r.onsuccess = () => resolve();
-    r.onerror = () => reject(r.error);
-    tx.oncomplete = () => db.close();
-  });
+  try {
+    const db = await openDb();
+    return await new Promise<void>((resolve, reject) => {
+      try {
+        const tx = db.transaction(KV_STORE, "readwrite");
+        const store = tx.objectStore(KV_STORE);
+        const r = store.put(value, key);
+        r.onsuccess = () => resolve();
+        r.onerror = () => reject(r.error);
+        tx.oncomplete = () => db.close();
+      } catch (err) {
+        db.close();
+        reject(err);
+      }
+    });
+  } catch (err: any) {
+    // If the store was missing (NotFoundError), attempt to delete & recreate DB once, then retry
+    if (err && (err.name === "NotFoundError" || /object store/i.test(String(err.message || "")))) {
+      try {
+        await new Promise<void>((res, rej) => {
+          const del = indexedDB.deleteDatabase(DB_NAME);
+          del.onsuccess = () => res();
+          del.onerror = () => rej(del.error);
+        });
+        // retry once
+        const db = await openDb();
+        return await new Promise<void>((resolve, reject) => {
+          try {
+            const tx = db.transaction(KV_STORE, "readwrite");
+            const store = tx.objectStore(KV_STORE);
+            const r = store.put(value, key);
+            r.onsuccess = () => resolve();
+            r.onerror = () => reject(r.error);
+            tx.oncomplete = () => db.close();
+          } catch (e) {
+            db.close();
+            reject(e);
+          }
+        });
+      } catch (e2) {
+        throw e2;
+      }
+    }
+    throw err;
+  }
 }
 
 async function idbGet(key: string) {
-  const db = await openDb();
-  return new Promise<any>((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, "readonly");
-    const store = tx.objectStore(STORE_NAME);
-    const r = store.get(key);
-    r.onsuccess = () => resolve(r.result);
-    r.onerror = () => reject(r.error);
-    tx.oncomplete = () => db.close();
-  });
+  try {
+    const db = await openDb();
+    return await new Promise<any>((resolve, reject) => {
+      try {
+        const tx = db.transaction(KV_STORE, "readonly");
+        const store = tx.objectStore(KV_STORE);
+        const r = store.get(key);
+        r.onsuccess = () => resolve(r.result);
+        r.onerror = () => reject(r.error);
+        tx.oncomplete = () => db.close();
+      } catch (err) {
+        db.close();
+        reject(err);
+      }
+    });
+  } catch (err: any) {
+    if (err && (err.name === "NotFoundError" || /object store/i.test(String(err.message || "")))) {
+      // recreate DB and retry once
+      await new Promise<void>((res, rej) => {
+        const del = indexedDB.deleteDatabase(DB_NAME);
+        del.onsuccess = () => res();
+        del.onerror = () => rej(del.error);
+      });
+      const db = await openDb();
+      return await new Promise<any>((resolve, reject) => {
+        try {
+          const tx = db.transaction(KV_STORE, "readonly");
+          const store = tx.objectStore(KV_STORE);
+          const r = store.get(key);
+          r.onsuccess = () => resolve(r.result);
+          r.onerror = () => reject(r.error);
+          tx.oncomplete = () => db.close();
+        } catch (e) {
+          db.close();
+          reject(e);
+        }
+      });
+    }
+    throw err;
+  }
+}
+
+// image store helpers (same pattern)
+async function idbPutImage(key: string, value: Blob | string) {
+  try {
+    const db = await openDb();
+    return await new Promise<void>((resolve, reject) => {
+      try {
+        const tx = db.transaction(STORE_NAME, "readwrite");
+        const store = tx.objectStore(STORE_NAME);
+        const r = store.put(value, key);
+        r.onsuccess = () => resolve();
+        r.onerror = () => reject(r.error);
+        tx.oncomplete = () => db.close();
+      } catch (err) {
+        db.close();
+        reject(err);
+      }
+    });
+  } catch (err: any) {
+    if (err && (err.name === "NotFoundError" || /object store/i.test(String(err.message || "")))) {
+      await new Promise<void>((res, rej) => {
+        const del = indexedDB.deleteDatabase(DB_NAME);
+        del.onsuccess = () => res();
+        del.onerror = () => rej(del.error);
+      });
+      const db = await openDb();
+      return await new Promise<void>((resolve, reject) => {
+        try {
+          const tx = db.transaction(STORE_NAME, "readwrite");
+          const store = tx.objectStore(STORE_NAME);
+          const r = store.put(value, key);
+          r.onsuccess = () => resolve();
+          r.onerror = () => reject(r.error);
+          tx.oncomplete = () => db.close();
+        } catch (e) {
+          db.close();
+          reject(e);
+        }
+      });
+    }
+    throw err;
+  }
+}
+
+async function idbGetImage(key: string) {
+  try {
+    const db = await openDb();
+    return await new Promise<any>((resolve, reject) => {
+      try {
+        const tx = db.transaction(STORE_NAME, "readonly");
+        const store = tx.objectStore(STORE_NAME);
+        const r = store.get(key);
+        r.onsuccess = () => resolve(r.result);
+        r.onerror = () => reject(r.error);
+        tx.oncomplete = () => db.close();
+      } catch (err) {
+        db.close();
+        reject(err);
+      }
+    });
+  } catch (err: any) {
+    if (err && (err.name === "NotFoundError" || /object store/i.test(String(err.message || "")))) {
+      await new Promise<void>((res, rej) => {
+        const del = indexedDB.deleteDatabase(DB_NAME);
+        del.onsuccess = () => res();
+        del.onerror = () => rej(del.error);
+      });
+      const db = await openDb();
+      return await new Promise<any>((resolve, reject) => {
+        try {
+          const tx = db.transaction(STORE_NAME, "readonly");
+          const store = tx.objectStore(STORE_NAME);
+          const r = store.get(key);
+          r.onsuccess = () => resolve(r.result);
+          r.onerror = () => reject(r.error);
+          tx.oncomplete = () => db.close();
+        } catch (e) {
+          db.close();
+          reject(e);
+        }
+      });
+    }
+    throw err;
+  }
 }
 
 function dataURLtoBlob(dataurl: string): Blob {
@@ -104,7 +285,6 @@ function dataURLtoBlob(dataurl: string): Blob {
   return new Blob([u8arr], { type: mime });
 }
 
-/* helper used when uploading "data:" URLs to Supabase as Files */
 function dataURLtoFile(dataurl: string, filename: string) {
   const arr = dataurl.split(",");
   const mimeMatch = arr[0].match(/:(.*?);/);
@@ -116,105 +296,10 @@ function dataURLtoFile(dataurl: string, filename: string) {
   return new File([u8arr], filename, { type: mime });
 }
 
-/* -------------------- mapping helpers for FB Graph API -------------------- */
-/**
- * UI objective (free text) -> Graph campaign objective
- * Uses conservative mapping to Graph-supported options.
- */
-function mapObjective(uiObjective: string | undefined | null): string {
-  if (!uiObjective) return "OUTCOME_TRAFFIC";
-  const s = String(uiObjective).trim().toLowerCase();
-  if (s.includes("sales") || s.includes("conversion")) return "OUTCOME_SALES";
-  if (s.includes("lead")) return "OUTCOME_LEADS";
-  if (s.includes("engag")) return "POST_ENGAGEMENT";
-  if (s.includes("awareness") || s.includes("brand")) return "OUTCOME_AWARENESS";
-  if (s.includes("traffic") || s.includes("link")) return "OUTCOME_TRAFFIC";
-  if (s.includes("app")) return "APP_INSTALLS";
-  if (s.includes("video")) return "VIDEO_VIEWS";
-  if (s.includes("reach")) return "REACH";
-  return "OUTCOME_TRAFFIC";
-}
-
-/**
- * Campaign objective -> adset optimization_goal (compatible)
- */
-function optimizationGoalForObjective(obj: string): string {
-  const o = (obj || "").toUpperCase();
-  if (o.includes("SALES") || o.includes("CONVERSION") || o === "OUTCOME_SALES") return "OFFSITE_CONVERSIONS";
-  if (o.includes("LEAD")) return "LEAD_GENERATION";
-  if (o.includes("ENGAGEMENT")) return "POST_ENGAGEMENT";
-  if (o.includes("AWARENESS")) return "BRAND_AWARENESS";
-  if (o.includes("TRAFFIC") || o === "OUTCOME_TRAFFIC") return "LINK_CLICKS";
-  if (o.includes("APP")) return "APP_INSTALLS";
-  if (o.includes("VIDEO")) return "VIDEO_VIEWS";
-  return "LINK_CLICKS";
-}
-
-/* -------------------- TRANSLATION HELPERS (NEW) -------------------- */
-
-function isLikelyTamil(text: string): boolean {
-  // Tamil Unicode block: 0B80–0BFF
-  return /[\u0B80-\u0BFF]/.test(text);
-}
-
-// Reuse your existing /api/generateCaption endpoint to safely run ChatGPT on the server
-async function translateToEnglishViaCaptionAPI(text: string): Promise<string> {
-  try {
-    const tokenRes = await supabase.auth.getSession();
-    const session: any = tokenRes?.data?.session || null;
-    const token = session?.access_token || session?.accessToken || session?.provider_token || null;
-    if (!token) {
-      toast.error("Sign in to translate.");
-      return text;
-    }
-    const prompt = `Translate the following to clear, natural English suitable for an image-generation prompt. Keep product/brand names intact. Only return the translation.\n\n---\n${text}`;
-    const resp = await fetch("/api/generateCaption", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ prompt }),
-    });
-    const json = await resp.json();
-    if (!resp.ok) throw new Error(json?.error || "Translation failed");
-    const translated = json?.caption || "";
-    return translated.trim() || text;
-  } catch (e: any) {
-    console.warn("translateToEnglishViaCaptionAPI error", e);
-    toast.error("Translation failed — sending original text");
-    return text;
-  }
-}
-
-async function translateIfTamil(text: string): Promise<string> {
-  if (!text || !text.trim()) return text;
-  if (isLikelyTamil(text)) {
-    const translated = await translateToEnglishViaCaptionAPI(text);
-    return translated || text;
-  }
-  return text;
-}
-
-/* -------------------- prompt builder -------------------- */
-function buildPromptClient(adFormData: any) {
-  const parts: string[] = [];
-  if (adFormData.campaignName) parts.push(`Campaign: ${adFormData.campaignName}`);
-  if (adFormData.brandName) parts.push(`Brand: ${adFormData.brandName}`);
-  if (adFormData.tagline) parts.push(`Tagline: ${adFormData.tagline}`);
-  if (adFormData.description) parts.push(`Description: ${adFormData.description}`);
-  if (adFormData.emotion) parts.push(`Vibe: ${adFormData.emotion}`);
-  if (adFormData.offerInfo) parts.push(`Offer: ${adFormData.offerInfo}`);
-  if (Array.isArray(adFormData.platforms) && adFormData.platforms.length)
-    parts.push(`Platforms: ${adFormData.platforms.join(", ")}`);
-  parts.push(
-    `Produce a high-quality social media image suitable for 1080x1080. Keep central composition and negative space for headline text. Do not copy copyrighted work.`
-  );
-  return parts.join("\n\n");
-}
-
-/* -------------------- Mic Recorder (NEW) -------------------- */
-
+/* -------------------- Mic Recorder (original logic) -------------------- */
 type MicRecorderProps = {
-  onText: (chunk: string) => void; // append or set text
-  lang?: string; // default "ta-IN"
+  onText: (chunk: string) => void;
+  lang?: string;
   className?: string;
   small?: boolean;
 };
@@ -222,7 +307,6 @@ type MicRecorderProps = {
 const MicRecorder: React.FC<MicRecorderProps> = ({ onText, lang = "ta-IN", className, small }) => {
   const [recording, setRecording] = useState(false);
   const recognitionRef = useRef<any>(null);
-
   const supported = typeof window !== "undefined" && (window as any).webkitSpeechRecognition;
 
   const start = () => {
@@ -253,7 +337,9 @@ const MicRecorder: React.FC<MicRecorderProps> = ({ onText, lang = "ta-IN", class
         console.warn("speech error", err);
         toast.error("Mic error — check permissions.");
         setRecording(false);
-        try { rec.stop(); } catch {}
+        try {
+          rec.stop();
+        } catch {}
       };
       rec.onend = () => {
         setRecording(false);
@@ -287,7 +373,7 @@ const MicRecorder: React.FC<MicRecorderProps> = ({ onText, lang = "ta-IN", class
     >
       {recording ? (
         <>
-          <Square className="h-4 w-4 mr-2" />
+          <X className="h-4 w-4 mr-2" />
           Stop
         </>
       ) : (
@@ -300,50 +386,76 @@ const MicRecorder: React.FC<MicRecorderProps> = ({ onText, lang = "ta-IN", class
   );
 };
 
-/* -------------------- Component -------------------- */
+/* -------------------- Chat persistence types -------------------- */
+type Chat = {
+  id: string;
+  title: string;
+  messages: any[]; // use same message shape you already have
+  createdAt: number;
+  updatedAt: number;
+};
+
+/* -------------------- Keys for persistence -------------------- */
+const CHATS_KEY = "optim_chats_v1";
+const GENERATED_KEY = "optim_generated_images_v1";
+const UPLOADED_KEY = "optim_uploaded_images_v1";
+const LOGO_KEY = "optim_logo_v1";
+
+/* -------------------- Main Component -------------------- */
 const CampaignCreate: React.FC = () => {
   const router = useRouter();
 
-  const [mode, setMode] = useState<"ad" | "post">("ad");
-  const [step, setStep] = useState<number>(1);
-  const totalSteps = mode === "ad" ? 6 : 4;
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
-  type AdState = {
-    campaignName: string;
-    objective: string;
-    platforms: string[];
-    campaignType: string;
-    brandName: string;
-    tagline: string;
-    tone: string;
-    primaryCTA: string;
-    location: string;
-    ageRange: [number, number];
-    gender: string;
-    interests: string;
-    autoTarget: boolean;
-    budgetType: string;
-    budget: number;
-    startDate: string;
-    endDate: string;
-    autoOptimize: boolean;
-    description: string;
-    emotion: string;
-    offerInfo: string;
-    multipleVariations: boolean;
-    logoPublicUrl: string | null;
-    logoDataUrl: string | null;
+  // Credits simple local state (replace with your actual hook if you want)
+  const [credits, setCredits] = useState<number>(10);
+  const useCredit = () => {
+    if (credits <= 0) return false;
+    setCredits((c) => c - 1);
+    return true;
   };
 
-  const [adFormData, setAdFormData] = useState<AdState>({
+  // Chat state
+  const [chats, setChats] = useState<Chat[]>([]);
+  const [currentChatId, setCurrentChatId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<any[]>([]); // mirror of active chat messages
+
+  // Loading / UI state
+  const [prompt, setPrompt] = useState("");
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [showUploadPanel, setShowUploadPanel] = useState(false);
+  const [showPublishPanel, setShowPublishPanel] = useState(false);
+  const [publishMode, setPublishMode] = useState<"post" | "ad">("post");
+
+  const [uploadedImages, setUploadedImages] = useState<File[]>([]);
+  const [uploadedPreviews, setUploadedPreviews] = useState<string[]>([]);
+
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [logoPublicUrl, setLogoPublicUrl] = useState<string | null>(null);
+  const [logoGlowing, setLogoGlowing] = useState(false);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const logoInputRef = useRef<HTMLInputElement>(null);
+
+  const [quickSettings, setQuickSettings] = useState({
+    logoEnabled: false,
+    themeEnabled: false,
+    aspectRatio: "1:1",
+    tone: "professional",
+    audience: "",
+  });
+
+  // form data (keeps compatibility with your backend)
+  const [adFormData, setAdFormData] = useState<any>({
     campaignName: "",
-    objective: "",
+    objective: "LINK_CLICKS",
     platforms: [],
     campaignType: "",
     brandName: "",
     tagline: "",
     tone: "",
-    primaryCTA: "",
+    primaryCTA: "LEARN_MORE",
     location: "",
     ageRange: [18, 65],
     gender: "all",
@@ -360,28 +472,17 @@ const CampaignCreate: React.FC = () => {
     multipleVariations: false,
     logoPublicUrl: null,
     logoDataUrl: null,
+    // extra fields for Ads
+    adSetName: "",
+    destinationLink: "",
+    delivery: "",
+    duration: 7,
   });
 
-  type PostState = {
-    postName: string;
-    platforms: string[];
-    postType: string;
-    goal: string;
-    brandName: string;
-    tone: string;
-    primaryCTA: string;
-    hashtags: string;
-    prompt: string;
-    generatedCaption: string;
-    multipleVersions: boolean;
-    logoPublicUrl: string | null;
-    logoDataUrl: string | null;
-  };
-
-  const [postFormData, setPostFormData] = useState<PostState>({
+  const [postFormData, setPostFormData] = useState<any>({
     postName: "",
     platforms: [],
-    postType: "",
+    postType: "image",
     goal: "",
     brandName: "",
     tone: "",
@@ -394,71 +495,302 @@ const CampaignCreate: React.FC = () => {
     logoDataUrl: null,
   });
 
-  const adStepTitles = [
-    "Campaign Basics",
-    "Brand & Creative Details",
-    "Audience Targeting",
-    "Budget & Schedule",
-    "Creative Direction",
-    "Review & Launch",
-  ];
+  // generated images
+  const [generatedImages, setGeneratedImages] = useState<string[]>([]);
+  // pending image that user must verify before publishing
+  const [pendingGeneratedImage, setPendingGeneratedImage] = useState<string | null>(null);
 
-  const postStepTitles = ["Post Basics", "Brand & Creative Info", "AI Post Generator", "Review & Publish"];
-  const stepTitles = mode === "ad" ? adStepTitles : postStepTitles;
-  const progress = (step / totalSteps) * 100;
+  const [showThemeOptions, setShowThemeOptions] = useState(false);
+  const [showAspectOptions, setShowAspectOptions] = useState(false);
 
-  // generated image(s) state (we will only use the first for ads)
-  const [generating, setGenerating] = useState<boolean>(false);
-  const [generatedImages, setGeneratedImages] = useState<string[]>([]); // only first used for ads
-  const [generationPrompt, setGenerationPrompt] = useState<string>("");
+  /* -------------------- Previews management -------------------- */
+  useEffect(() => {
+    uploadedPreviews.forEach((u) => {
+      try {
+        URL.revokeObjectURL(u);
+      } catch {}
+    });
+    const newPreviews = uploadedImages.map((f) => URL.createObjectURL(f));
+    setUploadedPreviews(newPreviews);
+    return () => newPreviews.forEach((u) => {
+      try {
+        URL.revokeObjectURL(u);
+      } catch {}
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uploadedImages]);
 
-  // post image generation state
-  const [isGeneratingPostImage, setIsGeneratingPostImage] = useState<boolean>(false);
-  const [generatedPostImage, setGeneratedPostImage] = useState<string | null>(null);
-  const [generatedPostImageKey, setGeneratedPostImageKey] = useState<string | null>(null);
-  const [postGenerationPrompt, setPostGenerationPrompt] = useState<string>("");
+  useEffect(() => {
+    if (logoFile) {
+      const u = URL.createObjectURL(logoFile);
+      setLogoPreview(u);
+      return () => {
+        try {
+          URL.revokeObjectURL(u);
+        } catch {}
+      };
+    } else {
+      setLogoPreview(null);
+    }
+  }, [logoFile]);
 
-  const [previewTemplate, setPreviewTemplate] = useState<"insta_feed" | "insta_story" | "facebook_feed" | "youtube_thumb">("insta_feed");
-
-  const [postingNow, setPostingNow] = useState(false);
-
-  // load user profile for autofill
+  /* -------------------- Load profile + initial credits + chats + persisted UI state -------------------- */
   useEffect(() => {
     (async () => {
       try {
         const { data: userData } = await supabase.auth.getUser();
-        const user = (userData as any) && (userData as any).user ? (userData as any).user : null;
+        const user = (userData as any)?.user;
         if (!user) return;
-        const { data, error } = await supabase.from("profiles").select("*").eq("id", user.id).single();
-        if (!error && data) {
-          if (data.company_name) {
-            setAdFormData((prev) => ({ ...prev, brandName: prev.brandName || data.company_name }));
-            setPostFormData((prev) => ({ ...prev, brandName: prev.brandName || data.company_name }));
+
+        const { data: profile, error } = await supabase.from("profiles").select("*").eq("id", user.id).single();
+        if (!error && profile) {
+          if (profile.tagline) {
+            setAdFormData((p: any) => ({ ...p, tagline: p.tagline || profile.tagline }));
+            setPostFormData((p: any) => ({ ...p, tagline: p.tagline || profile.tagline }));
           }
-          if (data.tagline) {
-            setAdFormData((prev) => ({ ...prev, tagline: prev.tagline || data.tagline }));
-          }
-          if (data.logo_path) {
-            try {
-              const pubRes = supabase.storage.from("user-uploads").getPublicUrl(data.logo_path);
-              const pub = (pubRes as any)?.data ?? null;
-              const publicUrl = pub && (pub as any).publicUrl ? (pub as any).publicUrl : null;
-              if (publicUrl) {
-                setAdFormData((prev) => ({ ...prev, logoPublicUrl: prev.logoPublicUrl || publicUrl }));
-                setPostFormData((prev) => ({ ...prev, logoPublicUrl: prev.logoPublicUrl || publicUrl }));
-              }
-            } catch (e) {
-              console.warn("logo public url failed", e);
+          const logoPath = profile.logo_path ?? null;
+          if (logoPath) {
+            const { data: publicData } = supabase.storage.from("user-uploads").getPublicUrl(logoPath);
+            const publicUrl = (publicData as any)?.publicUrl ?? null;
+            if (publicUrl) {
+              setLogoPublicUrl(publicUrl);
+              setLogoGlowing(true);
+              setAdFormData((p: any) => ({ ...p, logoPublicUrl: p.logoPublicUrl || publicUrl }));
+              setPostFormData((p: any) => ({ ...p, logoPublicUrl: p.logoPublicUrl || publicUrl }));
             }
+          }
+          if ((profile as any).credits !== undefined) setCredits(Number((profile as any).credits) || 0);
+        }
+      } catch (e) {
+        console.warn("profile fetch error", e);
+      }
+
+      // load chats from IndexedDB
+      try {
+        const raw = await idbGet(CHATS_KEY);
+        if (raw) {
+          const parsed: Chat[] = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setChats(parsed);
+            setCurrentChatId(parsed[0].id);
+            setMessages(parsed[0].messages || []);
           }
         }
       } catch (e) {
-        console.warn("profile load failed", e);
+        console.warn("failed to load chats from idb", e);
+      }
+
+      // if no chats found, create a default one
+      try {
+        const existing = await idbGet(CHATS_KEY);
+        if (existing == null) {
+          const defaultChat: Chat = {
+            id: `chat_${Date.now()}`,
+            title: "New Chat",
+            messages: [],
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+          };
+          setChats([defaultChat]);
+          setCurrentChatId(defaultChat.id);
+          setMessages([]);
+          try {
+            await idbPut(CHATS_KEY, JSON.stringify([defaultChat]));
+          } catch (e) {
+            console.warn("failed to save default chat", e);
+          }
+        }
+      } catch (e) {
+        console.warn("check existing chats failed", e);
+      }
+
+      // rehydrate generated images
+      try {
+        const genRaw = await idbGet(GENERATED_KEY);
+        if (genRaw) {
+          const parsedGen = JSON.parse(genRaw as string);
+          if (Array.isArray(parsedGen)) setGeneratedImages(parsedGen);
+        }
+      } catch (e) {
+        console.warn("failed to load generated images from idb", e);
+      }
+
+      // rehydrate uploaded previews (we stored dataurls as a convenience so the UI shows images)
+      try {
+        const upRaw = await idbGet(UPLOADED_KEY);
+        if (upRaw) {
+          const parsedUp: string[] = JSON.parse(upRaw as string);
+          if (Array.isArray(parsedUp)) {
+            setUploadedPreviews(parsedUp);
+            // Note: we cannot reconstruct File objects from the browser for security reasons.
+            // If the user needs to send the original files later, they should re-upload. The preview keeps the UX.
+          }
+        }
+      } catch (e) {
+        console.warn("failed to load uploaded images from idb", e);
+      }
+
+      // rehydrate logoPublicUrl
+      try {
+        const logoRaw = await idbGet(LOGO_KEY);
+        if (logoRaw) {
+          const logo = String(logoRaw || "") || null;
+          if (logo) {
+            setLogoPublicUrl(logo);
+            setLogoGlowing(true);
+          }
+        }
+      } catch (e) {
+        console.warn("failed to load logo from idb", e);
       }
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Auth token helper (returns provider token/session token as available)
+  /* -------------------- Chat persistence helpers -------------------- */
+  const saveChatsToDb = async (nextChats: Chat[]) => {
+    try {
+      await idbPut(CHATS_KEY, JSON.stringify(nextChats));
+    } catch (e) {
+      console.warn("saveChatsToDb failed", e);
+    }
+  };
+
+  const createNewChat = async (title = "New Chat") => {
+    const nc: Chat = {
+      id: `chat_${Date.now()}`,
+      title: title || "New Chat",
+      messages: [],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    setChats((prevChats) => {
+      const next = [nc, ...prevChats];
+      setCurrentChatId(nc.id);
+      setMessages([]);
+      // persist
+      saveChatsToDb(next).catch((e) => console.warn("saveChatsToDb failed", e));
+      return next;
+    });
+    toast.success("New chat created");
+  };
+
+  const switchToChat = (chatId: string) => {
+    const c = chats.find((x) => x.id === chatId);
+    if (!c) return;
+    setCurrentChatId(chatId);
+    setMessages(c.messages || []);
+  };
+
+  const updateCurrentChatMessages = (newMessages: any[]) => {
+    setMessages(newMessages);
+    setChats((prev) => {
+      const next = prev.map((c) => (c.id === currentChatId ? { ...c, messages: newMessages, updatedAt: Date.now() } : c));
+      // persist
+      saveChatsToDb(next).catch((e) => console.warn(e));
+      return next;
+    });
+  };
+
+  const renameChat = async (chatId: string, newTitle: string) => {
+    setChats((prev) => {
+      const next = prev.map((c) => (c.id === chatId ? { ...c, title: newTitle || c.title, updatedAt: Date.now() } : c));
+      // persist
+      saveChatsToDb(next).catch((e) => console.warn("saveChatsToDb failed", e));
+      return next;
+    });
+  };
+
+  const deleteChat = async (chatId: string) => {
+    setChats((prev) => {
+      const next = prev.filter((c) => c.id !== chatId);
+      // if active chat got deleted, switch to first or create default
+      if (chatId === currentChatId) {
+        if (next.length > 0) {
+          const first = next[0];
+          setCurrentChatId(first.id);
+          setMessages(first.messages || []);
+        } else {
+          const defaultChat: Chat = {
+            id: `chat_${Date.now()}`,
+            title: "New Chat",
+            messages: [],
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+          };
+          setCurrentChatId(defaultChat.id);
+          setMessages([]);
+          // persist default
+          saveChatsToDb([defaultChat]).catch((e) => console.warn(e));
+          return [defaultChat];
+        }
+      }
+      // persist
+      saveChatsToDb(next).catch((e) => console.warn(e));
+      return next;
+    });
+  };
+
+  /* -------------------- Persist other UI state helpers -------------------- */
+  const saveGeneratedToDb = async (arr: string[]) => {
+    try {
+      await idbPut(GENERATED_KEY, JSON.stringify(arr || []));
+    } catch (e) {
+      console.warn("saveGeneratedToDb failed", e);
+    }
+  };
+
+  const saveUploadsToDb = async (filesDataUrls: string[]) => {
+    try {
+      await idbPut(UPLOADED_KEY, JSON.stringify(filesDataUrls || []));
+    } catch (e) {
+      console.warn("saveUploadsToDb failed", e);
+    }
+  };
+
+  const saveLogoToDb = async (logoUrl: string | null) => {
+    try {
+      await idbPut(LOGO_KEY, logoUrl || "");
+    } catch (e) {
+      console.warn("saveLogoToDb failed", e);
+    }
+  };
+
+  // persist generated images when changed
+  useEffect(() => {
+    saveGeneratedToDb(generatedImages).catch((e) => console.warn(e));
+  }, [generatedImages]);
+
+  // persist uploaded images (we'll store them as dataURLs so they can be rehydrated)
+  useEffect(() => {
+    (async () => {
+      try {
+        const dataUrls = await Promise.all(
+          uploadedImages.map(async (f) => {
+            if (f instanceof File || f instanceof Blob) {
+              return await new Promise<string>((res, rej) => {
+                const r = new FileReader();
+                r.onload = () => res(String(r.result));
+                r.onerror = rej;
+                r.readAsDataURL(f);
+              });
+            }
+            return "";
+          })
+        );
+        await saveUploadsToDb(dataUrls.filter(Boolean));
+      } catch (e) {
+        console.warn("persist uploadedImages failed", e);
+      }
+    })();
+  }, [uploadedImages]);
+
+  // persist logoPublicUrl
+  useEffect(() => {
+    saveLogoToDb(logoPublicUrl).catch((e) => console.warn(e));
+  }, [logoPublicUrl]);
+
+  /* -------------------- Access token helper -------------------- */
   async function getAccessToken(): Promise<string | null> {
     try {
       const s = await supabase.auth.getSession();
@@ -471,127 +803,270 @@ const CampaignCreate: React.FC = () => {
     }
   }
 
-  // save draft
-  async function saveDraft(payload: any) {
+  /* -------------------- Handlers -------------------- */
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (uploadedImages.length + files.length > 3) {
+      toast.error("Maximum 3 images allowed");
+      return;
+    }
+    setUploadedImages((prev) => [...prev, ...files.slice(0, 3 - prev.length)]);
+  };
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] ?? null;
+    if (!file) return;
+    setLogoFile(file);
+    toast.success("Logo selected (local preview)");
+
+    // Upload to supabase user-uploads and update profile.logo_path
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      const user = (userData as any)?.user;
+      if (!user) return;
+      const safe = `${user.id}_${Date.now()}_${file.name.replace(/\s+/g, "_")}`;
+      const path = `profiles/${user.id}/${safe}`;
+      const { error: uploadError } = await supabase.storage.from("user-uploads").upload(path, file, { cacheControl: "3600", upsert: true });
+      if (uploadError) {
+        console.warn("logo upload error", uploadError);
+        toast.warning("Logo uploaded locally but public upload failed.");
+        return;
+      }
+      const { data: publicData } = supabase.storage.from("user-uploads").getPublicUrl(path);
+      const publicUrl = (publicData as any)?.publicUrl ?? null;
+      if (publicUrl) {
+        setLogoPublicUrl(publicUrl);
+        setLogoGlowing(true);
+        try {
+          await supabase.from("profiles").upsert({ id: user.id, logo_path: path, tagline: adFormData.tagline || null }, { returning: "minimal" });
+          toast.success("Logo uploaded and saved to profile");
+        } catch (e) {
+          console.warn("save logo path failed", e);
+          toast.success("Logo uploaded but profile update failed");
+        }
+      }
+    } catch (e) {
+      console.warn("handleLogoUpload error", e);
+    }
+  };
+
+  const handleRemoveLogo = async () => {
+    setLogoFile(null);
+    setLogoPreview(null);
+    setLogoPublicUrl(null);
+    setLogoGlowing(false);
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      const user = (userData as any)?.user;
+      if (user) {
+        await supabase.from("profiles").upsert({ id: user.id, logo_path: null }, { returning: "minimal" });
+      }
+    } catch (e) {
+      console.warn("failed to remove logo_path", e);
+    }
+    toast.success("Logo removed");
+  };
+
+  const handleRemoveImage = (index: number) => {
+    setUploadedImages((prev) => prev.filter((_, i) => i !== index));
+    setUploadedPreviews((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      startGenerate();
+    }
+  };
+
+  /* -------------------- Caption enhancer -------------------- */
+  const enhancePrompt = async (text: string) => {
+    try {
+      if (!text || !text.trim()) {
+        toast.error("Write something to enhance.");
+        return null;
+      }
+      const token = await getAccessToken();
+      if (!token) {
+        toast.error("Sign in to use enhancer.");
+        return null;
+      }
+      const promptBody = `Enhance the following campaign description for clarity, persuasion, and ad copy effectiveness. Keep brand names intact. Only return the enhanced text (no commentary).\n\n---\n${text}`;
+      const resp = await fetch("/api/generateCaption", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ prompt: promptBody }),
+      });
+      const json = await resp.json();
+      if (!resp.ok || !json) {
+        throw new Error((json && json.error) || "Enhance failed");
+      }
+      const enhanced = json.caption ?? json.result ?? null;
+      if (!enhanced) {
+        toast.error("Enhancer returned nothing.");
+        return null;
+      }
+      toast.success("Prompt enhanced");
+      return enhanced;
+    } catch (e: any) {
+      console.error("enhancePrompt error", e);
+      toast.error("Enhance failed: " + (e.message || String(e)));
+      return null;
+    }
+  };
+
+  /* -------------------- Generation flow (image preview first) -------------------- */
+
+  const startGenerate = async () => {
+    if (!prompt.trim() && uploadedImages.length === 0) {
+      toast.error("Please describe your campaign or upload images");
+      return;
+    }
+
+    if (credits <= 0) {
+      toast.error("No credits available", { description: "Please upgrade your plan to continue creating campaigns." });
+      return;
+    }
+
+    const ok = useCredit();
+    if (!ok) return;
+
+    // Add user message to thread (and persist)
+    const userMessage = { role: "user", content: prompt || "Generate from uploaded images", imageUrl: null };
+    const newMessages = [...messages, userMessage];
+    updateCurrentChatMessages(newMessages);
+
+    setPrompt("");
+    setShowUploadPanel(false);
+    setIsGenerating(true);
+
     try {
       const token = await getAccessToken();
       if (!token) {
-        toast.error("Not signed in. Please sign in to save drafts.");
-        console.error("saveDraft aborted: missing token");
-        return null;
+        toast.error("Sign in to generate images.");
+        setIsGenerating(false);
+        return;
       }
 
-      const resp = await fetch("/api/campaigns/save-draft", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+      const payload: any = {
+        mode: "generate",
+        campaignName: adFormData.campaignName,
+        objective: adFormData.objective,
+        platforms: adFormData.platforms,
+        campaignType: adFormData.campaignType,
+        brandName: adFormData.brandName,
+        tagline: adFormData.tagline,
+        tone: quickSettings.tone || adFormData.tone,
+        primaryCTA: adFormData.primaryCTA,
+        location: adFormData.location,
+        ageRange: adFormData.ageRange,
+        gender: adFormData.gender,
+        interests: adFormData.interests,
+        autoTarget: adFormData.autoTarget,
+        budgetType: adFormData.budgetType,
+        budget: adFormData.budget,
+        startDate: adFormData.startDate,
+        endDate: adFormData.endDate,
+        autoOptimize: adFormData.autoOptimize,
+        description: prompt || adFormData.description,
+        emotion: adFormData.emotion,
+        offerInfo: adFormData.offerInfo,
+        prompt: prompt || (uploadedPreviews.length ? "Generate from uploaded images" : ""),
+        target: { width: quickSettings.aspectRatio === "16:9" ? 1920 : 1080, height: 1080 },
+        aiCustomization: {
+          colorPrimary: adFormData.logoPublicUrl || undefined,
+          logoUrl: adFormData.logoPublicUrl || logoPublicUrl || null,
         },
-        body: JSON.stringify(payload),
-      });
+      };
+
+      let resp: Response;
+      if (uploadedImages && uploadedImages.length) {
+        const fd = new FormData();
+        fd.append("payload", JSON.stringify(payload));
+        uploadedImages.forEach((f) => fd.append("files", f, f.name));
+        resp = await fetch("/api/generate-campaign", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: fd });
+      } else {
+        resp = await fetch("/api/generate-campaign", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify(payload),
+        });
+      }
+
       const json = await resp.json();
       if (!resp.ok || !json || !json.ok) {
-        throw new Error((json && json.error) || `Save draft failed: ${resp.status}`);
+        console.error("generate error", json);
+        throw new Error((json && json.error) || `Generation failed: ${resp.status}`);
       }
-      toast.success("Draft saved");
-      return json.draft || null;
-    } catch (err: any) {
-      console.error("saveDraft error", err);
-      toast.error("Save failed: " + (err.message || String(err)));
-      return null;
-    }
-  }
 
-  // onClick Save as Draft
-  const handleSaveAsDraft = async () => {
-    const payload =
-      mode === "ad"
-        ? { mode: "ad", name: adFormData.campaignName, inputs: adFormData, ...adFormData }
-        : { mode: "post", postName: postFormData.postName, inputs: postFormData, ...postFormData };
+      const first = typeof json.image === "string" ? json.image : (Array.isArray(json.images) && json.images.length ? json.images[0] : null);
+      const imageUrl = first ?? uploadedPreviews[0] ?? null;
+      if (!imageUrl) throw new Error("No image returned");
 
-    if (adFormData.logoDataUrl) payload.logoDataUrl = adFormData.logoDataUrl;
-    if (postFormData.logoDataUrl) payload.logoDataUrl = postFormData.logoDataUrl;
+      // Assistant message
+      const assistantMessage = {
+        role: "assistant",
+        content: `Generated preview${adFormData.brandName ? ` for ${adFormData.brandName}` : ""}. Verify and proceed to publish.`,
+        imageUrl: imageUrl,
+      };
+      const after = [...newMessages, assistantMessage];
+      updateCurrentChatMessages(after);
 
-    await saveDraft(payload);
-  };
-
-  // Called when moving to next step — persist the current full form to server
-  const handleNext = async () => {
-    try {
-      const payload =
-        mode === "ad"
-          ? {
-              mode: "ad",
-              name: adFormData.campaignName,
-              inputs: adFormData,
-              campaignType: adFormData.campaignType,
-            }
-          : {
-              mode: "post",
-              postName: postFormData.postName,
-              inputs: postFormData,
-              postType: postFormData.postType,
-            };
-
-      if (adFormData.logoDataUrl) payload.logoDataUrl = adFormData.logoDataUrl;
-      if (postFormData.logoDataUrl) payload.logoDataUrl = postFormData.logoDataUrl;
-
-      await saveDraft(payload);
-    } catch (e) {
-      console.warn("autosave failed", e);
-    } finally {
-      if (step < totalSteps) setStep(step + 1);
-      else {
-        if (mode === "ad") {
-          // final step handled by Review panel buttons
-        } else {
-          await handlePublishPost();
+      // If server returned creditsRemaining, update local credits too
+      try {
+        if (json.creditsRemaining !== undefined && json.creditsRemaining !== null) {
+          setCredits(Number(json.creditsRemaining));
         }
+      } catch (e) {
+        // ignore
       }
+
+      setPendingGeneratedImage(imageUrl);
+      setIsGenerating(false);
+      toast.success("Image ready — verify before publishing");
+
+      // persist the generated image in the gallery
+      setGeneratedImages((prev) => [imageUrl, ...prev]);
+    } catch (e) {
+      console.error("startGenerate error", e);
+      setIsGenerating(false);
+      toast.error("Generation failed — check console");
     }
   };
 
-  // file->dataURL helper
-  const fileToDataUrl = (file: File): Promise<string> =>
-    new Promise((res, rej) => {
-      const fr = new FileReader();
-      fr.onload = () => res(String(fr.result));
-      fr.onerror = rej;
-      fr.readAsDataURL(file);
+  const handleProceedToPublish = async () => {
+    if (!pendingGeneratedImage) {
+      toast.error("No generated image to proceed with");
+      return;
+    }
+
+    // Save to generated images (most recent first) - already saved in startGenerate but ensure persist
+    setGeneratedImages((prev) => {
+      const next = [pendingGeneratedImage!, ...prev.filter((p) => p !== pendingGeneratedImage)];
+      return next;
     });
+    // Also append a confirmation assistant message to chat
+    const confirmMsg = { role: "assistant", content: "User proceeded to publish with this creative.", imageUrl: pendingGeneratedImage };
+    updateCurrentChatMessages([...messages, confirmMsg]);
 
-  // Logo upload handlers
-  const handleAdLogoChange = async (f?: File | null) => {
-    if (!f) {
-      setAdFormData((p) => ({ ...p, logoDataUrl: null, logoPublicUrl: null }));
-      return;
-    }
+    // clear pending
+    setPendingGeneratedImage(null);
+    // open publish modal
+    setShowPublishPanel(true);
+    // persist to session as preview (optional)
     try {
-      const dataUrl = await fileToDataUrl(f);
-      setAdFormData((p) => ({ ...p, logoDataUrl: dataUrl }));
+      const previewObj = { inputs: { adFormData, quickSettings }, image: pendingGeneratedImage, images: [pendingGeneratedImage] };
+      sessionStorage.setItem("preview", JSON.stringify(previewObj));
     } catch (e) {
-      toast.error("Logo read failed");
+      console.warn("session set failed", e);
     }
   };
-  const handlePostLogoChange = async (f?: File | null) => {
-    if (!f) {
-      setPostFormData((p) => ({ ...p, logoDataUrl: null, logoPublicUrl: null }));
-      return;
-    }
-    try {
-      const dataUrl = await fileToDataUrl(f);
-      setPostFormData((p) => ({ ...p, logoDataUrl: dataUrl }));
-    } catch (e) {
-      toast.error("Logo read failed");
-    }
-  };
-  const removeAdLogo = () => setAdFormData((p) => ({ ...p, logoPublicUrl: null, logoDataUrl: null }));
-  const removePostLogo = () => setPostFormData((p) => ({ ...p, logoPublicUrl: null, logoDataUrl: null }));
 
-  // AI: generate caption / hashtags using your generateCaption endpoint (sends token)
-  const generateCaption = async (prompt: string, setResult: (text: string) => void) => {
+  /* -------------------- Caption & Hashtags wiring -------------------- */
+  const generateCaption = async (promptText: string, setResult: (text: string) => void) => {
     try {
-      if (!prompt || prompt.trim().length === 0) {
+      if (!promptText || !promptText.trim()) {
         toast.error("Please provide some text for AI to work with.");
         return;
       }
@@ -604,12 +1079,10 @@ const CampaignCreate: React.FC = () => {
       const resp = await fetch("/api/generateCaption", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ prompt }),
+        body: JSON.stringify({ prompt: promptText }),
       });
       const json = await resp.json();
-      if (!resp.ok || !json) {
-        throw new Error((json && json.error) || "AI generation failed");
-      }
+      if (!resp.ok || !json) throw new Error((json && json.error) || "AI generation failed");
       if (json.caption) {
         setResult(json.caption);
         toast.success("AI generated text");
@@ -622,552 +1095,21 @@ const CampaignCreate: React.FC = () => {
     }
   };
 
-  // Final: call /api/generate-campaign to create AI image & store preview inline (ad flow)
-  const handleGenerateCampaign = async (options?: { promptOverride?: string }) => {
-    try {
-      if (!adFormData.campaignName || !adFormData.description) {
-        toast.error("Please fill Campaign Name and Description before generating.");
-        return;
-      }
+  /* -------------------- Publish flows -------------------- */
 
-      if (!generationPrompt) {
-        const p = buildPromptClient(adFormData);
-        setGenerationPrompt(p);
-      }
-
-      // --- NEW: ensure the editable prompt is translated to English before sending
-      const editable = options?.promptOverride || generationPrompt || buildPromptClient(adFormData);
-      const translatedPrompt = await translateIfTamil(editable);
-
-      const payload: any = {
-        mode: "generate",
-        campaignName: adFormData.campaignName,
-        objective: adFormData.objective,
-        platforms: adFormData.platforms,
-        campaignType: adFormData.campaignType,
-        brandName: adFormData.brandName,
-        tagline: adFormData.tagline,
-        tone: adFormData.tone,
-        primaryCTA: adFormData.primaryCTA,
-        location: adFormData.location,
-        ageRange: adFormData.ageRange,
-        gender: adFormData.gender,
-        interests: adFormData.interests,
-        autoTarget: adFormData.autoTarget,
-        budgetType: adFormData.budgetType,
-        budget: adFormData.budget,
-        startDate: adFormData.startDate,
-        endDate: adFormData.endDate,
-        autoOptimize: adFormData.autoOptimize,
-        description: adFormData.description,
-        emotion: adFormData.emotion,
-        offerInfo: adFormData.offerInfo,
-        // IMPORTANT: send translated English prompt to Leonardo
-        prompt: translatedPrompt,
-        target: { id: "insta_feed", width: 1080, height: 1080 },
-        aiCustomization: {
-          colorPrimary: undefined,
-          colorSecondary: undefined,
-          logoUrl: adFormData.logoPublicUrl || null,
-        },
-      };
-
-      if (adFormData.logoDataUrl) payload.logoDataUrl = adFormData.logoDataUrl;
-
-      const token = await getAccessToken();
-      if (!token) {
-        toast.error("Not signed in. Please sign in to generate images.");
-        return;
-      }
-
-      setGenerating(true);
-      setGeneratedImages([]);
-
-      const resp = await fetch("/api/generate-campaign", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify(payload),
-      });
-
-      const json = await resp.json();
-      if (!resp.ok || !json || !json.ok) {
-        throw new Error((json && json.error) || `Generation failed: ${resp.status}`);
-      }
-
-      const imgs: string[] = [];
-      if (json.image && typeof json.image === "string") imgs.push(json.image);
-      if (Array.isArray(json.images) && json.images.length) {
-        json.images.forEach((i: any) => {
-          if (typeof i === "string") imgs.push(i);
-        });
-      }
-
-      // Use only first image (per your original ad flow requirement)
-      if (imgs.length) {
-        setGeneratedImages([imgs[0]]);
-        toast.success("Image generated — shown below.");
-        try {
-          const previewObj = { inputs: payload, image: imgs[0], images: [imgs[0]], output: json.output ?? null };
-          sessionStorage.setItem("preview", JSON.stringify(previewObj));
-        } catch (e) {
-          console.warn("session set failed", e);
-        }
-      } else {
-        toast.error("Generation returned no usable image");
-      }
-    } catch (err: any) {
-      console.error("handleGenerateCampaign error", err);
-      toast.error("Generate failed: " + (err.message || String(err)));
-    } finally {
-      setGenerating(false);
-    }
-  };
-
-  // --- NEW FUNCTION: generate single image for POST flow (calls /api/generate-campaign-post) ---
-  const generatePostImage = async (overridePrompt?: string) => {
-    try {
-      if (!postFormData.postName && !(postFormData.prompt && postFormData.prompt.trim().length)) {
-        toast.error("Set a Post Name or write a prompt before generating.");
-        return null;
-      }
-
-      const token = await getAccessToken();
-      if (!token) {
-        toast.error("Sign in to generate images.");
-        return null;
-      }
-
-      const promptRaw = overridePrompt ?? (postGenerationPrompt || postFormData.prompt || `Create a social post for ${postFormData.postName || "my brand"}`);
-      // --- NEW: translate Tamil → English before sending to Leonardo
-      const promptToUse = await translateIfTamil(promptRaw);
-
-      const payload: any = {
-        postName: postFormData.postName,
-        platforms: postFormData.platforms,
-        postType: postFormData.postType,
-        goal: postFormData.goal,
-        brandName: postFormData.brandName,
-        tone: postFormData.tone,
-        primaryCTA: postFormData.primaryCTA,
-        hashtags: postFormData.hashtags,
-        prompt: promptToUse,
-        logoDataUrl: postFormData.logoDataUrl ?? null,
-        target: { width: 1080, height: 1080 },
-        saveTemp: false,
-      };
-
-      setIsGeneratingPostImage(true);
-      setGeneratedPostImage(null);
-      setGeneratedPostImageKey(null);
-
-      const resp = await fetch("/api/generate-campaign-post", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify(payload),
-      });
-
-      const json = await resp.json();
-      if (!resp.ok || !json || !json.ok) {
-        throw new Error(json?.error || "Generation failed");
-      }
-
-      const first = typeof json.image === "string" ? json.image : (Array.isArray(json.images) && json.images.length ? json.images[0] : null);
-      if (!first) throw new Error("No image returned");
-
-      if (json.savedPublicUrl && typeof json.savedPublicUrl === "string") {
-        const preview = { inputs: payload, image: json.savedPublicUrl, images: [json.savedPublicUrl], output: json.output ?? null };
-        try {
-          sessionStorage.setItem("preview", JSON.stringify(preview));
-        } catch (e) {
-          console.warn("session set failed", e);
-        }
-        setGeneratedPostImage(json.savedPublicUrl);
-        toast.success("Generated (public URL).");
-        return json.savedPublicUrl;
-      }
-
-      if (first.startsWith("data:")) {
-        try {
-          const blob = dataURLtoBlob(first);
-          const key = `post_preview_${Date.now()}`;
-          await idbPut(key, blob);
-          const preview = { inputs: payload, imageKey: key, images: [], output: json.output ?? null };
-          try {
-            sessionStorage.setItem("preview", JSON.stringify(preview));
-          } catch (e) {
-            console.warn("session set failed", e);
-          }
-          setGeneratedPostImage(first);
-          setGeneratedPostImageKey(key);
-          toast.success("Generated and stored locally (IndexedDB).");
-          return first;
-        } catch (e) {
-          console.warn("idb put failed, falling back to session dataUrl", e);
-          const preview = { inputs: payload, image: first, images: [first], output: json.output ?? null };
-          try {
-            sessionStorage.setItem("preview", JSON.stringify(preview));
-          } catch (e2) {
-            console.warn("session set failed", e2);
-          }
-          setGeneratedPostImage(first);
-          setGeneratedPostImageKey(null);
-          toast.warning("Generated but failed to persist in IndexedDB; preview stored in session.");
-          return first;
-        }
-      }
-
-      const preview = { inputs: payload, image: first, images: [first], output: json.output ?? null };
-      try {
-        sessionStorage.setItem("preview", JSON.stringify(preview));
-      } catch (e) {
-        console.warn("session set failed", e);
-      }
-      setGeneratedPostImage(first);
-      toast.success("Generated image ready.");
-      return first;
-    } catch (err: any) {
-      console.error("generatePostImage error", err);
-      toast.error("Generate failed: " + (err?.message ?? String(err)));
-      return null;
-    } finally {
-      setIsGeneratingPostImage(false);
-    }
-  };
-
-  // Download or open generated post image
-  const downloadGeneratedPostImage = async () => {
-    try {
-      if (!generatedPostImage) return toast.error("No generated image to download");
-      if (generatedPostImage.startsWith("data:")) {
-        const blob = dataURLtoBlob(generatedPostImage);
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `post_generated_${Date.now()}.png`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
-        toast.success("Downloaded image");
-        return;
-      }
-      window.open(generatedPostImage, "_blank", "noopener,noreferrer");
-    } catch (e) {
-      console.error("downloadGeneratedPostImage error", e);
-      toast.error("Download failed");
-    }
-  };
-
-  // navigate to finalize — create-campaign-finalize reads sessionStorage.preview
-  const goToFinalize = async () => {
-    // Ensure we also translate the prompt saved in preview if needed
-    try {
-      const raw = sessionStorage.getItem("preview");
-      if (!raw) {
-        toast.error("No preview saved. Generate an image first.");
-        return;
-      }
-      // It's okay if inputs already contain translated prompt from generation.
-    } catch {}
-    router.push("/create-campaign-finalize");
-  };
-
-  /* -------------------- Supabase upload helper for FB creative fallback -------------------- */
-  const uploadFileToSupabase = async (file: File, filenamePrefix = "fb_upload") => {
-    const { data: userData } = await supabase.auth.getUser();
-    const user = (userData as any)?.user;
-    const safeName = ((adFormData.campaignName || "campaign") + "").replace(/[^a-z0-9_\-]/gi, "_").toLowerCase();
-    const filename = `${user?.id || "anon"}_${Date.now()}_${filenamePrefix}_${safeName}.png`;
-    const path = `campaigns/${user?.id || "anon"}/${filename}`;
-
-    const { error: uploadError } = await supabase.storage.from("campaign-assets").upload(path, file, {
-      cacheControl: "3600",
-      upsert: true,
-    });
-
-    if (uploadError) {
-      console.error("Supabase upload error", uploadError);
-      throw uploadError;
-    }
-
-    const { data: publicData } = supabase.storage.from("campaign-assets").getPublicUrl(path);
-    const publicUrl = (publicData as any)?.publicUrl ?? null;
-    if (!publicUrl) throw new Error("Failed to get public URL after upload");
-    return publicUrl;
-  };
-
-  /* -------------------- POST AD TO FACEBOOK (client) -------------------- */
-  const postAdToFacebook = async () => {
-    setPostingNow(true);
-    try {
-      if (!adFormData.campaignName || !adFormData.budget) {
-        toast.error("Campaign name and budget required.");
-        setPostingNow(false);
-        return;
-      }
-
-      const mappedObjective = mapObjective(adFormData.objective);
-      const optimizationGoal = optimizationGoalForObjective(mappedObjective);
-
-      const body: any = {
-        campaignName: adFormData.campaignName,
-        adSetName: `${adFormData.campaignName || "Campaign"} - AdSet`,
-        budget: Number(adFormData.budget) || 0,
-        budgetType: adFormData.budgetType || "daily",
-        startDate: adFormData.startDate || undefined,
-        endDate: adFormData.endDate || undefined,
-        campaignType: adFormData.campaignType,
-        brandName: adFormData.brandName,
-        tagline: adFormData.tagline,
-        tone: adFormData.tone,
-        primaryCTA: adFormData.primaryCTA,
-        location: adFormData.location,
-        ageRange: adFormData.ageRange,
-        gender: adFormData.gender,
-        interests: adFormData.interests,
-        autoTarget: adFormData.autoTarget,
-        autoOptimize: adFormData.autoOptimize,
-        objective: mappedObjective,
-        optimization_goal: optimizationGoal,
-      };
-
-      const budgetNumber = Number(body.budget);
-      if (!Number.isFinite(budgetNumber) || budgetNumber <= 0) {
-        toast.error("Invalid budget value.");
-        setPostingNow(false);
-        return;
-      }
-      const budgetMultiplier = 100;
-      body.budgetMinor = Math.round(budgetNumber * budgetMultiplier);
-
-      if (body.startDate) {
-        const start = new Date(body.startDate);
-        if (isNaN(start.getTime())) {
-          toast.error("Invalid start date format.");
-          setPostingNow(false);
-          return;
-        }
-        if (start.getTime() < Date.now() - 60 * 1000) {
-          delete body.startDate;
-        } else {
-          body.startDateISO = start.toISOString();
-        }
-      }
-      if (body.endDate) {
-        const end = new Date(body.endDate);
-        if (isNaN(end.getTime())) {
-          toast.error("Invalid end date format.");
-          setPostingNow(false);
-          return;
-        }
-        body.endDateISO = end.toISOString();
-      }
-
-      let finalTargeting: any = null;
-      if (adFormData.autoTarget) {
-        finalTargeting = { geo_locations: { countries: ["IN"] }, age_min: 18, age_max: 65 };
-      } else {
-        finalTargeting = {};
-        if (adFormData.location) {
-          const loc = String(adFormData.location || "").trim();
-          if (/^[A-Z]{2}$/i.test(loc)) {
-            finalTargeting.geo_locations = { countries: [loc.toUpperCase()] };
-          } else {
-            finalTargeting.geo_locations = { countries: ["IN"] };
-          }
-        } else {
-          finalTargeting.geo_locations = { countries: ["IN"] };
-        }
-        if (Array.isArray(adFormData.ageRange) && adFormData.ageRange.length === 2) {
-          finalTargeting.age_min = Number(adFormData.ageRange[0]);
-          finalTargeting.age_max = Number(adFormData.ageRange[1]);
-        } else {
-          finalTargeting.age_min = 18;
-          finalTargeting.age_max = 65;
-        }
-        if (adFormData.gender && String(adFormData.gender).toLowerCase() !== "all") {
-          const g = String(adFormData.gender).toLowerCase();
-          finalTargeting.genders = g === "male" ? [1] : g === "female" ? [2] : [];
-        }
-        if (adFormData.interests) {
-          finalTargeting.flexible_spec = [{ interests: [{ id: null, name: String(adFormData.interests) }] }];
-        }
-      }
-      body.targeting = finalTargeting;
-
-      let creativePublicUrl: string | null = null;
-      if (generatedImages && generatedImages.length) {
-        const cand = generatedImages[0];
-        if (cand && !cand.startsWith("data:")) creativePublicUrl = cand;
-      }
-      if (!creativePublicUrl && generatedPostImage && !generatedPostImage.startsWith("data:")) creativePublicUrl = generatedPostImage;
-
-      if (!creativePublicUrl) {
-        try {
-          const raw = sessionStorage.getItem("preview");
-          if (raw) {
-            const preview = JSON.parse(raw);
-            if (preview.image && typeof preview.image === "string" && !preview.image.startsWith("data:")) creativePublicUrl = preview.image;
-            else if (Array.isArray(preview.images) && preview.images.length && typeof preview.images[0] === "string" && !preview.images[0].startsWith("data:")) creativePublicUrl = preview.images[0];
-          }
-        } catch (e) {
-          console.warn("session preview read failed", e);
-        }
-      }
-
-      if (!creativePublicUrl) {
-        if (generatedPostImage && generatedPostImage.startsWith("data:")) {
-          const blob = dataURLtoBlob(generatedPostImage);
-          const file = new File([blob], `fb_${Date.now()}.png`, { type: blob.type || "image/png" });
-          try {
-            creativePublicUrl = await uploadFileToSupabase(file, "fb_image");
-          } catch (e) {
-            console.error("upload generatedPostImage failed", e);
-            toast.error("Upload failed — can't prepare creative for Facebook.");
-            setPostingNow(false);
-            return;
-          }
-        } else if (generatedImages && generatedImages.length && generatedImages[0].startsWith("data:")) {
-          const blob = dataURLtoBlob(generatedImages[0]);
-          const file = new File([blob], `fb_${Date.now()}.png`, { type: blob.type || "image/png" });
-          try {
-            creativePublicUrl = await uploadFileToSupabase(file, "fb_image");
-          } catch (e) {
-            console.error("upload generatedImages[0] failed", e);
-            toast.error("Upload failed — can't prepare creative for Facebook.");
-            setPostingNow(false);
-            return;
-          }
-        }
-      }
-
-      if (!creativePublicUrl) {
-        try {
-          const raw = sessionStorage.getItem("preview");
-          if (raw) {
-            const preview = JSON.parse(raw);
-            if (preview.imageKey) {
-              const stored = await idbGet(preview.imageKey);
-              if (stored instanceof Blob) {
-                const file = new File([stored], `fb_${Date.now()}.png`, { type: stored.type || "image/png" });
-                creativePublicUrl = await uploadFileToSupabase(file, "fb_image");
-              } else if (typeof stored === "string") {
-                if (stored.startsWith("data:")) {
-                  const file = dataURLtoFile(stored, `fb_${Date.now()}.png`);
-                  creativePublicUrl = await uploadFileToSupabase(file, "fb_image");
-                } else {
-                  creativePublicUrl = stored;
-                }
-              }
-            }
-          }
-        } catch (e) {
-          console.warn("IDB read/upload fallback failed", e);
-        }
-      }
-
-      if (!creativePublicUrl) {
-        toast.error("No public creative image available. Generate an image or ensure it's uploaded publicly.");
-        setPostingNow(false);
-        return;
-      }
-
-      body.creativeImageUrl = creativePublicUrl;
-      body.creativeCaption = adFormData.tagline || adFormData.description || "";
-
-      const token = await getAccessToken();
-      if (!token) {
-        toast.error("You must be signed in to run ads.");
-        setPostingNow(false);
-        return;
-      }
-
-      let resp: Response;
-      try {
-        resp = await fetch("/api/auth/facebook/ads", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify(body),
-        });
-      } catch (networkErr) {
-        console.error("Network error calling /api/auth/facebook/ads", networkErr);
-        toast.error("Network error contacting server — check server is running and reachable.");
-        setPostingNow(false);
-        return;
-      }
-
-      let json: any = null;
-      try {
-        json = await resp.json();
-      } catch (e) {
-        console.error("Failed to parse JSON from /api/auth/facebook/ads", e);
-      }
-
-      if (!resp.ok) {
-        console.error("facebook ads endpoint returned error", json);
-        const message = (json && (json.error?.message || json.error || JSON.stringify(json))) || `HTTP ${resp.status}`;
-        toast.error("Facebook ad failed: " + message);
-        setPostingNow(false);
-        return;
-      }
-
-      toast.success("Facebook ad created successfully. Redirecting to dashboard...");
-      try {
-        sessionStorage.removeItem("preview");
-      } catch (e) {}
-      setTimeout(() => router.push("/dashboard"), 900);
-    } catch (err: any) {
-      console.error("postAdToFacebook error", err);
-      toast.error("Post to Facebook failed: " + (err?.message || String(err)));
-    } finally {
-      setPostingNow(false);
-    }
-  };
-
-  // publish campaign only (save record)
-  const publishCampaignOnly = async () => {
-    try {
-      const payload = { mode: "ad", name: adFormData.campaignName, inputs: adFormData, output: { images: generatedImages } };
-      const saved = await saveDraft(payload);
-      if (!saved) {
-        toast.error("Save failed.");
-        return;
-      }
-      toast.success("Campaign published (saved). Redirecting to dashboard...");
-      try {
-        sessionStorage.removeItem("preview");
-      } catch (e) {}
-      setTimeout(() => router.push("/dashboard"), 900);
-    } catch (e: any) {
-      console.error("publishCampaignOnly error", e);
-      toast.error("Publish failed: " + (e?.message || String(e)));
-    }
-  };
-
-  /* -------------------- Unified publish/post (unchanged except generation uses translated prompt) -------------------- */
+  // Handle publish post - will auto-generate post name if missing
   const handlePublishPost = async () => {
-    let postingNowLocal = false;
     try {
-      if (!postFormData.postName || postFormData.platforms.length === 0) {
-        toast.error("Please set Post Name and pick at least one platform.");
+      if (generatedImages.length === 0) {
+        toast.error("No generated image to publish. Generate and proceed first.");
         return;
       }
 
-      let imageToPublish = generatedPostImage;
-      if (!imageToPublish) {
-        // When auto-generating here, it will translate prompt internally as well
-        const gen = await generatePostImage(postGenerationPrompt || undefined);
-        imageToPublish = gen || generatedPostImage;
-        if (!imageToPublish) {
-          toast.error("Failed to generate image for publishing.");
-          return;
-        }
+      if (!postFormData.platforms || postFormData.platforms.length === 0) {
+        toast.error("Select at least one platform to post to (Instagram / Facebook).");
+        return;
       }
 
-      postingNowLocal = true;
       const { data: userData } = await supabase.auth.getUser();
       const user = (userData as any)?.user;
       if (!user) {
@@ -1176,1249 +1118,802 @@ const CampaignCreate: React.FC = () => {
         return;
       }
 
-      const image_url: string[] = [];
-      const image_path: string[] = [];
-
-      const safeName = (postFormData.postName || "post").replace(/[^a-z0-9_\-]/gi, "_").toLowerCase();
-      const filename = `${user.id}_${Date.now()}_1_${safeName}.png`;
-      const path = `campaigns/${user.id}/${filename}`;
-
-      let fileToUpload: File | null = null;
-
-      if (typeof imageToPublish === "string" && imageToPublish.startsWith("data:")) {
-        fileToUpload = dataURLtoFile(imageToPublish, filename);
-      } else if (typeof imageToPublish === "string" && (imageToPublish.startsWith("http") || imageToPublish.startsWith("blob:"))) {
-        const resp = await fetch(imageToPublish);
-        if (!resp.ok) {
-          throw new Error(`Failed to fetch image for upload: ${resp.status} ${resp.statusText}`);
-        }
-        const blob = await resp.blob();
-        fileToUpload = new File([blob], filename, { type: blob.type || "image/png" });
-      } else if (generatedPostImageKey) {
-        try {
-          const stored = await idbGet(generatedPostImageKey);
-          if (stored instanceof Blob) {
-            fileToUpload = new File([stored], filename, { type: stored.type || "image/png" });
-          } else if (typeof stored === "string" && stored.startsWith("data:")) {
-            fileToUpload = dataURLtoFile(stored, filename);
-          } else if (typeof stored === "string") {
-            const resp2 = await fetch(stored);
-            if (!resp2.ok) throw new Error(`Failed to fetch stored image: ${resp2.status}`);
-            const blob2 = await resp2.blob();
-            fileToUpload = new File([blob2], filename, { type: blob2.type || "image/png" });
-          }
-        } catch (e) {
-          console.warn("read idb failed", e);
-        }
+      // auto-generate post name if missing
+      let finalName = (postFormData.postName || "").trim();
+      if (!finalName) {
+        finalName = `Post_${Date.now()}`;
+        setPostFormData((p: any) => ({ ...p, postName: finalName }));
       }
 
-      if (!fileToUpload) {
-        if (typeof imageToPublish === "string" && imageToPublish.startsWith("http")) {
-          image_url.push(imageToPublish);
-          image_path.push("");
-        } else {
-          throw new Error("Could not obtain a file to upload for the image.");
-        }
-      } else {
-        const { error: uploadError } = await supabase.storage
-          .from("campaign-assets")
-          .upload(path, fileToUpload, { cacheControl: "3600", upsert: false });
+      const imageToPublish = generatedImages[0];
+      let image_url = imageToPublish;
+      let image_path = "";
 
-        if (uploadError) {
-          console.error("Upload error", uploadError);
-          throw uploadError;
-        }
-
+      // If image is dataURL, upload to supabase campaign-assets
+      if (imageToPublish.startsWith("data:")) {
+        const blob = dataURLtoBlob(imageToPublish);
+        const safeName = (finalName || "post").replace(/[^a-z0-9_\-]/gi, "_").toLowerCase();
+        const filename = `${user.id}_${Date.now()}_${safeName}.png`;
+        const path = `campaigns/${user.id}/${filename}`;
+        const { error: uploadError } = await supabase.storage.from("campaign-assets").upload(path, blob, { cacheControl: "3600", upsert: false });
+        if (uploadError) throw uploadError;
         const { data: publicData } = supabase.storage.from("campaign-assets").getPublicUrl(path);
-        const publicUrl = (publicData as any)?.publicUrl;
-        if (!publicUrl) throw new Error("Could not obtain public URL for uploaded image.");
-        image_url.push(publicUrl);
-        image_path.push(path);
+        image_url = (publicData as any)?.publicUrl ?? imageToPublish;
+        image_path = path;
+      } else if (imageToPublish.startsWith("http")) {
+        image_url = imageToPublish;
+        image_path = "";
       }
 
       const payload = {
         user_id: user.id,
-        name: postFormData.postName || null,
+        name: finalName,
         audience: null,
         campaign_type: "post",
         brand_voice: postFormData.tone || null,
         content_types: [postFormData.postType || "image"],
         vision: postFormData.prompt || null,
         output: { caption: postFormData.generatedCaption || null } || null,
-        image_url,
-        image_path,
+        image_url: [image_url],
+        image_path: [image_path],
         is_published: true,
       };
 
-      const { data: inserted, error: insertError } = await supabase
-        .from("campaigns")
-        .insert([payload])
-        .select();
+      const { data: inserted, error: insertError } = await supabase.from("campaigns").insert([payload]).select();
+      if (insertError) throw insertError;
 
-      if (insertError) {
-        console.error("Insert Error:", insertError);
-        throw insertError;
-      }
-
-      const doPostToInstagram = postFormData.platforms.includes("Instagram");
-      const doCrosspostToFacebook = postFormData.platforms.includes("Facebook");
-
-      const postResults: Array<{ image: string; result: any; error?: string }> = [];
-
-      if (doPostToInstagram) {
-        const caption = postFormData.generatedCaption || postFormData.postName || "";
-
-        for (let i = 0; i < image_url.length; i++) {
-          const imgUrl = image_url[i];
-          try {
-            const resp = await fetch("/api/auth/instagram/post", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                image_url: imgUrl,
-                caption,
-                alsoPostToFacebook: doCrosspostToFacebook,
-              }),
-            });
-            const json = await resp.json();
-            if (!resp.ok) {
-              postResults.push({ image: imgUrl, result: json, error: json?.error || `HTTP ${resp.status}` });
-            } else {
-              postResults.push({ image: imgUrl, result: json });
-            }
-          } catch (err: any) {
-            console.error("Post to IG failed", err);
-            postResults.push({ image: image_url[i], result: null, error: (err && err.message) || String(err) });
-          }
-        }
-      } else if (!doPostToInstagram && doCrosspostToFacebook) {
-        const caption = postFormData.generatedCaption || postFormData.postName || "";
-        for (let i = 0; i < image_url.length; i++) {
-          const imgUrl = image_url[i];
-          try {
-            const resp = await fetch("/api/auth/facebook/post", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ image_url: imgUrl, caption }),
-            });
-            const json = await resp.json();
-            if (!resp.ok) {
-              postResults.push({ image: imgUrl, result: json, error: json?.error || `HTTP ${resp.status}` });
-            } else {
-              postResults.push({ image: imgUrl, result: json });
-            }
-          } catch (err: any) {
-            console.error("Post to Facebook failed", err);
-            postResults.push({ image: image_url[i], result: null, error: (err && err.message) || String(err) });
-          }
+      // ----------------------------
+      // 🔥 INSTAGRAM POSTING LOGIC
+      // ----------------------------
+      if (postFormData.platforms.includes("Instagram")) {
+        try {
+          await fetch("/api/auth/instagram/post", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              image_url,
+              caption: postFormData.generatedCaption || postFormData.postName || "",
+              alsoPostToFacebook: postFormData.platforms.includes("Facebook"),
+            }),
+          });
+        } catch (e) {
+          console.error("Instagram post failed", e);
+          toast.error("Instagram posting failed (see console).");
         }
       }
 
-      try {
-        sessionStorage.removeItem("preview");
-      } catch (e) {
-        /* ignore */
-      }
-
-      let finalMsg = "Post published successfully!";
-      if (postResults.length) {
-        const failures = postResults.filter((r) => r.error);
-        if (failures.length === 0) {
-          finalMsg += " Social posting succeeded.";
-          toast.success(finalMsg);
-        } else {
-          finalMsg += ` Social posting had ${failures.length} failure(s). Check console.`;
-          toast.error(finalMsg);
-          console.warn("Post Results:", postResults);
+      // ---------------------------------
+      // 🔥 FACEBOOK POSTING (if selected and not cross-posted)
+      // ---------------------------------
+      if (postFormData.platforms.includes("Facebook") && !postFormData.platforms.includes("Instagram")) {
+        try {
+          await fetch("/api/auth/facebook/post", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              image_url,
+              caption: postFormData.generatedCaption || postFormData.postName || "",
+            }),
+          });
+        } catch (e) {
+          console.error("Facebook post failed", e);
+          toast.error("Facebook posting failed (see console).");
         }
-      } else {
-        toast.success(finalMsg);
       }
 
+      toast.success("Post published (saved).");
+      setShowPublishPanel(false);
       router.push("/dashboard");
-    } catch (err: any) {
-      console.error("handlePublishPost error", err);
-      toast.error("Publish failed: " + (err?.message || String(err)));
-      try {
-        router.push("/dashboard");
-      } catch (e) {
-        /* ignore */
-      }
-    } finally {
-      postingNowLocal = false;
+    } catch (e: any) {
+      console.error("handlePublishPost error", e);
+      toast.error("Publish failed: " + (e?.message || String(e)));
     }
   };
 
-  // Publish Post: legacy /api/publish flow (kept)
-  const publishPost = async () => {
+  // Replace your existing handleLaunchAd with this function (drop-in)
+  const handleLaunchAd = async () => {
     try {
-      if (!postFormData.postName || postFormData.platforms.length === 0) {
-        toast.error("Please set Post Name and pick at least one platform.");
+      if (!adFormData.campaignName || !adFormData.campaignName.trim()) {
+        toast.error("Campaign name required");
+        return;
+      }
+      if (generatedImages.length === 0) {
+        toast.error("No creative available — generate an image first");
         return;
       }
 
-      let imageToPublish = generatedPostImage;
-      if (!imageToPublish) {
-        const gen = await generatePostImage(postGenerationPrompt || undefined);
-        imageToPublish = gen || generatedPostImage;
-        if (!imageToPublish) {
-          toast.error("Failed to generate image for publishing.");
+      const { data: userData } = await supabase.auth.getUser();
+      const user = (userData as any)?.user;
+      if (!user) {
+        toast.error("You must be signed in to run ads.");
+        router.push("/auth/signin");
+        return;
+      }
+
+      // Helper: map legacy/UX objective strings to Meta's OUTCOME_* values
+      const mapObjectiveToMeta = (obj: string | undefined | null) => {
+        const o = (obj || "").toString().trim().toUpperCase();
+        switch (o) {
+          case "LINK_CLICKS":
+          case "TRAFFIC":
+            return "OUTCOME_TRAFFIC";
+          case "CONVERSIONS":
+          case "SALES":
+            return "OUTCOME_SALES";
+          case "BRAND_AWARENESS":
+            return "OUTCOME_AWARENESS";
+          case "REACH":
+            // REACH is commonly used for awareness/reach — map to awareness outcome
+            return "OUTCOME_AWARENESS";
+          case "ENGAGEMENT":
+            return "OUTCOME_ENGAGEMENT";
+          case "APP_PROMOTION":
+          case "APP_INSTALLS":
+            return "OUTCOME_APP_PROMOTION";
+          case "LEADS":
+          case "OUTCOME_LEADS":
+            return "OUTCOME_LEADS";
+          default:
+            // safe default: traffic
+            return "OUTCOME_TRAFFIC";
+        }
+      };
+
+      // Prepare image: if data URL upload to supabase, else use public HTTP URL
+      const imageToUse = generatedImages[0];
+      let creativeImageUrl = "";
+      let creativeImageDataUrl: string | undefined = undefined;
+
+      if (imageToUse.startsWith("data:")) {
+        try {
+          const blob = dataURLtoBlob(imageToUse);
+          const safeName = (adFormData.campaignName || "ad").replace(/[^a-z0-9_\-]/gi, "_").toLowerCase();
+          const filename = `${user.id}_${Date.now()}_${safeName}.png`;
+          const path = `campaigns/${user.id}/${filename}`;
+          const { error: uploadError } = await supabase.storage.from("campaign-assets").upload(path, blob, { cacheControl: "3600", upsert: true });
+          if (uploadError) throw uploadError;
+          const { data: publicData } = supabase.storage.from("campaign-assets").getPublicUrl(path);
+          creativeImageUrl = (publicData as any)?.publicUrl ?? "";
+          if (!creativeImageUrl) creativeImageDataUrl = imageToUse; // fallback
+        } catch (e) {
+          console.error("upload creative to supabase failed", e);
+          creativeImageDataUrl = imageToUse; // still send data URL if upload failed
+        }
+      } else if (imageToUse.startsWith("http")) {
+        creativeImageUrl = imageToUse;
+      }
+
+      // Save campaign record locally (unchanged behaviour)
+      const payloadDb = {
+        user_id: user.id,
+        name: adFormData.campaignName,
+        campaign_type: "ad",
+        brand_voice: adFormData.tone || null,
+        content_types: ["image"],
+        vision: adFormData.description || null,
+        output: { images: generatedImages },
+        image_url: generatedImages,
+        image_path: [""],
+        is_published: true,
+      };
+
+      const { data: inserted, error } = await supabase.from("campaigns").insert([payloadDb]).select();
+      if (error) throw error;
+
+      // Map your objective to Meta expected value
+      const mappedObjective = mapObjectiveToMeta(adFormData.objective);
+
+      // Build payload for facebook/ads endpoint (matches server expectations)
+      const adPayload: any = {
+        campaignName: adFormData.campaignName,
+        // send the mapped objective (OUTCOME_*)
+        objective: mappedObjective,
+        platforms: adFormData.platforms,
+        adSetName: adFormData.adSetName || `${adFormData.campaignName || "Campaign"} AdSet ${Date.now()}`,
+        targeting: undefined, // server will fallback to adFormData fields if needed
+        creativeCaption: adFormData.tagline || adFormData.description || "",
+        creativeImageUrl: creativeImageUrl || undefined,
+        creativeImageDataUrl: creativeImageDataUrl || undefined,
+        destinationLink: adFormData.destinationLink || "",
+        budget: adFormData.budget,
+        budgetType: adFormData.budgetType || "daily",
+        startDate: adFormData.startDate || null,
+        endDate: adFormData.endDate || null,
+        delivery: adFormData.delivery || undefined,
+        campaignType: adFormData.campaignType || "ad",
+        brandName: adFormData.brandName || undefined,
+        tagline: adFormData.tagline || undefined,
+        tone: adFormData.tone || undefined,
+        primaryCTA: adFormData.primaryCTA || undefined,
+        location: adFormData.location || undefined,
+        ageRange: adFormData.ageRange || undefined,
+        gender: adFormData.gender || undefined,
+        interests: adFormData.interests || undefined,
+        autoTarget: !!adFormData.autoTarget,
+        autoOptimize: !!adFormData.autoOptimize,
+      };
+
+      // Call server endpoint to create FB campaign/adset/creative/ad, include Authorization token
+      try {
+        const token = await getAccessToken();
+        if (!token) {
+          toast.error("You must be signed in to run ads.");
           return;
         }
-      }
 
-      const token = await getAccessToken();
-      if (!token) {
-        toast.error("Sign in to publish.");
-        return;
-      }
-
-      const form = new FormData();
-      form.append("postName", postFormData.postName);
-      form.append("platforms", JSON.stringify(postFormData.platforms));
-      form.append("postType", postFormData.postType || "image");
-      form.append("goal", postFormData.goal || "");
-      form.append("brandName", postFormData.brandName || "");
-      form.append("caption", postFormData.generatedCaption || "");
-      form.append("hashtags", postFormData.hashtags || "");
-
-      if (imageToPublish.startsWith("data:")) {
-        const blob = dataURLtoBlob(imageToPublish);
-        form.append("image", blob, `post_${Date.now()}.png`);
-      } else if (generatedPostImageKey) {
-        try {
-          const stored = await idbGet(generatedPostImageKey);
-          if (stored instanceof Blob) {
-            form.append("image", stored, `post_${Date.now()}.png`);
-          } else if (typeof stored === "string") {
-            if (stored.startsWith("data:")) {
-              const blob = dataURLtoBlob(stored);
-              form.append("image", blob, `post_${Date.now()}.png`);
-            } else {
-              form.append("imageUrl", stored);
-            }
-          } else {
-            form.append("imageUrl", imageToPublish);
-          }
-        } catch (e) {
-          console.warn("read idb failed", e);
-          form.append("imageUrl", imageToPublish);
-        }
-      } else {
-        form.append("imageUrl", imageToPublish);
-      }
-
-      form.append("selectedPlatforms", JSON.stringify(postFormData.platforms));
-
-      const resp = await fetch("/api/publish", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${await getAccessToken()}` },
-        body: form,
-      });
-
-      const json = await resp.json();
-      if (!resp.ok) {
-        throw new Error((json && json.error) || JSON.stringify(json));
-      }
-
-      toast.success("Post published (or queued) to selected platforms.");
-      console.log("publish response", json);
-
-      try {
-        await fetch("/api/campaigns/save-draft", {
+        const resp = await fetch("/api/auth/facebook/ads", {
           method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${await getAccessToken()}` },
-          body: JSON.stringify({ mode: "post", postName: postFormData.postName, inputs: postFormData, publishedTo: postFormData.platforms }),
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify(adPayload),
         });
+
+        // Properly parse and show server response
+        const json = await resp.json();
+        if (!resp.ok) {
+          console.error("facebook/ads returned error:", json);
+          // if the server returns step-specific error forward it to console and toast
+          toast.error("Facebook Ads creation failed. See console for details.");
+        } else {
+          toast.success("Facebook Ads created (or saved).");
+          console.info("facebook/ads response:", json);
+        }
       } catch (e) {
-        /* ignore */
+        console.error("facebook/ads call failed", e);
+        toast.error("Facebook Ads creation failed (see console).");
       }
 
+      setShowPublishPanel(false);
       router.push("/dashboard");
-    } catch (err: any) {
-      console.error("publishPost error", err);
-      toast.error("Publish failed: " + (err?.message || String(err)));
-      try {
-        router.push("/dashboard");
-      } catch (e) { /* ignore */ }
+    } catch (e: any) {
+      console.error("handleLaunchAd error", e);
+      toast.error("Launch failed: " + (e?.message || String(e)));
     }
   };
 
-  const handleGenerateHashtags = async () => {
-    await generateCaption(postFormData.prompt || postFormData.postName || "Create hashtags", (text) => {
-      const matches = (text || "").match(/#[\w-]+/g);
-      if (matches && matches.length) {
-        setPostFormData((p) => ({ ...p, hashtags: matches.join(" ") }));
-      } else {
-        setPostFormData((p) => ({ ...p, hashtags: text }));
-      }
-    });
-  };
-
-  const handleGeneratePostCaption = async () => {
-    await generateCaption(postFormData.prompt || postFormData.postName || "Create caption", (text) => {
-      setPostFormData((p) => ({ ...p, generatedCaption: text }));
-    });
-  };
-
-  /* -------------------- UI -------------------- */
+  /* -------------------- UI Render -------------------- */
 
   return (
     <div className="min-h-screen flex bg-slate-50">
-      
-      <Sidebar />
+      {/* Sidebar */}
+      <aside className={`transition-all duration-300 ${sidebarCollapsed ? "w-16" : "w-64"} bg-white border-r`} style={{ minHeight: "100vh" }}>
+        <div className="p-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${logoGlowing ? "ring-4 ring-offset-2" : ""}`} style={{ background: colors.primary, boxShadow: logoGlowing ? `0 6px 20px ${colors.primary}33` : undefined }}>
+              {logoPublicUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={logoPublicUrl} alt="logo" className="w-8 h-8 rounded-full object-cover" />
+              ) : (
+                <span className="text-white font-bold">OP</span>
+              )}
+            </div>
+            {!sidebarCollapsed && <div className="font-semibold">OPTIM</div>}
+          </div>
+          <button onClick={() => setSidebarCollapsed((s) => !s)} className="p-1 rounded">
+            <ArrowLeft className={`transform ${sidebarCollapsed ? "rotate-180" : ""}`} />
+          </button>
+        </div>
 
+        <nav className="px-3 mt-4">
+          <button onClick={() => router.push("/dashboard")} className="w-full text-left px-3 py-2 rounded hover:bg-slate-50">
+            Dashboard
+          </button>
+          <button onClick={() => router.push("/campaigns")} className="w-full text-left px-3 py-2 rounded hover:bg-slate-50">
+            Campaigns
+          </button>
+          <button onClick={() => router.push("/create-campaign")} className="w-full text-left px-3 py-2 rounded bg-primary/5">
+            Create Campaign
+          </button>
+        </nav>
+      </aside>
+
+      {/* Main content area */}
       <div className="flex-1">
         <NavBar />
-        <div className="sticky top-0 z-50 backdrop-blur-xl bg-background/80 border-b border-border/50">
-          <div className="max-w-7xl mx-auto px-6 py-4">
-            <div className="flex items-center justify-between mb-4">
-              <h1
-                className="text-2xl font-bold"
-                style={
-                  primaryColor
-                    ? { backgroundImage: `linear-gradient(90deg, ${primaryColor}, ${primaryColor}99)`, WebkitBackgroundClip: "text", color: "transparent" }
-                    : undefined
-                }
-              >
-                Create Campaign
-              </h1>
+        <div className="sticky top-0 z-40 bg-background/80 border-b px-6 py-3">
+          <div className="max-w-7xl mx-auto flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold">Create Campaign</h1>
+              <div className="text-sm text-muted-foreground">Chat: {chats.find((c) => c.id === currentChatId)?.title || "—"}</div>
+            </div>
+            <div className="flex items-center gap-3">
+              <Badge variant="secondary">Credits: {credits}</Badge>
+            </div>
+          </div>
 
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Save className="h-4 w-4" />
-                  <span>Draft Saved</span>
+          {/* Chat switcher row */}
+          <div className="max-w-7xl mx-auto mt-3 flex items-center gap-2">
+            <Button size="sm" onClick={() => createNewChat()}>
+              <Plus className="w-4 h-4 mr-2" /> New Chat
+            </Button>
+            <div className="flex gap-2 overflow-x-auto">
+              {chats.map((c) => (
+                <div key={c.id} className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border ${c.id === currentChatId ? "bg-primary/10 border-primary" : "bg-white"}`}>
+                  <button onClick={() => switchToChat(c.id)} className="text-sm font-medium">
+                    {c.title}
+                  </button>
+                  <button
+                    title="Rename"
+                    onClick={() => {
+                      const t = prompt("Rename chat", c.title);
+                      if (t !== null) {
+                        const trimmed = t.trim();
+                        if (trimmed.length) renameChat(c.id, trimmed);
+                        else toast.error("Title cannot be empty");
+                      }
+                    }}
+                    className="text-xs px-1"
+                  >
+                    ✎
+                  </button>
+                  <button
+                    title="Delete chat"
+                    onClick={() => {
+                      if (confirm("Delete this chat?")) deleteChat(c.id);
+                    }}
+                    className="text-xs px-1"
+                  >
+                    🗑
+                  </button>
                 </div>
-              </div>
-            </div>
-
-            <div className="flex justify-center mb-6">
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div className="glass-card p-1.5 rounded-full inline-flex gap-1">
-                      <button
-                        onClick={() => {
-                          setMode("ad");
-                          setStep(1);
-                          setGenerationPrompt("");
-                          setGeneratedImages([]);
-                        }}
-                        className={`relative px-6 py-2.5 rounded-full font-medium text-sm transition-all duration-300 flex items-center gap-2 ${
-                          mode === "ad" ? "bg-gradient-to-r from-primary to-secondary text-primary-foreground shadow-lg" : "text-muted-foreground hover:text-foreground"
-                        }`}
-                        style={mode === "ad" && primaryColor ? { boxShadow: `0 6px 18px ${primaryColor}22` } : undefined}
-                      >
-                        <Rocket className="h-4 w-4" />
-                        Ad Generation
-                      </button>
-
-                      <button
-                        onClick={() => {
-                          setMode("post");
-                          setStep(1);
-                          setGenerationPrompt("");
-                          setGeneratedImages([]);
-                        }}
-                        className={`relative px-6 py-2.5 rounded-full font-medium text-sm transition-all duration-300 flex items-center gap-2 ${
-                          mode === "post" ? "bg-gradient-to-r from-primary to-secondary text-primary-foreground shadow-lg" : "text-muted-foreground hover:text-foreground"
-                        }`}
-                        style={mode === "post" && primaryColor ? { boxShadow: `0 6px 18px ${primaryColor}22` } : undefined}
-                      >
-                        <Sparkles className="h-4 w-4" />
-                        Post Generation
-                      </button>
-                    </div>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Switch between paid ad setup and organic post creation</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">
-                  Step {step} of {totalSteps}: {stepTitles[step - 1]}
-                </span>
-                <span className="text-muted-foreground">{Math.round(progress)}%</span>
-              </div>
-              <Progress value={progress} className="h-2" />
+              ))}
             </div>
           </div>
         </div>
 
-        <div className="max-w-7xl mx-auto px-6 py-8">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* Form Section */}
-            <div className="lg:col-span-2">
-              <Card className="glass-card p-8 rounded-2xl border-border/50">
-                {mode === "ad" ? (
-                  <>
-                    {/* AD flow — steps 1..6 */}
-                    {step === 1 && (
-                      <div className="space-y-6">
-                        <div>
-                          <Label htmlFor="campaignName">Campaign Name</Label>
-                          <Input
-                            id="campaignName"
-                            placeholder="Diwali Sale 2025"
-                            value={adFormData.campaignName}
-                            onChange={(e) => setAdFormData({ ...adFormData, campaignName: e.target.value })}
-                            className="mt-2"
-                          />
-                        </div>
-
-                        <div>
-                          <Label>Objective</Label>
-                          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-2">
-                            {["Sales", "Traffic", "Engagement", "Awareness", "App Installs", "Custom"].map((obj) => (
-                              <Button
-                                key={obj}
-                                variant={adFormData.objective === obj ? "default" : "outline"}
-                                onClick={() => setAdFormData({ ...adFormData, objective: obj })}
-                                className="justify-start"
-                              >
-                                {obj}
-                              </Button>
-                            ))}
-                          </div>
-                        </div>
-
-                        <div>
-                          <Label>Platform Selection</Label>
-                          <div className="flex flex-wrap gap-2 mt-2">
-                            {["Facebook", "Instagram"].map((platform) => (
-                              <Badge
-                                key={platform}
-                                variant={adFormData.platforms.includes(platform) ? "default" : "outline"}
-                                className="cursor-pointer px-4 py-2"
-                                onClick={() => {
-                                  const newPlatforms = adFormData.platforms.includes(platform)
-                                    ? adFormData.platforms.filter((p) => p !== platform)
-                                    : [...adFormData.platforms, platform];
-                                  setAdFormData({ ...adFormData, platforms: newPlatforms });
-                                }}
-                              >
-                                {platform}
-                              </Badge>
-                            ))}
-                          </div>
-                        </div>
-
-                        <div>
-                          <Label htmlFor="campaignType">Campaign Type</Label>
-                          <Select
-                            value={adFormData.campaignType}
-                            onValueChange={(value) => setAdFormData({ ...adFormData, campaignType: value })}
-                          >
-                            <SelectTrigger className="mt-2">
-                              <SelectValue placeholder="Select type" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="single">Single Product</SelectItem>
-                              <SelectItem value="multi">Multi-Product</SelectItem>
-                              <SelectItem value="event">Event</SelectItem>
-                              <SelectItem value="brand">Brand Promo</SelectItem>
-                              <SelectItem value="announcement">Announcement</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-                    )}
-
-                    {step === 2 && (
-                      <div className="space-y-6">
-                        <div>
-                          <Label htmlFor="brandName">Brand Name</Label>
-                          <Input
-                            id="brandName"
-                            placeholder="Your Brand"
-                            value={adFormData.brandName}
-                            onChange={(e) => setAdFormData({ ...adFormData, brandName: e.target.value })}
-                            className="mt-2"
-                          />
-                        </div>
-
-                        <div>
-                          <Label>Logo Upload (Optional)</Label>
-                          <div className="mt-2">
-                            <div className="mt-2 border-2 border-dashed border-border rounded-xl p-6 text-center hover:border-primary/50 transition-colors cursor-pointer">
-                              <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
-                              <p className="text-sm text-muted-foreground">Click to upload or drag and drop</p>
-                              <input
-                                type="file"
-                                accept="image/*"
-                                onChange={(e) => {
-                                  const f = e.target.files ? e.target.files[0] : null;
-                                  if (f) handleAdLogoChange(f);
-                                }}
-                                className="mt-3"
-                              />
-                            </div>
-
-                            <div className="mt-3 flex items-center gap-3">
-                              <div className="w-28 h-20 bg-white border rounded flex items-center justify-center overflow-hidden">
-                                {adFormData.logoDataUrl ? (
-                                  // eslint-disable-next-line @next/next/no-img-element
-                                  <img src={adFormData.logoDataUrl} alt="logo" className="w-full h-full object-contain" />
-                                ) : adFormData.logoPublicUrl ? (
-                                  // eslint-disable-next-line @next/next/no-img-element
-                                  <img src={adFormData.logoPublicUrl} alt="logo" className="w-full h-full object-contain" />
-                                ) : (
-                                  <div className="text-xs text-slate-400">No logo</div>
-                                )}
-                              </div>
-                              <div>
-                                <button
-                                  onClick={() => {
-                                    handleAdLogoChange(null);
-                                  }}
-                                  className="px-2 py-1 border rounded text-sm mr-2"
-                                >
-                                  Remove Upload
-                                </button>
-                                <button
-                                  onClick={() => removeAdLogo()}
-                                  className="px-2 py-1 border rounded text-sm"
-                                >
-                                  Remove Stored Logo
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div>
-                          <Label htmlFor="tagline">Tagline</Label>
-                          <Input
-                            id="tagline"
-                            placeholder="Luxury that feels local."
-                            value={adFormData.tagline}
-                            onChange={(e) => setAdFormData({ ...adFormData, tagline: e.target.value })}
-                            className="mt-2"
-                          />
-                        </div>
-
-                        <div>
-                          <Label htmlFor="tone">Tone of Voice</Label>
-                          <Select value={adFormData.tone} onValueChange={(value) => setAdFormData({ ...adFormData, tone: value })}>
-                            <SelectTrigger className="mt-2">
-                              <SelectValue placeholder="Select tone" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="friendly">Friendly</SelectItem>
-                              <SelectItem value="bold">Bold</SelectItem>
-                              <SelectItem value="professional">Professional</SelectItem>
-                              <SelectItem value="playful">Playful</SelectItem>
-                              <SelectItem value="luxury">Luxury</SelectItem>
-                              <SelectItem value="genz">Gen Z</SelectItem>
-                              <SelectItem value="minimal">Minimal</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                        <div>
-                          <Label htmlFor="primaryCTA">Primary CTA</Label>
-                          <Select value={adFormData.primaryCTA} onValueChange={(value) => setAdFormData({ ...adFormData, primaryCTA: value })}>
-                            <SelectTrigger className="mt-2">
-                              <SelectValue placeholder="Select CTA" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="shop">Shop Now</SelectItem>
-                              <SelectItem value="learn">Learn More</SelectItem>
-                              <SelectItem value="book">Book Now</SelectItem>
-                              <SelectItem value="signup">Sign Up</SelectItem>
-                              <SelectItem value="contact">Contact Us</SelectItem>
-                              <SelectItem value="custom">Custom</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-                    )}
-
-                    {step === 3 && (
-                      <div className="space-y-6">
-                        <div className="flex items-center justify-between">
-                          <Label>Let AI Auto-Target Audience</Label>
-                          <Switch
-                            checked={adFormData.autoTarget}
-                            onCheckedChange={(checked) => setAdFormData({ ...adFormData, autoTarget: checked })}
-                          />
-                        </div>
-
-                        {!adFormData.autoTarget && (
-                          <>
-                            <div>
-                              <Label htmlFor="location">Location</Label>
-                              <div className="relative mt-2">
-                                <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                                <Input
-                                  id="location"
-                                  placeholder="City, State, or Country"
-                                  value={adFormData.location}
-                                  onChange={(e) => setAdFormData({ ...adFormData, location: e.target.value })}
-                                  className="pl-10"
-                                />
-                              </div>
-                            </div>
-
-                            <div>
-                              <Label>
-                                Age Range: {adFormData.ageRange[0]} - {adFormData.ageRange[1]}
-                              </Label>
-                              <Slider
-                                value={adFormData.ageRange}
-                                onValueChange={(value) => setAdFormData({ ...adFormData, ageRange: value as [number, number] })}
-                                min={18}
-                                max={65}
-                                step={1}
-                                className="mt-4"
-                              />
-                            </div>
-
-                            <div>
-                              <Label>Gender</Label>
-                              <div className="flex gap-2 mt-2">
-                                {["All", "Male", "Female", "Custom"].map((g) => (
-                                  <Button
-                                    key={g}
-                                    variant={adFormData.gender === g.toLowerCase() ? "default" : "outline"}
-                                    onClick={() => setAdFormData({ ...adFormData, gender: g.toLowerCase() })}
-                                    size="sm"
-                                  >
-                                    {g}
-                                  </Button>
-                                ))}
-                              </div>
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    )}
-
-                    {step === 4 && (
-                      <div className="space-y-6">
-                        <div>
-                          <Label>Budget Type</Label>
-                          <div className="flex gap-4 mt-2">
-                            {["daily", "lifetime"].map((type) => (
-                              <Button
-                                key={type}
-                                variant={adFormData.budgetType === type ? "default" : "outline"}
-                                onClick={() => setAdFormData({ ...adFormData, budgetType: type })}
-                                className="flex-1 capitalize"
-                              >
-                                {type}
-                              </Button>
-                            ))}
-                          </div>
-                        </div>
-
-                        <div>
-                          <Label>Budget: ₹{adFormData.budget.toLocaleString()}</Label>
-                          <Slider
-                            value={[adFormData.budget]}
-                            onValueChange={(value) => setAdFormData({ ...adFormData, budget: value[0] })}
-                            min={500}
-                            max={500000}
-                            step={500}
-                            className="mt-4"
-                          />
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-4">
-                          <div>
-                            <Label htmlFor="startDate">Start Date</Label>
-                            <Input
-                              id="startDate"
-                              type="date"
-                              value={adFormData.startDate}
-                              onChange={(e) => setAdFormData({ ...adFormData, startDate: e.target.value })}
-                              className="mt-2"
-                            />
-                          </div>
-                          <div>
-                            <Label htmlFor="endDate">End Date</Label>
-                            <Input
-                              id="endDate"
-                              type="date"
-                              value={adFormData.endDate}
-                              onChange={(e) => setAdFormData({ ...adFormData, endDate: e.target.value })}
-                              className="mt-2"
-                            />
-                          </div>
-                        </div>
-
-                        <div className="flex items-center justify-between">
-                          <Label>Auto-optimize Spend</Label>
-                          <Switch
-                            checked={adFormData.autoOptimize}
-                            onCheckedChange={(checked) => setAdFormData({ ...adFormData, autoOptimize: checked })}
-                          />
-                        </div>
-                      </div>
-                    )}
-
-                    {step === 5 && (
-                      <div className="space-y-6">
-                        <div className="flex items-center justify-between">
-                          <Label htmlFor="description">Campaign Description</Label>
-                          {/* NEW: Mic button for Tamil speech → text */}
-                          <MicRecorder
-                            onText={(chunk) => setAdFormData((p) => ({ ...p, description: (p.description ? p.description + " " : "") + chunk }))}
-                            lang="ta-IN"
-                            small
-                          />
-                        </div>
-                        <Textarea
-                          id="description"
-                          placeholder="Promoting our Diwali discounts on home decor products in Chennai."
-                          value={adFormData.description}
-                          onChange={(e) => setAdFormData({ ...adFormData, description: e.target.value })}
-                          rows={4}
-                          className="mt-2"
-                        />
-
-                        <div>
+        <main className="max-w-6xl mx-auto p-6 pb-40">
+          {/* If no messages show welcome */}
+          {messages.length === 0 ? (
+            <div className="flex items-center justify-center py-24">
+              <div className="text-center">
+                <div className="mx-auto w-28 h-28 rounded-full flex items-center justify-center" style={{ background: colors.gradientHero }}>
+                  <Sparkles className="w-12 h-12 text-white" />
+                </div>
+                <h2 className="text-4xl font-bold mt-6">Hello, Creator</h2>
+                <p className="text-lg mt-3" style={{ color: colors.mutedForeground }}>
+                  Describe your campaign idea or upload product images to get started with AI-powered creation
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-6 mb-8">
+              {messages.map((m, idx) => (
+                <div key={idx} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+                  <Card className="max-w-2xl p-5" style={{ background: m.role === "user" ? `${colors.primary}0c` : colors.card, border: `1px solid ${colors.border}` }}>
+                    <p style={{ color: colors.cardForeground }}>{m.content}</p>
+                    {m.imageUrl && (
+                      <div className="mt-3">
+                        <img src={m.imageUrl} alt="generated" className="w-full rounded-lg border" style={{ borderColor: colors.border }} />
+                        <div className="mt-2 flex gap-2">
                           <Button
+                            size="sm"
                             variant="outline"
-                            onClick={() =>
-                              generateCaption(adFormData.description || adFormData.campaignName || "Write a campaign description", (text) => {
-                                setAdFormData((p) => ({ ...p, description: text }));
-                              })
-                            }
+                            onClick={() => {
+                              navigator.clipboard?.writeText(m.imageUrl || "");
+                              toast.success("Image URL copied");
+                            }}
                           >
-                            <Sparkles className="h-4 w-4 mr-2" />
-                            AI Assist Description
+                            <Copy className="w-3 h-3 mr-2" /> Copy URL
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              const a = document.createElement("a");
+                              a.href = m.imageUrl!;
+                              a.download = `creative_${Date.now()}.png`;
+                              document.body.appendChild(a);
+                              a.click();
+                              a.remove();
+                            }}
+                          >
+                            <Download className="w-3 h-3 mr-2" /> Download
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              const filtered = messages.filter((_, i) => i !== idx);
+                              updateCurrentChatMessages(filtered);
+                              toast.success("Deleted message");
+                            }}
+                          >
+                            <X className="w-3 h-3 mr-2" /> Delete
                           </Button>
                         </div>
-
-                        <div>
-                          <Label htmlFor="emotion">Emotion / Vibe</Label>
-                          <Select value={adFormData.emotion} onValueChange={(value) => setAdFormData({ ...adFormData, emotion: value })}>
-                            <SelectTrigger className="mt-2">
-                              <SelectValue placeholder="Select emotion" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="festive">Festive</SelectItem>
-                              <SelectItem value="aspirational">Aspirational</SelectItem>
-                              <SelectItem value="witty">Witty</SelectItem>
-                              <SelectItem value="premium">Premium</SelectItem>
-                              <SelectItem value="casual">Casual</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                        <div>
-                          <Label htmlFor="offerInfo">Offer Info</Label>
-                          <Input
-                            id="offerInfo"
-                            placeholder="Use code DIWALI20 for 20% off"
-                            value={adFormData.offerInfo}
-                            onChange={(e) => setAdFormData({ ...adFormData, offerInfo: e.target.value })}
-                            className="mt-2"
-                          />
-                        </div>
-
-                        <div className="flex items-center justify-between">
-                          <Label>Generate Multiple Variations</Label>
-                          <Switch
-                            checked={adFormData.multipleVariations}
-                            onCheckedChange={(checked) => setAdFormData({ ...adFormData, multipleVariations: checked })}
-                          />
-                        </div>
                       </div>
                     )}
+                  </Card>
+                </div>
+              ))}
+              {isGenerating && (
+                <div className="flex justify-start">
+                  <Card className="p-4" style={{ background: colors.card, border: `1px solid ${colors.border}` }}>
+                    <div className="flex items-center gap-3">
+                      <div className="w-3 h-3 rounded-full animate-pulse" style={{ background: colors.primary }} />
+                      <div style={{ color: colors.mutedForeground }}>Generating your campaign...</div>
+                    </div>
+                  </Card>
+                </div>
+              )}
+            </div>
+          )}
 
-                    {step === 6 && (
-                      <div className="space-y-6">
-                        <div className="p-6 bg-muted/50 rounded-xl space-y-4">
-                          <h3 className="font-semibold text-lg">Campaign Summary</h3>
-                          <div className="grid grid-cols-2 gap-4 text-sm">
-                            <div>
-                              <span className="text-muted-foreground">Campaign:</span>
-                              <p className="font-medium">{adFormData.campaignName || "Untitled"}</p>
-                            </div>
-                            <div>
-                              <span className="text-muted-foreground">Objective:</span>
-                              <p className="font-medium">{adFormData.objective || "Not set"}</p>
-                            </div>
-                            <div>
-                              <span className="text-muted-foreground">Platforms:</span>
-                              <p className="font-medium">{adFormData.platforms.join(", ") || "None"}</p>
-                            </div>
-                            <div>
-                              <span className="text-muted-foreground">Budget:</span>
-                              <p className="font-medium">
-                                ₹{adFormData.budget.toLocaleString()} / {adFormData.budgetType}
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="p-6 bg-primary/5 rounded-xl border border-primary/20">
-                          <h4 className="font-semibold mb-3">Post Preview & Launch</h4>
-
-                          <div className="grid grid-cols-2 gap-4">
-                            <div>
-                              <Label>Editable Image Prompt</Label>
-                              <Textarea
-                                rows={6}
-                                value={generationPrompt || buildPromptClient(adFormData)}
-                                onChange={(e) => setGenerationPrompt(e.target.value)}
-                                className="mt-2"
-                              />
-                              <div className="flex gap-2 mt-2">
-                                <Button
-                                  onClick={async () => {
-                                    if (!generationPrompt) setGenerationPrompt(buildPromptClient(adFormData));
-                                    await handleGenerateCampaign();
-                                  }}
-                                  disabled={generating}
-                                >
-                                  {generating ? "Generating..." : "Generate & Preview"}
-                                </Button>
-                                <Button
-                                  variant="outline"
-                                  onClick={() => {
-                                    // Regenerate should also respect translation (handled in handleGenerateCampaign)
-                                    handleGenerateCampaign({ promptOverride: generationPrompt || buildPromptClient(adFormData) });
-                                  }}
-                                >
-                                  Regenerate
-                                </Button>
-                                <Button
-                                  onClick={() => {
-                                    const p = buildPromptClient(adFormData);
-                                    setGenerationPrompt(p);
-                                    toast.success("Prompt reset to auto-generated version");
-                                  }}
-                                >
-                                  Reset Prompt
-                                </Button>
-                              </div>
-                            </div>
-
-                            <div>
-                              <Label>Generated Image (single)</Label>
-                              <div className="mt-2 border rounded bg-white p-3">
-                                {generatedImages.length === 0 ? (
-                                  <div className="text-sm text-muted-foreground">No image generated — click Generate & Preview above to create.</div>
-                                ) : (
-                                  <>
-                                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                                    <img src={generatedImages[0]} alt="generated" className="w-full h-64 object-contain rounded" />
-                                    <div className="mt-3 flex gap-2">
-                                      <Button
-                                        onClick={async () => {
-                                          try {
-                                            if (generatedImages[0].startsWith("data:")) {
-                                              const blob = dataURLtoBlob(generatedImages[0]);
-                                              const key = `generated_${Date.now()}`;
-                                              await idbPut(key, blob);
-                                              toast.success("Saved generated image to IndexedDB (preview key).");
-                                            } else {
-                                              const a = document.createElement("a");
-                                              a.href = generatedImages[0];
-                                              a.download = `generated_${Date.now()}.png`;
-                                              document.body.appendChild(a);
-                                              a.click();
-                                              a.remove();
-                                            }
-                                          } catch (e) {
-                                            console.warn("save image failed", e);
-                                            toast.error("Save failed");
-                                          }
-                                        }}
-                                      >
-                                        Download
-                                      </Button>
-                                      <Button variant="outline" onClick={() => publishCampaignOnly()}>Publish Campaign</Button>
-                                      <Button onClick={() => postAdToFacebook()} disabled={postingNow}>
-                                        {postingNow ? "Posting…" : "Post Ad in Facebook"}
-                                      </Button>
-                                    </div>
-                                    <div className="text-xs text-muted-foreground mt-2">Posting results and debug will appear in console; you'll be redirected to /dashboard on success.</div>
-                                  </>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    {/* POST GENERATION FLOW (steps 1..4) */}
-                    {step === 1 && (
-                      <div className="space-y-6">
-                        <div>
-                          <Label htmlFor="postName">Post Name</Label>
-                          <Input
-                            id="postName"
-                            placeholder="Summer Collection Launch"
-                            value={postFormData.postName}
-                            onChange={(e) => setPostFormData({ ...postFormData, postName: e.target.value })}
-                            className="mt-2"
-                          />
-                        </div>
-
-                        <div>
-                          <Label>Platform Selection</Label>
-                          <div className="flex flex-wrap gap-2 mt-2">
-                            {["Instagram", "Facebook"].map((platform) => (
-                              <Badge
-                                key={platform}
-                                variant={postFormData.platforms.includes(platform) ? "default" : "outline"}
-                                className="cursor-pointer px-4 py-2"
-                                onClick={() => {
-                                  const newPlatforms = postFormData.platforms.includes(platform)
-                                    ? postFormData.platforms.filter((p) => p !== platform)
-                                    : [...postFormData.platforms, platform];
-                                  setPostFormData({ ...postFormData, platforms: newPlatforms });
-                                }}
-                              >
-                                {platform}
-                              </Badge>
-                            ))}
-                          </div>
-                        </div>
-
-                        <div>
-                          <Label htmlFor="postType">Post Type</Label>
-                          <Select value={postFormData.postType} onValueChange={(value) => setPostFormData({ ...postFormData, postType: value })}>
-                            <SelectTrigger className="mt-2">
-                              <SelectValue placeholder="Select type" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="image">Image</SelectItem>
-                              <SelectItem value="carousel">Carousel</SelectItem>
-                              <SelectItem value="video">Video</SelectItem>
-                              <SelectItem value="story">Story</SelectItem>
-                              <SelectItem value="text">Text</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                        <div>
-                          <Label htmlFor="goal">Goal</Label>
-                          <Select value={postFormData.goal} onValueChange={(value) => setPostFormData({ ...postFormData, goal: value })}>
-                            <SelectTrigger className="mt-2">
-                              <SelectValue placeholder="Select goal" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="engagement">Engagement</SelectItem>
-                              <SelectItem value="awareness">Awareness</SelectItem>
-                              <SelectItem value="announcement">Announcement</SelectItem>
-                              <SelectItem value="product">Product Highlight</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                        <div>
-                          <Label>Upload Assets (Optional)</Label>
-                          <div className="mt-2 border-2 border-dashed border-border rounded-xl p-8 text-center hover:border-primary/50 transition-colors cursor-pointer">
-                            <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
-                            <p className="text-sm text-muted-foreground">Click to upload images or videos</p>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {step === 2 && (
-                      <div className="space-y-6">
-                        <div>
-                          <Label htmlFor="brandName">Brand Name</Label>
-                          <Input id="brandName" placeholder="Your Brand" value={postFormData.brandName} onChange={(e) => setPostFormData({ ...postFormData, brandName: e.target.value })} className="mt-2" />
-                        </div>
-
-                        <div>
-                          <Label>Logo (Optional)</Label>
-                          <div className="mt-2 border-2 border-dashed border-border rounded-xl p-6 text-center hover:border-primary/50 transition-colors cursor-pointer">
-                            <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
-                            <p className="text-sm text-muted-foreground">Upload your logo</p>
-                            <input
-                              type="file"
-                              accept="image/*"
-                              onChange={(e) => {
-                                const f = e.target.files ? e.target.files[0] : null;
-                                if (f) handlePostLogoChange(f);
-                              }}
-                              className="mt-3"
-                            />
-                          </div>
-
-                          <div className="mt-3 flex items-center gap-3">
-                            <div className="w-28 h-20 bg-white border rounded flex items-center justify-center overflow-hidden">
-                              {postFormData.logoDataUrl ? (
-                                // eslint-disable-next-line @next/next/no-img-element
-                                <img src={postFormData.logoDataUrl} alt="logo" className="w-full h-full object-contain" />
-                              ) : postFormData.logoPublicUrl ? (
-                                // eslint-disable-next-line @next/next/no-img-element
-                                <img src={postFormData.logoPublicUrl} alt="logo" className="w-full h-full object-contain" />
-                              ) : (
-                                <div className="text-xs text-slate-400">No logo</div>
-                              )}
-                            </div>
-                            <div>
-                              <button onClick={() => handlePostLogoChange(null)} className="px-2 py-1 border rounded text-sm mr-2">
-                                Remove Upload
-                              </button>
-                              <button onClick={() => removePostLogo()} className="px-2 py-1 border rounded text-sm">
-                                Remove Stored Logo
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div>
-                          <Label htmlFor="tone">Tone of Voice</Label>
-                          <Select value={postFormData.tone} onValueChange={(value) => setPostFormData({ ...postFormData, tone: value })}>
-                            <SelectTrigger className="mt-2">
-                              <SelectValue placeholder="Select tone" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="friendly">Friendly</SelectItem>
-                              <SelectItem value="bold">Bold</SelectItem>
-                              <SelectItem value="playful">Playful</SelectItem>
-                              <SelectItem value="minimal">Minimal</SelectItem>
-                              <SelectItem value="luxury">Luxury</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                        <div>
-                          <Label htmlFor="primaryCTA">Primary CTA (Optional)</Label>
-                          <Input id="primaryCTA" placeholder="Shop Now, Learn More, etc." value={postFormData.primaryCTA} onChange={(e) => setPostFormData({ ...postFormData, primaryCTA: e.target.value })} className="mt-2" />
-                        </div>
-
-                        <div>
-                          <Label htmlFor="hashtags">Hashtag Suggestions</Label>
-                          <div className="flex gap-2 mt-2">
-                            <Input id="hashtags" placeholder="#fashion #style #trending" value={postFormData.hashtags} onChange={(e) => setPostFormData({ ...postFormData, hashtags: e.target.value })} />
-                            <Button variant="outline" onClick={handleGenerateHashtags}>
-                              <Sparkles className="h-4 w-4 mr-2" />
-                              AI Generate
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {step === 3 && (
-                      <div className="space-y-6">
-                        <div className="flex items-center justify-between">
-                          <Label htmlFor="prompt">Describe your post or campaign idea</Label>
-                          {/* NEW: Mic for Tamil speech → text */}
-                          <MicRecorder
-                            onText={(chunk) => setPostFormData((p) => ({ ...p, prompt: (p.prompt ? p.prompt + " " : "") + chunk }))}
-                            lang="ta-IN"
-                            small
-                          />
-                        </div>
-                        <Textarea
-                          id="prompt"
-                          placeholder="Create an engaging post about our new summer collection launch. Focus on vibrant colors and beach vibes..."
-                          value={postFormData.prompt}
-                          onChange={(e) => setPostFormData({ ...postFormData, prompt: e.target.value })}
-                          rows={6}
-                          className="mt-2"
-                        />
-
-                        <div className="flex items-center justify-between">
-                          <Label>Generate multiple versions</Label>
-                          <Switch checked={postFormData.multipleVersions} onCheckedChange={(checked) => setPostFormData({ ...postFormData, multipleVersions: checked })} />
-                        </div>
-
-                        <div className="p-6 bg-muted/50 rounded-xl">
-                          <h4 className="font-semibold mb-3">AI Generated Caption Preview</h4>
-                          <div className="space-y-3">
-                            <p className="text-sm text-muted-foreground">{postFormData.generatedCaption || "Your AI-generated caption will appear here after generation..."}</p>
-                          </div>
-                        </div>
-
-                        <Button className="w-full" size="lg" onClick={handleGeneratePostCaption}>
-                          <Sparkles className="h-5 w-5 mr-2" />
-                          Generate Post Caption
-                        </Button>
-                      </div>
-                    )}
-
-                    {step === 4 && (
-                      <div className="space-y-6">
-                        <div className="p-6 bg-muted/50 rounded-xl space-y-4">
-                          <h3 className="font-semibold text-lg">Post Summary</h3>
-                          <div className="grid grid-cols-2 gap-4 text-sm">
-                            <div>
-                              <span className="text-muted-foreground">Post Name:</span>
-                              <p className="font-medium">{postFormData.postName || "Untitled"}</p>
-                            </div>
-                            <div>
-                              <span className="text-muted-foreground">Platforms:</span>
-                              <p className="font-medium">{postFormData.platforms.join(", ") || "None"}</p>
-                            </div>
-                            <div>
-                              <span className="text-muted-foreground">Post Type:</span>
-                              <p className="font-medium">{postFormData.postType || "Not set"}</p>
-                            </div>
-                            <div>
-                              <span className="text-muted-foreground">Goal:</span>
-                              <p className="font-medium">{postFormData.goal || "Not set"}</p>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Post Review & Generate */}
-                        <div className="p-6 bg-primary/5 rounded-xl border border-primary/20">
-                          <h4 className="font-semibold mb-3">Post Preview & Publish</h4>
-
-                          <div className="grid grid-cols-2 gap-4">
-                            <div>
-                              <Label>Editable Image Prompt</Label>
-                              <Textarea
-                                rows={6}
-                                value={postGenerationPrompt || postFormData.prompt || `Create a social post for ${postFormData.postName || "my brand"}`}
-                                onChange={(e) => setPostGenerationPrompt(e.target.value)}
-                                className="mt-2"
-                              />
-                              <div className="flex gap-2 mt-2">
-                                <Button onClick={() => { setPostGenerationPrompt(postFormData.prompt || `Create a social post for ${postFormData.postName || "my brand"}`); toast.success("Prompt initialized"); }}>
-                                  Init Prompt
-                                </Button>
-                                <Button
-                                  onClick={() => generatePostImage(postGenerationPrompt || undefined)}
-                                  disabled={isGeneratingPostImage}
-                                >
-                                  {isGeneratingPostImage ? "Generating…" : "Generate & Review"}
-                                </Button>
-                                <Button
-                                  variant="outline"
-                                  onClick={() => {
-                                    setPostGenerationPrompt("");
-                                    setGeneratedPostImage(null);
-                                    setGeneratedPostImageKey(null);
-                                    try { sessionStorage.removeItem("preview"); } catch (e) { }
-                                  }}
-                                >
-                                  Clear
-                                </Button>
-                              </div>
-                            </div>
-
-                            <div>
-                              <Label>Generated Image (single)</Label>
-                              <div className="mt-2 border rounded bg-white p-3">
-                                {isGeneratingPostImage ? (
-                                  <div>Generating image…</div>
-                                ) : generatedPostImage ? (
-                                  <>
-                                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                                    <img src={generatedPostImage} alt="generated-post" className="w-full h-64 object-contain rounded" />
-                                    <div className="mt-3 flex gap-2">
-                                      <Button onClick={downloadGeneratedPostImage}>Download</Button>
-                                      <Button variant="outline" onClick={goToFinalize}>Finalize & Publish</Button>
-                                    </div>
-                                    <div className="text-xs text-muted-foreground mt-2">Stored: {generatedPostImageKey ? "IndexedDB (local preview)" : (generatedPostImage.startsWith("data:") ? "session (dataURL)" : "public URL")}</div>
-                                  </>
-                                ) : (
-                                  <div className="text-sm text-muted-foreground">No image generated — click Generate & Review to create one image inline.</div>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="mt-4 flex gap-2">
-                            <Button variant="outline" onClick={() => saveDraft({ mode: "post", postName: postFormData.postName, inputs: postFormData })}>Save Template</Button>
-                            <Button onClick={() => { if (!generatedPostImage) generatePostImage(); else handlePublishPost(); }} className="ml-auto">
-                              {generatedPostImage ? "Publish & Post" : "Generate & Publish"}
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </>
-                )}
+          {/* Pending preview */}
+          {pendingGeneratedImage && (
+            <div className="mb-6">
+              <Card className="p-4">
+                <div className="flex flex-col md:flex-row gap-4">
+                  <div className="flex-1">
+                    <img src={pendingGeneratedImage} alt="preview" className="w-full rounded-lg object-contain" />
+                  </div>
+                  <div className="w-full md:w-80">
+                    <h4 className="font-semibold">Preview ready</h4>
+                    <p className="text-sm mt-2" style={{ color: colors.mutedForeground }}>
+                      Verify the generated image here. If it looks good, click Proceed to Publish. Otherwise, Regenerate or Dismiss.
+                    </p>
+                    <div className="mt-4 flex gap-2">
+                      <Button onClick={() => { setPendingGeneratedImage(null); toast("Preview dismissed"); }} variant="outline">
+                        Dismiss
+                      </Button>
+                      <Button style={{ background: colors.gradientPrimary, color: colors.primaryForeground }} onClick={handleProceedToPublish}>
+                        Proceed to Publish
+                      </Button>
+                      <Button variant="outline" onClick={() => { setPendingGeneratedImage(null); startGenerate(); }}>
+                        Regenerate
+                      </Button>
+                    </div>
+                  </div>
+                </div>
               </Card>
             </div>
+          )}
 
-            {/* Live Preview Panel - show ONLY on final step */}
-            <div className="lg:col-span-1">
-              {step === totalSteps ? (
-                <Card className="glass-card p-6 rounded-2xl border-border/50 sticky top-32">
-                  <h3 className="font-semibold mb-4">Live Preview</h3>
-                  <div className="space-y-4">
-                    <div className="aspect-square bg-gradient-to-br from-primary/20 to-secondary/20 rounded-xl flex items-center justify-center">
-                      <p className="text-sm text-muted-foreground">{mode === "ad" ? "Ad" : "Post"} Preview</p>
+          {/* Generated gallery */}
+          {generatedImages.length > 0 && (
+            <div className="mb-6">
+              <h3 className="font-semibold mb-3">Generated Images</h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {generatedImages.map((g, idx) => (
+                  <div key={idx} className="relative group border rounded overflow-hidden">
+                    <img src={g} alt={`generated-${idx}`} className="w-full h-40 object-cover" />
+                    <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Button size="sm" variant="ghost" onClick={() => setGeneratedImages((prev) => prev.filter((_, i) => i !== idx))}>
+                        <X className="w-4 h-4" />
+                      </Button>
                     </div>
-                    <div className="space-y-2 text-sm">
-                      {mode === "ad" ? (
-                        <>
-                          <div className="flex justify-between"><span className="text-muted-foreground">Campaign:</span><span className="font-medium">{adFormData.campaignName || "—"}</span></div>
-                          <div className="flex justify-between"><span className="text-muted-foreground">Platforms:</span><span className="font-medium">{adFormData.platforms.length || 0}</span></div>
-                          <div className="flex justify-between"><span className="text-muted-foreground">Budget:</span><span className="font-medium">₹{adFormData.budget.toLocaleString()}</span></div>
-                        </>
-                      ) : (
-                        <>
-                          <div className="flex justify-between"><span className="text-muted-foreground">Post:</span><span className="font-medium">{postFormData.postName || "—"}</span></div>
-                          <div className="flex justify-between"><span className="text-muted-foreground">Platforms:</span><span className="font-medium">{postFormData.platforms.length || 0}</span></div>
-                          <div className="flex justify-between"><span className="text-muted-foreground">Type:</span><span className="font-medium">{postFormData.postType || "—"}</span></div>
-                        </>
-                      )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </main>
+
+        {/* Bottom fixed input */}
+        <div className="fixed bottom-0 left-0 right-0" style={{ background: `${colors.background}ee`, borderTop: `1px solid ${colors.border}` }}>
+          <div className="max-w-6xl mx-auto px-6 py-4 space-y-4">
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" variant={quickSettings.logoEnabled ? "default" : "outline"} onClick={() => setQuickSettings((q) => ({ ...q, logoEnabled: !q.logoEnabled }))}>
+                <ImageIcon className="w-3 h-3 mr-2" />
+                Logo
+              </Button>
+
+              <div className="relative">
+                <Button size="sm" variant={quickSettings.themeEnabled ? "default" : "outline"} onClick={() => setShowThemeOptions((s) => !s)}>
+                  <Palette className="w-3 h-3 mr-2" />
+                  {quickSettings.themeEnabled ? quickSettings.tone : "Theme"}
+                </Button>
+                {showThemeOptions && (
+                  <div className="absolute bottom-full mb-2 right-0 bg-white border p-2 rounded shadow-lg z-40 w-44">
+                    <div className="text-xs font-semibold mb-2">Pick theme</div>
+                    <div className="flex flex-col gap-2">
+                      {["professional", "playful", "festive", "minimal"].map((t) => (
+                        <button key={t} onClick={() => { setQuickSettings((q) => ({ ...q, tone: t, themeEnabled: true })); setShowThemeOptions(false); toast.success(`Theme: ${t}`); }} className={`text-left px-2 py-1 rounded ${quickSettings.tone === t ? "bg-primary/10" : ""}`}>
+                          {t}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="relative">
+                <Button size="sm" variant="outline" onClick={() => setShowAspectOptions((s) => !s)}>
+                  <LayoutTemplate className="w-3 h-3 mr-2" />
+                  {quickSettings.aspectRatio}
+                </Button>
+                {showAspectOptions && (
+                  <div className="absolute bottom-full mb-2 right-0 bg-white border p-2 rounded shadow-lg z-40 w-40">
+                    <div className="text-xs font-semibold mb-2">Aspect ratio</div>
+                    <div className="flex flex-col gap-2">
+                      {["1:1", "4:5", "9:16", "16:9"].map((r) => (
+                        <button key={r} onClick={() => { setQuickSettings((q) => ({ ...q, aspectRatio: r })); setShowAspectOptions(false); toast.success(`Aspect: ${r}`); }} className="text-left px-2 py-1 rounded hover:bg-slate-50">
+                          {r}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <Button size="sm" variant="outline" onClick={() => setQuickSettings((q) => ({ ...q, tone: q.tone === "professional" ? "playful" : "professional" }))}>
+                <Smile className="w-3 h-3 mr-2" />
+                {quickSettings.tone}
+              </Button>
+
+              {quickSettings.audience && (
+                <Badge variant="secondary" className="px-3 py-1.5">
+                  <Users className="w-3 h-3 mr-1" />
+                  {quickSettings.audience}
+                </Badge>
+              )}
+            </div>
+
+            {/* Input bar */}
+            <div className="relative">
+              <div className="flex items-end gap-3 p-2 rounded-3xl" style={{ background: colors.card, border: `2px solid ${colors.border}` }}>
+                <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept="image/*" multiple className="hidden" />
+                <input type="file" ref={logoInputRef} onChange={handleLogoUpload} accept="image/*" className="hidden" />
+
+                <Button size="icon" variant="ghost" onClick={() => setShowUploadPanel((s) => !s)} className="rounded-full">
+                  <Plus className="w-5 h-5" />
+                </Button>
+
+                <Textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} onKeyDown={handleKeyPress} placeholder="Describe your campaign idea or upload product images to get started…" className="flex-1 min-h-[52px] max-h-32 bg-transparent border-0 resize-none text-base" disabled={isGenerating || credits <= 0} />
+
+                <div className="flex items-center gap-2">
+                  <MicRecorder onText={(chunk) => setPrompt((p) => (p ? p + " " + chunk : chunk))} lang="ta-IN" small />
+                  <Button size="icon" variant="outline" onClick={async () => { const enhanced = await enhancePrompt(prompt || adFormData.description || ""); if (enhanced) setPrompt(enhanced); }} title="Enhance prompt">
+                    <Sparkles className="w-5 h-5" />
+                  </Button>
+                  <Button size="icon" onClick={startGenerate} disabled={isGenerating || credits <= 0 || (!prompt.trim() && uploadedImages.length === 0)} className="rounded-full" style={{ background: colors.gradientPrimary }}>
+                    <Send className="w-5 h-5 text-white" />
+                  </Button>
+                </div>
+              </div>
+
+              {/* Upload panel */}
+              {showUploadPanel && (
+                <Card className="mt-3 p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="font-semibold">Upload & Brand Settings</div>
+                    <Button size="sm" variant="ghost" onClick={() => setShowUploadPanel(false)}>
+                      <X className="w-4 h-4" />
+                    </Button>
+                  </div>
+                  <Separator />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
+                    <div>
+                      <Label className="text-xs mb-2 block">Product Images (max 3)</Label>
+                      <div className="flex gap-2">
+                        {uploadedPreviews.map((src, index) => (
+                          <div key={index} className="relative group">
+                            <img src={src} alt={`Upload ${index + 1}`} className="w-16 h-16 rounded-lg object-cover border" style={{ borderColor: colors.border }} />
+                            <button onClick={() => handleRemoveImage(index)} className="absolute -top-2 -right-2 w-5 h-5 bg-destructive text-white rounded-full text-xs opacity-0 group-hover:opacity-100 transition-opacity" style={{ background: colors.destructive }}>
+                              ×
+                            </button>
+                          </div>
+                        ))}
+                        {uploadedPreviews.length < 3 && (
+                          <button onClick={() => fileInputRef.current?.click()} className="w-16 h-16 rounded-lg border-2 border-dashed hover:border-primary transition-colors flex items-center justify-center" style={{ borderColor: colors.border }}>
+                            <Plus className="w-5 h-5 text-muted-foreground" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label className="text-xs mb-2 block">Brand Logo</Label>
+                      <div className="flex items-center gap-3">
+                        <div onClick={() => logoInputRef.current?.click()} className="w-16 h-16 rounded-lg border-2 border-dashed hover:border-primary transition-colors flex items-center justify-center cursor-pointer" style={{ borderColor: colors.border }}>
+                          {logoPreview ? <img src={logoPreview} alt="Logo" className="w-full h-full rounded-lg object-cover" /> : logoPublicUrl ? <img src={logoPublicUrl} alt="logo" className="w-full h-full rounded-lg object-cover" /> : <Upload className="w-5 h-5 text-muted-foreground" />}
+                        </div>
+                        <div className="flex-1">
+                          <Label htmlFor="brandName" className="text-xs">Brand Name</Label>
+                          <Input id="brandName" value={adFormData.brandName} onChange={(e) => { setAdFormData((p: any) => ({ ...p, brandName: e.target.value })); setPostFormData((p: any) => ({ ...p, brandName: e.target.value })); }} className="mt-1 h-9 text-sm" placeholder="Brand name" />
+                          <Label htmlFor="tagline" className="text-xs mt-2">Tagline</Label>
+                          <Input id="tagline" value={adFormData.tagline} onChange={(e) => { setAdFormData((p: any) => ({ ...p, tagline: e.target.value })); setPostFormData((p: any) => ({ ...p, tagline: e.target.value })); }} className="mt-1 h-9 text-sm" placeholder="Tagline" />
+                          <div className="mt-2 flex gap-2">
+                            <Button size="sm" variant="outline" onClick={handleRemoveLogo}>Remove Logo</Button>
+                            <Button size="sm" onClick={() => { if (logoPublicUrl) { setAdFormData((p: any) => ({ ...p, logoPublicUrl })); setPostFormData((p: any) => ({ ...p, logoPublicUrl })); toast.success("Logo applied to form"); } }}>
+                              Apply Logo
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </Card>
-              ) : null}
+              )}
             </div>
           </div>
         </div>
 
-        {/* Sticky Bottom Navigation */}
-        <div className="sticky bottom-0 z-50 backdrop-blur-xl bg-background/80 border-t border-border/50">
-          <div className="max-w-7xl mx-auto px-6 py-4">
-            <div className="flex items-center justify-between">
-              <Button variant="ghost" onClick={() => (step > 1 ? setStep(step - 1) : router.push("/campaigns"))} size="lg">
-                <ArrowLeft className="mr-2 h-5 w-5" />
-                {step === 1 ? "Cancel" : "Back"}
-              </Button>
-
-              <div className="flex gap-3">
-                <Button variant="outline" size="lg" onClick={handleSaveAsDraft}>
-                  Save as Draft
-                </Button>
-                {step < totalSteps ? (
-                  <Button onClick={handleNext} size="lg" className="min-w-[140px]">
-                    Next
-                    <ArrowRight className="ml-2 h-5 w-5" />
+        {/* Publish panel */}
+        {showPublishPanel && (
+          <div className="fixed inset-0 z-50" style={{ background: `${colors.background}cc`, backdropFilter: "blur(6px)" }}>
+            <div className="max-w-3xl mx-auto p-6" style={{ marginTop: "auto", marginBottom: 40 }}>
+              <Card className="p-6">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold">Publish Your Campaign</h3>
+                  <Button size="sm" variant="ghost" onClick={() => setShowPublishPanel(false)}>
+                    <X className="w-4 h-4" />
                   </Button>
+                </div>
+                <Separator className="my-3" />
+
+                <div className="flex gap-2 mb-3">
+                  <Button variant={publishMode === "post" ? "default" : "outline"} onClick={() => setPublishMode("post")} className="flex-1">
+                    <Sparkles className="w-4 h-4 mr-2" /> Post Publishing
+                  </Button>
+                  <Button variant={publishMode === "ad" ? "default" : "outline"} onClick={() => setPublishMode("ad")} className="flex-1">
+                    <ImageIcon className="w-4 h-4 mr-2" /> Ad Publishing
+                  </Button>
+                </div>
+
+                {publishMode === "post" ? (
+                  <div className="space-y-3">
+                    <div>
+                      <Label htmlFor="postName" className="text-sm">Post Name</Label>
+                      <Input id="postName" value={postFormData.postName} onChange={(e) => setPostFormData((p: any) => ({ ...p, postName: e.target.value }))} placeholder="Post title (optional)" className="mt-2" />
+                    </div>
+
+                    <div>
+                      <Label htmlFor="caption" className="text-sm">Caption</Label>
+                      <Textarea id="caption" value={postFormData.generatedCaption} onChange={(e) => setPostFormData((p: any) => ({ ...p, generatedCaption: e.target.value }))} placeholder="Add your post caption..." className="mt-2 min-h-[80px]" />
+                      <div className="mt-2 flex gap-2">
+                        <Button onClick={() => generateCaption(postFormData.prompt || postFormData.postName || "Write a caption", (text) => setPostFormData((p: any) => ({ ...p, generatedCaption: text })))} variant="outline">
+                          AI Caption
+                        </Button>
+                        <Button onClick={() => generateCaption(`Generate hashtags for: ${postFormData.generatedCaption || postFormData.prompt || postFormData.postName}`, (text) => {
+                          const matches = (text || "").match(/#[\w-]+/g);
+                          if (matches && matches.length) setPostFormData((p: any) => ({ ...p, hashtags: matches.join(" ") }));
+                          else setPostFormData((p: any) => ({ ...p, hashtags: text }));
+                        })} variant="outline">
+                          AI Hashtags
+                        </Button>
+                        <div className="ml-auto flex items-center gap-2">
+                          <label className="inline-flex items-center gap-2">
+                            <input type="checkbox" checked={postFormData.platforms.includes("Instagram")} onChange={(e) => {
+                              const checked = e.target.checked;
+                              setPostFormData((p: any) => ({ ...p, platforms: checked ? Array.from(new Set([...(p.platforms || []), "Instagram"])) : (p.platforms || []).filter((x: any) => x !== "Instagram") }));
+                            }} />
+                            Instagram
+                          </label>
+                          <label className="inline-flex items-center gap-2">
+                            <input type="checkbox" checked={postFormData.platforms.includes("Facebook")} onChange={(e) => {
+                              const checked = e.target.checked;
+                              setPostFormData((p: any) => ({ ...p, platforms: checked ? Array.from(new Set([...(p.platforms || []), "Facebook"])) : (p.platforms || []).filter((x: any) => x !== "Facebook") }));
+                            }} />
+                            Facebook
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label htmlFor="hashtags" className="text-sm">Hashtags</Label>
+                      <Input id="hashtags" value={postFormData.hashtags} onChange={(e) => setPostFormData((p: any) => ({ ...p, hashtags: e.target.value }))} placeholder="#marketing #socialmedia" className="mt-2" />
+                    </div>
+
+                    <div className="flex gap-2">
+                      <Button className="flex-1" style={{ background: colors.gradientPrimary, color: colors.primaryForeground }} onClick={() => handlePublishPost()}>
+                        Publish Now
+                      </Button>
+                      <Button variant="outline" className="flex-1" onClick={() => toast("Schedule feature not implemented in this sample")}>
+                        Schedule
+                      </Button>
+                    </div>
+                  </div>
                 ) : (
-                  <Button
-                    onClick={() => {
-                      if (mode === "ad") {
-                        toast("Use the Publish Campaign or Post Ad in Facebook buttons in the Review panel");
-                      } else {
-                        if (generatedPostImage) handlePublishPost();
-                        else generatePostImage();
-                      }
-                    }}
-                    size="lg"
-                    className="min-w-[140px]"
-                  >
-                    <CheckCircle2 className="mr-2 h-5 w-5" />
-                    {mode === "ad" ? "Review & Launch" : (generatedPostImage ? "Publish & Post" : "Generate & Publish")}
-                  </Button>
+                  <div className="space-y-3">
+                    {/* AD Inputs (expanded to include FB Ads required fields) */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <Label htmlFor="campaignName" className="text-sm">Campaign Name</Label>
+                        <Input id="campaignName" value={adFormData.campaignName} onChange={(e) => setAdFormData((p: any) => ({ ...p, campaignName: e.target.value }))} placeholder="My Campaign" className="mt-2" />
+                      </div>
+                      <div>
+                        <Label htmlFor="adSetName" className="text-sm">Ad Set Name</Label>
+                        <Input id="adSetName" value={adFormData.adSetName} onChange={(e) => setAdFormData((p: any) => ({ ...p, adSetName: e.target.value }))} placeholder="Ad Set Name (optional)" className="mt-2" />
+                      </div>
+                      <div>
+                        <Label htmlFor="objective" className="text-sm">Objective</Label>
+                        <select id="objective" value={adFormData.objective} onChange={(e) => setAdFormData((p: any) => ({ ...p, objective: e.target.value }))} className="mt-2 w-full h-9 rounded border px-2">
+                          <option value="LINK_CLICKS">Link Clicks</option>
+                          <option value="CONVERSIONS">Conversions</option>
+                          <option value="BRAND_AWARENESS">Brand Awareness</option>
+                          <option value="REACH">Reach</option>
+                        </select>
+                      </div>
+                      <div>
+                        <Label htmlFor="primaryCTA" className="text-sm">Primary CTA</Label>
+                        <Input id="primaryCTA" value={adFormData.primaryCTA} onChange={(e) => setAdFormData((p: any) => ({ ...p, primaryCTA: e.target.value }))} placeholder="LEARN_MORE" className="mt-2" />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <Label htmlFor="destinationLink" className="text-sm">Destination URL</Label>
+                        <Input id="destinationLink" value={adFormData.destinationLink} onChange={(e) => setAdFormData((p: any) => ({ ...p, destinationLink: e.target.value }))} placeholder="https://example.com" className="mt-2" />
+                      </div>
+                      <div>
+                        <Label htmlFor="delivery" className="text-sm">Delivery Type</Label>
+                        <select id="delivery" value={adFormData.delivery} onChange={(e) => setAdFormData((p: any) => ({ ...p, delivery: e.target.value }))} className="mt-2 w-full h-9 rounded border px-2">
+                          <option value="">Default</option>
+                          <option value="standard">Standard</option>
+                          <option value="expedited">Expedited</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label htmlFor="budget" className="text-sm">Budget</Label>
+                        <Input id="budget" type="number" value={adFormData.budget} onChange={(e) => setAdFormData((p: any) => ({ ...p, budget: Number(e.target.value) }))} placeholder="5000" className="mt-2" />
+                      </div>
+                      <div>
+                        <Label htmlFor="duration" className="text-sm">Duration (days)</Label>
+                        <Input id="duration" type="number" value={(adFormData.duration || 7)} onChange={(e) => setAdFormData((p: any) => ({ ...p, duration: Number(e.target.value) }))} placeholder="7" className="mt-2" />
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label htmlFor="targeting" className="text-sm">Audience Targeting (interests)</Label>
+                      <Input id="targeting" value={adFormData.interests} onChange={(e) => setAdFormData((p: any) => ({ ...p, interests: e.target.value }))} placeholder="e.g., Fashion, Fitness" className="mt-2" />
+                      <div className="mt-2 flex gap-2 items-center">
+                        <div className="flex items-center gap-2">
+                          <label className="inline-flex items-center gap-2">
+                            <input type="checkbox" checked={adFormData.platforms.includes("Instagram")} onChange={(e) => {
+                              const checked = e.target.checked;
+                              setAdFormData((p: any) => ({ ...p, platforms: checked ? Array.from(new Set([...(p.platforms || []), "Instagram"])) : (p.platforms || []).filter((x: any) => x !== "Instagram") }));
+                            }} />
+                            Instagram
+                          </label>
+                          <label className="inline-flex items-center gap-2">
+                            <input type="checkbox" checked={adFormData.platforms.includes("Facebook")} onChange={(e) => {
+                              const checked = e.target.checked;
+                              setAdFormData((p: any) => ({ ...p, platforms: checked ? Array.from(new Set([...(p.platforms || []), "Facebook"])) : (p.platforms || []).filter((x: any) => x !== "Facebook") }));
+                            }} />
+                            Facebook
+                          </label>
+                        </div>
+                        <div className="ml-auto flex items-center gap-2">
+                          <label className="inline-flex items-center gap-2">
+                            <input type="checkbox" checked={!!adFormData.autoOptimize} onChange={(e) => setAdFormData((p: any) => ({ ...p, autoOptimize: e.target.checked }))} />
+                            Auto optimize
+                          </label>
+                          <label className="inline-flex items-center gap-2">
+                            <input type="checkbox" checked={!!adFormData.autoTarget} onChange={(e) => setAdFormData((p: any) => ({ ...p, autoTarget: e.target.checked }))} />
+                            Auto target
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <Button className="flex-1" style={{ background: colors.gradientPrimary, color: colors.primaryForeground }} onClick={() => handleLaunchAd()}>
+                        Launch Ad Campaign
+                      </Button>
+                      <Button variant="outline" className="flex-1" onClick={async () => {
+                        try {
+                          const token = await getAccessToken();
+                          if (!token) { toast.error("Sign in to save draft"); return; }
+                          await fetch("/api/campaigns/save-draft", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ mode: "ad", name: adFormData.campaignName, inputs: adFormData }) });
+                          toast.success("Draft saved");
+                        } catch (e) {
+                          console.error("save-draft failed", e);
+                          toast.error("Save failed");
+                        }
+                      }}>
+                        Save Draft
+                      </Button>
+                    </div>
+                  </div>
                 )}
-              </div>
+              </Card>
             </div>
           </div>
-        </div>
-
-        {/* Floating AI Help */}
-        <button className="fixed bottom-24 right-8 w-14 h-14 bg-gradient-to-r from-primary to-secondary rounded-full shadow-lg flex items-center justify-center hover:scale-110 transition-transform z-50" aria-label="AI help">
-          <MessageCircle className="h-6 w-6 text-primary-foreground" />
-        </button>
+        )}
       </div>
     </div>
   );

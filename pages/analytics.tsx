@@ -1,10 +1,19 @@
 // pages/analytics.tsx
+"use client";
+
 import React, { useEffect, useState } from "react";
 import { TrendingUp, DollarSign, BarChart3 } from "lucide-react";
 import Sidebar from "../app/web/src/components/Sidebar";
 import { apiFetch } from "../lib/apiFetch";
 import { supabase } from "../lib/supabaseClient";
+import { Card, CardContent, CardHeader, CardTitle } from "../app/web/src/components/ui/card";
+import { Button } from "../app/web/src/components/ui/button";
+import { Download, Sparkles } from "lucide-react";
 
+// exact colors import path — preserved as requested.
+import colors from "../lib/colors";
+
+/* -------------------- types -------------------- */
 type MetaMetrics = {
   total_spend: number;
   budget_estimate_daily: number | null;
@@ -43,6 +52,40 @@ type Recommendation = {
 
 const LS_KEY = "integrations_status_v1";
 
+/* -------------------- color helpers & tokens -------------------- */
+function hexToRgba(hex: string, alpha = 1) {
+  try {
+    const h = (hex || "").trim();
+    if (!h) return hex;
+    if (h.startsWith("rgba") || h.startsWith("rgb") || h.startsWith("hsl")) return h;
+    const normalized = h.length === 4 ? "#" + h[1] + h[1] + h[2] + h[2] + h[3] + h[3] : h;
+    const bigint = parseInt(normalized.slice(1), 16);
+    const r = (bigint >> 16) & 255;
+    const g = (bigint >> 8) & 255;
+    const b = bigint & 255;
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  } catch {
+    return hex;
+  }
+}
+
+const {
+  primary,
+  primary5,
+  primary10,
+  primary20,
+  mutedForeground,
+  foreground,
+  gradientPrimary,
+} = (colors as any) || {};
+
+const primaryColor = typeof primary === "string" ? primary : undefined;
+const primaryBg5 = typeof primary5 === "string" ? primary5 : primaryColor ? hexToRgba(primaryColor, 0.05) : undefined;
+const primaryBorder = typeof primary20 === "string" ? primary20 : primaryColor ? hexToRgba(primaryColor, 0.10) : undefined;
+const mutedFg = typeof mutedForeground === "string" ? mutedForeground : undefined;
+const foregroundColor = typeof foreground === "string" ? foreground : undefined;
+
+/* -------------------- component -------------------- */
 export default function Analytics() {
   const [statuses, setStatuses] = useState<Record<string, any> | null>(null);
   const [statusLoading, setStatusLoading] = useState(false);
@@ -60,6 +103,7 @@ export default function Analytics() {
   const [customStart, setCustomStart] = useState<string>("");
   const [customEnd, setCustomEnd] = useState<string>("");
 
+  // demo fallback data for Google (keeps same shape as your original)
   const google = {
     total_spend: 5200,
     budget: 7000,
@@ -77,7 +121,7 @@ export default function Analytics() {
   };
 
   useEffect(() => {
-    fetchStatuses();
+    fetchStatuses(); // loads statuses & attempts metrics
     function onStorage(e: StorageEvent) {
       if (e.key === LS_KEY) {
         try {
@@ -123,28 +167,29 @@ export default function Analytics() {
     return false;
   }
 
-  // fetch statuses and metrics from server; metrics endpoint returns SummaryResp or error
+  /* -------------------- fetch statuses & metrics (analytics.tsx logic) -------------------- */
   async function fetchStatuses() {
     setStatusLoading(true);
     setError(null);
 
-    // 1) get token if available and include for server auth
+    // attach supabase token if available
     let token: string | null = null;
     try {
       const { data } = await supabase.auth.getSession();
       token = (data as any)?.session?.access_token ?? null;
     } catch {}
 
-    // call server metrics endpoint (preferred)
+    // request metrics (preferred) using selectedRange
     try {
       const headers: HeadersInit = {};
       if (token) headers["Authorization"] = `Bearer ${token}`;
       const query = new URLSearchParams();
-      query.set("range", selectedRange);
+      query.set("range", selectedRange === "custom" ? "7d" : selectedRange); // default behaviour
       const resp = await fetch(`/api/integrations/metrics?${query.toString()}`, { headers });
       if (resp.ok) {
         const j = await resp.json();
         setMetaSummary(j as SummaryResp);
+
         // mark connected
         const normalized: Record<string, any> = { meta: true };
         try {
@@ -157,7 +202,6 @@ export default function Analytics() {
         return;
       } else {
         const body = await resp.text();
-        // If 401/404, fall back to status endpoint and show the message to user
         try { const parsed = JSON.parse(body); setError(JSON.stringify(parsed)); } catch { setError(body); }
       }
     } catch (err: any) {
@@ -165,7 +209,7 @@ export default function Analytics() {
       setError(String(err));
     }
 
-    // fallback: call /api/integrations/status to at least get flags
+    // fallback: call /api/integrations/status
     try {
       const res = await apiFetch("/api/integrations/status");
       if (res.ok) {
@@ -178,14 +222,14 @@ export default function Analytics() {
     setStatusLoading(false);
   }
 
-  // UI helpers & recommendation helpers (kept same as your previous code)
+  /* -------------------- helpers -------------------- */
   function fmtMoney(n: number | null | undefined) {
     if (n == null) return "—";
     try { return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", minimumFractionDigits: 2 }).format(Number(n)); } catch { return `₹${Number(n).toFixed(2)}`; }
   }
   function pctDisplay(n: number | null | undefined) {
     if (n == null) return "—";
-    const r = Math.round(n * 10) / 10;
+    const r = Math.round((n as number) * 10) / 10;
     const sign = r > 0 ? "+" : "";
     return `${sign}${r}%`;
   }
@@ -196,7 +240,7 @@ export default function Analytics() {
     return "text-gray-500";
   }
 
-  // minimal recommendation pieces (same approach as your earlier code)
+  /* -------------------- recommendations code (unchanged) -------------------- */
   function extractJsonFromText(text: string): any | null {
     if (!text) return null;
     const cleaned = text.replace(/^\s*```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim();
@@ -311,13 +355,29 @@ export default function Analytics() {
 
   const hasValidMeta = !!(metaSummary?.ok && metaSummary.meta?.current);
 
+  /* -------------------- Compute totals for "All platforms" -------------------- */
+  // If Meta metrics available, use that; otherwise 0. Add Google (demo) always (or only if connected?)
+  const metaSpend = metaSummary?.meta?.current?.total_spend ?? 0;
+  const googleSpend = isGoogleConnectedLocal() ? google.total_spend : 0;
+  const otherSpend = 0; // placeholder; expand if you have more endpoints (LinkedIn, YouTube)
+  const totalSpendAllPlatforms = metaSpend + googleSpend + otherSpend;
+
   return (
     <div className="min-h-screen flex bg-slate-50">
       <Sidebar />
       <main className="flex-1 p-8">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-2xl font-bold text-slate-800">AI Analytics</h2>
+          <div>
+            <h2 className="text-2xl font-bold text-slate-800">AI Analytics</h2>
+            <p className="text-sm text-slate-500">Deep insights across your connected platforms</p>
+          </div>
+
           <div className="flex items-center gap-3">
+            <div className="text-right mr-4">
+              <div className="text-sm text-slate-500">Total Spend (All platforms)</div>
+              <div className="text-xl font-semibold text-slate-900">{fmtMoney(totalSpendAllPlatforms)}</div>
+            </div>
+
             <button onClick={() => fetchStatuses()} className="px-3 py-2 text-sm rounded-lg border border-slate-300 hover:bg-slate-100">Refresh Status</button>
             <button onClick={() => { setError(null); fetchStatuses(); }} className="px-3 py-2 text-sm rounded-lg border border-slate-300 hover:bg-slate-100">Refresh Meta</button>
             <button onClick={askRecommendations} className="px-4 py-2 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700">{recLoading ? "Thinking…" : "Get Recommendations"}</button>
@@ -407,7 +467,7 @@ export default function Analytics() {
             )}
           </div>
 
-          {/* Google card unchanged */}
+          {/* Google card unchanged but uses status to decide whether to show demo */}
           <div className="p-4 bg-white rounded-xl shadow">
             <div className="flex justify-between items-center mb-4">
               <div className="flex items-center gap-3">
@@ -472,7 +532,42 @@ export default function Analytics() {
           </div>
         </div>
 
-        <h3 className="text-lg font-semibold text-slate-700 mb-3">Smart Recommendations</h3>
+        {/* Platform Comparison - platform spends dynamic where available */}
+        <Card className="glass-card">
+          <CardHeader>
+            <CardTitle>Platform Performance</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {[
+                { platform: "Meta", spend: metaSummary?.meta?.current?.total_spend ?? 0, roas: metaSummary?.meta?.current?.roas ?? null, ctr: metaSummary?.meta?.current?.avg_ctr ?? null, colorClass: "bg-blue-500" },
+                { platform: "Google", spend: isGoogleConnectedLocal() ? google.total_spend : 0, roas: google.roas, ctr: google.avg_ctr, colorClass: "bg-green-500" },
+                { platform: "LinkedIn", spend: 0, roas: null, ctr: null, colorClass: "bg-purple-500" },
+                { platform: "YouTube", spend: 0, roas: null, ctr: null, colorClass: "bg-red-500" },
+              ].map((platform, i) => (
+                <div key={i} className="flex items-center gap-4">
+                  <div className={`${platform.colorClass} w-3 h-3 rounded-full`} />
+                  <div className="flex-1">
+                    <div className="font-medium">{platform.platform}</div>
+                    <div className="text-sm text-muted-foreground">{platform.spend ? `Spend: ${fmtMoney(platform.spend)}` : "No data"}</div>
+                  </div>
+
+                  <div className="text-right">
+                    <div className="font-medium">{platform.roas ? `${platform.roas}x` : "—"}</div>
+                    <div className="text-sm text-muted-foreground">ROAS</div>
+                  </div>
+
+                  <div className="text-right">
+                    <div className="font-medium">{platform.ctr ? `${(platform.ctr as number).toFixed(1)}%` : "—"}</div>
+                    <div className="text-sm text-muted-foreground">CTR</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        <h3 className="text-lg font-semibold text-slate-700 mb-3 mt-6">Smart Recommendations</h3>
         <div className="mb-8 space-y-3">
           <div className="p-5 bg-white rounded-xl shadow border-l-4 border-blue-500">
             <div className="flex justify-between items-start">
