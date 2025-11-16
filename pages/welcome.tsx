@@ -1,15 +1,53 @@
 // pages/welcome.tsx
+"use client";
+
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import { supabase } from "../lib/supabaseClient";
+import colors from "../lib/colors";
 
-/**
- * Welcome page
- * - Shows user's first name (if available from Supabase user object)
- * - Get Started -> /onboardingInfo
- * - Do it later -> /dashboard
- * - No auto-redirect to signin (so you can preview)
- */
+/** Capitalize first letter */
+function capitalize(str: string) {
+  return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
+/** withAlpha helper same as signin */
+function withAlpha(tokenInput: string | undefined | null, alpha: number) {
+  const token = String(tokenInput ?? "").trim();
+  if (!token) return token;
+
+  const hslMatch = token.match(/hsl\(\s*([\d.]+)\s+([\d.]+)%\s+([\d.]+)%\s*\)/i);
+  if (hslMatch) {
+    const [, h, s, l] = hslMatch;
+    return `hsla(${h}, ${s}%, ${l}%, ${alpha})`;
+  }
+
+  if (/hsla\(/i.test(token)) return token;
+
+  const rgbMatch = token.match(/rgb\(\s*([0-9]{1,3})[,\s]+([0-9]{1,3})[,\s]+([0-9]{1,3})\s*\)/i);
+  if (rgbMatch) {
+    const [, r, g, b] = rgbMatch;
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+
+  if (/rgba\(/i.test(token)) return token;
+
+  const hex = token.replace(/^#/, "");
+  if (/^[0-9a-f]{3}$/i.test(hex)) {
+    const r = parseInt(hex[0] + hex[0], 16);
+    const g = parseInt(hex[1] + hex[1], 16);
+    const b = parseInt(hex[2] + hex[2], 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+  if (/^[0-9a-f]{6}$/i.test(hex)) {
+    const r = parseInt(hex.slice(0, 2), 16);
+    const g = parseInt(hex.slice(2, 4), 16);
+    const b = parseInt(hex.slice(4, 6), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+
+  return token;
+}
 
 export default function Welcome(): React.ReactElement {
   const router = useRouter();
@@ -17,20 +55,15 @@ export default function Welcome(): React.ReactElement {
   const [userName, setUserName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // extract best display name from Supabase user object
   function extractName(user: any) {
     if (!user) return null;
     const meta = user.user_metadata ?? {};
-    const candidates: Array<string | undefined> = [
+    const candidates = [
       meta.full_name ?? meta.name ?? meta.fullName ?? meta.first_name ?? meta.given_name,
-      user.user_metadata?.full_name,
-      user.user_metadata?.name,
-      user.user_metadata?.given_name,
-      // fallback to email local part
       user.email ? user.email.split("@")[0] : undefined,
     ];
     for (const c of candidates) {
-      if (typeof c === "string" && c.trim().length > 0) return c.trim();
+      if (c && c.trim().length > 0) return c.trim();
     }
     return null;
   }
@@ -47,16 +80,8 @@ export default function Welcome(): React.ReactElement {
 
         if (user) {
           const name = extractName(user);
-          if (name) setUserName(name.split(" ")[0]);
-          else setUserName(null);
-        } else {
-          // No user — keep generic greeting (no redirect)
-          setUserName(null);
+          if (name) setUserName(capitalize(name.split(" ")[0]));
         }
-      } catch (err: any) {
-        console.error("Failed to load user", err);
-        setError("Failed to load user information.");
-        setUserName(null);
       } finally {
         if (mounted) setLoading(false);
       }
@@ -69,8 +94,16 @@ export default function Welcome(): React.ReactElement {
 
   if (loading) {
     return (
-      <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: "#fff" }}>
-        <div style={{ fontFamily: "Poppins, Inter, sans-serif", color: "#0f172a" }}>Loading…</div>
+      <div
+        style={{
+          minHeight: "100vh",
+          display: "grid",
+          placeItems: "center",
+          background: "#fff",
+          fontFamily: "Poppins, Inter",
+        }}
+      >
+        Loading…
       </div>
     );
   }
@@ -80,77 +113,125 @@ export default function Welcome(): React.ReactElement {
   return (
     <>
       <style jsx>{`
+        /* layout */
         .page {
           min-height: 100vh;
           width: 100%;
           display: flex;
+          flex-direction: column;
           align-items: center;
           justify-content: center;
           position: relative;
           overflow: hidden;
-          font-family: Poppins, Inter, system-ui, -apple-system, "Segoe UI", Roboto, Arial;
-          background: linear-gradient(180deg, #ffffff 0%, #fbfeff 100%);
-        }
-
-        /* strong soft-blue gradient using #0088FF */
-        .bg-left,
-        .bg-right {
-          position: absolute;
-          border-radius: 9999px;
-          filter: blur(110px);
-          pointer-events: none;
-          z-index: 0;
-        }
-        .bg-left {
-          width: 480px;
-          height: 480px;
-          left: -160px;
-          top: -120px;
-          background: radial-gradient(circle at 30% 30%, rgba(0,136,255,0.18), rgba(0,136,255,0.02));
-        }
-        .bg-right {
-          width: 560px;
-          height: 560px;
-          right: -160px;
-          bottom: -120px;
-          background: radial-gradient(circle at 70% 70%, rgba(0,136,255,0.14), rgba(116,190,255,0.02));
-        }
-
-        .card {
-          position: relative;
-          z-index: 3;
-          width: 760px;
-          max-width: calc(100% - 48px);
-          border-radius: 12px;
-          padding: 64px 80px;
+          padding: 40px 20px;
+          font-family: Poppins, Inter, system-ui;
           text-align: center;
-          background: rgba(255,255,255,0.94);
-          box-shadow: 0 20px 80px rgba(2,6,23,0.08);
+          color: #000;
         }
 
-        .logo { width: 84px; height: 84px; margin: 0 auto; }
-        .title {
-          margin-top: 18px;
-          font-size: 28px;
-          font-weight: 700;
-          color: #0f172a;
+        /* floating + subtle rotation for depth */
+        @keyframes float {
+          0% { transform: translateY(0) translateX(0) rotate(0deg) scale(1); opacity: 0.95; }
+          25% { transform: translateY(-8px) translateX(4px) rotate(.25deg) scale(1.01); opacity: 0.98; }
+          50% { transform: translateY(0) translateX(0) rotate(0deg) scale(1); opacity: 0.95; }
+          75% { transform: translateY(6px) translateX(-3px) rotate(-.3deg) scale(0.995); opacity: 0.94; }
+          100% { transform: translateY(0) translateX(0) rotate(0deg) scale(1); opacity: 0.95; }
         }
-        .title .name { color: #0088FF; }
+
+        /* entrance animations */
+        @keyframes fadeSlideUp {
+          from { opacity: 0; transform: translateY(18px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes pop {
+          0% { transform: scale(0.94); opacity: 0; }
+          60% { transform: scale(1.02); opacity: 1; }
+          100% { transform: scale(1); opacity: 1; }
+        }
+
+        /* shimmer on name */
+        @keyframes nameShine {
+          0% { background-position: -120% 0; }
+          100% { background-position: 220% 0; }
+        }
+
+        .center-fade { position: absolute; inset: 0; pointer-events: none; z-index: 1;
+          background: linear-gradient(
+            90deg,
+            transparent 0%,
+            transparent 20%,
+            rgba(255,255,255,0.85) 45%,
+            rgba(255,255,255,0.85) 55%,
+            transparent 80%,
+            transparent 100%
+          );
+        }
+
+        .title {
+          font-size: 40px;
+          font-weight: 800;
+          margin-bottom: 14px;
+          position: relative;
+          z-index: 2;
+          color: #0f172a;
+          animation: fadeSlideUp 620ms cubic-bezier(.2,.9,.2,1) both;
+          animation-delay: 80ms;
+        }
+
+        .name {
+          color: ${colors?.primary ?? "#0088FF"};
+          font-weight: 900;
+          display: inline-block;
+          transform-origin: center;
+          animation: pop 850ms cubic-bezier(.2,.9,.2,1) both;
+          animation-delay: 160ms;
+          position: relative;
+          /* subtle shine */
+          background: linear-gradient(90deg, rgba(255,255,255,0.0) 0%, rgba(255,255,255,0.05) 30%, rgba(255,255,255,0.12) 50%, rgba(255,255,255,0.05) 70%, rgba(255,255,255,0.0) 100%);
+          background-size: 240% 100%;
+          -webkit-background-clip: text;
+          background-clip: text;
+          color: transparent;
+          -webkit-text-fill-color: transparent;
+        }
+        /* overlay a pseudo-element for the actual colored text so we can animate shine separately */
+        .name::after {
+          content: attr(data-text);
+          position: absolute;
+          left: 0;
+          top: 0;
+          right: 0;
+          bottom: 0;
+          color: ${colors?.primary ?? "#0088FF"};
+          -webkit-text-fill-color: ${colors?.primary ?? "#0088FF"};
+          background: linear-gradient(90deg, rgba(255,255,255,0.0) 0%, rgba(255,255,255,0.12) 45%, rgba(255,255,255,0.0) 55%, rgba(255,255,255,0.0) 100%);
+          background-size: 240% 100%;
+          animation: nameShine 2.8s linear infinite;
+          animation-delay: 500ms;
+          pointer-events: none;
+        }
+
         .subtitle {
-          margin-top: 14px;
-          color: #6f6f6f;
-          font-size: 15px;
+          margin-top: 12px;
+          color: #111;
+          font-size: 18px;
           max-width: 640px;
           margin-left: auto;
           margin-right: auto;
+          position: relative;
+          z-index: 2;
+          opacity: 0;
+          animation: fadeSlideUp 720ms cubic-bezier(.2,.9,.2,1) both;
+          animation-delay: 240ms;
         }
 
+        /* CTA */
         .cta {
           margin-top: 40px;
           width: 240px;
-          height: 44px;
-          border-radius: 8px;
-          background: linear-gradient(180deg,#0088FF,#0073E6);
+          height: 48px;
+          border-radius: 10px;
+          background: linear-gradient(180deg, #0088ff, #0073e6);
           color: white;
           display: inline-flex;
           align-items: center;
@@ -158,67 +239,147 @@ export default function Welcome(): React.ReactElement {
           font-weight: 700;
           cursor: pointer;
           border: none;
-          box-shadow: 0 8px 28px rgba(0,136,255,0.16);
+          box-shadow: 0 10px 30px rgba(0, 136, 255, 0.14);
+          position: relative;
+          z-index: 2;
+          transform: translateY(6px);
+          opacity: 0;
+          animation: fadeSlideUp 760ms cubic-bezier(.2,.9,.2,1) both;
+          animation-delay: 300ms;
+          transition: transform 180ms ease, box-shadow 180ms ease;
         }
-        .cta:active { transform: translateY(1px); }
+
+        .cta:hover { transform: translateY(0); box-shadow: 0 18px 40px rgba(0,136,255,0.22); }
+        .cta:active { transform: translateY(1px) scale(0.998); }
+        .cta:focus { outline: 3px solid rgba(0,136,255,0.12); outline-offset: 3px; }
+
         .do-later {
           margin-top: 18px;
           display: block;
-          color: #6f6f6f;
+          font-size: 14px;
+          color: #444;
           text-decoration: underline;
           cursor: pointer;
-          font-size: 13px;
+          position: relative;
+          z-index: 2;
+          opacity: 0;
+          animation: fadeSlideUp 680ms cubic-bezier(.2,.9,.2,1) both;
+          animation-delay: 360ms;
         }
 
+        /* orb specific */
+        .orb {
+          filter: blur(84px);
+          border-radius: 9999px;
+          position: absolute;
+          transform-origin: center;
+          animation: float 8000ms ease-in-out infinite;
+        }
+        .orb.small { width: 220px; height: 220px; top: 12px; left: 12px; animation-duration: 8200ms; }
+        .orb.medium { width: 300px; height: 300px; bottom: 10px; right: 20px; animation-duration: 9000ms; animation-delay: 2000ms; }
+        .orb.big { width: 420px; height: 420px; top: 50%; left: 50%; transform: translate(-50%,-50%); animation-duration: 10000ms; animation-delay: 4000ms; }
+
+        /* media */
         @media (max-width: 860px) {
-          .card { padding: 36px 28px; width: calc(100% - 40px); }
-          .title { font-size: 22px; }
+          .title { font-size: 28px; }
+          .subtitle { font-size: 15px; }
           .cta { width: 200px; }
+          .orb.small { display: none; } /* optional: reduce clutter on small screens */
+          .orb.big { width: 300px; height: 300px; }
         }
       `}</style>
 
       <div className="page" role="main" aria-label="Welcome page">
-        <div className="bg-left" />
-        <div className="bg-right" />
+        {/* Outer background (same as sign-in) */}
+        <div
+          className="absolute inset-0"
+          style={{
+            backgroundImage: `linear-gradient(135deg, ${
+              colors?.background ?? "#ffffff"
+            } 0%, ${withAlpha(colors?.primary ?? "hsl(213 90% 96%)", 0.3)} 50%, ${
+              colors?.background ?? "#ffffff"
+            } 100%)`,
+            zIndex: 0,
+          }}
+        />
 
-        <section className="card" aria-labelledby="welcome-heading">
-          <div className="logo" aria-hidden>
-            <svg width="84" height="84" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ display: "block", margin: "0 auto" }}>
-              <path d="M12 2 L20 7 v10 l-8 5 l-8 -5 V7 Z" fill="#0088FF" opacity="0.95"/>
-              <circle cx="12" cy="11.5" r="2.3" fill="white"/>
-            </svg>
-          </div>
+        <div
+          className="absolute inset-0"
+          style={{
+            background: colors?.gradientMesh ?? "linear-gradient(180deg,#f0f8ff00,#ffffff00)",
+            opacity: 0.4,
+            mixBlendMode: "overlay",
+            zIndex: 0,
+          }}
+        />
 
-          <h1 id="welcome-heading" className="title">
-            Hello{firstName ? ` ${firstName}` : ""}, Happy to welcome you onboard.
-          </h1>
+        {/* floating outside orbs */}
+        <div
+          className="orb small"
+          style={{
+            backgroundColor: withAlpha(colors?.primary ?? "hsl(213 90% 50%)", 0.28),
+            zIndex: 0,
+          }}
+        />
+        <div
+          className="orb medium"
+          style={{
+            backgroundColor: withAlpha(colors?.primary ?? "hsl(213 90% 50%)", 0.18),
+            zIndex: 0,
+          }}
+        />
+        <div
+          className="orb big"
+          style={{
+            backgroundImage: `linear-gradient(90deg, ${withAlpha(
+              colors?.primary ?? "hsl(213 90% 50%)",
+              0.1
+            )} 0%, ${withAlpha(colors?.primaryGlow ?? colors?.primary ?? "hsl(213 90% 50%)", 0.06)} 100%)`,
+            zIndex: 0,
+          }}
+        />
 
-          <p className="subtitle">
-            Set up your brand — so AI can personalise everything just for you.
+        {/* center soft area (keeps sides strong) */}
+        <div className="center-fade" />
+
+        {/* Content - animated in */}
+        <h1 className="title" aria-live="polite">
+          Hello{" "}
+          <span className="name" data-text={firstName}>
+            {firstName}
+          </span>
+          , Happy to welcome you onboard.
+        </h1>
+
+        <p className="subtitle">
+          Set up your brand — so AI can personalise everything just for you.
+        </p>
+
+        {error && (
+          <p style={{ color: "#c0392b", marginTop: 14, position: "relative", zIndex: 2 }}>
+            {error}
           </p>
+        )}
 
-          {error && <p style={{ color: "#c0392b", marginTop: 14 }}>{error}</p>}
+        <button
+          className="cta"
+          onClick={() => router.push("/onboardingInfo")}
+          type="button"
+          aria-label="Get started"
+        >
+          Get Started
+        </button>
 
-          <button
-            className="cta"
-            onClick={() => router.push("/onboardingInfo")}
-            aria-label="Get started"
-            type="button"
-          >
-            Get Started
-          </button>
-
-          <a
-            className="do-later"
-            onClick={(e) => {
-              e.preventDefault();
-              router.push("/dashboard");
-            }}
-            href="#"
-          >
-            Do it later
-          </a>
-        </section>
+        <a
+          className="do-later"
+          href="#"
+          onClick={(e) => {
+            e.preventDefault();
+            router.push("/dashboard");
+          }}
+        >
+          Do it later
+        </a>
       </div>
     </>
   );

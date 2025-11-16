@@ -46,7 +46,7 @@ const HowItWorks: React.FC = () => {
       className="py-24 overflow-hidden"
       style={{
         // replace bg-muted/30
-        backgroundColor: `${colors.muted} / 0.3`,
+        backgroundColor: "hsl(220 13% 95% / 0.3)",
       }}
     >
       <div className="container mx-auto px-4 sm:px-6 lg:px-8">
@@ -85,7 +85,7 @@ const HowItWorks: React.FC = () => {
             <div
               className="absolute inset-0 rounded-full"
               style={{
-                background: `linear-gradient(90deg, ${colors.primary} / 0.2 0%, ${colors.primary} 50%, ${colors.primary} / 0.2 100%)`,
+                background: `linear-gradient(90deg, "hsl(213 100% 50% / 0.2)" 0%, ${colors.primary} 50%, "hsl(213 100% 50% / 0.2)" 100%)`,
               }}
             />
             <div
@@ -123,7 +123,7 @@ const HowItWorks: React.FC = () => {
                       <div className="relative mb-8">
                         <div
                           className="absolute inset-0 rounded-2xl blur-xl animation-float"
-                          style={{ backgroundColor: `${colors.primary} / 0.2` }}
+                          style={{ backgroundColor: "hsl(213 100% 50% / 0.2)" }}
                         />
                         <div
                           className="relative flex items-center justify-center w-20 h-20 rounded-2xl shadow-glow mx-auto"

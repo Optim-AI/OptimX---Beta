@@ -37,17 +37,17 @@ const Problem: React.FC = () => {
       className="py-24 relative overflow-hidden"
       // color-only changes: replace bg-gradient-to-b from/background via-muted/20 to/background
       style={{
-        background: `linear-gradient(180deg, ${colors.background} 0%, ${colors.muted} / 0.2 50%, ${colors.background} 100%)`,
+        background: `linear-gradient(180deg, ${colors.background} 0%, "hsl(220 13% 95% / 0.2)" 50%, ${colors.background} 100%)`,
       }}
     >
       {/* Decorative background orbs */}
       <div
         className="absolute top-20 left-10 w-72 h-72 rounded-full blur-3xl animate-float"
-        style={{ backgroundColor: `${colors.primary} / 0.1` }}
+        style={{ backgroundColor: "hsl(213 100% 50% / 0.1)" }}
       />
       <div
         className="absolute bottom-20 right-10 w-96 h-96 rounded-full blur-3xl animation-delay-2000 animation-float"
-        style={{ backgroundColor: `${colors.primaryGlow} / 0.05` }}
+        style={{ backgroundColor: "hsl(213 100% 62% / 0.05)" }}
       />
 
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
@@ -91,7 +91,7 @@ const Problem: React.FC = () => {
                 style={{
                   transitionDelay: cardsVisible ? `${index * 100}ms` : '0ms',
                   background: colors.glassBg, // glass-card look using token
-                  border: `1px solid ${colors.primary} / 0.1`,
+                  border: `1px solid "hsl(213 100% 50% / 0.1)"`,
                   boxShadow: colors.shadowSoft,
                 }}
                 onMouseEnter={(e) => {
@@ -99,14 +99,14 @@ const Problem: React.FC = () => {
                   el.style.borderColor = colors.primary;
                   el.style.boxShadow = colors.shadowGlow;
                   const iconWrap = el.querySelector('.icon-bg') as HTMLElement | null;
-                  if (iconWrap) iconWrap.style.backgroundColor = `${colors.primary} / 0.2`;
+                  if (iconWrap) iconWrap.style.backgroundColor = "hsl(213 100% 50% / 0.2)";
                 }}
                 onMouseLeave={(e) => {
                   const el = e.currentTarget as HTMLElement;
-                  el.style.borderColor = `${colors.primary} / 0.1`;
+                  el.style.borderColor = "hsl(213 100% 50% / 0.1)";
                   el.style.boxShadow = colors.shadowSoft;
                   const iconWrap = el.querySelector('.icon-bg') as HTMLElement | null;
-                  if (iconWrap) iconWrap.style.backgroundColor = `${colors.primary} / 0.1`;
+                  if (iconWrap) iconWrap.style.backgroundColor = "hsl(213 100% 50% / 0.1)";
                 }}
               >
                 <div className="flex items-start gap-5">
@@ -114,7 +114,7 @@ const Problem: React.FC = () => {
                     <div
                       className="w-12 h-12 rounded-xl flex items-center justify-center transition-colors duration-300 icon-bg"
                       style={{
-                        backgroundColor: `${colors.primary} / 0.1`,
+                        backgroundColor: "hsl(213 100% 50% / 0.1)",
                         borderRadius: 12,
                       }}
                     >

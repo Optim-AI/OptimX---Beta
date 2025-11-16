@@ -74,41 +74,33 @@ const Features: React.FC = () => {
           {features.map((feature, index) => {
             const Icon = feature.icon;
 
-            // initial card style (uses your gradient token for a subtle card background)
             const baseCardStyle: React.CSSProperties = {
               background: colors.gradientCard,
-              borderColor: `${colors.border}80`,
               boxShadow: colors.shadowSoft,
               color: colors.foreground,
             };
 
-            // hover styles we apply via event handlers so hover visuals still use tokens
             const hoverCardStyle: React.CSSProperties = {
               background: `linear-gradient(180deg, ${colors.primary}10, ${colors.primary}05)`,
               boxShadow: colors.shadowGlow,
-              borderColor: `${colors.primary}33`,
             };
 
-            // icon wrapper base and hover
-            const baseIconBg = `${colors.primary} / 0.1`;
-            const hoverIconBg = `${colors.primary} / 0.2`;
+            const baseIconBg = "hsl(213 100% 50% / 0.1)";
+            const hoverIconBg = "hsl(213 100% 50% / 0.2)";
 
             return (
               <div
                 key={index}
-                className={`group p-8 rounded-xl hover-lift hover-glow border transition-all duration-700 ${
+                className={`group p-8 rounded-xl hover-lift hover-glow transition-all duration-700 ${
                   cardsVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10'
                 }`}
                 style={{
                   ...baseCardStyle,
-                  // set a data-delay for stagger (keeps original animation intact)
                   transitionDelay: cardsVisible ? `${index * 80}ms` : '0ms',
                 }}
-                // hover handlers only change colors (no animation logic changed)
                 onMouseEnter={(e) => {
                   (e.currentTarget as HTMLElement).style.background = hoverCardStyle.background as string;
                   (e.currentTarget as HTMLElement).style.boxShadow = hoverCardStyle.boxShadow as string;
-                  (e.currentTarget as HTMLElement).style.borderColor = hoverCardStyle.borderColor as string;
                   const iconWrap = e.currentTarget.querySelector('[data-icon-wrap]') as HTMLElement | null;
                   if (iconWrap) iconWrap.style.backgroundColor = hoverIconBg;
                   const svg = e.currentTarget.querySelector('svg') as SVGElement | null;
@@ -117,7 +109,6 @@ const Features: React.FC = () => {
                 onMouseLeave={(e) => {
                   (e.currentTarget as HTMLElement).style.background = baseCardStyle.background as string;
                   (e.currentTarget as HTMLElement).style.boxShadow = baseCardStyle.boxShadow as string;
-                  (e.currentTarget as HTMLElement).style.borderColor = baseCardStyle.borderColor as string;
                   const iconWrap = e.currentTarget.querySelector('[data-icon-wrap]') as HTMLElement | null;
                   if (iconWrap) iconWrap.style.backgroundColor = baseIconBg;
                   const svg = e.currentTarget.querySelector('svg') as SVGElement | null;

@@ -58,7 +58,7 @@ const Footer: React.FC = () => {
     <footer
       // color-only changes: background, border
       style={{
-        backgroundColor: `${colors.muted} / 0.5`,
+        backgroundColor: "hsl(220 13% 95% / 0.5)",
         borderTop: `1px solid ${colors.border}`,
       }}
     >

@@ -6,18 +6,45 @@ import { supabase } from "../lib/supabaseClient";
 /**
  * IntegrationsNew - single-purpose page to connect Facebook (Meta).
  *
- * Behavior:
+ * Behavior: (unchanged)
  * - Shows "Connect Facebook" when not connected.
  * - On click: opens OAuth popup (adds sb=access_token if present).
  * - Listens for postMessage from popup: { type: 'oauth_connected', platform: 'meta', redirect?: '/...' }
  * - Also polls /api/integrations/status to detect connection state (fallback).
  * - When connected, button text + outline color changes to the blue style and "Continue to dashboard" becomes enabled.
  * - Continue redirects to /dashboard.
+ *
+ * Minor additions (as requested):
+ * - Background/orb layering outside the card and inside the card (purely visual).
+ * - A "Skip" text that immediately routes to /dashboard when clicked.
+ *
+ * NOTE: Flow / OAuth logic is preserved exactly as in your original file.
  */
 
 const OAUTH_PATH = "/api/auth/instagram/start"; // adjust if your server uses a different path for meta/facebook
 const STATUS_API = "/api/integrations/status";
 const PLATFORM_KEY = "meta";
+
+/* visual tokens used for the background/orbs */
+const colors = {
+  background: "hsl(212 55% 96%)",
+  primary: "hsl(213 90% 56%)",
+  primaryGlow: "hsl(205 95% 60%)",
+  gradientMesh:
+    "radial-gradient(closest-side at 20% 10%, rgba(99,102,241,0.08), transparent 20%), radial-gradient(closest-side at 80% 90%, rgba(14,165,233,0.06), transparent 18%)",
+};
+
+function withAlpha(token: string, alpha: number) {
+  const hslMatch = token.match(
+    /hsl\(\s*([\d.]+)\s+([\d.]+)%\s+([\d.]+)%\s*\)/i
+  );
+  if (hslMatch) {
+    const [, h, s, l] = hslMatch;
+    return `hsla(${h}, ${s}%, ${l}%, ${alpha})`;
+  }
+  if (/rgba?\(|hsla?\(/i.test(token)) return token;
+  return token;
+}
 
 export default function IntegrationsNew(): JSX.Element {
   const router = useRouter();
@@ -53,7 +80,6 @@ export default function IntegrationsNew(): JSX.Element {
       setConnected(val);
       return val;
     } catch (err) {
-      // ignore, fallback to leaving state unchanged
       return false;
     } finally {
       setLoadingStatus(false);
@@ -177,153 +203,268 @@ export default function IntegrationsNew(): JSX.Element {
     router.push("/dashboard");
   };
 
-  // UI - faithful to your sample: single card, soft blue large background blobs
+  const handleSkip = () => {
+    router.push("/dashboard");
+  };
+
   return (
-    <div style={styles.page}>
-      <div style={styles.cardWrap}>
-        <div style={styles.card}>
-          <div style={{ textAlign: "center" }}>
-            <div style={styles.brandHex}>{/* hex/mini-logo circle */} 
-              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" aria-hidden>
-                <path d="M12 2.5l3.9 2.25v4.5L12 13.5 8.1 9.25v-4.5L12 2.5z" fill="#0b74ff" />
-              </svg>
+    <div style={{ minHeight: "100vh", position: "relative", overflow: "hidden", fontFamily: "'Poppins', Inter, system-ui, -apple-system, 'Segoe UI', Roboto" }}>
+      {/* Outer background layers */}
+      <div
+        aria-hidden
+        style={{
+          position: "absolute",
+          inset: 0,
+          zIndex: -20,
+          backgroundImage: `linear-gradient(135deg, ${colors.background} 0%, ${withAlpha(colors.primary, 0.12)} 35%, ${withAlpha(colors.primaryGlow ?? colors.primary, 0.06)} 60%, ${colors.background} 100%)`,
+        }}
+      />
+      <div
+        aria-hidden
+        style={{
+          position: "absolute",
+          inset: 0,
+          zIndex: -19,
+          background: colors.gradientMesh,
+          opacity: 0.9,
+        }}
+      />
+      {/* Outer orbs */}
+      <div
+        aria-hidden
+        style={{
+          position: "absolute",
+          top: 40,
+          left: 40,
+          width: 380,
+          height: 380,
+          borderRadius: "50%",
+          filter: "blur(36px)",
+          zIndex: -18,
+          backgroundColor: withAlpha(colors.primary, 0.28),
+          animation: "floatSlow 12s ease-in-out infinite",
+          boxShadow: `0 0 120px ${withAlpha(colors.primary, 0.18)}`,
+        }}
+      />
+      <div
+        aria-hidden
+        style={{
+          position: "absolute",
+          right: 40,
+          bottom: 48,
+          width: 420,
+          height: 420,
+          borderRadius: "50%",
+          filter: "blur(36px)",
+          zIndex: -18,
+          backgroundColor: withAlpha(colors.primary, 0.22),
+          animation: "floatSlow 10s ease-in-out infinite",
+          animationDelay: "1.8s",
+          boxShadow: `0 0 120px ${withAlpha(colors.primaryGlow ?? colors.primary, 0.14)}`,
+        }}
+      />
+      <div
+        aria-hidden
+        style={{
+          position: "absolute",
+          top: "50%",
+          left: "50%",
+          transform: "translate(-50%,-50%)",
+          width: 760,
+          height: 760,
+          borderRadius: "50%",
+          filter: "blur(48px)",
+          zIndex: -21,
+          backgroundImage: `linear-gradient(90deg, ${withAlpha(colors.primary, 0.12)} 0%, ${withAlpha(colors.primaryGlow ?? colors.primary, 0.08)} 100%)`,
+          animation: "floatVerySlow 20s linear infinite",
+          opacity: 0.85,
+          mixBlendMode: "screen",
+        }}
+      />
+
+      {/* Center card */}
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 28 }}>
+        <div style={{ width: "100%", maxWidth: 760, padding: 20 }}>
+          <div style={{
+            position: "relative",
+            borderRadius: 16,
+            padding: 28,
+            overflow: "hidden",
+            background: "linear-gradient(180deg, rgba(255,255,255,0.96), rgba(255,255,255,0.88))",
+            boxShadow: "0 18px 60px rgba(8,32,80,0.06)",
+            border: "1px solid rgba(13,27,58,0.03)"
+          }}>
+            {/* Skip text (top-right) */}
+            <div style={{ position: "absolute", top: 12, right: 14, zIndex: 4 }}>
+              <button
+                onClick={handleSkip}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "#6b7280",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                }}
+                aria-label="Skip and go to dashboard"
+              >
+                Skip
+              </button>
             </div>
 
-            <h1 style={styles.title}>Optim<span style={{ color: "#0b74ff" }}>X</span></h1>
-            <p style={styles.subtitle}>Connect your marketing & social accounts</p>
-            <p style={styles.small}>It helps us bring your data, content, and insights together all in one place.</p>
-          </div>
-
-          <div style={{ marginTop: 28, display: "flex", flexDirection: "column", gap: 12, alignItems: "center" }}>
-            {/* Single Connect Facebook button */}
-            <button
-              onClick={connected ? undefined : handleConnect}
-              aria-pressed={connected}
-              style={{
-                ...styles.connectBtn,
-                ...(connected
-                  ? styles.connectBtnConnected
-                  : styles.connectBtnDefault),
-              }}
-            >
-              {connected ? "Facebook Connected" : "Connect Facebook"}
-            </button>
-
-            {/* Continue to dashboard (enabled only when connected) */}
-            <button
-              onClick={handleContinue}
-              disabled={!connected}
-              style={{
-                ...styles.primaryBtn,
-                opacity: connected ? 1 : 0.5,
-                cursor: connected ? "pointer" : "not-allowed",
-              }}
-            >
-              Continue to dashboard
-            </button>
-
-            <div style={{ fontSize: 12, color: "#6b7280", marginTop: 8 }}>
-              By proceeding, you consent to our <a href="/terms" style={{ color: "#0b74ff" }}>Terms & Conditions</a>
+            {/* Inner background (card-level) */}
+            <div aria-hidden style={{ position: "absolute", inset: 0, zIndex: 0, pointerEvents: "none" }}>
+              <div style={{
+                position: "absolute",
+                inset: 0,
+                backgroundImage: `linear-gradient(135deg, ${withAlpha(colors.primary, 0.05)} 0%, ${withAlpha(colors.primaryGlow ?? colors.primary, 0.03)} 60%, transparent 100%)`,
+                mixBlendMode: "overlay",
+                opacity: 1,
+              }} />
+              <div style={{ position: "absolute", inset: 0, opacity: 0.55, mixBlendMode: "screen", background: colors.gradientMesh }} />
+              <div style={{
+                position: "absolute",
+                top: -24,
+                left: -24,
+                width: 160,
+                height: 160,
+                borderRadius: "50%",
+                filter: "blur(28px)",
+                backgroundColor: withAlpha(colors.primary, 0.32),
+                animation: "float 7s ease-in-out infinite",
+                boxShadow: `0 0 80px ${withAlpha(colors.primary, 0.14)}`,
+              }} />
+              <div style={{
+                position: "absolute",
+                bottom: -36,
+                right: -16,
+                width: 260,
+                height: 260,
+                borderRadius: "50%",
+                filter: "blur(30px)",
+                backgroundColor: withAlpha(colors.primaryGlow ?? colors.primary, 0.24),
+                animation: "float 8s ease-in-out infinite",
+                animationDelay: "1.2s",
+                boxShadow: `0 0 80px ${withAlpha(colors.primaryGlow ?? colors.primary, 0.12)}`,
+              }} />
             </div>
 
-            {message && <div style={{ marginTop: 10, color: "#0b74ff", fontWeight: 600 }}>{message}</div>}
+            {/* Content (keeps original layout & behavior) */}
+            <div style={{ position: "relative", zIndex: 2, textAlign: "center" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, marginBottom: 8 }}>
+                {/* hex mini-logo */}
+                <div style={{
+                  width: 64,
+                  height: 64,
+                  borderRadius: 12,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  background: "linear-gradient(180deg, rgba(11,116,255,0.12), rgba(11,116,255,0.06))",
+                  boxShadow: "0 8px 30px rgba(11,116,255,0.06)",
+                  margin: "0 auto"
+                }}>
+                  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" aria-hidden>
+                    <path d="M12 2.5l3.9 2.25v4.5L12 13.5 8.1 9.25v-4.5L12 2.5z" fill="#0b74ff" />
+                  </svg>
+                </div>
+              </div>
+
+              <h1 style={{ fontSize: 20, fontWeight: 800, margin: "6px 0", color: "#111827" }}>
+                Optim<span style={{ color: "#0b74ff", marginLeft: 6 }}>X</span>
+              </h1>
+              <p style={{ fontSize: 14, fontWeight: 600, color: "#111827", margin: "6px 0 8px" }}>
+                Connect your marketing & social accounts
+              </p>
+              <p style={{ fontSize: 13, color: "#6b7280", marginTop: 0 }}>
+                It helps us bring your data, content, and insights together all in one place.
+              </p>
+
+              <div style={{ marginTop: 28, display: "flex", flexDirection: "column", gap: 12, alignItems: "center" }}>
+                {/* Single Connect Facebook button */}
+                <button
+                  onClick={connected ? undefined : handleConnect}
+                  aria-pressed={connected}
+                  style={{
+                    width: "60%",
+                    minWidth: 260,
+                    borderRadius: 8,
+                    padding: "12px 18px",
+                    fontSize: 14,
+                    fontWeight: 600,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 8,
+                    transition: "all 240ms ease",
+                    background: connected ? "linear-gradient(180deg, rgba(11,116,255,0.04), rgba(11,116,255,0.02))" : "white",
+                    border: connected ? "2px solid #0b74ff" : "1px solid rgba(0,0,0,0.08)",
+                    color: connected ? "#0b74ff" : "#111827",
+                    boxShadow: connected ? "0 8px 24px rgba(11,116,255,0.08)" : "inset 0 1px 0 rgba(255,255,255,0.6)",
+                    cursor: connected ? "default" : "pointer",
+                  }}
+                >
+                  {connected ? "Facebook Connected" : "Connect Facebook"}
+                </button>
+
+                {/* Continue to dashboard (enabled only when connected) */}
+                <button
+                  onClick={handleContinue}
+                  disabled={!connected}
+                  style={{
+                    marginTop: 6,
+                    background: "#0b74ff",
+                    color: "white",
+                    border: "none",
+                    borderRadius: 10,
+                    padding: "12px 36px",
+                    fontSize: 14,
+                    fontWeight: 700,
+                    boxShadow: connected ? "0 8px 20px rgba(11,116,255,0.14)" : "none",
+                    transition: "transform 180ms ease, box-shadow 180ms ease",
+                    opacity: connected ? 1 : 0.5,
+                    cursor: connected ? "pointer" : "not-allowed",
+                  }}
+                >
+                  Continue to dashboard
+                </button>
+
+                <div style={{ fontSize: 12, color: "#6b7280", marginTop: 8 }}>
+                  By proceeding, you consent to our <a href="/terms" style={{ color: "#0b74ff" }}>Terms & Conditions</a>
+                </div>
+
+                {message && <div style={{ marginTop: 10, color: "#0b74ff", fontWeight: 600 }}>{message}</div>}
+              </div>
+            </div>
           </div>
         </div>
       </div>
+
+      {/* local styles for animations */}
+      <style jsx>{`
+        @keyframes float {
+          0% { transform: translateY(0) translateX(0) scale(1); }
+          25% { transform: translateY(-10px) translateX(-6px) scale(1.01); }
+          50% { transform: translateY(0) translateX(0) scale(1); }
+          75% { transform: translateY(10px) translateX(6px) scale(0.99); }
+          100% { transform: translateY(0) translateX(0) scale(1); }
+        }
+        @keyframes floatSlow {
+          0% { transform: translateY(0) translateX(0) scale(1); }
+          50% { transform: translateY(-22px) translateX(10px) scale(1.01); }
+          100% { transform: translateY(0) translateX(0) scale(1); }
+        }
+        @keyframes floatVerySlow {
+          0% { transform: translateY(0) translateX(0) scale(1); }
+          50% { transform: translateY(-30px) translateX(20px) scale(1.02); }
+          100% { transform: translateY(0) translateX(0) scale(1); }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          * { animation: none !important; transition: none !important; }
+        }
+      `}</style>
     </div>
   );
 }
-
-/* -- styles in JS for ease of copy/paste -- */
-const styles: Record<string, React.CSSProperties> = {
-  page: {
-    minHeight: "100vh",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    // visible pleasant gradient with soft blobs via background image + color stops
-    background:
-      "radial-gradient(700px 400px at 8% 20%, rgba(11,116,255,0.08), transparent 8%)," +
-      "radial-gradient(600px 300px at 90% 75%, rgba(11,116,255,0.06), transparent 8%)," +
-      "linear-gradient(180deg,#fbfdff 0%, #f8fbff 50%, #ffffff 100%)",
-    padding: 32,
-    fontFamily: "'Poppins', Inter, system-ui, -apple-system, 'Segoe UI', Roboto",
-  },
-  cardWrap: {
-    width: "100%",
-    maxWidth: 760,
-    padding: 24,
-  },
-  card: {
-    background: "rgba(255,255,255,1)",
-    borderRadius: 16,
-    padding: 32,
-    boxShadow: "0 18px 60px rgba(8,32,80,0.06)",
-    border: "1px solid rgba(13, 27, 58, 0.03)",
-  },
-  brandHex: {
-    width: 64,
-    height: 64,
-    margin: "0 auto 10px",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 12,
-    background: "linear-gradient(180deg, rgba(11,116,255,0.12), rgba(11,116,255,0.06))",
-    boxShadow: "0 8px 30px rgba(11,116,255,0.06)",
-  },
-  title: {
-    fontSize: 20,
-    fontWeight: 700,
-    marginTop: 6,
-    marginBottom: 6,
-    color: "#111827",
-  },
-  subtitle: {
-    fontSize: 14,
-    fontWeight: 600,
-    color: "#111827",
-    marginBottom: 6,
-  },
-  small: {
-    fontSize: 13,
-    color: "#6b7280",
-    marginTop: 0,
-  },
-  connectBtn: {
-    width: "60%",
-    minWidth: 260,
-    borderRadius: 8,
-    padding: "12px 18px",
-    fontSize: 14,
-    fontWeight: 600,
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    transition: "all 240ms ease",
-    background: "white",
-  },
-  connectBtnDefault: {
-    border: "1px solid rgba(0,0,0,0.08)",
-    color: "#111827",
-    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.6)",
-  },
-  connectBtnConnected: {
-    border: "2px solid #0b74ff",
-    color: "#0b74ff",
-    background: "linear-gradient(180deg, rgba(11,116,255,0.04), rgba(11,116,255,0.02))",
-  },
-  primaryBtn: {
-    marginTop: 12,
-    background: "#0b74ff",
-    color: "white",
-    border: "none",
-    borderRadius: 10,
-    padding: "12px 40px",
-    fontSize: 14,
-    fontWeight: 700,
-    boxShadow: "0 8px 20px rgba(11,116,255,0.14)",
-    transition: "transform 180ms ease, box-shadow 180ms ease",
-  },
-};

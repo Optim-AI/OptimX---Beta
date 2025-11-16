@@ -1,15 +1,15 @@
-'use client';
+"use client";
 
-import Link from 'next/link';
-import { Button } from './ui/button';
-import { Card, CardContent } from './ui/card';
-import { useScrollAnimation } from '../hooks/use-scroll-animation';
-import { Mail, Phone, MessageSquare, ArrowRight } from 'lucide-react';
+import Link from "next/link";
+import { Button } from "./ui/button";
+import { Card, CardContent } from "./ui/card";
+import { useScrollAnimation } from "../hooks/use-scroll-animation";
+import { Mail, Phone, MessageSquare, ArrowRight } from "lucide-react";
 import colors from "../../../../lib/colors";
 
-
 export default function ContactForPricing() {
-  const { elementRef: sectionRef, isVisible: sectionVisible } = useScrollAnimation();
+  const { elementRef: sectionRef, isVisible: sectionVisible } =
+    useScrollAnimation();
 
   return (
     <section id="pricing" className="py-20">
@@ -17,7 +17,9 @@ export default function ContactForPricing() {
         <div
           ref={sectionRef}
           className={`max-w-4xl mx-auto transition-all duration-1000 ${
-            sectionVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10'
+            sectionVisible
+              ? "opacity-100 translate-y-0"
+              : "opacity-0 translate-y-10"
           }`}
         >
           <div className="text-center mb-12">
@@ -26,16 +28,16 @@ export default function ContactForPricing() {
               // heading text color uses foreground token; gradient applied to inner span
               style={{ color: colors.foreground }}
             >
-              Pricing that fits{' '}
+              Pricing that fits{" "}
               <span
                 // keep layout classes but replace gradient-text behavior with token gradient
                 className="gradient-text"
                 style={{
                   backgroundImage: colors.gradientHero,
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent',
-                  backgroundClip: 'text',
-                  color: 'transparent',
+                  WebkitBackgroundClip: "text",
+                  WebkitTextFillColor: "transparent",
+                  backgroundClip: "text",
+                  color: "transparent",
                 }}
               >
                 your business
@@ -45,7 +47,8 @@ export default function ContactForPricing() {
               className="text-xl max-w-2xl mx-auto"
               style={{ color: colors.mutedForeground }}
             >
-              Every business is unique. Let's create a custom plan that perfectly matches your marketing goals and budget.
+              Every business is unique. Let's create a custom plan that
+              perfectly matches your marketing goals and budget.
             </p>
           </div>
 
@@ -54,19 +57,26 @@ export default function ContactForPricing() {
             // card-level colors: glass background, subtle primary border, strong shadow (from tokens)
             style={{
               background: colors.glassBg,
-              borderColor: `${colors.primary} / 0.2`,
+              borderColor: "hsl(213 100% 50% / 0.2)",
               boxShadow: colors.shadowStrong,
               color: colors.cardForeground,
             }}
           >
-            <CardContent className="p-8 md:p-12" style={{ color: colors.cardForeground }}>
+            <CardContent
+              className="p-8 md:p-12"
+              style={{ color: colors.cardForeground }}
+            >
               <div className="grid md:grid-cols-2 gap-8 mb-8">
                 <div>
-                  <h3 className="text-2xl font-bold mb-4" style={{ color: colors.foreground }}>
+                  <h3
+                    className="text-2xl font-bold mb-4"
+                    style={{ color: colors.foreground }}
+                  >
                     Simple, Transparent Pricing
                   </h3>
                   <p className="mb-6" style={{ color: colors.mutedForeground }}>
-                    Get in touch with us to learn about our pricing plans and find the perfect fit for your business needs.
+                    Get in touch with us to learn about our pricing plans and
+                    find the perfect fit for your business needs.
                   </p>
 
                   <div className="space-y-4">
@@ -74,17 +84,26 @@ export default function ContactForPricing() {
                       <div
                         className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
                         style={{
-                          backgroundColor: `${colors.primary} / 0.1`,
-                          borderRadius: '0.5rem',
+                          backgroundColor: "hsl(213 100% 50% / 0.1)",
+                          borderRadius: "0.5rem",
                         }}
                       >
-                        <MessageSquare className="h-5 w-5" style={{ color: colors.primary }} />
+                        <MessageSquare
+                          className="h-5 w-5"
+                          style={{ color: colors.primary }}
+                        />
                       </div>
                       <div>
-                        <h4 className="font-semibold mb-1" style={{ color: colors.foreground }}>
+                        <h4
+                          className="font-semibold mb-1"
+                          style={{ color: colors.foreground }}
+                        >
                           Flexible Plans
                         </h4>
-                        <p className="text-sm" style={{ color: colors.mutedForeground }}>
+                        <p
+                          className="text-sm"
+                          style={{ color: colors.mutedForeground }}
+                        >
                           From starter packages to enterprise solutions
                         </p>
                       </div>
@@ -94,17 +113,26 @@ export default function ContactForPricing() {
                       <div
                         className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
                         style={{
-                          backgroundColor: `${colors.primary} / 0.1`,
-                          borderRadius: '0.5rem',
+                          backgroundColor: "hsl(213 100% 50% / 0.1)",
+                          borderRadius: "0.5rem",
                         }}
                       >
-                        <Mail className="h-5 w-5" style={{ color: colors.primary }} />
+                        <Mail
+                          className="h-5 w-5"
+                          style={{ color: colors.primary }}
+                        />
                       </div>
                       <div>
-                        <h4 className="font-semibold mb-1" style={{ color: colors.foreground }}>
+                        <h4
+                          className="font-semibold mb-1"
+                          style={{ color: colors.foreground }}
+                        >
                           14-Day Free Trial
                         </h4>
-                        <p className="text-sm" style={{ color: colors.mutedForeground }}>
+                        <p
+                          className="text-sm"
+                          style={{ color: colors.mutedForeground }}
+                        >
                           Try any plan risk-free, no credit card required
                         </p>
                       </div>
@@ -114,17 +142,26 @@ export default function ContactForPricing() {
                       <div
                         className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
                         style={{
-                          backgroundColor: `${colors.primary} / 0.1`,
-                          borderRadius: '0.5rem',
+                          backgroundColor: "hsl(213 100% 50% / 0.1)",
+                          borderRadius: "0.5rem",
                         }}
                       >
-                        <Phone className="h-5 w-5" style={{ color: colors.primary }} />
+                        <Phone
+                          className="h-5 w-5"
+                          style={{ color: colors.primary }}
+                        />
                       </div>
                       <div>
-                        <h4 className="font-semibold mb-1" style={{ color: colors.foreground }}>
+                        <h4
+                          className="font-semibold mb-1"
+                          style={{ color: colors.foreground }}
+                        >
                           Dedicated Support
                         </h4>
-                        <p className="text-sm" style={{ color: colors.mutedForeground }}>
+                        <p
+                          className="text-sm"
+                          style={{ color: colors.mutedForeground }}
+                        >
                           Get personalized onboarding and guidance
                         </p>
                       </div>
@@ -136,16 +173,23 @@ export default function ContactForPricing() {
                   <div
                     className="rounded-2xl p-8 border"
                     style={{
-                      background: `linear-gradient(180deg, ${colors.primary} / 0.05 0%, ${colors.primary} / 0.02 100%)`,
-                      borderColor: `${colors.primary} / 0.2`,
-                      borderRadius: '1rem',
+                      background: `linear-gradient(180deg, "hsl(213 100% 50% / 0.05)" 0%, "hsl(213 100% 50% / 0.02)" 100%)`,
+                      borderColor: "hsl(213 100% 50% / 0.2)",
+                      borderRadius: "1rem",
                     }}
                   >
-                    <h4 className="text-lg font-semibold mb-4" style={{ color: colors.foreground }}>
+                    <h4
+                      className="text-lg font-semibold mb-4"
+                      style={{ color: colors.foreground }}
+                    >
                       Ready to get started?
                     </h4>
-                    <p style={{ color: colors.mutedForeground }} className="mb-6">
-                      Contact us to learn about our pricing and get started with OptimX.
+                    <p
+                      style={{ color: colors.mutedForeground }}
+                      className="mb-6"
+                    >
+                      Contact us to learn about our pricing and get started with
+                      OptimX.
                     </p>
 
                     <div className="space-y-3">
@@ -161,7 +205,8 @@ export default function ContactForPricing() {
                           boxShadow: colors.shadowGlow,
                         }}
                       >
-                        Contact Us for Pricing <ArrowRight className="ml-2 h-4 w-4 inline-block" />
+                        Contact Us for Pricing{" "}
+                        <ArrowRight className="ml-2 h-4 w-4 inline-block" />
                       </Button>
 
                       <Button
@@ -169,13 +214,9 @@ export default function ContactForPricing() {
                         variant="outline"
                         className="w-full"
                         size="lg"
-                        style={{
-                          color: colors.primary,
-                          borderColor: `${colors.primary} / 0.2`,
-                          backgroundColor: 'transparent',
-                        }}
+                        asChild
                       >
-                        Start Free Trial
+                        <a href="/#features">Review Now</a>
                       </Button>
                     </div>
                   </div>

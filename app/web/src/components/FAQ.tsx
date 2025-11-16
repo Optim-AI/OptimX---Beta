@@ -67,7 +67,7 @@ const FAQ: React.FC = () => {
       className="py-20"
       style={{
         // replace bg-muted/30
-        backgroundColor: `${colors.muted} / 0.3`,
+        backgroundColor: "hsl(220 13% 95% / 0.3)",
       }}
     >
       <div className="container mx-auto px-4 sm:px-6 lg:px-8">
@@ -116,7 +116,7 @@ const FAQ: React.FC = () => {
                 style={{
                   // replace card-gradient, shadow-elegant, border-border/50
                   background: colors.gradientCard,
-                  borderColor: `${colors.border} / 0.5`,
+                  borderColor: "hsl(220 13% 91% / 0.5)",
                   boxShadow: colors.shadowMedium,
                 }}
                 // keep the staggered animation delay (not a color change)

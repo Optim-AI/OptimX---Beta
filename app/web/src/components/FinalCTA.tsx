@@ -30,7 +30,7 @@ const FinalCTA: React.FC = () => {
       <div
         className="absolute top-1/4 right-1/4 w-64 h-64 rounded-full blur-3xl animation-float"
         style={{
-          backgroundColor: `${colors.primaryGlow} / 0.2`,
+          backgroundColor: "hsl(213 100% 62% / 0.2)",
           animationDelay: '2s',
         }}
       ></div>
@@ -48,8 +48,8 @@ const FinalCTA: React.FC = () => {
             }`}
             style={{
               // token-based accent background & subtle border (keeps animation classes intact)
-              backgroundColor: `${colors.accent} / 0.5`,
-              borderColor: `${colors.primary} / 0.2`,
+              backgroundColor: "hsl(213 90% 96% / 0.5)",
+              borderColor: "hsl(213 100% 50% / 0.2)",
               transitionDelay: ctaVisible ? '200ms' : '0ms',
             }}
           >
@@ -106,13 +106,9 @@ const FinalCTA: React.FC = () => {
               variant="outline"
               size="lg"
               className="px-8 py-4 text-lg hover-lift"
-              style={{
-                color: colors.primary,
-                borderColor: `${colors.primary} / 0.2`,
-                backgroundColor: 'transparent',
-              }}
-            >
-              Schedule a Demo
+              asChild
+              >
+                <a href="/#features">Schedule a demo</a>
             </Button>
           </div>
 
