@@ -4,7 +4,13 @@ import React, { useState } from "react";
 import Header from "../app/web/src/components/Header";
 import Footer from "../app/web/src/components/Footer";
 import { Button } from "../app/web/src/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../app/web/src/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "../app/web/src/components/ui/card";
 import { Input } from "../app/web/src/components/ui/input";
 import { Textarea } from "../app/web/src/components/ui/textarea";
 import { Label } from "../app/web/src/components/ui/label";
@@ -63,7 +69,12 @@ const Contact = () => {
     e.preventDefault();
 
     // Basic validation
-    if (!formData.name || !formData.businessName || !formData.phoneNumber || !formData.message) {
+    if (
+      !formData.name ||
+      !formData.businessName ||
+      !formData.phoneNumber ||
+      !formData.message
+    ) {
       toast({
         title: "Error",
         description: "Please fill in all required fields",
@@ -91,7 +102,8 @@ const Contact = () => {
       // Mock success behavior for now (remove when supabase is enabled)
       toast({
         title: "Message Sent Successfully!",
-        description: "Thank you for contacting us. We'll get back to you within 24 hours.",
+        description:
+          "Thank you for contacting us. We'll get back to you within 24 hours.",
       });
 
       setFormData({
@@ -105,7 +117,8 @@ const Contact = () => {
       console.error("Contact form error:", err);
       toast({
         title: "Error",
-        description: "Failed to send message. Please try again or contact us directly.",
+        description:
+          "Failed to send message. Please try again or contact us directly.",
         variant: "destructive",
       });
     } finally {
@@ -113,7 +126,9 @@ const Contact = () => {
     }
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const handleChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+  ) => {
     setFormData({
       ...formData,
       [e.target.name]: e.target.value,
@@ -132,10 +147,10 @@ const Contact = () => {
         <section
           className="py-20"
           style={{
-            background: `linear-gradient(135deg, ${withAlpha(colors.primary, 0.05)} 0%, ${withAlpha(
-              colors.accent,
-              0.1
-            )} 100%)`,
+            backgroundImage: `linear-gradient(135deg, ${withAlpha(
+              colors.primary,
+              0.05
+            )} 0%, ${withAlpha(colors.accent, 0.1)} 100%)`,
           }}
         >
           <div className="container mx-auto px-4 text-center">
@@ -143,16 +158,23 @@ const Contact = () => {
               className="text-4xl md:text-5xl font-bold mb-6"
               style={{
                 // keep gradient-text intent as fallback
-                background: colors.gradientPrimary ?? undefined,
+                backgroundImage: colors.gradientPrimary ?? undefined,
                 WebkitBackgroundClip: "text" as any,
                 backgroundClip: "text" as any,
-                color: colors.primaryForeground,
+                color: "transparent", // <- must be transparent to reveal the clipped background
+                WebkitTextFillColor: "transparent", // <- webkit fallback
               }}
             >
               Contact Our AI Marketing Experts
             </h1>
-            <p className="text-xl max-w-2xl mx-auto" style={{ color: colors.mutedForeground }}>
-              Ready to transform your business with AI-powered marketing automation? Get personalized consultation and start optimizing your campaigns today.
+
+            <p
+              className="text-xl max-w-2xl mx-auto"
+              style={{ color: colors.mutedForeground }}
+            >
+              Ready to transform your business with AI-powered marketing
+              automation? Get personalized consultation and start optimizing
+              your campaigns today.
             </p>
           </div>
         </section>
@@ -170,18 +192,26 @@ const Contact = () => {
                 }}
               >
                 <CardHeader>
-                  <CardTitle className="text-2xl" style={{ color: colors.foreground }}>
+                  <CardTitle
+                    className="text-2xl"
+                    style={{ color: colors.foreground }}
+                  >
                     Get Your Free Marketing Consultation
                   </CardTitle>
                   <CardDescription style={{ color: colors.mutedForeground }}>
-                    Tell us about your business needs and discover how Optim's AI can revolutionize your marketing strategy. Our experts will respond within 24 hours.
+                    Tell us about your business needs and discover how Optim's
+                    AI can revolutionize your marketing strategy. Our experts
+                    will respond within 24 hours.
                   </CardDescription>
                 </CardHeader>
 
                 <CardContent>
                   <form onSubmit={handleSubmit} className="space-y-6">
                     <div className="space-y-2">
-                      <Label htmlFor="name" style={{ color: colors.foreground }}>
+                      <Label
+                        htmlFor="name"
+                        style={{ color: colors.foreground }}
+                      >
                         Name *
                       </Label>
                       <Input
@@ -201,7 +231,10 @@ const Contact = () => {
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="businessName" style={{ color: colors.foreground }}>
+                      <Label
+                        htmlFor="businessName"
+                        style={{ color: colors.foreground }}
+                      >
                         Business Name *
                       </Label>
                       <Input
@@ -221,7 +254,10 @@ const Contact = () => {
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="email" style={{ color: colors.foreground }}>
+                      <Label
+                        htmlFor="email"
+                        style={{ color: colors.foreground }}
+                      >
                         Email Address
                       </Label>
                       <Input
@@ -240,7 +276,10 @@ const Contact = () => {
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="phoneNumber" style={{ color: colors.foreground }}>
+                      <Label
+                        htmlFor="phoneNumber"
+                        style={{ color: colors.foreground }}
+                      >
                         Phone Number *
                       </Label>
                       <Input
@@ -260,7 +299,10 @@ const Contact = () => {
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="message" style={{ color: colors.foreground }}>
+                      <Label
+                        htmlFor="message"
+                        style={{ color: colors.foreground }}
+                      >
                         Message *
                       </Label>
                       <Textarea
@@ -300,24 +342,42 @@ const Contact = () => {
               {/* Contact Information */}
               <div className="space-y-8">
                 <div>
-                  <h2 className="text-2xl font-bold mb-6" style={{ color: colors.foreground }}>
+                  <h2
+                    className="text-2xl font-bold mb-6"
+                    style={{ color: colors.foreground }}
+                  >
                     Why Choose Optim?
                   </h2>
 
                   <div className="space-y-6">
                     <div className="flex items-start space-x-4">
-                      <Mail className="h-6 w-6 mt-1" style={{ color: colors.primary }} />
+                      <Mail
+                        className="h-6 w-6 mt-1"
+                        style={{ color: colors.primary }}
+                      />
                       <div>
-                        <h3 className="font-semibold" style={{ color: colors.foreground }}>
+                        <h3
+                          className="font-semibold"
+                          style={{ color: colors.foreground }}
+                        >
                           Direct Expert Contact
                         </h3>
-                        <p style={{ color: colors.mutedForeground }}>reachout.optim@gmail.com</p>
                         <p style={{ color: colors.mutedForeground }}>
-                          <a href="tel:+919003815101" style={{ color: colors.primary }} className="hover:opacity-90 transition-opacity">
+                          reachout.optim@gmail.com
+                        </p>
+                        <p style={{ color: colors.mutedForeground }}>
+                          <a
+                            href="tel:+919003815101"
+                            style={{ color: colors.primary }}
+                            className="hover:opacity-90 transition-opacity"
+                          >
                             +91 9003815101
                           </a>
                         </p>
-                        <p className="text-sm" style={{ color: colors.mutedForeground }}>
+                        <p
+                          className="text-sm"
+                          style={{ color: colors.mutedForeground }}
+                        >
                           Get personalized AI marketing strategies
                         </p>
                       </div>
@@ -327,18 +387,24 @@ const Contact = () => {
 
                 <Card
                   style={{
-                    background: `linear-gradient(135deg, ${withAlpha(colors.primary, 0.05)} 0%, ${withAlpha(
-                      colors.accent,
-                      0.1
-                    )} 100%)`,
+                    background: `linear-gradient(135deg, ${withAlpha(
+                      colors.primary,
+                      0.05
+                    )} 0%, ${withAlpha(colors.accent, 0.1)} 100%)`,
                     border: `1px solid ${withAlpha(colors.primary, 0.2)}`,
                   }}
                 >
                   <CardContent className="p-6">
-                    <h3 className="font-semibold mb-2" style={{ color: colors.foreground }}>
+                    <h3
+                      className="font-semibold mb-2"
+                      style={{ color: colors.foreground }}
+                    >
                       Marketing Optimization Benefits
                     </h3>
-                    <div className="space-y-2 text-sm" style={{ color: colors.mutedForeground }}>
+                    <div
+                      className="space-y-2 text-sm"
+                      style={{ color: colors.mutedForeground }}
+                    >
                       <p>✓ AI-powered campaign automation</p>
                       <p>✓ Advanced audience targeting</p>
                       <p>✓ Real-time performance optimization</p>

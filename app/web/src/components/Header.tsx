@@ -48,7 +48,7 @@ const Header: React.FC = () => {
       className="fixed top-0 w-full glass-header z-50 shadow-glow"
       style={{
         // color-only changes: use tokens for glass background and border
-        background: colors.glassBg,
+        background: "hsl(0 0% 99% / 2)",
         borderBottom: `1px solid ${colors.border}`,
         color: colors.foreground,
       }}
@@ -169,7 +169,7 @@ const Header: React.FC = () => {
                       }}
                       onMouseEnter={(e) => {
                         (e.currentTarget as HTMLElement).style.color = colors.primary;
-                        (e.currentTarget as HTMLElement).style.backgroundColor = `${colors.accent} / 0.5`;
+                        (e.currentTarget as HTMLElement).style.backgroundColor = "hsl(213 90% 96% / 0.5)";
                       }}
                       onMouseLeave={(e) => {
                         (e.currentTarget as HTMLElement).style.color = colors.foreground;
@@ -190,16 +190,16 @@ const Header: React.FC = () => {
                     className="block px-3 py-2 transition-all duration-300 font-medium rounded-md"
                     style={{
                       color: isActive ? colors.primary : colors.foreground,
-                      backgroundColor: isActive ? `${colors.accent} / 0.3` : 'transparent',
+                      backgroundColor: isActive ? "hsl(213 90% 96% / 0.3)" : 'transparent',
                       textDecoration: 'none',
                     }}
                     onMouseEnter={(e) => {
                       (e.currentTarget as HTMLElement).style.color = colors.primary;
-                      (e.currentTarget as HTMLElement).style.backgroundColor = `${colors.accent} / 0.5`;
+                      (e.currentTarget as HTMLElement).style.backgroundColor = "hsl(213 90% 96% / 0.5)";
                     }}
                     onMouseLeave={(e) => {
                       (e.currentTarget as HTMLElement).style.color = isActive ? colors.primary : colors.foreground;
-                      (e.currentTarget as HTMLElement).style.backgroundColor = isActive ? `${colors.accent} / 0.3` : 'transparent';
+                      (e.currentTarget as HTMLElement).style.backgroundColor = isActive ? "hsl(213 90% 96% / 0.3)" : 'transparent';
                     }}
                   >
                     {item.name}

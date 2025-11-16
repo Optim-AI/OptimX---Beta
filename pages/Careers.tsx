@@ -38,7 +38,8 @@ const Careers = () => {
         <section
           className="py-20"
           style={{
-            background: `linear-gradient(135deg, ${withAlpha(
+            // use backgroundImage to make intent explicit (same effect as background)
+            backgroundImage: `linear-gradient(135deg, ${withAlpha(
               colors.primary,
               0.05
             )} 0%, ${withAlpha(colors.accent, 0.1)} 100%)`,
@@ -48,18 +49,23 @@ const Careers = () => {
             <h1
               className="text-4xl md:text-5xl font-bold mb-6"
               style={{
-                // keep gradient-text intention as fallback to a solid primary color
-                background: colors.gradientPrimary ?? undefined,
+                // gradient text: set the gradient as background-image and make text transparent
+                backgroundImage: colors.gradientPrimary ?? undefined,
                 WebkitBackgroundClip: "text" as any,
                 backgroundClip: "text" as any,
-                color: colors.primaryForeground,
+                color: "transparent", // <-- important: make text transparent
+                WebkitTextFillColor: "transparent", // <-- webkit fallback
               }}
             >
               Join Our Team
             </h1>
-            <p className="text-xl max-w-2xl mx-auto" style={{ color: colors.mutedForeground }}>
-              Help us build the future of business optimization. We're looking for passionate
-              individuals who want to make a real impact.
+
+            <p
+              className="text-xl max-w-2xl mx-auto"
+              style={{ color: colors.mutedForeground }}
+            >
+              Help us build the future of business optimization. We're looking
+              for passionate individuals who want to make a real impact.
             </p>
           </div>
         </section>
@@ -81,17 +87,24 @@ const Careers = () => {
                       className="h-12 w-12 mx-auto mb-4"
                       style={{ color: colors.primary }}
                     />
-                    <h2 className="text-3xl font-bold mb-4" style={{ color: colors.foreground }}>
+                    <h2
+                      className="text-3xl font-bold mb-4"
+                      style={{ color: colors.foreground }}
+                    >
                       Apply to Join Our Team
                     </h2>
                     <p style={{ color: colors.mutedForeground }}>
-                      We're always looking for talented individuals to join our mission. Send us your details and we'll get in touch.
+                      We're always looking for talented individuals to join our
+                      mission. Send us your details and we'll get in touch.
                     </p>
                   </div>
 
                   <form className="space-y-6">
                     <div className="space-y-2">
-                      <Label htmlFor="name" style={{ color: colors.foreground }}>
+                      <Label
+                        htmlFor="name"
+                        style={{ color: colors.foreground }}
+                      >
                         Full Name
                       </Label>
                       <Input
@@ -107,7 +120,10 @@ const Careers = () => {
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="email" style={{ color: colors.foreground }}>
+                      <Label
+                        htmlFor="email"
+                        style={{ color: colors.foreground }}
+                      >
                         Email Address
                       </Label>
                       <Input
@@ -124,7 +140,10 @@ const Careers = () => {
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="phone" style={{ color: colors.foreground }}>
+                      <Label
+                        htmlFor="phone"
+                        style={{ color: colors.foreground }}
+                      >
                         Phone Number
                       </Label>
                       <Input
@@ -140,8 +159,11 @@ const Careers = () => {
                       />
                     </div>
 
-                    <div className="space-y-2">
-                      <Label htmlFor="resume" style={{ color: colors.foreground }}>
+                    {/* <div className="space-y-2">
+                      <Label
+                        htmlFor="resume"
+                        style={{ color: colors.foreground }}
+                      >
                         Upload Resume
                       </Label>
 
@@ -160,10 +182,16 @@ const Careers = () => {
                           className="h-8 w-8 mx-auto mb-2"
                           style={{ color: colors.mutedForeground }}
                         />
-                        <p className="text-sm mb-1" style={{ color: colors.mutedForeground }}>
+                        <p
+                          className="text-sm mb-1"
+                          style={{ color: colors.mutedForeground }}
+                        >
                           Click to upload your resume
                         </p>
-                        <p className="text-xs" style={{ color: colors.mutedForeground }}>
+                        <p
+                          className="text-xs"
+                          style={{ color: colors.mutedForeground }}
+                        >
                           PDF, DOC, or DOCX (Max 5MB)
                         </p>
 
@@ -175,7 +203,7 @@ const Careers = () => {
                           required
                         />
                       </label>
-                    </div>
+                    </div> */}
 
                     <Button
                       type="submit"

@@ -1,10 +1,10 @@
 "use client";
 
 // pages/create-campaign.tsx
-// FULL working file — includes robust IndexedDB helpers that auto-recreate missing stores.
-// Minimal change: robust openDb/idb helpers, persistence for chats, generated images, uploaded previews and logoPublicUrl.
+// Supabase-only persistence: chats in user_chats, generated images in campaign-assets + user_generated_image.
 
 import React, { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import Sidebar from "../app/web/src/components/Sidebar";
 import NavBar from "../app/web/src/components/navBar";
@@ -35,268 +35,7 @@ import { toast } from "sonner";
 import colors from "../lib/colors";
 import { supabase } from "../lib/supabaseClient";
 
-/* -------------------- Robust IndexedDB helpers -------------------- */
-const DB_NAME = "optim-app-db";
-const STORE_NAME = "images"; // existing store used elsewhere
-const KV_STORE = "kv"; // simple key/value store
-
-function createStoresOnUpgrade(db: IDBDatabase) {
-  try {
-    if (!db.objectStoreNames.contains(STORE_NAME)) db.createObjectStore(STORE_NAME);
-    if (!db.objectStoreNames.contains(KV_STORE)) db.createObjectStore(KV_STORE);
-  } catch (e) {
-    console.warn("createStoresOnUpgrade error", e);
-  }
-}
-
-/**
- * Open DB robustly. If the DB exists but missing stores, delete & recreate it automatically.
- * Returns a Promise<IDBDatabase>.
- */
-function openDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    let triedRecreate = false;
-
-    const tryOpen = () => {
-      const req = indexedDB.open(DB_NAME, 1);
-
-      req.onupgradeneeded = () => {
-        const db = req.result as IDBDatabase;
-        createStoresOnUpgrade(db);
-      };
-
-      req.onsuccess = () => {
-        const db = req.result as IDBDatabase;
-        // Quick check: if a required object store is missing, delete DB and recreate once
-        if (!db.objectStoreNames.contains(STORE_NAME) || !db.objectStoreNames.contains(KV_STORE)) {
-          db.close();
-          if (triedRecreate) {
-            // Something weird — give up
-            reject(new Error("IndexedDB missing required stores after recreate attempt"));
-            return;
-          }
-          triedRecreate = true;
-          const delReq = indexedDB.deleteDatabase(DB_NAME);
-          delReq.onsuccess = () => {
-            // small delay to ensure deletion propagated
-            setTimeout(() => tryOpen(), 50);
-          };
-          delReq.onerror = () => {
-            reject(delReq.error || new Error("Failed to delete corrupt IndexedDB"));
-          };
-          return;
-        }
-        resolve(db);
-      };
-
-      req.onerror = () => {
-        reject(req.error);
-      };
-    };
-
-    tryOpen();
-  });
-}
-
-async function idbPut(key: string, value: Blob | string) {
-  try {
-    const db = await openDb();
-    return await new Promise<void>((resolve, reject) => {
-      try {
-        const tx = db.transaction(KV_STORE, "readwrite");
-        const store = tx.objectStore(KV_STORE);
-        const r = store.put(value, key);
-        r.onsuccess = () => resolve();
-        r.onerror = () => reject(r.error);
-        tx.oncomplete = () => db.close();
-      } catch (err) {
-        db.close();
-        reject(err);
-      }
-    });
-  } catch (err: any) {
-    // If the store was missing (NotFoundError), attempt to delete & recreate DB once, then retry
-    if (err && (err.name === "NotFoundError" || /object store/i.test(String(err.message || "")))) {
-      try {
-        await new Promise<void>((res, rej) => {
-          const del = indexedDB.deleteDatabase(DB_NAME);
-          del.onsuccess = () => res();
-          del.onerror = () => rej(del.error);
-        });
-        // retry once
-        const db = await openDb();
-        return await new Promise<void>((resolve, reject) => {
-          try {
-            const tx = db.transaction(KV_STORE, "readwrite");
-            const store = tx.objectStore(KV_STORE);
-            const r = store.put(value, key);
-            r.onsuccess = () => resolve();
-            r.onerror = () => reject(r.error);
-            tx.oncomplete = () => db.close();
-          } catch (e) {
-            db.close();
-            reject(e);
-          }
-        });
-      } catch (e2) {
-        throw e2;
-      }
-    }
-    throw err;
-  }
-}
-
-async function idbGet(key: string) {
-  try {
-    const db = await openDb();
-    return await new Promise<any>((resolve, reject) => {
-      try {
-        const tx = db.transaction(KV_STORE, "readonly");
-        const store = tx.objectStore(KV_STORE);
-        const r = store.get(key);
-        r.onsuccess = () => resolve(r.result);
-        r.onerror = () => reject(r.error);
-        tx.oncomplete = () => db.close();
-      } catch (err) {
-        db.close();
-        reject(err);
-      }
-    });
-  } catch (err: any) {
-    if (err && (err.name === "NotFoundError" || /object store/i.test(String(err.message || "")))) {
-      // recreate DB and retry once
-      await new Promise<void>((res, rej) => {
-        const del = indexedDB.deleteDatabase(DB_NAME);
-        del.onsuccess = () => res();
-        del.onerror = () => rej(del.error);
-      });
-      const db = await openDb();
-      return await new Promise<any>((resolve, reject) => {
-        try {
-          const tx = db.transaction(KV_STORE, "readonly");
-          const store = tx.objectStore(KV_STORE);
-          const r = store.get(key);
-          r.onsuccess = () => resolve(r.result);
-          r.onerror = () => reject(r.error);
-          tx.oncomplete = () => db.close();
-        } catch (e) {
-          db.close();
-          reject(e);
-        }
-      });
-    }
-    throw err;
-  }
-}
-
-// image store helpers (same pattern)
-async function idbPutImage(key: string, value: Blob | string) {
-  try {
-    const db = await openDb();
-    return await new Promise<void>((resolve, reject) => {
-      try {
-        const tx = db.transaction(STORE_NAME, "readwrite");
-        const store = tx.objectStore(STORE_NAME);
-        const r = store.put(value, key);
-        r.onsuccess = () => resolve();
-        r.onerror = () => reject(r.error);
-        tx.oncomplete = () => db.close();
-      } catch (err) {
-        db.close();
-        reject(err);
-      }
-    });
-  } catch (err: any) {
-    if (err && (err.name === "NotFoundError" || /object store/i.test(String(err.message || "")))) {
-      await new Promise<void>((res, rej) => {
-        const del = indexedDB.deleteDatabase(DB_NAME);
-        del.onsuccess = () => res();
-        del.onerror = () => rej(del.error);
-      });
-      const db = await openDb();
-      return await new Promise<void>((resolve, reject) => {
-        try {
-          const tx = db.transaction(STORE_NAME, "readwrite");
-          const store = tx.objectStore(STORE_NAME);
-          const r = store.put(value, key);
-          r.onsuccess = () => resolve();
-          r.onerror = () => reject(r.error);
-          tx.oncomplete = () => db.close();
-        } catch (e) {
-          db.close();
-          reject(e);
-        }
-      });
-    }
-    throw err;
-  }
-}
-
-async function idbGetImage(key: string) {
-  try {
-    const db = await openDb();
-    return await new Promise<any>((resolve, reject) => {
-      try {
-        const tx = db.transaction(STORE_NAME, "readonly");
-        const store = tx.objectStore(STORE_NAME);
-        const r = store.get(key);
-        r.onsuccess = () => resolve(r.result);
-        r.onerror = () => reject(r.error);
-        tx.oncomplete = () => db.close();
-      } catch (err) {
-        db.close();
-        reject(err);
-      }
-    });
-  } catch (err: any) {
-    if (err && (err.name === "NotFoundError" || /object store/i.test(String(err.message || "")))) {
-      await new Promise<void>((res, rej) => {
-        const del = indexedDB.deleteDatabase(DB_NAME);
-        del.onsuccess = () => res();
-        del.onerror = () => rej(del.error);
-      });
-      const db = await openDb();
-      return await new Promise<any>((resolve, reject) => {
-        try {
-          const tx = db.transaction(STORE_NAME, "readonly");
-          const store = tx.objectStore(STORE_NAME);
-          const r = store.get(key);
-          r.onsuccess = () => resolve(r.result);
-          r.onerror = () => reject(r.error);
-          tx.oncomplete = () => db.close();
-        } catch (e) {
-          db.close();
-          reject(e);
-        }
-      });
-    }
-    throw err;
-  }
-}
-
-function dataURLtoBlob(dataurl: string): Blob {
-  const arr = dataurl.split(",");
-  const mimeMatch = arr[0].match(/:(.*?);/);
-  const mime = mimeMatch ? mimeMatch[1] : "image/png";
-  const bstr = atob(arr[1]);
-  let n = bstr.length;
-  const u8arr = new Uint8Array(n);
-  while (n--) u8arr[n] = bstr.charCodeAt(n);
-  return new Blob([u8arr], { type: mime });
-}
-
-function dataURLtoFile(dataurl: string, filename: string) {
-  const arr = dataurl.split(",");
-  const mimeMatch = arr[0].match(/:(.*?);/);
-  const mime = mimeMatch ? mimeMatch[1] : "image/png";
-  const bstr = atob(arr[1]);
-  let n = bstr.length;
-  const u8arr = new Uint8Array(n);
-  while (n--) u8arr[n] = bstr.charCodeAt(n);
-  return new File([u8arr], filename, { type: mime });
-}
-
-/* -------------------- Mic Recorder (original logic) -------------------- */
+/* -------------------- Mic Recorder -------------------- */
 type MicRecorderProps = {
   onText: (chunk: string) => void;
   lang?: string;
@@ -386,28 +125,269 @@ const MicRecorder: React.FC<MicRecorderProps> = ({ onText, lang = "ta-IN", class
   );
 };
 
-/* -------------------- Chat persistence types -------------------- */
+/* -------------------- Types -------------------- */
 type Chat = {
   id: string;
-  title: string;
-  messages: any[]; // use same message shape you already have
-  createdAt: number;
-  updatedAt: number;
+  title: string | null;
+  messages: any[];
+  createdAt: number | null;
+  updatedAt: number | null;
 };
 
-/* -------------------- Keys for persistence -------------------- */
-const CHATS_KEY = "optim_chats_v1";
-const GENERATED_KEY = "optim_generated_images_v1";
-const UPLOADED_KEY = "optim_uploaded_images_v1";
-const LOGO_KEY = "optim_logo_v1";
+/* -------------------- Helpers -------------------- */
+function dataURLtoBlob(dataurl: string): Blob {
+  const arr = dataurl.split(",");
+  const mimeMatch = arr[0].match(/:(.*?);/);
+  const mime = mimeMatch ? mimeMatch[1] : "image/png";
+  const bstr = atob(arr[1]);
+  let n = bstr.length;
+  const u8arr = new Uint8Array(n);
+  while (n--) u8arr[n] = bstr.charCodeAt(n);
+  return new Blob([u8arr], { type: mime });
+}
 
-/* -------------------- Main Component -------------------- */
+const isProbablyUUID = (s?: string | null) => {
+  if (!s) return false;
+  return /^[0-9a-fA-F]{8}\-[0-9a-fA-F]{4}\-[0-9a-fA-F]{4}\-[0-9a-fA-F]{4}\-[0-9a-fA-F]{12}$/.test(s);
+};
+
+async function getCurrentUser() {
+  const { data } = await supabase.auth.getUser();
+  return (data as any)?.user ?? null;
+}
+
+/* -------------------- Storage + DB helpers -------------------- */
+
+/**
+ * Upload a data URL or remote image to Supabase storage and insert row into user_generated_image.
+ * Returns { publicUrl, path, row }.
+ */
+async function uploadAndRecordGeneratedImage(imageUrl: string, filenamePrefix = "generated") {
+  try {
+    const user = await getCurrentUser();
+    if (!user) throw new Error("Not authenticated");
+
+    let uploadedPath = "";
+    let publicUrl = imageUrl;
+
+    if (imageUrl.startsWith("data:")) {
+      // upload data url
+      const blob = dataURLtoBlob(imageUrl);
+      const safeName = `${user.id}_${Date.now()}_${filenamePrefix.replace(/[^a-z0-9_\-]/gi, "_").toLowerCase()}.png`;
+      const path = `campaigns/${user.id}/${safeName}`;
+      const { error } = await supabase.storage.from("campaign-assets").upload(path, blob, { cacheControl: "3600", upsert: true });
+      if (!error) {
+        uploadedPath = path;
+        const { data: publicData } = supabase.storage.from("campaign-assets").getPublicUrl(path);
+        publicUrl = (publicData as any)?.publicUrl ?? publicUrl;
+      } else {
+        console.warn("storage upload error (dataUrl)", error);
+      }
+    } else {
+      // try fetching remote and re-upload (may fail due to CORS)
+      try {
+        const fetched = await fetch(imageUrl);
+        if (fetched.ok) {
+          const blob = await fetched.blob();
+          const ext = (blob.type || "png").split("/").pop() ?? "png";
+          const safeName = `${user.id}_${Date.now()}_${filenamePrefix.replace(/[^a-z0-9_\-]/gi, "_").toLowerCase()}.${ext}`;
+          const path = `campaigns/${user.id}/${safeName}`;
+          const { error } = await supabase.storage.from("campaign-assets").upload(path, blob, { cacheControl: "3600", upsert: true });
+          if (!error) {
+            uploadedPath = path;
+            const { data: publicData } = supabase.storage.from("campaign-assets").getPublicUrl(path);
+            publicUrl = (publicData as any)?.publicUrl ?? publicUrl;
+          } else {
+            console.warn("storage upload error (fetch)", error);
+          }
+        }
+      } catch (e) {
+        console.warn("fetch+reupload failed (CORS?) — keeping original url", e);
+      }
+    }
+
+    // insert row into user_generated_image
+    try {
+      const payload = {
+        user_id: user.id,
+        image_url: publicUrl,
+        image_path: uploadedPath || null,
+        source: "generated",
+        metadata: {},
+      };
+      const { data, error } = await supabase.from("user_generated_image").insert([payload]).select().single();
+      if (error) {
+        console.warn("insert user_generated_image failed", error);
+      }
+      return { publicUrl, path: uploadedPath, row: data };
+    } catch (e) {
+      console.warn("record generated image failed", e);
+      return { publicUrl, path: uploadedPath, row: null };
+    }
+  } catch (e) {
+    console.error("uploadAndRecordGeneratedImage failed", e);
+    throw e;
+  }
+}
+
+/** fetch recent generated images for signed-in user */
+async function fetchRecentGeneratedImages(limit = 20) {
+  try {
+    const user = await getCurrentUser();
+    if (!user) return [];
+    const { data, error } = await supabase
+      .from("user_generated_image")
+      .select("image_url, image_path, created_at")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(limit);
+    if (error) {
+      console.warn("fetchRecentGeneratedImages error", error);
+      return [];
+    }
+    return (data || []).map((r: any) => r.image_url).filter(Boolean);
+  } catch (e) {
+    console.warn("fetchRecentGeneratedImages failed", e);
+    return [];
+  }
+}
+
+/* -------------------- Chat server helpers -------------------- */
+async function fetchChatsFromServer() {
+  try {
+    const user = await getCurrentUser();
+    if (!user) return [];
+    const { data, error } = await supabase
+      .from("user_chats")
+      .select("id, title, messages, created_at, updated_at")
+      .eq("user_id", user.id)
+      .order("updated_at", { ascending: false });
+    if (error) {
+      console.warn("fetchChatsFromServer error", error);
+      return [];
+    }
+    const mapped: Chat[] = (data || []).map((r: any) => ({
+      id: r.id,
+      title: r.title || "Chat",
+      messages: Array.isArray(r.messages) ? r.messages : [],
+      createdAt: r.created_at ? new Date(r.created_at).getTime() : null,
+      updatedAt: r.updated_at ? new Date(r.updated_at).getTime() : null,
+    }));
+    return mapped;
+  } catch (e) {
+    console.warn("fetchChatsFromServer failed", e);
+    return [];
+  }
+}
+
+async function createChatOnServer(title = "New Chat") {
+  const user = await getCurrentUser();
+  if (!user) throw new Error("Not authenticated");
+  const payload = {
+    user_id: user.id,
+    title: title || "New Chat",
+    messages: [],
+    consent_for_training: false,
+    client_version: "client-1",
+  };
+  const { data, error } = await supabase.from("user_chats").insert([payload]).select().single();
+  if (error) throw error;
+  return {
+    id: data.id,
+    title: data.title || "New Chat",
+    messages: Array.isArray(data.messages) ? data.messages : [],
+    createdAt: data.created_at ? new Date(data.created_at).getTime() : null,
+    updatedAt: data.updated_at ? new Date(data.updated_at).getTime() : null,
+  } as Chat;
+}
+
+async function updateChatMessagesOnServer(chatId: string, messagesPayload: any[]) {
+  try {
+    if (!isProbablyUUID(chatId)) throw new Error("invalid chat id");
+    const { error } = await supabase.from("user_chats").update({ messages: messagesPayload }).eq("id", chatId);
+    if (error) throw error;
+    return true;
+  } catch (e) {
+    console.warn("updateChatMessagesOnServer failed", e);
+    return false;
+  }
+}
+
+async function renameChatOnServer(chatId: string, newTitle: string) {
+  try {
+    if (!isProbablyUUID(chatId)) throw new Error("invalid chat id");
+    const { error } = await supabase.from("user_chats").update({ title: newTitle }).eq("id", chatId);
+    if (error) throw error;
+    return true;
+  } catch (e) {
+    console.warn("renameChatOnServer failed", e);
+    return false;
+  }
+}
+
+async function deleteChatOnServer(chatId: string) {
+  try {
+    if (!isProbablyUUID(chatId)) throw new Error("invalid chat id");
+    const { error } = await supabase.from("user_chats").delete().eq("id", chatId);
+    if (error) throw error;
+    return true;
+  } catch (e) {
+    console.warn("deleteChatOnServer failed", e);
+    return false;
+  }
+}
+
+/* -------------------- Profile upload helpers (user-uploads) -------------------- */
+async function uploadFileToUserUploads(file: File, folderPrefix = "profiles") {
+  const user = await getCurrentUser();
+  if (!user) throw new Error("Not authenticated");
+  const safe = `${user.id}_${Date.now()}_${file.name.replace(/\s+/g, "_")}`;
+  const path = `${folderPrefix}/${user.id}/${safe}`;
+  const { error } = await supabase.storage.from("user-uploads").upload(path, file, { cacheControl: "3600", upsert: true });
+  if (error) {
+    console.warn("uploadFileToUserUploads error", error);
+    throw error;
+  }
+  const { data } = supabase.storage.from("user-uploads").getPublicUrl(path);
+  const publicUrl = (data as any)?.publicUrl ?? null;
+  return { path, publicUrl };
+}
+
+async function addReferenceImagesToProfile(urls: string[]) {
+  try {
+    const user = await getCurrentUser();
+    if (!user) throw new Error("Not authenticated");
+    // fetch existing ref_images
+    const { data: profile } = await supabase.from("profiles").select("ref_images").eq("id", user.id).single();
+    const existing: string[] = (profile as any)?.ref_images || [];
+    const merged = Array.from(new Set([...existing, ...urls]));
+    await supabase.from("profiles").upsert({ id: user.id, ref_images: merged }, { returning: "minimal" });
+    return merged;
+  } catch (e) {
+    console.warn("addReferenceImagesToProfile failed", e);
+    throw e;
+  }
+}
+
+async function removeReferenceImageFromProfile(url: string) {
+  try {
+    const user = await getCurrentUser();
+    if (!user) throw new Error("Not authenticated");
+    const { data: profile } = await supabase.from("profiles").select("ref_images").eq("id", user.id).single();
+    const existing: string[] = (profile as any)?.ref_images || [];
+    const next = existing.filter((x: string) => x !== url);
+    await supabase.from("profiles").upsert({ id: user.id, ref_images: next }, { returning: "minimal" });
+    return next;
+  } catch (e) {
+    console.warn("removeReferenceImageFromProfile failed", e);
+    throw e;
+  }
+}
+
+/* -------------------- Component -------------------- */
 const CampaignCreate: React.FC = () => {
   const router = useRouter();
 
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-
-  // Credits simple local state (replace with your actual hook if you want)
   const [credits, setCredits] = useState<number>(10);
   const useCredit = () => {
     if (credits <= 0) return false;
@@ -415,24 +395,25 @@ const CampaignCreate: React.FC = () => {
     return true;
   };
 
-  // Chat state
   const [chats, setChats] = useState<Chat[]>([]);
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<any[]>([]); // mirror of active chat messages
+  const [messages, setMessages] = useState<any[]>([]);
 
-  // Loading / UI state
-  const [prompt, setPrompt] = useState("");
+  const [generatedImages, setGeneratedImages] = useState<string[]>([]);
+  const [uploadedPreviews, setUploadedPreviews] = useState<string[]>([]);
+  const [logoPublicUrl, setLogoPublicUrl] = useState<string | null>(null);
+
+  // renamed `prompt` -> `inputText`
+  const [inputText, setInputText] = useState("");
+
   const [isGenerating, setIsGenerating] = useState(false);
   const [showUploadPanel, setShowUploadPanel] = useState(false);
   const [showPublishPanel, setShowPublishPanel] = useState(false);
   const [publishMode, setPublishMode] = useState<"post" | "ad">("post");
 
   const [uploadedImages, setUploadedImages] = useState<File[]>([]);
-  const [uploadedPreviews, setUploadedPreviews] = useState<string[]>([]);
-
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
-  const [logoPublicUrl, setLogoPublicUrl] = useState<string | null>(null);
   const [logoGlowing, setLogoGlowing] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -446,7 +427,9 @@ const CampaignCreate: React.FC = () => {
     audience: "",
   });
 
-  // form data (keeps compatibility with your backend)
+  const [showThemeOptions, setShowThemeOptions] = useState(false);
+  const [showAspectOptions, setShowAspectOptions] = useState(false);
+
   const [adFormData, setAdFormData] = useState<any>({
     campaignName: "",
     objective: "LINK_CLICKS",
@@ -472,7 +455,6 @@ const CampaignCreate: React.FC = () => {
     multipleVariations: false,
     logoPublicUrl: null,
     logoDataUrl: null,
-    // extra fields for Ads
     adSetName: "",
     destinationLink: "",
     delivery: "",
@@ -495,315 +477,186 @@ const CampaignCreate: React.FC = () => {
     logoDataUrl: null,
   });
 
-  // generated images
-  const [generatedImages, setGeneratedImages] = useState<string[]>([]);
-  // pending image that user must verify before publishing
   const [pendingGeneratedImage, setPendingGeneratedImage] = useState<string | null>(null);
 
-  const [showThemeOptions, setShowThemeOptions] = useState(false);
-  const [showAspectOptions, setShowAspectOptions] = useState(false);
+  // portal host reference for sidebar
+  const [sidebarHost, setSidebarHost] = useState<HTMLElement | null>(null);
 
-  /* -------------------- Previews management -------------------- */
-  useEffect(() => {
-    uploadedPreviews.forEach((u) => {
-      try {
-        URL.revokeObjectURL(u);
-      } catch {}
-    });
-    const newPreviews = uploadedImages.map((f) => URL.createObjectURL(f));
-    setUploadedPreviews(newPreviews);
-    return () => newPreviews.forEach((u) => {
-      try {
-        URL.revokeObjectURL(u);
-      } catch {}
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [uploadedImages]);
+  // textarea autosize
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const resizeTextarea = () => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    ta.style.height = "auto";
+    const max = 220; // max height in px
+    const newH = Math.min(ta.scrollHeight, max);
+    ta.style.height = `${newH}px`;
+  };
 
   useEffect(() => {
-    if (logoFile) {
-      const u = URL.createObjectURL(logoFile);
-      setLogoPreview(u);
-      return () => {
-        try {
-          URL.revokeObjectURL(u);
-        } catch {}
-      };
-    } else {
-      setLogoPreview(null);
-    }
-  }, [logoFile]);
+    resizeTextarea();
+  }, [inputText]);
 
-  /* -------------------- Load profile + initial credits + chats + persisted UI state -------------------- */
+  /* -------------------- Initial load -------------------- */
   useEffect(() => {
     (async () => {
       try {
-        const { data: userData } = await supabase.auth.getUser();
-        const user = (userData as any)?.user;
-        if (!user) return;
+        const user = await getCurrentUser();
+        if (!user) {
+          toast.error("Sign in to persist chats to Supabase");
+          return;
+        }
 
-        const { data: profile, error } = await supabase.from("profiles").select("*").eq("id", user.id).single();
-        if (!error && profile) {
-          if (profile.tagline) {
-            setAdFormData((p: any) => ({ ...p, tagline: p.tagline || profile.tagline }));
-            setPostFormData((p: any) => ({ ...p, tagline: p.tagline || profile.tagline }));
-          }
-          const logoPath = profile.logo_path ?? null;
-          if (logoPath) {
-            const { data: publicData } = supabase.storage.from("user-uploads").getPublicUrl(logoPath);
-            const publicUrl = (publicData as any)?.publicUrl ?? null;
-            if (publicUrl) {
-              setLogoPublicUrl(publicUrl);
-              setLogoGlowing(true);
-              setAdFormData((p: any) => ({ ...p, logoPublicUrl: p.logoPublicUrl || publicUrl }));
-              setPostFormData((p: any) => ({ ...p, logoPublicUrl: p.logoPublicUrl || publicUrl }));
+        // profile
+        try {
+          const { data: profile, error: pErr } = await supabase.from("profiles").select("*").eq("id", user.id).single();
+          if (!pErr && profile) {
+            if (profile.tagline) {
+              setAdFormData((p: any) => ({ ...p, tagline: p.tagline || profile.tagline }));
+              setPostFormData((p: any) => ({ ...p, tagline: p.tagline || profile.tagline }));
+            }
+            const logoPath = profile.logo_path ?? null;
+            if (logoPath) {
+              try {
+                const { data: publicData } = supabase.storage.from("user-uploads").getPublicUrl(logoPath);
+                const publicUrl = (publicData as any)?.publicUrl ?? null;
+                if (publicUrl) {
+                  setLogoPublicUrl(publicUrl);
+                  setLogoGlowing(true);
+                  setAdFormData((p: any) => ({ ...p, logoPublicUrl: p.logoPublicUrl || publicUrl }));
+                  setPostFormData((p: any) => ({ ...p, logoPublicUrl: p.logoPublicUrl || publicUrl }));
+                }
+              } catch (e) {
+                console.warn("getPublicUrl error", e);
+              }
+            }
+            if ((profile as any).credits !== undefined) setCredits(Number((profile as any).credits) || 0);
+
+            // set reference images into uploadedPreviews for easy display
+            if ((profile as any).ref_images && Array.isArray((profile as any).ref_images)) {
+              setUploadedPreviews((p) => {
+                // merge keeping existing previews
+                const merged = Array.from(new Set([...p, ...((profile as any).ref_images || [])]));
+                return merged;
+              });
             }
           }
-          if ((profile as any).credits !== undefined) setCredits(Number((profile as any).credits) || 0);
+        } catch (e) {
+          console.warn("profile fetch error", e);
         }
-      } catch (e) {
-        console.warn("profile fetch error", e);
-      }
 
-      // load chats from IndexedDB
-      try {
-        const raw = await idbGet(CHATS_KEY);
-        if (raw) {
-          const parsed: Chat[] = JSON.parse(raw);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            setChats(parsed);
-            setCurrentChatId(parsed[0].id);
-            setMessages(parsed[0].messages || []);
-          }
-        }
-      } catch (e) {
-        console.warn("failed to load chats from idb", e);
-      }
-
-      // if no chats found, create a default one
-      try {
-        const existing = await idbGet(CHATS_KEY);
-        if (existing == null) {
-          const defaultChat: Chat = {
-            id: `chat_${Date.now()}`,
-            title: "New Chat",
-            messages: [],
-            createdAt: Date.now(),
-            updatedAt: Date.now(),
-          };
-          setChats([defaultChat]);
-          setCurrentChatId(defaultChat.id);
-          setMessages([]);
+        // fetch chats
+        const serverChats = await fetchChatsFromServer();
+        if (serverChats && serverChats.length > 0) {
+          setChats(serverChats);
+          setCurrentChatId(serverChats[0].id);
+          setMessages(serverChats[0].messages || []);
+        } else {
           try {
-            await idbPut(CHATS_KEY, JSON.stringify([defaultChat]));
+            const created = await createChatOnServer("New Chat");
+            setChats([created]);
+            setCurrentChatId(created.id);
+            setMessages(created.messages || []);
           } catch (e) {
-            console.warn("failed to save default chat", e);
+            console.warn("create default chat failed", e);
+            toast.error("Could not create chat on server");
           }
         }
-      } catch (e) {
-        console.warn("check existing chats failed", e);
-      }
 
-      // rehydrate generated images
-      try {
-        const genRaw = await idbGet(GENERATED_KEY);
-        if (genRaw) {
-          const parsedGen = JSON.parse(genRaw as string);
-          if (Array.isArray(parsedGen)) setGeneratedImages(parsedGen);
+        // fetch recent generated images
+        try {
+          const urls = await fetchRecentGeneratedImages(20);
+          if (urls && urls.length) setGeneratedImages(urls);
+        } catch (e) {
+          console.warn("fetchRecentGeneratedImages failed", e);
         }
       } catch (e) {
-        console.warn("failed to load generated images from idb", e);
-      }
-
-      // rehydrate uploaded previews (we stored dataurls as a convenience so the UI shows images)
-      try {
-        const upRaw = await idbGet(UPLOADED_KEY);
-        if (upRaw) {
-          const parsedUp: string[] = JSON.parse(upRaw as string);
-          if (Array.isArray(parsedUp)) {
-            setUploadedPreviews(parsedUp);
-            // Note: we cannot reconstruct File objects from the browser for security reasons.
-            // If the user needs to send the original files later, they should re-upload. The preview keeps the UX.
-          }
-        }
-      } catch (e) {
-        console.warn("failed to load uploaded images from idb", e);
-      }
-
-      // rehydrate logoPublicUrl
-      try {
-        const logoRaw = await idbGet(LOGO_KEY);
-        if (logoRaw) {
-          const logo = String(logoRaw || "") || null;
-          if (logo) {
-            setLogoPublicUrl(logo);
-            setLogoGlowing(true);
-          }
-        }
-      } catch (e) {
-        console.warn("failed to load logo from idb", e);
+        console.warn("initial load failed", e);
       }
     })();
+
+    // locate the Sidebar's aside to portal chat list into it
+    const host = document.querySelector<HTMLElement>('aside[aria-expanded]') ?? document.querySelector<HTMLElement>('aside');
+    if (host) setSidebarHost(host);
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /* -------------------- Chat persistence helpers -------------------- */
-  const saveChatsToDb = async (nextChats: Chat[]) => {
+  /* -------------------- Chat CRUD -------------------- */
+
+  const createNewChat = async (title = "New Chat") => {
     try {
-      await idbPut(CHATS_KEY, JSON.stringify(nextChats));
-    } catch (e) {
-      console.warn("saveChatsToDb failed", e);
+      const created = await createChatOnServer(title);
+      setChats((prev) => [created, ...prev]);
+      setCurrentChatId(created.id);
+      setMessages([]);
+      toast.success("New chat created");
+    } catch (e: any) {
+      console.error("createNewChat error", e);
+      toast.error("Create chat failed");
     }
   };
 
-  const createNewChat = async (title = "New Chat") => {
-    const nc: Chat = {
-      id: `chat_${Date.now()}`,
-      title: title || "New Chat",
-      messages: [],
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    };
-    setChats((prevChats) => {
-      const next = [nc, ...prevChats];
-      setCurrentChatId(nc.id);
-      setMessages([]);
-      // persist
-      saveChatsToDb(next).catch((e) => console.warn("saveChatsToDb failed", e));
-      return next;
-    });
-    toast.success("New chat created");
+  const switchToChat = async (chatId: string) => {
+    try {
+      const c = chats.find((x) => x.id === chatId);
+      if (c) {
+        setCurrentChatId(chatId);
+        setMessages(c.messages || []);
+      } else {
+        const serverChats = await fetchChatsFromServer();
+        setChats(serverChats);
+        const found = serverChats.find((s) => s.id === chatId);
+        if (found) {
+          setCurrentChatId(chatId);
+          setMessages(found.messages || []);
+        }
+      }
+    } catch (e) {
+      console.warn("switchToChat failed", e);
+    }
   };
 
-  const switchToChat = (chatId: string) => {
-    const c = chats.find((x) => x.id === chatId);
-    if (!c) return;
-    setCurrentChatId(chatId);
-    setMessages(c.messages || []);
-  };
-
-  const updateCurrentChatMessages = (newMessages: any[]) => {
+  const updateCurrentChatMessages = async (newMessages: any[]) => {
     setMessages(newMessages);
-    setChats((prev) => {
-      const next = prev.map((c) => (c.id === currentChatId ? { ...c, messages: newMessages, updatedAt: Date.now() } : c));
-      // persist
-      saveChatsToDb(next).catch((e) => console.warn(e));
-      return next;
-    });
+    if (!currentChatId) return;
+    setChats((prev) => prev.map((c) => (c.id === currentChatId ? { ...c, messages: newMessages, updatedAt: Date.now() } : c)));
+    const ok = await updateChatMessagesOnServer(currentChatId, newMessages);
+    if (!ok) {
+      toast.error("Failed to save messages to server");
+    }
   };
 
   const renameChat = async (chatId: string, newTitle: string) => {
     setChats((prev) => {
       const next = prev.map((c) => (c.id === chatId ? { ...c, title: newTitle || c.title, updatedAt: Date.now() } : c));
-      // persist
-      saveChatsToDb(next).catch((e) => console.warn("saveChatsToDb failed", e));
       return next;
     });
+    const ok = await renameChatOnServer(chatId, newTitle);
+    if (!ok) toast.error("Failed to rename on server");
   };
 
   const deleteChat = async (chatId: string) => {
     setChats((prev) => {
       const next = prev.filter((c) => c.id !== chatId);
-      // if active chat got deleted, switch to first or create default
       if (chatId === currentChatId) {
         if (next.length > 0) {
           const first = next[0];
           setCurrentChatId(first.id);
           setMessages(first.messages || []);
         } else {
-          const defaultChat: Chat = {
-            id: `chat_${Date.now()}`,
-            title: "New Chat",
-            messages: [],
-            createdAt: Date.now(),
-            updatedAt: Date.now(),
-          };
-          setCurrentChatId(defaultChat.id);
+          setCurrentChatId(null);
           setMessages([]);
-          // persist default
-          saveChatsToDb([defaultChat]).catch((e) => console.warn(e));
-          return [defaultChat];
         }
       }
-      // persist
-      saveChatsToDb(next).catch((e) => console.warn(e));
       return next;
     });
+    const ok = await deleteChatOnServer(chatId);
+    if (!ok) toast.error("Failed to delete chat on server");
+    else toast.success("Chat deleted");
   };
 
-  /* -------------------- Persist other UI state helpers -------------------- */
-  const saveGeneratedToDb = async (arr: string[]) => {
-    try {
-      await idbPut(GENERATED_KEY, JSON.stringify(arr || []));
-    } catch (e) {
-      console.warn("saveGeneratedToDb failed", e);
-    }
-  };
-
-  const saveUploadsToDb = async (filesDataUrls: string[]) => {
-    try {
-      await idbPut(UPLOADED_KEY, JSON.stringify(filesDataUrls || []));
-    } catch (e) {
-      console.warn("saveUploadsToDb failed", e);
-    }
-  };
-
-  const saveLogoToDb = async (logoUrl: string | null) => {
-    try {
-      await idbPut(LOGO_KEY, logoUrl || "");
-    } catch (e) {
-      console.warn("saveLogoToDb failed", e);
-    }
-  };
-
-  // persist generated images when changed
-  useEffect(() => {
-    saveGeneratedToDb(generatedImages).catch((e) => console.warn(e));
-  }, [generatedImages]);
-
-  // persist uploaded images (we'll store them as dataURLs so they can be rehydrated)
-  useEffect(() => {
-    (async () => {
-      try {
-        const dataUrls = await Promise.all(
-          uploadedImages.map(async (f) => {
-            if (f instanceof File || f instanceof Blob) {
-              return await new Promise<string>((res, rej) => {
-                const r = new FileReader();
-                r.onload = () => res(String(r.result));
-                r.onerror = rej;
-                r.readAsDataURL(f);
-              });
-            }
-            return "";
-          })
-        );
-        await saveUploadsToDb(dataUrls.filter(Boolean));
-      } catch (e) {
-        console.warn("persist uploadedImages failed", e);
-      }
-    })();
-  }, [uploadedImages]);
-
-  // persist logoPublicUrl
-  useEffect(() => {
-    saveLogoToDb(logoPublicUrl).catch((e) => console.warn(e));
-  }, [logoPublicUrl]);
-
-  /* -------------------- Access token helper -------------------- */
-  async function getAccessToken(): Promise<string | null> {
-    try {
-      const s = await supabase.auth.getSession();
-      const session = (s as any) && (s as any).data ? (s as any).data.session || (s as any).data.session : null;
-      if (!session) return null;
-      const token = (session as any).access_token || (session as any).accessToken || (session as any).provider_token || null;
-      return token || null;
-    } catch (e) {
-      return null;
-    }
-  }
-
-  /* -------------------- Handlers -------------------- */
+  /* -------------------- File & Logo Uploads -------------------- */
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -812,39 +665,45 @@ const CampaignCreate: React.FC = () => {
       return;
     }
     setUploadedImages((prev) => [...prev, ...files.slice(0, 3 - prev.length)]);
+    Array.from(files).forEach((f) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = String(reader.result);
+        setUploadedPreviews((prev) => [...prev, dataUrl]);
+      };
+      reader.readAsDataURL(f);
+    });
   };
 
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0] ?? null;
     if (!file) return;
     setLogoFile(file);
+    const localPreview = URL.createObjectURL(file);
+    setLogoPreview(localPreview);
     toast.success("Logo selected (local preview)");
 
-    // Upload to supabase user-uploads and update profile.logo_path
     try {
-      const { data: userData } = await supabase.auth.getUser();
-      const user = (userData as any)?.user;
-      if (!user) return;
-      const safe = `${user.id}_${Date.now()}_${file.name.replace(/\s+/g, "_")}`;
-      const path = `profiles/${user.id}/${safe}`;
-      const { error: uploadError } = await supabase.storage.from("user-uploads").upload(path, file, { cacheControl: "3600", upsert: true });
-      if (uploadError) {
-        console.warn("logo upload error", uploadError);
-        toast.warning("Logo uploaded locally but public upload failed.");
+      const user = await getCurrentUser();
+      if (!user) {
+        toast.error("Sign in to upload logo");
         return;
       }
-      const { data: publicData } = supabase.storage.from("user-uploads").getPublicUrl(path);
-      const publicUrl = (publicData as any)?.publicUrl ?? null;
-      if (publicUrl) {
-        setLogoPublicUrl(publicUrl);
-        setLogoGlowing(true);
-        try {
-          await supabase.from("profiles").upsert({ id: user.id, logo_path: path, tagline: adFormData.tagline || null }, { returning: "minimal" });
-          toast.success("Logo uploaded and saved to profile");
-        } catch (e) {
-          console.warn("save logo path failed", e);
-          toast.success("Logo uploaded but profile update failed");
+      // upload and save profile.logo_path
+      try {
+        const { path, publicUrl } = await uploadFileToUserUploads(file, "profiles");
+        if (publicUrl) {
+          setLogoPublicUrl(publicUrl);
+          setLogoGlowing(true);
+          setAdFormData((p: any) => ({ ...p, logoPublicUrl: p.logoPublicUrl || publicUrl }));
+          setPostFormData((p: any) => ({ ...p, logoPublicUrl: p.logoPublicUrl || publicUrl }));
         }
+        // save logo_path in profile (use path)
+        await supabase.from("profiles").upsert({ id: user.id, logo_path: path, tagline: adFormData.tagline || null }, { returning: "minimal" });
+        toast.success("Logo uploaded and saved to profile");
+      } catch (uploadErr) {
+        console.warn("logo upload error", uploadErr);
+        toast.warning("Logo uploaded locally but public upload failed.");
       }
     } catch (e) {
       console.warn("handleLogoUpload error", e);
@@ -857,8 +716,7 @@ const CampaignCreate: React.FC = () => {
     setLogoPublicUrl(null);
     setLogoGlowing(false);
     try {
-      const { data: userData } = await supabase.auth.getUser();
-      const user = (userData as any)?.user;
+      const user = await getCurrentUser();
       if (user) {
         await supabase.from("profiles").upsert({ id: user.id, logo_path: null }, { returning: "minimal" });
       }
@@ -873,6 +731,57 @@ const CampaignCreate: React.FC = () => {
     setUploadedPreviews((prev) => prev.filter((_, i) => i !== index));
   };
 
+  /* Save the reference images shown in uploadedPreviews to the profiles.ref_images */
+  const handleSaveReferenceImages = async () => {
+    try {
+      const user = await getCurrentUser();
+      if (!user) {
+        toast.error("Sign in to save reference images");
+        return;
+      }
+
+      // If there are File objects in uploadedImages, upload them and capture public URLs.
+      const uploadedUrls: string[] = [];
+      for (const f of uploadedImages) {
+        try {
+          const { path, publicUrl } = await uploadFileToUserUploads(f, "profiles");
+          if (publicUrl) uploadedUrls.push(publicUrl);
+        } catch (e) {
+          console.warn("upload reference image failed", e);
+        }
+      }
+
+      // also include any preview URLs that are already http(s)
+      const previewUrls = uploadedPreviews.filter((u) => typeof u === "string" && u.startsWith("http"));
+      const toAdd = Array.from(new Set([...uploadedUrls, ...previewUrls]));
+
+      if (toAdd.length === 0) {
+        toast.error("No reference images to save. Upload first.");
+        return;
+      }
+
+      await addReferenceImagesToProfile(toAdd);
+      toast.success("Reference images saved to profile");
+      // refresh uploadedPreviews from profile or keep what we have (we'll keep)
+    } catch (e) {
+      console.error("handleSaveReferenceImages error", e);
+      toast.error("Saving reference images failed");
+    }
+  };
+
+  const handleRemoveReferenceImage = async (url: string) => {
+    try {
+      await removeReferenceImageFromProfile(url);
+      setUploadedPreviews((prev) => prev.filter((p) => p !== url));
+      toast.success("Reference image removed from profile");
+    } catch (e) {
+      console.warn("handleRemoveReferenceImage failed", e);
+      toast.error("Remove failed");
+    }
+  };
+
+  /* -------------------- Generation flow -------------------- */
+
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -880,20 +789,19 @@ const CampaignCreate: React.FC = () => {
     }
   };
 
-  /* -------------------- Caption enhancer -------------------- */
   const enhancePrompt = async (text: string) => {
     try {
       if (!text || !text.trim()) {
         toast.error("Write something to enhance.");
         return null;
       }
-      const token = await getAccessToken();
+      const token = (await supabase.auth.getSession()).data?.session?.access_token ?? null;
       if (!token) {
         toast.error("Sign in to use enhancer.");
         return null;
       }
       const promptBody = `Enhance the following campaign description for clarity, persuasion, and ad copy effectiveness. Keep brand names intact. Only return the enhanced text (no commentary).\n\n---\n${text}`;
-      const resp = await fetch("/api/generateCaption", {
+      const resp = await fetch("/api/enhancePrompt", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ prompt: promptBody }),
@@ -916,10 +824,8 @@ const CampaignCreate: React.FC = () => {
     }
   };
 
-  /* -------------------- Generation flow (image preview first) -------------------- */
-
   const startGenerate = async () => {
-    if (!prompt.trim() && uploadedImages.length === 0) {
+    if (!inputText.trim() && uploadedImages.length === 0) {
       toast.error("Please describe your campaign or upload images");
       return;
     }
@@ -932,17 +838,16 @@ const CampaignCreate: React.FC = () => {
     const ok = useCredit();
     if (!ok) return;
 
-    // Add user message to thread (and persist)
-    const userMessage = { role: "user", content: prompt || "Generate from uploaded images", imageUrl: null };
+    const userMessage = { role: "user", content: inputText || "Generate from uploaded images", imageUrl: null };
     const newMessages = [...messages, userMessage];
     updateCurrentChatMessages(newMessages);
 
-    setPrompt("");
+    setInputText("");
     setShowUploadPanel(false);
     setIsGenerating(true);
 
     try {
-      const token = await getAccessToken();
+      const token = (await supabase.auth.getSession()).data?.session?.access_token ?? null;
       if (!token) {
         toast.error("Sign in to generate images.");
         setIsGenerating(false);
@@ -969,10 +874,10 @@ const CampaignCreate: React.FC = () => {
         startDate: adFormData.startDate,
         endDate: adFormData.endDate,
         autoOptimize: adFormData.autoOptimize,
-        description: prompt || adFormData.description,
+        description: inputText || adFormData.description,
         emotion: adFormData.emotion,
         offerInfo: adFormData.offerInfo,
-        prompt: prompt || (uploadedPreviews.length ? "Generate from uploaded images" : ""),
+        prompt: inputText || (uploadedPreviews.length ? "Generate from uploaded images" : ""),
         target: { width: quickSettings.aspectRatio === "16:9" ? 1920 : 1080, height: 1080 },
         aiCustomization: {
           colorPrimary: adFormData.logoPublicUrl || undefined,
@@ -1001,10 +906,17 @@ const CampaignCreate: React.FC = () => {
       }
 
       const first = typeof json.image === "string" ? json.image : (Array.isArray(json.images) && json.images.length ? json.images[0] : null);
-      const imageUrl = first ?? uploadedPreviews[0] ?? null;
+      let imageUrl = first ?? uploadedPreviews[0] ?? null;
       if (!imageUrl) throw new Error("No image returned");
 
-      // Assistant message
+      // upload + record in user_generated_image
+      try {
+        const uploaded = await uploadAndRecordGeneratedImage(imageUrl, (adFormData.campaignName || "gen").slice(0, 30));
+        if (uploaded && uploaded.publicUrl) imageUrl = uploaded.publicUrl;
+      } catch (e) {
+        console.warn("auto upload failed", e);
+      }
+
       const assistantMessage = {
         role: "assistant",
         content: `Generated preview${adFormData.brandName ? ` for ${adFormData.brandName}` : ""}. Verify and proceed to publish.`,
@@ -1013,20 +925,16 @@ const CampaignCreate: React.FC = () => {
       const after = [...newMessages, assistantMessage];
       updateCurrentChatMessages(after);
 
-      // If server returned creditsRemaining, update local credits too
       try {
         if (json.creditsRemaining !== undefined && json.creditsRemaining !== null) {
           setCredits(Number(json.creditsRemaining));
         }
-      } catch (e) {
-        // ignore
-      }
+      } catch (e) {}
 
       setPendingGeneratedImage(imageUrl);
       setIsGenerating(false);
       toast.success("Image ready — verify before publishing");
 
-      // persist the generated image in the gallery
       setGeneratedImages((prev) => [imageUrl, ...prev]);
     } catch (e) {
       console.error("startGenerate error", e);
@@ -1041,36 +949,28 @@ const CampaignCreate: React.FC = () => {
       return;
     }
 
-    // Save to generated images (most recent first) - already saved in startGenerate but ensure persist
     setGeneratedImages((prev) => {
       const next = [pendingGeneratedImage!, ...prev.filter((p) => p !== pendingGeneratedImage)];
       return next;
     });
-    // Also append a confirmation assistant message to chat
-    const confirmMsg = { role: "assistant", content: "User proceeded to publish with this creative.", imageUrl: pendingGeneratedImage };
-    updateCurrentChatMessages([...messages, confirmMsg]);
 
-    // clear pending
+    const confirmMsg = { role: "assistant", content: "User proceeded to publish with this creative.", imageUrl: pendingGeneratedImage };
+    const newMsgs = [...messages, confirmMsg];
+    updateCurrentChatMessages(newMsgs);
+
     setPendingGeneratedImage(null);
-    // open publish modal
     setShowPublishPanel(true);
-    // persist to session as preview (optional)
-    try {
-      const previewObj = { inputs: { adFormData, quickSettings }, image: pendingGeneratedImage, images: [pendingGeneratedImage] };
-      sessionStorage.setItem("preview", JSON.stringify(previewObj));
-    } catch (e) {
-      console.warn("session set failed", e);
-    }
   };
 
-  /* -------------------- Caption & Hashtags wiring -------------------- */
+  /* -------------------- Caption & Publish flows -------------------- */
+
   const generateCaption = async (promptText: string, setResult: (text: string) => void) => {
     try {
       if (!promptText || !promptText.trim()) {
         toast.error("Please provide some text for AI to work with.");
         return;
       }
-      const token = await getAccessToken();
+      const token = (await supabase.auth.getSession()).data?.session?.access_token ?? null;
       if (!token) {
         toast.error("Not signed in. Please sign in to use AI features.");
         return;
@@ -1095,9 +995,6 @@ const CampaignCreate: React.FC = () => {
     }
   };
 
-  /* -------------------- Publish flows -------------------- */
-
-  // Handle publish post - will auto-generate post name if missing
   const handlePublishPost = async () => {
     try {
       if (generatedImages.length === 0) {
@@ -1110,15 +1007,13 @@ const CampaignCreate: React.FC = () => {
         return;
       }
 
-      const { data: userData } = await supabase.auth.getUser();
-      const user = (userData as any)?.user;
+      const user = await getCurrentUser();
       if (!user) {
         toast.error("You must be signed in to publish a post.");
         router.push("/auth/signin");
         return;
       }
 
-      // auto-generate post name if missing
       let finalName = (postFormData.postName || "").trim();
       if (!finalName) {
         finalName = `Post_${Date.now()}`;
@@ -1129,7 +1024,6 @@ const CampaignCreate: React.FC = () => {
       let image_url = imageToPublish;
       let image_path = "";
 
-      // If image is dataURL, upload to supabase campaign-assets
       if (imageToPublish.startsWith("data:")) {
         const blob = dataURLtoBlob(imageToPublish);
         const safeName = (finalName || "post").replace(/[^a-z0-9_\-]/gi, "_").toLowerCase();
@@ -1140,6 +1034,11 @@ const CampaignCreate: React.FC = () => {
         const { data: publicData } = supabase.storage.from("campaign-assets").getPublicUrl(path);
         image_url = (publicData as any)?.publicUrl ?? imageToPublish;
         image_path = path;
+        try {
+          await supabase.from("user_generated_image").insert([{ user_id: user.id, image_url: image_url, image_path: image_path, source: "generated" }]);
+        } catch (e) {
+          console.warn("failed to insert generated image record", e);
+        }
       } else if (imageToPublish.startsWith("http")) {
         image_url = imageToPublish;
         image_path = "";
@@ -1162,9 +1061,6 @@ const CampaignCreate: React.FC = () => {
       const { data: inserted, error: insertError } = await supabase.from("campaigns").insert([payload]).select();
       if (insertError) throw insertError;
 
-      // ----------------------------
-      // 🔥 INSTAGRAM POSTING LOGIC
-      // ----------------------------
       if (postFormData.platforms.includes("Instagram")) {
         try {
           await fetch("/api/auth/instagram/post", {
@@ -1182,9 +1078,6 @@ const CampaignCreate: React.FC = () => {
         }
       }
 
-      // ---------------------------------
-      // 🔥 FACEBOOK POSTING (if selected and not cross-posted)
-      // ---------------------------------
       if (postFormData.platforms.includes("Facebook") && !postFormData.platforms.includes("Instagram")) {
         try {
           await fetch("/api/auth/facebook/post", {
@@ -1210,7 +1103,8 @@ const CampaignCreate: React.FC = () => {
     }
   };
 
-  // Replace your existing handleLaunchAd with this function (drop-in)
+  /* -------------------- Launch Ad (same logic as earlier) -------------------- */
+
   const handleLaunchAd = async () => {
     try {
       if (!adFormData.campaignName || !adFormData.campaignName.trim()) {
@@ -1222,15 +1116,13 @@ const CampaignCreate: React.FC = () => {
         return;
       }
 
-      const { data: userData } = await supabase.auth.getUser();
-      const user = (userData as any)?.user;
+      const user = await getCurrentUser();
       if (!user) {
         toast.error("You must be signed in to run ads.");
         router.push("/auth/signin");
         return;
       }
 
-      // Helper: map legacy/UX objective strings to Meta's OUTCOME_* values
       const mapObjectiveToMeta = (obj: string | undefined | null) => {
         const o = (obj || "").toString().trim().toUpperCase();
         switch (o) {
@@ -1243,7 +1135,6 @@ const CampaignCreate: React.FC = () => {
           case "BRAND_AWARENESS":
             return "OUTCOME_AWARENESS";
           case "REACH":
-            // REACH is commonly used for awareness/reach — map to awareness outcome
             return "OUTCOME_AWARENESS";
           case "ENGAGEMENT":
             return "OUTCOME_ENGAGEMENT";
@@ -1254,12 +1145,10 @@ const CampaignCreate: React.FC = () => {
           case "OUTCOME_LEADS":
             return "OUTCOME_LEADS";
           default:
-            // safe default: traffic
             return "OUTCOME_TRAFFIC";
         }
       };
 
-      // Prepare image: if data URL upload to supabase, else use public HTTP URL
       const imageToUse = generatedImages[0];
       let creativeImageUrl = "";
       let creativeImageDataUrl: string | undefined = undefined;
@@ -1274,16 +1163,15 @@ const CampaignCreate: React.FC = () => {
           if (uploadError) throw uploadError;
           const { data: publicData } = supabase.storage.from("campaign-assets").getPublicUrl(path);
           creativeImageUrl = (publicData as any)?.publicUrl ?? "";
-          if (!creativeImageUrl) creativeImageDataUrl = imageToUse; // fallback
+          if (!creativeImageUrl) creativeImageDataUrl = imageToUse;
         } catch (e) {
           console.error("upload creative to supabase failed", e);
-          creativeImageDataUrl = imageToUse; // still send data URL if upload failed
+          creativeImageDataUrl = imageToUse;
         }
       } else if (imageToUse.startsWith("http")) {
         creativeImageUrl = imageToUse;
       }
 
-      // Save campaign record locally (unchanged behaviour)
       const payloadDb = {
         user_id: user.id,
         name: adFormData.campaignName,
@@ -1300,17 +1188,14 @@ const CampaignCreate: React.FC = () => {
       const { data: inserted, error } = await supabase.from("campaigns").insert([payloadDb]).select();
       if (error) throw error;
 
-      // Map your objective to Meta expected value
       const mappedObjective = mapObjectiveToMeta(adFormData.objective);
 
-      // Build payload for facebook/ads endpoint (matches server expectations)
       const adPayload: any = {
         campaignName: adFormData.campaignName,
-        // send the mapped objective (OUTCOME_*)
         objective: mappedObjective,
         platforms: adFormData.platforms,
         adSetName: adFormData.adSetName || `${adFormData.campaignName || "Campaign"} AdSet ${Date.now()}`,
-        targeting: undefined, // server will fallback to adFormData fields if needed
+        targeting: undefined,
         creativeCaption: adFormData.tagline || adFormData.description || "",
         creativeImageUrl: creativeImageUrl || undefined,
         creativeImageDataUrl: creativeImageDataUrl || undefined,
@@ -1333,9 +1218,8 @@ const CampaignCreate: React.FC = () => {
         autoOptimize: !!adFormData.autoOptimize,
       };
 
-      // Call server endpoint to create FB campaign/adset/creative/ad, include Authorization token
       try {
-        const token = await getAccessToken();
+        const token = (await supabase.auth.getSession()).data?.session?.access_token ?? null;
         if (!token) {
           toast.error("You must be signed in to run ads.");
           return;
@@ -1347,11 +1231,9 @@ const CampaignCreate: React.FC = () => {
           body: JSON.stringify(adPayload),
         });
 
-        // Properly parse and show server response
         const json = await resp.json();
         if (!resp.ok) {
           console.error("facebook/ads returned error:", json);
-          // if the server returns step-specific error forward it to console and toast
           toast.error("Facebook Ads creation failed. See console for details.");
         } else {
           toast.success("Facebook Ads created (or saved).");
@@ -1370,94 +1252,65 @@ const CampaignCreate: React.FC = () => {
     }
   };
 
-  /* -------------------- UI Render -------------------- */
+  /* -------------------- Portal content for Sidebar (New chat + chats) -------------------- */
+
+  const sidebarChatPortal = (
+    <div
+      style={{
+        padding: 12,
+        borderTop: `1px solid rgba(255,255,255,0.04)`,
+        background: "transparent",
+      }}
+      // keep small and compact so it sits nicely under Sidebar items
+    >
+      <div className="mb-2">
+        <Button size="sm" className="w-full" onClick={() => createNewChat()}>
+          <Plus className="w-4 h-4 mr-2" /> New Chat
+        </Button>
+      </div>
+
+      <div style={{ maxHeight: "46vh", overflowY: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
+        {chats.map((c) => (
+          <div key={c.id} className={`flex items-center justify-between p-2 rounded-md ${c.id === currentChatId ? "bg-primary/10 shadow-sm" : "hover:bg-slate-50"}`} style={{ cursor: "pointer" }}>
+            <button
+              onClick={() => switchToChat(c.id)}
+              className="text-sm text-left flex-1 truncate"
+              title={c.title ?? "Chat"}
+            >
+              {c.title}
+            </button>
+            <div className="flex items-center gap-1 ml-2">
+              <button title="Rename" onClick={() => {
+                const t = window.prompt("Rename chat", c.title || "Chat");
+                if (t !== null) {
+                  const trimmed = t.trim();
+                  if (trimmed.length) renameChat(c.id, trimmed);
+                  else toast.error("Title cannot be empty");
+                }
+              }} className="text-xs px-1">✎</button>
+              <button title="Delete" onClick={() => { if (confirm("Delete this chat?")) deleteChat(c.id); }} className="text-xs px-1">🗑</button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  /* -------------------- Render -------------------- */
 
   return (
     <div className="min-h-screen flex bg-slate-50">
-      {/* Sidebar */}
-      <aside className={`transition-all duration-300 ${sidebarCollapsed ? "w-16" : "w-64"} bg-white border-r`} style={{ minHeight: "100vh" }}>
-        <div className="p-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${logoGlowing ? "ring-4 ring-offset-2" : ""}`} style={{ background: colors.primary, boxShadow: logoGlowing ? `0 6px 20px ${colors.primary}33` : undefined }}>
-              {logoPublicUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={logoPublicUrl} alt="logo" className="w-8 h-8 rounded-full object-cover" />
-              ) : (
-                <span className="text-white font-bold">OP</span>
-              )}
-            </div>
-            {!sidebarCollapsed && <div className="font-semibold">OPTIM</div>}
-          </div>
-          <button onClick={() => setSidebarCollapsed((s) => !s)} className="p-1 rounded">
-            <ArrowLeft className={`transform ${sidebarCollapsed ? "rotate-180" : ""}`} />
-          </button>
-        </div>
+      {/* Left: canonical Sidebar (we portal chats into it) */}
+      <Sidebar logoUrl={logoPublicUrl} onLogoClick={() => toast("Logo clicked")} />
 
-        <nav className="px-3 mt-4">
-          <button onClick={() => router.push("/dashboard")} className="w-full text-left px-3 py-2 rounded hover:bg-slate-50">
-            Dashboard
-          </button>
-          <button onClick={() => router.push("/campaigns")} className="w-full text-left px-3 py-2 rounded hover:bg-slate-50">
-            Campaigns
-          </button>
-          <button onClick={() => router.push("/create-campaign")} className="w-full text-left px-3 py-2 rounded bg-primary/5">
-            Create Campaign
-          </button>
-        </nav>
-      </aside>
+      {/* Render portal into Sidebar element (if found) */}
+      {sidebarHost && createPortal(sidebarChatPortal, sidebarHost)}
 
       {/* Main content area */}
       <div className="flex-1">
-        <NavBar />
-        <div className="sticky top-0 z-40 bg-background/80 border-b px-6 py-3">
-          <div className="max-w-7xl mx-auto flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold">Create Campaign</h1>
-              <div className="text-sm text-muted-foreground">Chat: {chats.find((c) => c.id === currentChatId)?.title || "—"}</div>
-            </div>
-            <div className="flex items-center gap-3">
-              <Badge variant="secondary">Credits: {credits}</Badge>
-            </div>
-          </div>
-
-          {/* Chat switcher row */}
-          <div className="max-w-7xl mx-auto mt-3 flex items-center gap-2">
-            <Button size="sm" onClick={() => createNewChat()}>
-              <Plus className="w-4 h-4 mr-2" /> New Chat
-            </Button>
-            <div className="flex gap-2 overflow-x-auto">
-              {chats.map((c) => (
-                <div key={c.id} className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border ${c.id === currentChatId ? "bg-primary/10 border-primary" : "bg-white"}`}>
-                  <button onClick={() => switchToChat(c.id)} className="text-sm font-medium">
-                    {c.title}
-                  </button>
-                  <button
-                    title="Rename"
-                    onClick={() => {
-                      const t = prompt("Rename chat", c.title);
-                      if (t !== null) {
-                        const trimmed = t.trim();
-                        if (trimmed.length) renameChat(c.id, trimmed);
-                        else toast.error("Title cannot be empty");
-                      }
-                    }}
-                    className="text-xs px-1"
-                  >
-                    ✎
-                  </button>
-                  <button
-                    title="Delete chat"
-                    onClick={() => {
-                      if (confirm("Delete this chat?")) deleteChat(c.id);
-                    }}
-                    className="text-xs px-1"
-                  >
-                    🗑
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
+        {/* NavBar only (no extra header text) with deeper shadow */}
+        <div style={{ boxShadow: "0 10px 30px rgba(6,18,60,0.12)" }} className="sticky top-0 z-40 bg-background/95">
+          <NavBar />
         </div>
 
         <main className="max-w-6xl mx-auto p-6 pb-40">
@@ -1574,7 +1427,7 @@ const CampaignCreate: React.FC = () => {
               <h3 className="font-semibold mb-3">Generated Images</h3>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 {generatedImages.map((g, idx) => (
-                  <div key={idx} className="relative group border rounded overflow-hidden">
+                  <div key={idx} className="relative group rounded overflow-hidden shadow-sm">
                     <img src={g} alt={`generated-${idx}`} className="w-full h-40 object-cover" />
                     <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
                       <Button size="sm" variant="ghost" onClick={() => setGeneratedImages((prev) => prev.filter((_, i) => i !== idx))}>
@@ -1589,7 +1442,7 @@ const CampaignCreate: React.FC = () => {
         </main>
 
         {/* Bottom fixed input */}
-        <div className="fixed bottom-0 left-0 right-0" style={{ background: `${colors.background}ee`, borderTop: `1px solid ${colors.border}` }}>
+        <div className="fixed bottom-0 left-0 right-0" style={{ background: `${colors.background}`, borderTop: `1px solid ${colors.border}` }}>
           <div className="max-w-6xl mx-auto px-6 py-4 space-y-4">
             <div className="flex flex-wrap gap-2">
               <Button size="sm" variant={quickSettings.logoEnabled ? "default" : "outline"} onClick={() => setQuickSettings((q) => ({ ...q, logoEnabled: !q.logoEnabled }))}>
@@ -1658,14 +1511,22 @@ const CampaignCreate: React.FC = () => {
                   <Plus className="w-5 h-5" />
                 </Button>
 
-                <Textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} onKeyDown={handleKeyPress} placeholder="Describe your campaign idea or upload product images to get started…" className="flex-1 min-h-[52px] max-h-32 bg-transparent border-0 resize-none text-base" disabled={isGenerating || credits <= 0} />
+                <Textarea
+                  ref={textareaRef}
+                  value={inputText}
+                  onChange={(e) => { setInputText(e.target.value); resizeTextarea(); }}
+                  onKeyDown={handleKeyPress}
+                  placeholder="Describe your campaign idea or upload product images to get started…"
+                  className="flex-1 min-h-[52px] max-h-[220px] bg-transparent border-0 resize-none text-base"
+                  disabled={isGenerating || credits <= 0}
+                />
 
                 <div className="flex items-center gap-2">
-                  <MicRecorder onText={(chunk) => setPrompt((p) => (p ? p + " " + chunk : chunk))} lang="ta-IN" small />
-                  <Button size="icon" variant="outline" onClick={async () => { const enhanced = await enhancePrompt(prompt || adFormData.description || ""); if (enhanced) setPrompt(enhanced); }} title="Enhance prompt">
+                  <MicRecorder onText={(chunk) => setInputText((p) => (p ? p + " " + chunk : chunk))} lang="ta-IN" small />
+                  <Button size="icon" variant="outline" onClick={async () => { const enhanced = await enhancePrompt(inputText || adFormData.description || ""); if (enhanced) setInputText(enhanced); }} title="Enhance prompt">
                     <Sparkles className="w-5 h-5" />
                   </Button>
-                  <Button size="icon" onClick={startGenerate} disabled={isGenerating || credits <= 0 || (!prompt.trim() && uploadedImages.length === 0)} className="rounded-full" style={{ background: colors.gradientPrimary }}>
+                  <Button size="icon" onClick={startGenerate} disabled={isGenerating || credits <= 0 || (!inputText.trim() && uploadedImages.length === 0)} className="rounded-full" style={{ background: colors.gradientPrimary }}>
                     <Send className="w-5 h-5 text-white" />
                   </Button>
                 </div>
@@ -1683,21 +1544,29 @@ const CampaignCreate: React.FC = () => {
                   <Separator />
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
                     <div>
-                      <Label className="text-xs mb-2 block">Product Images (max 3)</Label>
-                      <div className="flex gap-2">
-                        {uploadedPreviews.map((src, index) => (
-                          <div key={index} className="relative group">
-                            <img src={src} alt={`Upload ${index + 1}`} className="w-16 h-16 rounded-lg object-cover border" style={{ borderColor: colors.border }} />
-                            <button onClick={() => handleRemoveImage(index)} className="absolute -top-2 -right-2 w-5 h-5 bg-destructive text-white rounded-full text-xs opacity-0 group-hover:opacity-100 transition-opacity" style={{ background: colors.destructive }}>
-                              ×
-                            </button>
-                          </div>
-                        ))}
+                      <Label className="text-xs mb-2 block">Product / Reference Images (max 3)</Label>
+                      <div className="flex gap-2 items-center">
+                        <div className="flex gap-2">
+                          {uploadedPreviews.map((src, index) => (
+                            <div key={index} className="relative group">
+                              <img src={src} alt={`Upload ${index + 1}`} className="w-16 h-16 rounded-lg object-cover border" style={{ borderColor: colors.border }} />
+                              <button onClick={() => handleRemoveImage(index)} className="absolute -top-2 -right-2 w-5 h-5 bg-destructive text-white rounded-full text-xs opacity-0 group-hover:opacity-100 transition-opacity" style={{ background: colors.destructive }}>
+                                ×
+                              </button>
+                              <button onClick={() => handleRemoveReferenceImage(src)} className="absolute -bottom-2 left-0 text-xs bg-white px-1 rounded opacity-80">Remove from profile</button>
+                            </div>
+                          ))}
+                        </div>
                         {uploadedPreviews.length < 3 && (
                           <button onClick={() => fileInputRef.current?.click()} className="w-16 h-16 rounded-lg border-2 border-dashed hover:border-primary transition-colors flex items-center justify-center" style={{ borderColor: colors.border }}>
                             <Plus className="w-5 h-5 text-muted-foreground" />
                           </button>
                         )}
+                      </div>
+
+                      <div className="mt-3 flex gap-2">
+                        <Button size="sm" onClick={handleSaveReferenceImages}>Save Reference Images to Profile</Button>
+                        <Button size="sm" variant="outline" onClick={() => { setUploadedImages([]); setUploadedPreviews([]); toast.success("Cleared previews"); }}>Clear</Button>
                       </div>
                     </div>
 
@@ -1714,8 +1583,26 @@ const CampaignCreate: React.FC = () => {
                           <Input id="tagline" value={adFormData.tagline} onChange={(e) => { setAdFormData((p: any) => ({ ...p, tagline: e.target.value })); setPostFormData((p: any) => ({ ...p, tagline: e.target.value })); }} className="mt-1 h-9 text-sm" placeholder="Tagline" />
                           <div className="mt-2 flex gap-2">
                             <Button size="sm" variant="outline" onClick={handleRemoveLogo}>Remove Logo</Button>
-                            <Button size="sm" onClick={() => { if (logoPublicUrl) { setAdFormData((p: any) => ({ ...p, logoPublicUrl })); setPostFormData((p: any) => ({ ...p, logoPublicUrl })); toast.success("Logo applied to form"); } }}>
-                              Apply Logo
+                            <Button size="sm" onClick={async () => {
+                              const user = await getCurrentUser();
+                              if (!user) { toast.error("Sign in to save logo"); return; }
+                              if (!logoFile) { toast.error("No logo selected"); return; }
+                              try {
+                                const { path, publicUrl } = await uploadFileToUserUploads(logoFile, "profiles");
+                                await supabase.from("profiles").upsert({ id: user.id, logo_path: path }, { returning: "minimal" });
+                                if (publicUrl) {
+                                  setLogoPublicUrl(publicUrl);
+                                  setLogoGlowing(true);
+                                  setAdFormData((p: any) => ({ ...p, logoPublicUrl: publicUrl }));
+                                  setPostFormData((p: any) => ({ ...p, logoPublicUrl: publicUrl }));
+                                }
+                                toast.success("Logo saved to profile");
+                              } catch (e) {
+                                console.error("save logo to profile failed", e);
+                                toast.error("Save logo failed");
+                              }
+                            }}>
+                              Apply Logo (save to profile)
                             </Button>
                           </div>
                         </div>
@@ -1728,7 +1615,7 @@ const CampaignCreate: React.FC = () => {
           </div>
         </div>
 
-        {/* Publish panel */}
+        {/* Publish panel (same flows) */}
         {showPublishPanel && (
           <div className="fixed inset-0 z-50" style={{ background: `${colors.background}cc`, backdropFilter: "blur(6px)" }}>
             <div className="max-w-3xl mx-auto p-6" style={{ marginTop: "auto", marginBottom: 40 }}>
@@ -1740,7 +1627,6 @@ const CampaignCreate: React.FC = () => {
                   </Button>
                 </div>
                 <Separator className="my-3" />
-
                 <div className="flex gap-2 mb-3">
                   <Button variant={publishMode === "post" ? "default" : "outline"} onClick={() => setPublishMode("post")} className="flex-1">
                     <Sparkles className="w-4 h-4 mr-2" /> Post Publishing
@@ -1806,7 +1692,7 @@ const CampaignCreate: React.FC = () => {
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {/* AD Inputs (expanded to include FB Ads required fields) */}
+                    {/* AD inputs */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <div>
                         <Label htmlFor="campaignName" className="text-sm">Campaign Name</Label>
@@ -1896,7 +1782,7 @@ const CampaignCreate: React.FC = () => {
                       </Button>
                       <Button variant="outline" className="flex-1" onClick={async () => {
                         try {
-                          const token = await getAccessToken();
+                          const token = (await supabase.auth.getSession()).data?.session?.access_token ?? null;
                           if (!token) { toast.error("Sign in to save draft"); return; }
                           await fetch("/api/campaigns/save-draft", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ mode: "ad", name: adFormData.campaignName, inputs: adFormData }) });
                           toast.success("Draft saved");

@@ -1,44 +1,59 @@
-'use client';
+"use client";
 
-import React, { useRef, useState, useEffect } from 'react';
-import { Button } from './ui/button';
+import React, { useRef, useState, useEffect } from "react";
+import { Button } from "./ui/button";
 import {
   ArrowRight,
   Sparkles,
   CheckCircle2,
   TrendingUp,
   Zap,
-} from 'lucide-react';
-import colors from '../../../../lib/colors';
+} from "lucide-react";
+import colors from "../../../../lib/colors";
+
+/** Convert "hsl(H S% L%)" -> "hsla(H, S%, L%, a)" for inline usage */
+function withAlpha(token: string, alpha: number) {
+  const hslMatch = token.match(
+    /hsl\(\s*([\d.]+)\s+([\d.]+)%\s+([\d.]+)%\s*\)/i
+  );
+  if (hslMatch) {
+    const [, h, s, l] = hslMatch;
+    return `hsla(${h}, ${s}%, ${l}%, ${alpha})`;
+  }
+  if (/rgba?\(|hsla?\(/i.test(token)) return token;
+  return token;
+}
 
 const Hero: React.FC = () => {
-  const heroRef = useRef<HTMLElement>(null);
+  const heroRef = useRef<HTMLElement | null>(null);
+  const badgeRef = useRef<HTMLDivElement | null>(null);
+  const buttonRef = useRef<HTMLAnchorElement | null>(null);
+  const illustrationRef = useRef<HTMLDivElement | null>(null);
+
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
 
   // Track mouse position relative to hero section
   useEffect(() => {
+    const heroElement = heroRef.current;
+    if (!heroElement) return;
+
     const handleMouseMove = (e: MouseEvent) => {
-      if (heroRef.current) {
-        const rect = heroRef.current.getBoundingClientRect();
-        setMousePosition({
-          x: e.clientX - rect.left,
-          y: e.clientY - rect.top,
-        });
-      }
+      const rect = heroElement.getBoundingClientRect();
+      setMousePosition({
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top,
+      });
     };
 
-    const heroElement = heroRef.current;
-    if (heroElement) {
-      heroElement.addEventListener('mousemove', handleMouseMove);
-      return () => heroElement.removeEventListener('mousemove', handleMouseMove);
-    }
+    heroElement.addEventListener("mousemove", handleMouseMove);
+    return () => heroElement.removeEventListener("mousemove", handleMouseMove);
   }, []);
 
-  // Magnetic movement effect
+  // Magnetic movement effect: returns style to apply
   const getMagneticStyle = (
     element: HTMLElement | null,
     strength: number = 0.15
-  ) => {
+  ): React.CSSProperties => {
     if (!element || !heroRef.current) return {};
 
     const rect = element.getBoundingClientRect();
@@ -54,43 +69,124 @@ const Hero: React.FC = () => {
     if (distance < maxDistance) {
       const factor = (1 - distance / maxDistance) * strength;
       return {
-        transform: `translate(${distanceX * factor}px, ${distanceY * factor}px)`,
-        transition:
-          'transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
+        transform: `translate(${distanceX * factor}px, ${
+          distanceY * factor
+        }px)`,
+        transition: "transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1)",
+        willChange: "transform",
       };
     }
 
     return {
-      transform: 'translate(0px, 0px)',
-      transition:
-        'transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)',
+      transform: "translate(0px, 0px)",
+      transition: "transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1)",
+      willChange: "transform",
     };
   };
-
-  const badgeRef = useRef<HTMLDivElement>(null);
-  const buttonRef = useRef<HTMLAnchorElement>(null);
-  const illustrationRef = useRef<HTMLDivElement>(null);
 
   return (
     <section
       ref={heroRef}
       id="home"
       className="pt-32 pb-24 min-h-screen flex items-center relative overflow-hidden"
-      // top-level section text/background tokens
       style={{
         backgroundColor: colors.background,
         color: colors.foreground,
       }}
     >
+      {/* Scoped styles to power the left→right reveal + floats */}
+      <style jsx>{`
+        /* container fade-in */
+        .animation-fade-in {
+          opacity: 0;
+          transform: translateX(-10px);
+          animation: fadeIn 0.65s ease forwards;
+        }
+        @keyframes fadeIn {
+          to {
+            opacity: 1;
+            transform: translateX(0);
+          }
+        }
+
+        /* left-to-right reveal using scaleX (transform-origin: left) */
+        .reveal-left {
+          display: inline-block;
+          transform-origin: left;
+          transform: scaleX(0);
+          opacity: 0;
+          animation: revealLeft 0.8s cubic-bezier(0.2, 0.9, 0.2, 1) forwards;
+        }
+        @keyframes revealLeft {
+          from {
+            transform: scaleX(0);
+            opacity: 0;
+          }
+          to {
+            transform: scaleX(1);
+            opacity: 1;
+          }
+        }
+
+        /* subtle float for orbs */
+        .animation-float {
+          animation: floatY 6s ease-in-out infinite alternate;
+        }
+        @keyframes floatY {
+          from {
+            transform: translateY(-8px);
+          }
+          to {
+            transform: translateY(8px);
+          }
+        }
+
+        /* icon pulse */
+        .icon-pulse {
+          animation: iconPulse 1.8s ease-in-out infinite;
+        }
+        @keyframes iconPulse {
+          0% {
+            transform: scale(1);
+            opacity: 1;
+          }
+          50% {
+            transform: scale(1.06);
+            opacity: 0.86;
+          }
+          100% {
+            transform: scale(1);
+            opacity: 1;
+          }
+        }
+
+        /* CTA arrow hover */
+        .cta-arrow {
+          transition: transform 0.22s ease;
+        }
+        a.group:hover .cta-arrow {
+          transform: translateX(6px);
+        }
+
+        /* gradient text helper */
+        .gradient-text {
+          display: inline-block;
+        }
+      `}</style>
+
       {/* Background Layers */}
       <div
         className="absolute inset-0"
         style={{
-          background: `linear-gradient(135deg, ${colors.background}, ${colors.accent} / 0.3, ${colors.background})`,
+          backgroundImage: `linear-gradient(135deg, ${
+            colors.background
+          } 0%, ${withAlpha("hsl(213 90% 96%)", 0.3)} 50%, ${
+            colors.background
+          } 100%)`,
         }}
       />
       <div
-        className="absolute inset-0 mesh-gradient opacity-40"
+        className="absolute inset-0 mesh-gradient"
         style={{
           background: colors.gradientMesh,
           opacity: 0.4,
@@ -100,20 +196,26 @@ const Hero: React.FC = () => {
       {/* Animated Orbs */}
       <div
         className="absolute top-20 left-10 w-72 h-72 rounded-full blur-3xl animation-float"
-        style={{ backgroundColor: `${colors.primary} / 0.3` }}
+        style={{ backgroundColor: withAlpha(colors.primary, 0.3) }}
       />
       <div
         className="absolute bottom-20 right-10 w-96 h-96 rounded-full blur-3xl animation-float"
         style={{
-          backgroundColor: `${colors.primaryGlow} / 0.2`,
-          animationDelay: '2s',
+          backgroundColor: withAlpha(colors.primary, 0.2),
+          animationDelay: "2s",
         }}
       />
       <div
         className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full blur-3xl animation-float"
         style={{
-          background: `linear-gradient(90deg, ${colors.primary} / 0.1 0%, ${colors.primaryGlow} / 0.08 100%)`,
-          animationDelay: '4s',
+          backgroundImage: `linear-gradient(90deg, ${withAlpha(
+            colors.primary,
+            0.1
+          )} 0%, ${withAlpha(
+            colors.primaryGlow ?? colors.primary,
+            0.08
+          )} 100%)`,
+          animationDelay: "4s",
         }}
       />
 
@@ -124,39 +226,45 @@ const Hero: React.FC = () => {
             {/* Premium Badge */}
             <div
               ref={badgeRef}
-              style={getMagneticStyle(badgeRef.current, 0.2)}
               className="inline-flex items-center space-x-2 mb-6 px-5 py-2.5 rounded-full shadow-glow"
-              // color-only changes for badge
               style={{
                 ...(getMagneticStyle(badgeRef.current, 0.2) as any),
                 background: colors.glassBg,
-                border: `1px solid ${colors.primary} / 0.3`,
+                border: `1px solid ${withAlpha(colors.primary, 0.3)}`,
                 boxShadow: colors.shadowGlow,
                 color: colors.primary,
               }}
             >
               <Sparkles
-                className="h-4 w-4 animate-pulse"
+                className="h-4 w-4 icon-pulse"
                 style={{ color: colors.primary }}
               />
-              <span style={{ color: colors.primary, fontWeight: 600, fontSize: 14 }}>
+              <span
+                style={{ color: colors.primary, fontWeight: 600, fontSize: 14 }}
+              >
                 AI-Powered Marketing Platform
               </span>
             </div>
 
-            {/* Headline */}
-            <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold mb-6 leading-[1.1]">
-              <span className="block mb-2" style={{ color: colors.foreground, fontSize: '1.75rem' }}>
+            {/* Headline: both lines inherit same H1 sizing so they match */}
+            <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold mb-6 leading-[1.02]">
+              {/* removed the smaller inline font-size so both lines match */}
+              <span
+                className="block mb-2 reveal-left"
+                style={{ animationDelay: "0.18s", color: colors.foreground }}
+              >
                 Marketing Made
               </span>
+
               <span
-                className="gradient-text block"
+                className="gradient-text block reveal-left"
                 style={{
+                  animationDelay: "0.36s",
                   backgroundImage: colors.gradientHero,
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent',
-                  backgroundClip: 'text',
-                  color: 'transparent',
+                  WebkitBackgroundClip: "text" as any,
+                  WebkitTextFillColor: "transparent",
+                  backgroundClip: "text",
+                  color: "transparent",
                 }}
               >
                 Simple & Powerful
@@ -169,26 +277,29 @@ const Hero: React.FC = () => {
               style={{ color: colors.mutedForeground }}
             >
               Launch campaigns across Google, Meta, Instagram & WhatsApp in
-              minutes.{' '}
+              minutes.{" "}
               <span style={{ fontWeight: 600, color: colors.foreground }}>
                 No agencies. No complexity.
-              </span>{' '}
+              </span>{" "}
               Just results.
             </p>
 
             {/* Quick Benefits */}
             <div className="flex flex-wrap gap-4 mb-8 justify-center lg:justify-start">
               {[
-                'Setup in 5 minutes',
-                'No credit card needed',
-                '14-day free trial',
+                "Setup in 5 minutes",
+                "Cancel it anytime",
+                "7 days free trial",
               ].map((text, i) => (
                 <div
                   key={i}
                   className="flex items-center gap-2 text-sm"
                   style={{ color: colors.foreground }}
                 >
-                  <CheckCircle2 className="h-5 w-5" style={{ color: colors.primary }} />
+                  <CheckCircle2
+                    className="h-5 w-5"
+                    style={{ color: colors.primary }}
+                  />
                   <span>{text}</span>
                 </div>
               ))}
@@ -199,9 +310,8 @@ const Hero: React.FC = () => {
               <Button
                 variant="hero"
                 size="lg"
-                className="px-8 py-6 text-lg shadow-glow hover:shadow-strong group w-full sm:w-auto"
+                className="px-8 py-6 text-lg shadow-glow group w-full sm:w-auto"
                 asChild
-                // ensure token-based button styling doesn't break internal behavior
                 style={{
                   background: colors.gradientPrimary,
                   color: colors.primaryForeground,
@@ -210,24 +320,20 @@ const Hero: React.FC = () => {
               >
                 <a
                   ref={buttonRef}
+                  className="group"
                   style={getMagneticStyle(buttonRef.current, 0.25)}
                   href="/auth/signin"
                 >
                   Start Free Trial
-                  <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
+                  <ArrowRight className="ml-2 h-5 w-5 cta-arrow" />
                 </a>
               </Button>
 
               <Button
                 variant="outline"
                 size="lg"
-                className="px-8 py-6 text-lg"
+                className="px-8 py-6 text-lg glass border-primary/30 hover:bg-primary/5 w-full sm:w-auto"
                 asChild
-                style={{
-                  backgroundColor: 'transparent',
-                  border: `1px solid ${colors.primary} / 0.3`,
-                  color: colors.foreground,
-                }}
               >
                 <a href="/#features">See How It Works</a>
               </Button>
@@ -237,25 +343,32 @@ const Hero: React.FC = () => {
             <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-6 text-sm">
               <div className="flex items-center gap-2">
                 <div className="flex -space-x-2">
-                  {['A', 'B', 'C'].map((letter, i) => (
+                  {["A", "B", "C"].map((letter, i) => (
                     <div
                       key={i}
                       className="w-8 h-8 rounded-full border-2 flex items-center justify-center"
                       style={{
-                        backgroundColor: `${colors.primary} / 0.2`,
+                        backgroundColor: withAlpha(colors.primary, 0.2),
                         borderColor: colors.background,
                       }}
                     >
-                      <span style={{ color: colors.primary, fontSize: 12, fontWeight: 700 }}>
+                      <span
+                        style={{
+                          color: colors.primary,
+                          fontSize: 12,
+                          fontWeight: 700,
+                        }}
+                      >
                         {letter}
                       </span>
                     </div>
                   ))}
                 </div>
                 <span style={{ color: colors.foreground, fontWeight: 600 }}>
-                  500+ businesses growing
+                  Many businesses growing
                 </span>
               </div>
+
               <div className="flex items-center gap-1.5">
                 <div className="flex">
                   {[...Array(5)].map((_, i) => (
@@ -276,8 +389,8 @@ const Hero: React.FC = () => {
           {/* RIGHT COLUMN */}
           <div
             ref={illustrationRef}
-            style={getMagneticStyle(illustrationRef.current, 0.1)}
             className="hidden lg:block relative animation-fade-in"
+            style={getMagneticStyle(illustrationRef.current, 0.1)}
           >
             <div className="relative h-[600px]">
               {/* Card 1 */}
@@ -293,25 +406,51 @@ const Hero: React.FC = () => {
                 <div className="flex items-center gap-3 mb-4">
                   <div
                     className="w-12 h-12 rounded-xl flex items-center justify-center"
-                    style={{ backgroundColor: `${colors.primary} / 0.2` }}
+                    style={{ backgroundColor: withAlpha(colors.primary, 0.2) }}
                   >
-                    <TrendingUp className="h-6 w-6" style={{ color: colors.primary }} />
+                    <TrendingUp
+                      className="h-6 w-6"
+                      style={{ color: colors.primary }}
+                    />
                   </div>
                   <div>
-                    <div style={{ color: colors.mutedForeground, fontSize: 12 }}>
+                    <div
+                      style={{ color: colors.mutedForeground, fontSize: 12 }}
+                    >
                       Campaign Performance
                     </div>
-                    <div style={{ color: colors.foreground, fontSize: 20, fontWeight: 700 }}>
+                    <div
+                      style={{
+                        color: colors.foreground,
+                        fontSize: 20,
+                        fontWeight: 700,
+                      }}
+                    >
                       +245%
                     </div>
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: `${colors.primary} / 0.2` }}>
-                    <div className="h-full rounded-full" style={{ backgroundColor: colors.primary, width: '80%' }} />
+                  <div
+                    className="h-2 rounded-full overflow-hidden"
+                    style={{ backgroundColor: withAlpha(colors.primary, 0.2) }}
+                  >
+                    <div
+                      className="h-full rounded-full"
+                      style={{ backgroundColor: colors.primary, width: "80%" }}
+                    />
                   </div>
-                  <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: `${colors.primary} / 0.2` }}>
-                    <div className="h-full rounded-full" style={{ backgroundColor: colors.primaryGlow, width: '60%' }} />
+                  <div
+                    className="h-2 rounded-full overflow-hidden"
+                    style={{ backgroundColor: withAlpha(colors.primary, 0.2) }}
+                  >
+                    <div
+                      className="h-full rounded-full"
+                      style={{
+                        backgroundColor: colors.primaryGlow,
+                        width: "60%",
+                      }}
+                    />
                   </div>
                 </div>
               </div>
@@ -329,33 +468,74 @@ const Hero: React.FC = () => {
                 <div className="flex items-center gap-3 mb-4">
                   <div
                     className="w-12 h-12 rounded-xl flex items-center justify-center"
-                    style={{ backgroundColor: `${colors.primaryGlow} / 0.2` }}
+                    style={{ backgroundColor: withAlpha(colors.primary, 0.2) }}
                   >
-                    <Zap className="h-6 w-6" style={{ color: colors.primary }} />
+                    <Zap
+                      className="h-6 w-6"
+                      style={{ color: colors.primary }}
+                    />
                   </div>
                   <div>
-                    <div style={{ color: colors.mutedForeground, fontSize: 12 }}>
+                    <div
+                      style={{ color: colors.mutedForeground, fontSize: 12 }}
+                    >
                       Active Campaigns
                     </div>
-                    <div style={{ color: colors.foreground, fontSize: 20, fontWeight: 700 }}>
+                    <div
+                      style={{
+                        color: colors.foreground,
+                        fontSize: 20,
+                        fontWeight: 700,
+                      }}
+                    >
                       12
                     </div>
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <div className="flex-1 h-20 rounded-lg p-3" style={{ backgroundColor: `${colors.primary} / 0.1` }}>
-                    <div style={{ color: colors.mutedForeground, fontSize: 12, marginBottom: 6 }}>
+                  <div
+                    className="flex-1 h-20 rounded-lg p-3"
+                    style={{ backgroundColor: withAlpha(colors.primary, 0.1) }}
+                  >
+                    <div
+                      style={{
+                        color: colors.mutedForeground,
+                        fontSize: 12,
+                        marginBottom: 6,
+                      }}
+                    >
                       Google
                     </div>
-                    <div style={{ color: colors.foreground, fontSize: 18, fontWeight: 700 }}>
+                    <div
+                      style={{
+                        color: colors.foreground,
+                        fontSize: 18,
+                        fontWeight: 700,
+                      }}
+                    >
                       3.2K
                     </div>
                   </div>
-                  <div className="flex-1 h-20 rounded-lg p-3" style={{ backgroundColor: `${colors.primaryGlow} / 0.1` }}>
-                    <div style={{ color: colors.mutedForeground, fontSize: 12, marginBottom: 6 }}>
+                  <div
+                    className="flex-1 h-20 rounded-lg p-3"
+                    style={{ backgroundColor: withAlpha(colors.primary, 0.08) }}
+                  >
+                    <div
+                      style={{
+                        color: colors.mutedForeground,
+                        fontSize: 12,
+                        marginBottom: 6,
+                      }}
+                    >
                       Meta
                     </div>
-                    <div style={{ color: colors.foreground, fontSize: 18, fontWeight: 700 }}>
+                    <div
+                      style={{
+                        color: colors.foreground,
+                        fontSize: 18,
+                        fontWeight: 700,
+                      }}
+                    >
                       5.8K
                     </div>
                   </div>
@@ -373,14 +553,28 @@ const Hero: React.FC = () => {
                 }}
               >
                 <div className="flex items-center gap-3 mb-4">
-                  <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ backgroundColor: `${colors.primary} / 0.2` }}>
-                    <Sparkles className="h-6 w-6" style={{ color: colors.primary }} />
+                  <div
+                    className="w-12 h-12 rounded-xl flex items-center justify-center"
+                    style={{ backgroundColor: withAlpha(colors.primary, 0.2) }}
+                  >
+                    <Sparkles
+                      className="h-6 w-6"
+                      style={{ color: colors.primary }}
+                    />
                   </div>
                   <div>
-                    <div style={{ color: colors.mutedForeground, fontSize: 12 }}>
+                    <div
+                      style={{ color: colors.mutedForeground, fontSize: 12 }}
+                    >
                       AI Suggestions
                     </div>
-                    <div style={{ color: colors.foreground, fontSize: 16, fontWeight: 700 }}>
+                    <div
+                      style={{
+                        color: colors.foreground,
+                        fontSize: 16,
+                        fontWeight: 700,
+                      }}
+                    >
                       New campaign ready
                     </div>
                   </div>
@@ -391,14 +585,10 @@ const Hero: React.FC = () => {
                 <Button
                   size="sm"
                   variant="outline"
-                  className="mt-3 w-full"
-                  style={{
-                    border: `1px solid ${colors.primary} / 0.3`,
-                    color: colors.foreground,
-                    background: 'transparent',
-                  }}
-                >
-                  Review Now
+                  className="mt-3 w-full glass hover:bg-primary/5 border-primary/30"
+                  asChild
+              >
+                <a href="/#features">Review Now</a>
                 </Button>
               </div>
             </div>
