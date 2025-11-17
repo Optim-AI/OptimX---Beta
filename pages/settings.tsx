@@ -7,7 +7,7 @@ import { supabase } from "../lib/supabaseClient";
 import { initFirebaseApp, getFirebaseAuth } from "../lib/firebaseClient";
 import type { ConfirmationResult } from "firebase/auth";
 import { useRouter } from "next/router";
-
+import type { JSX } from "react"; 
 import { Card, CardContent, CardHeader, CardTitle } from "../app/web/src/components/ui/card";
 import { Button } from "../app/web/src/components/ui/button";
 import { Input } from "../app/web/src/components/ui/input";

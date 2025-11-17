@@ -21,7 +21,6 @@ const Header: React.FC = () => {
     { name: 'How it Works', href: '/#how-it-works', type: 'section' },
     { name: 'Pricing', href: '/#pricing', type: 'section' },
     { name: 'Careers', href: '/Careers', type: 'route' },
-    // { name: 'Blog', href: '/blog', type: 'route' },
     { name: 'Contact', href: '/Contact', type: 'route' },
   ];
 
@@ -56,9 +55,9 @@ const Header: React.FC = () => {
       <div className="container mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
-          <Link href="/" className="flex items-center space-x-3" style={{ color: colors.foreground }}>
-            <img src={optimLogo} alt="OptimX Logo" className="h-10 w-10" />
-            <span className="text-xl font-bold" style={{ display: 'inline-flex', gap: 6 }}>
+          <Link href="/" className="flex items-center space-x-1" style={{ color: colors.foreground }}>
+            <img src="/images/OptimX_Logo.svg" alt="OptimX Logo" className="h-10 w-auto" />
+            <span className="text-xl font-bold" style={{ lineHeight: 1 }}>
               <span style={{ color: colors.foreground }}>Optim</span>
               <span style={{ color: colors.primary }}>X</span>
             </span>

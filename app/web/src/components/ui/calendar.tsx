@@ -103,20 +103,24 @@ export function Calendar({
         day_hidden: 'invisible',
         ...classNames,
       }}
-      components={{
-        IconLeft: () => (
-          <ChevronLeft
-            className="h-4 w-4"
-            style={{ color: colors.foreground }}
-          />
-        ),
-        IconRight: () => (
-          <ChevronRight
-            className="h-4 w-4"
-            style={{ color: colors.foreground }}
-          />
-        ),
-      }}
+      components={
+        // react-day-picker typings may not include IconLeft/IconRight depending on version.
+        // Cast to `any` to keep runtime behavior while satisfying TypeScript.
+        ({
+          IconLeft: () => (
+            <ChevronLeft
+              className="h-4 w-4"
+              style={{ color: colors.foreground }}
+            />
+          ),
+          IconRight: () => (
+            <ChevronRight
+              className="h-4 w-4"
+              style={{ color: colors.foreground }}
+            />
+          ),
+        } as any)
+      }
       {...props}
     />
   );

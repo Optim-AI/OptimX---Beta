@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 import * as React from "react";
 import * as RechartsPrimitive from "recharts";
@@ -127,8 +127,11 @@ const ChartTooltipContent = React.forwardRef<
       labelKey?: string;
     }
 >(
-  (
-    {
+  (props, ref) => {
+    // use a local any view of props so we can rely on runtime fields `payload`, `label`, etc.
+    const propsAny = props as any;
+
+    const {
       active,
       payload,
       className,
@@ -142,9 +145,8 @@ const ChartTooltipContent = React.forwardRef<
       color,
       nameKey,
       labelKey,
-    },
-    ref
-  ) => {
+    } = propsAny;
+
     const { config } = useChart();
 
     const tooltipLabel = React.useMemo(() => {
@@ -175,11 +177,11 @@ const ChartTooltipContent = React.forwardRef<
       return null;
     }
 
-    const nestLabel = payload.length === 1 && indicator !== "dot";
+    const nestLabel = (payload as any[]).length === 1 && indicator !== "dot";
 
     return (
       <div
-        ref={ref}
+        ref={ref as any}
         className={cn(
           "grid min-w-[8rem] items-start gap-1.5 rounded-lg px-2.5 py-1.5 text-xs shadow-xl",
           className
@@ -193,10 +195,10 @@ const ChartTooltipContent = React.forwardRef<
       >
         {!nestLabel ? tooltipLabel : null}
         <div className="grid gap-1.5">
-          {(payload as any[]).map((item, index) => {
+          {(payload as any[]).map((item: any, index: number) => {
             const key = `${nameKey || item.name || item.dataKey || "value"}`;
             const itemConfig = getPayloadConfigFromPayload(config, item, key);
-            const indicatorColor = (color as any) || item.payload?.fill || item.color;
+            const indicatorColor = (color as any) || (item as any).payload?.fill || (item as any).color;
 
             return (
               <div
@@ -206,10 +208,10 @@ const ChartTooltipContent = React.forwardRef<
                   indicator === "dot" && "items-center"
                 )}
               >
-                {formatter && item?.value !== undefined && item.name ? (
+                {formatter && (item as any)?.value !== undefined && (item as any).name ? (
                   // follow Recharts formatter signature when supplied
-                  // @ts-ignore
-                  formatter(item.value, item.name, item, index, item.payload)
+                  // @ts-ignore - delegated to Recharts runtime formatter
+                  formatter((item as any).value, (item as any).name, item, index, (item as any).payload)
                 ) : (
                   <>
                     {itemConfig?.icon ? (
@@ -234,9 +236,9 @@ const ChartTooltipContent = React.forwardRef<
                     <div className={cn("flex flex-1 justify-between leading-none", nestLabel ? "items-end" : "items-center")}>
                       <div className="grid gap-1.5">
                         {nestLabel ? tooltipLabel : null}
-                        <span style={{ color: colors.mutedForeground }}>{itemConfig?.label || item.name}</span>
+                        <span style={{ color: colors.mutedForeground }}>{itemConfig?.label || (item as any).name}</span>
                       </div>
-                      {item.value !== undefined && (
+                      {(item as any).value !== undefined && (
                         <span
                           style={{
                             color: colors.foreground,
@@ -244,7 +246,7 @@ const ChartTooltipContent = React.forwardRef<
                             fontWeight: 600,
                           }}
                         >
-                          {typeof item.value === "number" ? item.value.toLocaleString() : String(item.value)}
+                          {typeof (item as any).value === "number" ? (item as any).value.toLocaleString() : String((item as any).value)}
                         </span>
                       )}
                     </div>
@@ -262,49 +264,57 @@ ChartTooltipContent.displayName = "ChartTooltip";
 
 const ChartLegend = RechartsPrimitive.Legend;
 
-const ChartLegendContent = React.forwardRef<
-  HTMLDivElement,
-  React.ComponentProps<"div"> &
-    Pick<RechartsPrimitive.LegendProps, "payload" | "verticalAlign"> & {
-      hideIcon?: boolean;
-      nameKey?: string;
+// changed: avoid Pick<RechartsPrimitive.LegendProps, ...> which can cause the TS error.
+// instead define the props we need directly (payload as any to remain robust across recharts versions).
+type ChartLegendContentProps = React.ComponentProps<"div"> & {
+  payload?: any;
+  verticalAlign?: "top" | "bottom" | "left" | "right";
+  hideIcon?: boolean;
+  nameKey?: string;
+};
+
+const ChartLegendContent = React.forwardRef<HTMLDivElement, ChartLegendContentProps>(
+  (props, ref) => {
+    // use any view of props to avoid strict mismatches in library typings
+    const propsAny = props as any;
+    const { className, hideIcon = false, payload, verticalAlign = "bottom", nameKey } = propsAny;
+
+    const { config } = useChart();
+
+    if (!payload || !(payload as any[]).length) {
+      return null;
     }
->(({ className, hideIcon = false, payload, verticalAlign = "bottom", nameKey }, ref) => {
-  const { config } = useChart();
 
-  if (!payload?.length) {
-    return null;
+    return (
+      <div
+        ref={ref as any}
+        className={cn("flex items-center justify-center gap-4", verticalAlign === "top" ? "pb-3" : "pt-3", className)}
+      >
+        {(payload as any[]).map((item: any) => {
+          const key = `${nameKey || item.dataKey || "value"}`;
+          const itemConfig = getPayloadConfigFromPayload(config, item, key);
+
+          return (
+            <div key={String(item.value)} className={cn("flex items-center gap-1.5")}>
+              {itemConfig?.icon && !hideIcon ? (
+                <itemConfig.icon />
+              ) : (
+                <div
+                  className="h-2 w-2 shrink-0 rounded-[2px]"
+                  style={{
+                    backgroundColor: (item as any).color,
+                    border: `1px solid ${colors.border}`,
+                  }}
+                />
+              )}
+              <span style={{ color: colors.foreground }}>{itemConfig?.label}</span>
+            </div>
+          );
+        })}
+      </div>
+    );
   }
-
-  return (
-    <div
-      ref={ref}
-      className={cn("flex items-center justify-center gap-4", verticalAlign === "top" ? "pb-3" : "pt-3", className)}
-    >
-      {(payload as any[]).map((item) => {
-        const key = `${nameKey || item.dataKey || "value"}`;
-        const itemConfig = getPayloadConfigFromPayload(config, item, key);
-
-        return (
-          <div key={String(item.value)} className={cn("flex items-center gap-1.5")}>
-            {itemConfig?.icon && !hideIcon ? (
-              <itemConfig.icon />
-            ) : (
-              <div
-                className="h-2 w-2 shrink-0 rounded-[2px]"
-                style={{
-                  backgroundColor: (item as any).color,
-                  border: `1px solid ${colors.border}`,
-                }}
-              />
-            )}
-            <span style={{ color: colors.foreground }}>{itemConfig?.label}</span>
-          </div>
-        );
-      })}
-    </div>
-  );
-});
+);
 ChartLegendContent.displayName = "ChartLegend";
 
 function getPayloadConfigFromPayload(config: ChartConfig, payload: unknown, key: string) {
@@ -324,9 +334,9 @@ function getPayloadConfigFromPayload(config: ChartConfig, payload: unknown, key:
   } else if (
     payloadPayload &&
     key in payloadPayload &&
-    typeof payloadPayload[key as keyof typeof payloadPayload] === "string"
+    typeof (payloadPayload as any)[key] === "string"
   ) {
-    configLabelKey = payloadPayload[key as keyof typeof payloadPayload] as string;
+    configLabelKey = (payloadPayload as any)[key] as string;
   }
 
   return configLabelKey in config ? (config as any)[configLabelKey] : (config as any)[key];

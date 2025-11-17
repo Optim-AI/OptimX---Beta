@@ -9,7 +9,7 @@ import { Input } from "../app/web/src/components/ui/input";
 import Sidebar from "../app/web/src/components/Sidebar";
 import { supabase } from "../lib/supabaseClient";
 import { apiFetch } from "../lib/apiFetch";
-
+import type { JSX } from "react"; 
 // exact colors import path you requested — do NOT change
 import colors from "../lib/colors";
 

@@ -1,7 +1,17 @@
-
 @import "tailwindcss";
 
+/* --- START: Use Poppins as primary font --- */
+@layer base {
+  :root {
+    --font-sans: 'Poppins', ui-sans-serif, system-ui, sans-serif;
+  }
 
-/* --- START: color tokens & tiny mappings (append these) --- */
+  html {
+    font-family: var(--font-sans);
+  }
+}
 
-
+/* Optional: if you used the CSS variable approach */
+.font-poppins {
+  font-family: var(--font-poppins), ui-sans-serif, system-ui, sans-serif;
+}

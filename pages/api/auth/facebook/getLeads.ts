@@ -6,7 +6,7 @@ import { readSavedIntegration } from "../../../../lib/integrationStore";
 const VERSION = process.env.FACEBOOK_API_VERSION || "23.0";
 
 function normalizeLeadObject(item: any, savedStatuses: Record<string, string> | null) {
-  const lead_id = item.leadgen_id ?? item.id ?? item.lead_id ?? item.id ?? null;
+  const lead_id = item.leadgen_id ?? item.id ?? item.lead_id ?? null;
   const created_time = item.created_time ?? item.created_at ?? null;
 
   const getFieldFromFieldData = (names: string[]) => {
@@ -34,7 +34,7 @@ function normalizeLeadObject(item: any, savedStatuses: Record<string, string> | 
   const status = (savedStatuses && lead_id ? savedStatuses[String(lead_id)] : undefined) ?? "new";
 
   return {
-    lead_id: String(lead_id),
+    lead_id: lead_id != null ? String(lead_id) : null,
     full_name: full_name ?? undefined,
     email: email ?? undefined,
     phone: phone ?? undefined,
@@ -52,9 +52,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const saved = await readSavedIntegration({ provider: "meta", userId });
     if (!saved) return res.status(400).json({ error: "no_integration" });
 
-    const pageAccessToken = saved.pageAccessToken ?? saved.userAccessToken;
-    const pageId = saved.pageId;
-    if (!pageAccessToken && !saved.userAccessToken) {
+    const pageAccessToken = (saved as any).pageAccessToken ?? (saved as any).userAccessToken;
+    const pageId = (saved as any).pageId;
+    if (!pageAccessToken && !(saved as any).userAccessToken) {
       return res.status(500).json({ error: "Missing pageAccessToken or userAccessToken in integration" });
     }
 
@@ -96,7 +96,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     }
 
-    const savedStatuses: Record<string, string> | null = (saved && (saved.raw?.leadStatuses ?? saved.metadata?.leadStatuses)) ?? null;
+    // saved might have leadStatuses on raw or in metadata; be defensive
+    const savedAny = saved as any;
+    const savedStatuses: Record<string, string> | null =
+      (savedAny?.raw?.leadStatuses ?? savedAny?.metadata?.leadStatuses ?? null) as Record<string, string> | null;
+
     const normalized = leadsAll.map((it) => normalizeLeadObject(it, savedStatuses));
 
     let filtered = normalized;
