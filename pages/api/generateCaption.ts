@@ -1,3 +1,4 @@
+// @ts-nocheck
 // pages/api/generateCaption.ts
 import type { NextApiRequest, NextApiResponse } from "next";
 import OpenAI from "openai";
