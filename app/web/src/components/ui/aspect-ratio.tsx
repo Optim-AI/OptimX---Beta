@@ -1,19 +1,36 @@
-'use client';
+import * as React from "react";
 
-import * as React from 'react';
-import * as AspectRatioPrimitive from '@radix-ui/react-aspect-ratio';
+export interface AspectRatioProps
+  extends React.HTMLAttributes<HTMLDivElement> {
+  ratio?: number;
+}
 
-/**
- * A simple wrapper for Radix UI's AspectRatio component.
- * Ensures consistent usage with Tailwind & Next.js 13+ App Router.
- *
- * Example:
- * ```tsx
- * <AspectRatio ratio={16 / 9} className="bg-gray-200">
- *   <img src="/example.jpg" alt="Example" className="object-cover w-full h-full" />
- * </AspectRatio>
- * ```
- */
-const AspectRatio = AspectRatioPrimitive.Root;
+const AspectRatio = React.forwardRef<HTMLDivElement, AspectRatioProps>(
+  ({ ratio = 16 / 9, style, children, ...props }, ref) => {
+    return (
+      <div
+        ref={ref}
+        style={{
+          position: "relative",
+          width: "100%",
+          paddingBottom: `${100 / ratio}%`,
+          ...style,
+        }}
+        {...props}
+      >
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+          }}
+        >
+          {children}
+        </div>
+      </div>
+    );
+  }
+);
+
+AspectRatio.displayName = "AspectRatio";
 
 export { AspectRatio };
