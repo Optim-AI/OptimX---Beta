@@ -3,7 +3,7 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
-
+import type { JSX } from "react"; 
 import Sidebar from "../app/web/src/components/Sidebar";
 import { Button } from "../app/web/src/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../app/web/src/components/ui/card";

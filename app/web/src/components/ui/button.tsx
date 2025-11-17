@@ -129,13 +129,26 @@ const variantHoverStyles: Record<string, React.CSSProperties> = {
   },
 };
 
+type VariantKey =
+  | 'default'
+  | 'destructive'
+  | 'outline'
+  | 'secondary'
+  | 'ghost'
+  | 'link'
+  | 'hero'
+  | 'cta';
+
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant = 'default', size, asChild = false, style, ...props }, ref) => {
     const Comp: any = asChild ? Slot : 'button';
     const [hover, setHover] = React.useState(false);
 
-    const base = variantBaseStyles[variant] ?? (variantBaseStyles as any).default;
-    const hoverStyle = hover ? (variantHoverStyles[variant] ?? {}) : {};
+    // Normalize variant so TypeScript won't allow null/undefined to be used as an index
+    const variantKey = (variant ?? 'default') as VariantKey;
+
+    const base = (variantBaseStyles[variantKey] ?? (variantBaseStyles as any).default) as React.CSSProperties;
+    const hoverStyle = hover ? (variantHoverStyles[variantKey] ?? {}) : {};
     const mergedStyle: React.CSSProperties = {
       ...base,
       ...hoverStyle,

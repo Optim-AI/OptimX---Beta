@@ -34,6 +34,13 @@ export const Badge: React.FC<BadgeProps> = ({
 }) => {
   const [hover, setHover] = React.useState(false);
 
+  // Normalize variant to a concrete key so indexing is safe for TypeScript
+  const variantKey = (variant ?? 'default') as
+    | 'default'
+    | 'secondary'
+    | 'destructive'
+    | 'outline';
+
   const baseStyle: React.CSSProperties = {
     border: '1px solid transparent',
     background: colors.primary,
@@ -81,8 +88,8 @@ export const Badge: React.FC<BadgeProps> = ({
 
   const mergedStyle: React.CSSProperties = {
     ...baseStyle,
-    ...(variantStyles[variant] ?? {}),
-    ...(hover ? hoverStyles[variant] ?? {} : {}),
+    ...(variantStyles[variantKey] ?? {}),
+    ...(hover ? hoverStyles[variantKey] ?? {} : {}),
     ...(style as React.CSSProperties),
   };
 

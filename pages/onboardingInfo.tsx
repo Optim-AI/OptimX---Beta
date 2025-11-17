@@ -2,11 +2,12 @@
 'use client';
 
 import React, { useEffect, useState, useRef } from "react";
-import { useRouter } from "next/router";
+import { useRouter } from "next/navigation";
 import { supabase } from "../lib/supabaseClient";
-
+import type { JSX } from "react"; 
 type ProfileRow = {
   id: string;
+  email?: string | null;
   full_name?: string | null;
   business_name?: string | null;
   location?: string | null;
@@ -20,34 +21,64 @@ type ProfileRow = {
 };
 
 const BUSINESS_TYPES = [
-  "Food & Beverage (Resaturant, Cafes)","Fashion & Apparel","Beauty & Personal Care","Health, Fitness & Welness","Education & E-learning",
-  "Real Estate & Property","Travel & Hospitality","Automative & Dealerships","Finance, Banking & Insurance","Automotive & Dealerships",
-  "Finance, Banking & Insurance","Technology & SaaS","Home & Lifestyle","Entertainment & Events","Media & Advertising",
-  "Logistics & Transportation","Manufacturing & Industiral","Professional Services (Agencies, Consultants, Freelancers)","Non-Profit","Agriculture & Farming","Other"
+  "Food & Beverage (Restaurant, Cafes)",
+  "Fashion & Apparel",
+  "Beauty & Personal Care",
+  "Health, Fitness & Wellness",
+  "Education & E-learning",
+  "Real Estate & Property",
+  "Travel & Hospitality",
+  "Automotive & Dealerships",
+  "Finance, Banking & Insurance",
+  "Technology & SaaS",
+  "Home & Lifestyle",
+  "Entertainment & Events",
+  "Media & Advertising",
+  "Logistics & Transportation",
+  "Manufacturing & Industrial",
+  "Professional Services (Agencies, Consultants, Freelancers)",
+  "Non-Profit",
+  "Agriculture & Farming",
+  "Other"
 ];
 
 const BUSINESS_SIZES = [
-  "Solo / Individual","Small (1-10)","Medium (11-50)","Large (51-200)","Enterprise (200+)"
+  "Solo / Individual",
+  "Small (1-10)",
+  "Medium (11-50)",
+  "Large (51-200)",
+  "Enterprise (200+)"
 ];
 
 const USE_CASE_OPTIONS = [
-  "Run Ads & Promotions","Increase Brand Awareness",
-  "Drive Store Visits / Foot Traffic","Generate Leads or Signups",
-  "Boost Online Sales","Engage Existing Customers",
-  "Launch New Products / Offers","Analyze Marketing Performance","Automate Campaigns with AI","Other"
+  "Run Ads & Promotions",
+  "Increase Brand Awareness",
+  "Drive Store Visits / Foot Traffic",
+  "Generate Leads or Signups",
+  "Boost Online Sales",
+  "Engage Existing Customers",
+  "Launch New Products / Offers",
+  "Analyze Marketing Performance",
+  "Automate Campaigns with AI",
+  "Other"
 ];
 
 const HEARD_FROM_OPTIONS = [
-  "Google / Search","Friend / Referral","Social Media","Paid Ad",
-  "Email","Event / Conference","Partner","Other"
+  "Google / Search",
+  "Friend / Referral",
+  "Social Media",
+  "Paid Ad",
+  "Email",
+  "Event / Conference",
+  "Partner",
+  "Other"
 ];
 
 /* ---------- Color tokens used by the background/orbs ---------- */
-/* Tweak these to match your design system */
 const colors = {
-  background: "hsl(212 55% 96%)", // soft paper
-  primary: "hsl(213 90% 56%)", // blue
-  primaryGlow: "hsl(205 95% 60%)", // glow tint
+  background: "hsl(212 55% 96%)",
+  primary: "hsl(213 90% 56%)",
+  primaryGlow: "hsl(205 95% 60%)",
   gradientMesh:
     "radial-gradient(closest-side at 20% 10%, rgba(99,102,241,0.08), transparent 20%), radial-gradient(closest-side at 80% 90%, rgba(14,165,233,0.06), transparent 18%)",
 };
@@ -63,8 +94,6 @@ function withAlpha(token: string, alpha: number) {
   if (/rgba?\(|hsla?\(/i.test(token)) return token;
   return token;
 }
-
-/* ---------- Page component ---------- */
 
 export default function OnboardingInfoPage(): JSX.Element {
   const router = useRouter();
@@ -102,21 +131,22 @@ export default function OnboardingInfoPage(): JSX.Element {
     (async () => {
       setLoading(true);
       try {
-        const { data: userData } = await supabase.auth.getUser();
-        const user = userData?.user;
+        const getUserRes = await supabase.auth.getUser();
+        const user = getUserRes?.data?.user ?? null;
         if (!user) {
           router.push("/auth/signin");
           return;
         }
         setUserId(user.id);
 
-        const { data, error } = await supabase
+        const { data, error: fetchErr } = await supabase
           .from("profiles")
           .select("*")
           .eq("id", user.id)
           .single();
-        if (!error && data) {
-          setProfile(data);
+
+        if (!fetchErr && data) {
+          setProfile(data as Partial<ProfileRow>);
           setBusinessName(data.business_name || "");
           setLocation(data.location || "");
           setTagline(data.tagline || "");
@@ -126,14 +156,19 @@ export default function OnboardingInfoPage(): JSX.Element {
           setHeardFrom(data.heard_from || HEARD_FROM_OPTIONS[0]);
           setHeardFromOther(data.heard_from_other || "");
           if (data.logo_path) {
-            const { data: url } = supabase.storage
+            // getPublicUrl is synchronous and returns { data: { publicUrl } }
+            const publicUrlResponse = supabase.storage
               .from("user-uploads")
               .getPublicUrl(data.logo_path);
-            setLogoPreview(url?.publicUrl || null);
+            const publicUrl = (publicUrlResponse?.data as any)?.publicUrl;
+            setLogoPreview(publicUrl || null);
           }
+        } else if (fetchErr) {
+          // not fatal — may be first time user
+          // console.warn("profile fetch:", fetchErr);
         }
       } catch (e: any) {
-        setError(e.message);
+        setError(e?.message ?? String(e));
       } finally {
         setLoading(false);
       }
@@ -146,12 +181,13 @@ export default function OnboardingInfoPage(): JSX.Element {
       setLogoPreview(url);
       return () => URL.revokeObjectURL(url);
     }
+    // if logoFile removed, keep previously loaded preview (from storage) intact
   }, [logoFile]);
 
   const firstName = (() => {
-    const name = profile.full_name?.trim();
+    const name = (profile.full_name || "")?.trim();
     if (name) return name.split(" ")[0];
-    if (profile.email) return profile.email.split("@")[0];
+    if (profile.email) return (profile.email as string).split("@")[0];
     return "there";
   })();
 
@@ -166,9 +202,10 @@ export default function OnboardingInfoPage(): JSX.Element {
   }
 
   const handleNext = () => {
-    // animate step change (key-driven entrance handled by JSX)
     setStep((s) => Math.min(4, s + 1));
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
   };
 
   const handleFinish = async () => {
@@ -197,59 +234,67 @@ export default function OnboardingInfoPage(): JSX.Element {
           heardFrom === "Other" ? heardFromOther || null : null,
       };
 
+      // cast to any to avoid strict typing mismatch with generated supabase types
       const { error: upErr } = await supabase
         .from("profiles")
-        .upsert(payload, { onConflict: "id" });
+        .upsert(payload as any, { onConflict: "id" });
       if (upErr) throw upErr;
       router.push("/integrationsnew");
     } catch (e: any) {
-      setError(e.message);
+      setError(e?.message ?? String(e));
     } finally {
       setSaving(false);
     }
   };
 
   // Parallax & gentle tilt based on mouse position for subtle motion
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
+  // Parallax & gentle tilt based on mouse position for subtle motion
+useEffect(() => {
+  // Guard early if the container never mounts
+  if (!containerRef) return;
 
-    function handleMove(e: MouseEvent) {
-      const rect = container.getBoundingClientRect();
-      const cx = rect.left + rect.width / 2;
-      const cy = rect.top + rect.height / 2;
-      const dx = (e.clientX - cx) / rect.width; // -0.5..0.5
-      const dy = (e.clientY - cy) / rect.height;
-      // move outer orbs a bit
-      if (orbOuterRef.current) {
-        orbOuterRef.current.style.transform = `translate3d(${dx * 30}px, ${dy * 20}px, 0)`;
-      }
-      // inner orb moves slightly less for layered depth
-      if (orbInnerRef.current) {
-        orbInnerRef.current.style.transform = `translate3d(${dx * 16}px, ${dy * 10}px, 0)`;
-      }
-      // card tilt
-      if (cardRef.current) {
-        const tiltX = dy * 6; // degrees
-        const tiltY = dx * -6;
-        cardRef.current.style.transform = `perspective(1000px) rotateX(${tiltX}deg) rotateY(${tiltY}deg) translateZ(0)`;
-      }
+  function handleMove(e: MouseEvent) {
+    const containerEl = containerRef.current;
+    if (!containerEl) return; // <--- explicit runtime & TS-safe check
+
+    const rect = containerEl.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const dx = (e.clientX - cx) / rect.width; // -0.5..0.5
+    const dy = (e.clientY - cy) / rect.height;
+
+    if (orbOuterRef.current) {
+      orbOuterRef.current.style.transform = `translate3d(${dx * 30}px, ${dy * 20}px, 0)`;
     }
-
-    function handleLeave() {
-      if (orbOuterRef.current) orbOuterRef.current.style.transform = "";
-      if (orbInnerRef.current) orbInnerRef.current.style.transform = "";
-      if (cardRef.current) cardRef.current.style.transform = "";
+    if (orbInnerRef.current) {
+      orbInnerRef.current.style.transform = `translate3d(${dx * 16}px, ${dy * 10}px, 0)`;
     }
+    if (cardRef.current) {
+      const tiltX = dy * 6; // degrees
+      const tiltY = dx * -6;
+      cardRef.current.style.transform = `perspective(1000px) rotateX(${tiltX}deg) rotateY(${tiltY}deg) translateZ(0)`;
+    }
+  }
 
-    container.addEventListener("mousemove", handleMove);
-    container.addEventListener("mouseleave", handleLeave);
+  function handleLeave() {
+    if (orbOuterRef.current) orbOuterRef.current.style.transform = "";
+    if (orbInnerRef.current) orbInnerRef.current.style.transform = "";
+    if (cardRef.current) cardRef.current.style.transform = "";
+  }
 
-    return () => {
-      container.removeEventListener("mousemove", handleMove);
-      container.removeEventListener("mouseleave", handleLeave);
-    };
-  }, []);
+  const el = containerRef.current;
+  // If element isn't mounted yet, no event listeners to attach.
+  if (!el) return;
+
+  el.addEventListener("mousemove", handleMove);
+  el.addEventListener("mouseleave", handleLeave);
+
+  return () => {
+    el.removeEventListener("mousemove", handleMove);
+    el.removeEventListener("mouseleave", handleLeave);
+  };
+}, []); // refs are stable, empty deps are fine
+
 
   if (loading) return <div style={{ padding: 24 }}>Loading…</div>;
 
@@ -258,9 +303,7 @@ export default function OnboardingInfoPage(): JSX.Element {
       ref={containerRef}
       style={{ minHeight: "100vh", position: "relative", overflow: "hidden" }}
     >
-      {/* =========================
-          Background Layers (outside the card)
-         ========================= */}
+      {/* Background Layers */}
       <div
         aria-hidden
         className="bg-outer-gradient"
@@ -290,7 +333,6 @@ export default function OnboardingInfoPage(): JSX.Element {
         }}
       />
 
-      {/* Stronger animated orbs outside the card */}
       <div
         ref={orbOuterRef}
         aria-hidden
@@ -352,7 +394,7 @@ export default function OnboardingInfoPage(): JSX.Element {
         }}
       />
 
-      {/* Centered card (contains an inner stronger layered background) */}
+      {/* Card */}
       <div
         style={{
           minHeight: "100vh",
@@ -374,7 +416,8 @@ export default function OnboardingInfoPage(): JSX.Element {
             padding: 36,
             boxShadow: "0 28px 90px rgba(8,32,80,0.12)",
             overflow: "hidden",
-            background: "linear-gradient(180deg, rgba(255,255,255,0.92), rgba(255,255,255,0.80))",
+            background:
+              "linear-gradient(180deg, rgba(255,255,255,0.92), rgba(255,255,255,0.80))",
             backdropFilter: "saturate(140%) blur(10px)",
             position: "relative",
             zIndex: 2,
@@ -382,7 +425,7 @@ export default function OnboardingInfoPage(): JSX.Element {
             animation: "cardEntrance 700ms cubic-bezier(.2,.9,.3,1) both",
           }}
         >
-          {/* ---------- Inner layered background inside the card ---------- */}
+          {/* Inner layered background */}
           <div
             aria-hidden
             style={{
@@ -393,7 +436,6 @@ export default function OnboardingInfoPage(): JSX.Element {
               zIndex: 0,
             }}
           >
-            {/* subtle gradient stronger */}
             <div
               style={{
                 position: "absolute",
@@ -401,17 +443,13 @@ export default function OnboardingInfoPage(): JSX.Element {
                 backgroundImage: `linear-gradient(135deg, ${withAlpha(
                   colors.primary,
                   0.06
-                )} 0%, ${withAlpha(
-                  colors.primaryGlow ?? colors.primary,
-                  0.03
-                )} 60%, transparent 100%)`,
+                )} 0%, ${withAlpha(colors.primaryGlow ?? colors.primary, 0.03)} 60%, transparent 100%)`,
                 mixBlendMode: "overlay",
                 opacity: 1,
                 transition: "opacity 0.6s ease",
               }}
             />
 
-            {/* mesh */}
             <div
               className="mesh-gradient"
               style={{
@@ -423,7 +461,6 @@ export default function OnboardingInfoPage(): JSX.Element {
               }}
             />
 
-            {/* orbs inside the card (stronger and a bit closer) */}
             <div
               ref={orbInnerRef}
               className="inner-orb inner-orb-1"
@@ -479,9 +516,8 @@ export default function OnboardingInfoPage(): JSX.Element {
             />
           </div>
 
-          {/* Content (zIndex above background). Progress bar first */}
+          {/* Content */}
           <div style={{ position: "relative", zIndex: 2 }}>
-            {/* Progress bar with shimmer */}
             <div
               style={{
                 width: "80%",
@@ -509,7 +545,6 @@ export default function OnboardingInfoPage(): JSX.Element {
               </div>
             </div>
 
-            {/* --- CENTERED VERTICAL HEADER (logo, brand, greeting) BELOW PROGRESS BAR --- */}
             <div
               className="centered-header"
               style={{
@@ -521,35 +556,29 @@ export default function OnboardingInfoPage(): JSX.Element {
                 marginBottom: 20,
                 textAlign: "center",
                 zIndex: 3,
-                // animation on appear
                 animation: "headerIn 520ms cubic-bezier(.2,.9,.3,1) both",
               }}
             >
-              {/* Logo image: put the file into /public/images/optimx-logo.png */}
               <img
-                src="/images/optimx-logo.png"
+                src="/images/OptimX_Logo.svg"
                 alt="OptimX logo"
                 style={{ width: 56, height: 56, objectFit: "contain", display: "block" }}
               />
 
-              {/* Brand name: Optim + X (X in blue) */}
               <div style={{ fontSize: 24, fontWeight: 800, color: "#0f172a", lineHeight: 1 }}>
                 <span>Optim</span>
                 <span style={{ color: colors.primary, marginLeft: 6 }}>X</span>
               </div>
 
-              {/* Greeting single-line */}
               <div style={{ fontSize: 18, color: "#111827", fontWeight: 600 }}>
                 Hello <span style={{ color: COLOR_B }}>{firstName}</span> — Let’s get to know your business
               </div>
             </div>
 
-            {/* Step content keyed by step for re-mount animation */}
             <div key={step} className="step-animate" style={{ willChange: "transform, opacity" }}>
               {/* Step 1 */}
               {step === 1 && (
                 <div style={{ textAlign: "center" }}>
-                  {/* Removed the duplicated greeting from here per your request */}
                   <div
                     style={{
                       display: "flex",
@@ -577,7 +606,6 @@ export default function OnboardingInfoPage(): JSX.Element {
                       style={inputStyle}
                     />
 
-                    {/* Upload Logo Card */}
                     <div
                       style={{
                         width: "80%",
@@ -624,14 +652,13 @@ export default function OnboardingInfoPage(): JSX.Element {
                           type="file"
                           accept="image/*"
                           style={{ display: "none" }}
-                          onChange={(e) =>
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                             setLogoFile(e.target.files ? e.target.files[0] : null)
                           }
                         />
                       </label>
                     </div>
 
-                    {/* Heard From */}
                     <select
                       value={heardFrom}
                       onChange={(e) => setHeardFrom(e.target.value)}
@@ -816,9 +843,7 @@ export default function OnboardingInfoPage(): JSX.Element {
         </div>
       </div>
 
-      {/* Local css for float animation, shimmer, entrances, header & step transition */}
       <style jsx>{`
-        /* float animations */
         @keyframes float {
           0% { transform: translateY(0) translateX(0) scale(1); }
           25% { transform: translateY(-10px) translateX(-6px) scale(1.01); }
@@ -836,20 +861,14 @@ export default function OnboardingInfoPage(): JSX.Element {
           50% { transform: translateY(-30px) translateX(20px) scale(1.02); }
           100% { transform: translateY(0) translateX(0) scale(1); }
         }
-
-        /* Card entrance */
         @keyframes cardEntrance {
           from { opacity: 0; transform: translateY(18px) scale(0.995); }
           to { opacity: 1; transform: translateY(0) scale(1); }
         }
-
-        /* Header entrance */
         @keyframes headerIn {
           from { opacity: 0; transform: translateY(8px) scale(0.995); }
           to { opacity: 1; transform: translateY(0) scale(1); }
         }
-
-        /* Step entrance animation triggered on key change */
         .step-animate {
           animation: stepIn 420ms cubic-bezier(.22,.9,.35,1);
         }
@@ -857,8 +876,6 @@ export default function OnboardingInfoPage(): JSX.Element {
           from { opacity: 0; transform: translateY(8px) scale(0.997); }
           to { opacity: 1; transform: translateY(0) scale(1); }
         }
-
-        /* shimmer overlay for progress */
         .shimmer {
           background: linear-gradient(120deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.18) 50%, rgba(255,255,255,0.06) 100%);
           transform: translateX(-120%);
@@ -869,8 +886,6 @@ export default function OnboardingInfoPage(): JSX.Element {
           0% { transform: translateX(-120%); }
           100% { transform: translateX(120%); }
         }
-
-        /* CTA button hover */
         .btn-cta {
           transition: transform 180ms cubic-bezier(.22,.9,.35,1), box-shadow 180ms ease;
         }
@@ -881,8 +896,6 @@ export default function OnboardingInfoPage(): JSX.Element {
         .btn-cta:active {
           transform: translateY(-1px) scale(0.998);
         }
-
-        /* Respect reduced motion preference */
         @media (prefers-reduced-motion: reduce) {
           .orb, .orb-outer-2, .orb-giant, .inner-orb, .inner-orb-2, .inner-orb-giant {
             animation: none !important;
@@ -893,8 +906,6 @@ export default function OnboardingInfoPage(): JSX.Element {
           .step-animate { animation: none !important; }
           .centered-header { animation: none !important; }
         }
-
-        /* small responsive tweaks */
         @media (max-width: 640px) {
           .centered-header img { width: 48px; height: 48px; }
           .centered-header div[style] { font-size: 16px !important; }

@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   TrendingUp,
   Zap,
+  User,
 } from "lucide-react";
 import colors from "../../../../lib/colors";
 
@@ -343,7 +344,7 @@ const Hero: React.FC = () => {
             <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-6 text-sm">
               <div className="flex items-center gap-2">
                 <div className="flex -space-x-2">
-                  {["A", "B", "C"].map((letter, i) => (
+                  {[0, 1, 2].map((_, i) => (
                     <div
                       key={i}
                       className="w-8 h-8 rounded-full border-2 flex items-center justify-center"
@@ -352,15 +353,10 @@ const Hero: React.FC = () => {
                         borderColor: colors.background,
                       }}
                     >
-                      <span
-                        style={{
-                          color: colors.primary,
-                          fontSize: 12,
-                          fontWeight: 700,
-                        }}
-                      >
-                        {letter}
-                      </span>
+                      <User
+                        className="h-4 w-4"
+                        style={{ color: colors.primary }}
+                      />
                     </div>
                   ))}
                 </div>
@@ -587,8 +583,8 @@ const Hero: React.FC = () => {
                   variant="outline"
                   className="mt-3 w-full glass hover:bg-primary/5 border-primary/30"
                   asChild
-              >
-                <a href="/#features">Review Now</a>
+                >
+                  <a href="/#features">Review Now</a>
                 </Button>
               </div>
             </div>

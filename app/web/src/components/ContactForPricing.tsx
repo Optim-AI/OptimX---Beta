@@ -127,7 +127,7 @@ export default function ContactForPricing() {
                           className="font-semibold mb-1"
                           style={{ color: colors.foreground }}
                         >
-                          14-Day Free Trial
+                          7-Day Free Trial
                         </h4>
                         <p
                           className="text-sm"
@@ -193,8 +193,9 @@ export default function ContactForPricing() {
                     </p>
 
                     <div className="space-y-3">
+                      {/* Make Button render the Link via asChild (type-safe) */}
                       <Button
-                        href="/contact"
+                        asChild
                         variant="hero"
                         className="w-full shadow-glow"
                         size="lg"
@@ -205,18 +206,22 @@ export default function ContactForPricing() {
                           boxShadow: colors.shadowGlow,
                         }}
                       >
-                        Contact Us for Pricing{" "}
-                        <ArrowRight className="ml-2 h-4 w-4 inline-block" />
+                        <Link href="/contact" className="flex items-center justify-center w-full">
+                          Contact Us for Pricing{" "}
+                          <ArrowRight className="ml-2 h-4 w-4 inline-block" />
+                        </Link>
                       </Button>
 
+                      {/* already using asChild — remove href prop from the Button itself */}
                       <Button
-                        href="/auth/signin"
+                        asChild
                         variant="outline"
                         className="w-full"
                         size="lg"
-                        asChild
                       >
-                        <a href="/#features">Review Now</a>
+                        <Link href="/#features" className="w-full text-center">
+                          Review Now
+                        </Link>
                       </Button>
                     </div>
                   </div>

@@ -118,7 +118,7 @@ const FinalCTA: React.FC = () => {
             }`}
             style={{ color: colors.mutedForeground, transitionDelay: ctaVisible ? '600ms' : '0ms' }}
           >
-            <p>✨ No credit card required • 14-day free trial • Cancel anytime</p>
+            <p>✨ Many businesses growing • 7-day free trial • Cancel anytime</p>
           </div>
         </div>
       </div>

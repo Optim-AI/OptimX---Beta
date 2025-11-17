@@ -4,6 +4,7 @@
   "description": "A sample package.json",
   "dependencies": {
     "@heroicons/react": "^2.2.0",
+    "@next/font": "^14.2.15",
     "@primer/css": "17.0.1",
     "@radix-ui/react-accordion": "^1.2.12",
     "@radix-ui/react-alert-dialog": "^1.1.15",

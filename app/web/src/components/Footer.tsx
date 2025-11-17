@@ -6,32 +6,103 @@ import { usePathname, useRouter } from 'next/navigation';
 import { Facebook, Instagram, Linkedin, Twitter } from 'lucide-react';
 import colors from '../../../../lib/colors';
 
-const optimLogo = '/lovable-uploads/97baedae-c6f2-422c-95ad-b5efa06f182e.png';
+// const optimLogo = '/lovable-uploads/97baedae-c6f2-422c-95ad-b5efa06f182e.png';
+
+type LinkItem = { name: string; href: string; type: 'route' | 'section' };
 
 const Footer: React.FC = () => {
   const pathname = usePathname();
   const router = useRouter();
 
-  const footerLinks = {
+  // === Existing footer links you had + the new ones the user asked for.
+  // We'll dedupe by name to avoid duplicates.
+  const requested: Record<string, LinkItem[]> = {
     Product: [
       { name: 'Features', href: '/#features', type: 'section' },
-      { name: 'How it Works', href: '/#how-it-works', type: 'section' },
-      { name: 'Pricing', href: '/#pricing', type: 'section' }
+      { name: 'Pricing', href: '/#pricing', type: 'section' },
+      { name: 'Roadmap', href: '/roadmap', type: 'route' },
+      { name: 'Integrations', href: '/#integrations', type: 'section' },
     ],
     Company: [
       { name: 'About', href: '/about', type: 'route' },
       { name: 'Careers', href: '/careers', type: 'route' },
       { name: 'Blog', href: '/blog', type: 'route' },
-      { name: 'Contact', href: '/contact', type: 'route' }
-    ]
+      { name: 'Press', href: '/press', type: 'route' },
+    ],
+    Resources: [
+      { name: 'Help Center', href: '/help', type: 'route' },
+      { name: 'Tutorials', href: '/tutorials', type: 'route' },
+      { name: 'API Docs', href: '/docs', type: 'route' },
+      { name: 'Community', href: '/community', type: 'route' },
+    ],
+    Legal: [
+      { name: 'Terms & Conditions', href: '/terms', type: 'route' },
+      { name: 'Privacy Policy', href: '/privacy', type: 'route' },
+      { name: 'Refund Policy', href: '/refund-policy', type: 'route' },
+      { name: 'Cookie Policy', href: '/cookie-policy', type: 'route' },
+      { name: 'Data Handling & Security', href: '/data-security', type: 'route' },
+      { name: 'AI Use Disclosure', href: '/ai-use-disclosure', type: 'route' },
+    ],
   };
+
+  // Your original footerLinks (kept as source of truth)
+  const original: Record<string, LinkItem[]> = {
+    Product: [
+      { name: 'Features', href: '/#features', type: 'section' },
+      { name: 'How it Works', href: '/#how-it-works', type: 'section' },
+      { name: 'Pricing', href: '/#pricing', type: 'section' },
+    ],
+    Company: [
+      { name: 'About', href: '/about', type: 'route' },
+      { name: 'Careers', href: '/careers', type: 'route' },
+      { name: 'Blog', href: '/blog', type: 'route' },
+      { name: 'Contact', href: '/contact', type: 'route' },
+    ],
+  };
+
+  // Merge original + requested and dedupe by name
+  const mergedFooterLinks: Record<string, LinkItem[]> = {};
+
+  const addCategory = (category: string, items: LinkItem[] = []) => {
+    if (!mergedFooterLinks[category]) mergedFooterLinks[category] = [];
+    const map = new Map<string, LinkItem>();
+    // start with existing items already present (if any)
+    mergedFooterLinks[category].forEach((it) => map.set(it.name, it));
+    items.forEach((it) => map.set(it.name, it));
+    mergedFooterLinks[category] = Array.from(map.values());
+  };
+
+  // seed with original categories first (so we preserve their order)
+  Object.entries(original).forEach(([cat, items]) => addCategory(cat, items));
+  // then requested categories (this will add new categories and new items)
+  Object.entries(requested).forEach(([cat, items]) => addCategory(cat, items));
+
+  // If any requested category wasn't present originally, add it now (ensures Resources & Legal are included)
+  Object.keys(requested).forEach((cat) => {
+    if (!mergedFooterLinks[cat]) mergedFooterLinks[cat] = requested[cat];
+  });
+
+  const footerCategoriesOrdered = [
+    // keep logo/desc first (handled separately), then categories in a sensible order
+    'Product',
+    'Company',
+    'Resources',
+    'Legal',
+  ];
 
   const handleSectionClick = (href: string) => {
     if (pathname !== '/') {
       router.push(href);
     } else {
-      const element = document.querySelector(href); // e.g. "#pricing"
-      element?.scrollIntoView({ behavior: 'smooth' });
+      // href like '/#pricing' or '#pricing' or '/#features'
+      const selector = href.startsWith('/#') ? `#${href.substring(2)}` : href.startsWith('#') ? href : href.replace('/#', '#');
+      const element = document.querySelector(selector);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth' });
+      } else {
+        // fallback to set hash so refresh lands there
+        if (selector.startsWith('#')) window.location.hash = selector;
+      }
     }
   };
 
@@ -39,26 +110,26 @@ const Footer: React.FC = () => {
     {
       name: 'Facebook',
       icon: Facebook,
-      href: 'https://www.facebook.com/profile.php?id=61571446107024'
+      href: 'https://www.facebook.com/profile.php?id=61571446107024',
     },
     {
       name: 'Instagram',
       icon: Instagram,
-      href: 'https://www.instagram.com/optimx.ai/?utm_source=qr'
+      href: 'https://www.instagram.com/optimx.ai/?utm_source=qr',
     },
     {
       name: 'LinkedIn',
       icon: Linkedin,
-      href: 'https://www.linkedin.com/company/optim01/?viewAsMember=true'
+      href: 'https://www.linkedin.com/company/optim01/?viewAsMember=true',
     },
-    { name: 'Twitter', icon: Twitter, href: '#' }
+    { name: 'Twitter', icon: Twitter, href: '#' },
   ];
 
   return (
     <footer
       // color-only changes: background, border
       style={{
-        backgroundColor: "hsl(220 13% 95% / 0.5)",
+        backgroundColor: 'hsl(220 13% 95% / 0.5)',
         borderTop: `1px solid ${colors.border}`,
       }}
     >
@@ -66,22 +137,16 @@ const Footer: React.FC = () => {
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-8">
           {/* Logo + description */}
           <div className="col-span-2">
-            <div className="flex items-center space-x-3 mb-4">
-              <img src={optimLogo} alt="OptimX Logo" className="h-8 w-8" />
-              <span className="text-xl font-bold" style={{ display: 'inline-flex', gap: 6 }}>
+            <div className="flex items-center space-x-1 mb-4">
+              <img src="/images/OptimX_Logo.svg" alt="OptimX Logo" className="h-8 w-8" />
+              <span className="text-xl font-bold" style={{ display: 'inline-flex', gap: 0 }}>
                 <span style={{ color: colors.foreground }}>Optim</span>
-                <span
-                  // text-primary replaced by token
-                  style={{ color: colors.primary }}
-                >
-                  X
-                </span>
+                <span style={{ color: colors.primary }}>X</span>
               </span>
             </div>
 
             <p className="leading-relaxed mb-4" style={{ color: colors.mutedForeground }}>
-              Your all-in-one marketing brain. AI-powered campaigns for small
-              businesses, designed to help you grow without the complexity.
+              Your all-in-one marketing brain. AI-powered campaigns for small businesses, designed to help you grow without the complexity.
             </p>
 
             <p className="mb-6" style={{ color: colors.mutedForeground }}>
@@ -143,41 +208,45 @@ const Footer: React.FC = () => {
             </div>
           </div>
 
-          {/* Footer link columns */}
-          {Object.entries(footerLinks).map(([category, links]) => (
-            <div key={category}>
-              <h3 className="font-semibold mb-4" style={{ color: colors.foreground }}>
-                {category}
-              </h3>
-              <ul className="space-y-3">
-                {links.map((link) => (
-                  <li key={link.name}>
-                    {link.type === 'section' ? (
-                      <button
-                        onClick={() => handleSectionClick(link.href)}
-                        className="transition-colors duration-200"
-                        style={{ color: colors.mutedForeground, background: 'transparent', border: 'none', padding: 0 }}
-                        onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = colors.primary)}
-                        onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = colors.mutedForeground)}
-                      >
-                        {link.name}
-                      </button>
-                    ) : (
-                      <Link
-                        href={link.href}
-                        className="transition-colors duration-200"
-                        style={{ color: colors.mutedForeground }}
-                        onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = colors.primary)}
-                        onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = colors.mutedForeground)}
-                      >
-                        {link.name}
-                      </Link>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
+          {/* Footer link columns (Product, Company, Resources, Legal) */}
+          {footerCategoriesOrdered.map((category) => {
+            const links = mergedFooterLinks[category] ?? [];
+            if (!links.length) return null;
+            return (
+              <div key={category}>
+                <h3 className="font-semibold mb-4" style={{ color: colors.foreground }}>
+                  {category}
+                </h3>
+                <ul className="space-y-3">
+                  {links.map((link) => (
+                    <li key={link.name}>
+                      {link.type === 'section' ? (
+                        <button
+                          onClick={() => handleSectionClick(link.href)}
+                          className="transition-colors duration-200"
+                          style={{ color: colors.mutedForeground, background: 'transparent', border: 'none', padding: 0 }}
+                          onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = colors.primary)}
+                          onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = colors.mutedForeground)}
+                        >
+                          {link.name}
+                        </button>
+                      ) : (
+                        <Link
+                          href={link.href}
+                          className="transition-colors duration-200"
+                          style={{ color: colors.mutedForeground, textDecoration: 'none' }}
+                          onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = colors.primary)}
+                          onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = colors.mutedForeground)}
+                        >
+                          {link.name}
+                        </Link>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            );
+          })}
         </div>
 
         <div
@@ -185,7 +254,7 @@ const Footer: React.FC = () => {
           style={{ borderTop: `1px solid ${colors.border}`, gap: 12 }}
         >
           <div style={{ color: colors.mutedForeground, fontSize: 14 }} className="mb-4 md:mb-0">
-            © 2024 OptimX. All rights reserved.
+            © {new Date().getFullYear()} OptimX. All rights reserved.
           </div>
           <div style={{ color: colors.mutedForeground, fontSize: 14 }}>
             Made with ❤️ for small businesses everywhere

@@ -21,7 +21,8 @@ import colors from '../../../../lib/colors';
 type NavItem = {
   href: string;
   label: string;
-  Icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
+  // relaxed to `any` so lucide-react's `size` / other icon props are allowed
+  Icon: React.ComponentType<any>;
 };
 
 const NAV_ITEMS: NavItem[] = [
@@ -80,17 +81,8 @@ const Sidebar: React.FC<SidebarProps> = ({ logoUrl, onLogoClick }) => {
               padding: 4,
             }}
           >
-            {logoUrl ? (
-              <img src={logoUrl} alt="logo" className="h-full w-full object-contain" />
-            ) : (
-              <div
-                className="flex items-center justify-center text-sm font-semibold"
-                style={{ color: sidebarPrimary }}
-              >
-                {/* compact mark when collapsed */}
-                {collapsed ? <span>O</span> : <span style={{ letterSpacing: 0.6 }}>O</span>}
-              </div>
-            )}
+            {/* Always use the static file path for the logo */}
+            <img src="/images/OptimX_Logo.svg" alt="logo" className="h-full w-full object-contain" />
           </button>
 
           {/* Title (single OptimAI) */}
