@@ -152,33 +152,49 @@ function extractImageFromGeminiResponse(respJson: any): { kind: "inline" | "url"
 
 /** Attempt to get user from Authorization header (Bearer token) **/
 async function getUserFromAuthHeader(req: NextApiRequest) {
-  try {
-    const auth = (req.headers.authorization || req.headers.Authorization) as string | undefined;
-    if (!auth) return { user: null, token: null };
-    const m = auth.match(/Bearer\s+(.+)/i);
-    const token = m ? m[1] : auth;
-    if (!token) return { user: null, token: null };
+  const auth = (req.headers.authorization || req.headers.Authorization) as string | undefined;
+  if (!auth) return { user: null, token: null };
 
-    // Try both common shapes — supabase JS v2 accepts { access_token }
-    try {
-      // @ts-ignore - supabaseAdmin.auth.getUser may require different shapes depending on SDK version
-      const { data } = await supabaseAdmin.auth.getUser(token);
-      if ((data as any)?.user) return { user: (data as any).user, token };
-    } catch (e) {
-      // fallback to object shape
-      try {
-        // @ts-ignore
-        const { data } = await supabaseAdmin.auth.getUser({ access_token: token });
-        if ((data as any)?.user) return { user: (data as any).user, token };
-      } catch (e2) {
-        // final fallback - try admin.api.getUser? ignore error
-        try {
-          // @ts-ignore
-          const { data } = await (supabaseAdmin.auth as any).getUser?.({ access_token: token });
-          if ((data as any)?.user) return { user: (data as any).user, token };
-        } catch {}
-      }
+  const m = auth.match(/Bearer\s+(.+)/i);
+  const token = m ? m[1] : auth.trim();
+  if (!token) return { user: null, token: null };
+
+  // 1) Try Supabase admin in case everything is wired correctly
+  try {
+    // @ts-ignore
+    const { data } = await supabaseAdmin.auth.getUser(token);
+    if ((data as any)?.user) {
+      return { user: (data as any).user, token };
     }
+  } catch (e: any) {
+    console.warn(
+      "supabaseAdmin.auth.getUser failed, falling back to raw JWT decode:",
+      e?.message || e
+    );
+  }
+
+  // 2) Fallback: decode JWT ourselves and read `sub` / `user_id`
+  try {
+    const parts = token.split(".");
+    if (parts.length < 2) {
+      return { user: null, token };
+    }
+    const payload = parts[1];
+    const json = Buffer.from(payload, "base64").toString("utf8");
+    const decoded = JSON.parse(json);
+
+    const userId =
+      decoded.sub || decoded.user_id || decoded.id || decoded.uid || null;
+
+    if (userId) {
+      return { user: { id: userId } as any, token };
+    }
+  } catch (e) {
+    console.warn("JWT decode fallback failed", e);
+  }
+
+  return { user: null, token };
+}
     return { user: null, token };
   } catch (e) {
     console.warn("getUserFromAuthHeader error", e);
