@@ -150,58 +150,66 @@ function extractImageFromGeminiResponse(respJson: any): { kind: "inline" | "url"
   return { kind: null };
 }
 
-/** Attempt to get user from Authorization header (Bearer token) **/
-async function getUserFromAuthHeader(req: NextApiRequest) {
-  const auth = (req.headers.authorization || req.headers.Authorization) as string | undefined;
-  if (!auth) return { user: null, token: null };
-
-  const m = auth.match(/Bearer\s+(.+)/i);
-  const token = m ? m[1] : auth.trim();
-  if (!token) return { user: null, token: null };
-
-  // 1) Try Supabase admin in case everything is wired correctly
-  try {
-    // @ts-ignore
-    const { data } = await supabaseAdmin.auth.getUser(token);
-    if ((data as any)?.user) {
-      return { user: (data as any).user, token };
-    }
-  } catch (e: any) {
-    console.warn(
-      "supabaseAdmin.auth.getUser failed, falling back to raw JWT decode:",
-      e?.message || e
-    );
-  }
-
-  // 2) Fallback: decode JWT ourselves and read `sub` / `user_id`
+/** Helper: safely decode a Supabase JWT payload (no verification) */
+function decodeSupabaseJWT(token: string): any | null {
   try {
     const parts = token.split(".");
-    if (parts.length < 2) {
-      return { user: null, token };
-    }
+    if (parts.length < 2) return null;
+
     const payload = parts[1];
-    const json = Buffer.from(payload, "base64").toString("utf8");
-    const decoded = JSON.parse(json);
+    // convert URL-safe base64 to normal + pad
+    const base64 = payload
+      .replace(/-/g, "+")
+      .replace(/_/g, "/")
+      .padEnd(payload.length + ((4 - (payload.length % 4)) % 4), "=");
 
-    const userId =
-      decoded.sub || decoded.user_id || decoded.id || decoded.uid || null;
-
-    if (userId) {
-      return { user: { id: userId } as any, token };
-    }
-  } catch (e) {
-    console.warn("JWT decode fallback failed", e);
+    const json = Buffer.from(base64, "base64").toString("utf8");
+    return JSON.parse(json);
+  } catch {
+    return null;
   }
-
-  return { user: null, token };
 }
+/** Attempt to get user from Authorization header (Bearer token) **/
+async function getUserFromAuthHeader(req: NextApiRequest) {
+  try {
+    const auth = (req.headers.authorization ||
+      (req.headers as any).Authorization) as string | undefined;
+
+    if (!auth) return { user: null, token: null };
+
+    const m = auth.match(/Bearer\s+(.+)/i);
+    const token = m ? m[1] : auth.trim();
+    if (!token) return { user: null, token: null };
+    // 1) Try Supabase admin normally
+    try {
+      // @ts-ignore
+      const { data } = await supabaseAdmin.auth.getUser(token);
+      if ((data as any)?.user) {
+        return { user: (data as any).user, token };
+      }
+    } catch (e: any) {
+      console.warn(
+        "supabaseAdmin.auth.getUser failed, trying fallback decode:",
+        e?.message || e
+      );
+    }
+    // 2) Fallback: decode JWT and pull out user id
+    const decoded = decodeSupabaseJWT(token);
+    if (decoded) {
+      const userId =
+        decoded.sub || decoded.user_id || decoded.id || decoded.uid || null;
+
+      if (userId) {
+        return { user: { id: String(userId) } as any, token };
+      }
+    }
+    // If nothing worked
     return { user: null, token };
   } catch (e) {
     console.warn("getUserFromAuthHeader error", e);
     return { user: null, token: null };
   }
 }
-
 /** Main handler **/
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") {
