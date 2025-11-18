@@ -16,8 +16,20 @@ if (!SUPABASE_ANON_KEY) {
 // Browser / client safe Supabase instance (use this in React components)
 export const supabase: SupabaseClient =
   (typeof window !== "undefined")
-    ? createClient(String(SUPABASE_URL), String(SUPABASE_ANON_KEY))
-    : createClient(String(SUPABASE_URL), String(SUPABASE_ANON_KEY)); // safe fallback for SSR
+    ? createClient(String(SUPABASE_URL), String(SUPABASE_ANON_KEY), {
+        auth: {
+          persistSession: true,
+          autoRefreshToken: true,
+          detectSessionInUrl: true,
+        },
+      })
+    : createClient(String(SUPABASE_URL), String(SUPABASE_ANON_KEY), {
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false,
+          detectSessionInUrl: false,
+        },
+      });
 
 // Admin server-side client — use **only** in server code (API routes, server functions).
 // WARNING: keep SERVICE_ROLE_KEY secret; do NOT import/use this inside client-side code.
