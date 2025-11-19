@@ -21,27 +21,27 @@ const Footer: React.FC = () => {
       { name: 'Features', href: '/#features', type: 'section' },
       { name: 'Pricing', href: '/#pricing', type: 'section' },
       { name: 'Roadmap', href: '/roadmap', type: 'route' },
-      { name: 'Integrations', href: '/#integrations', type: 'section' },
+      { name: 'Integrations', href: '/integrations-page', type: 'route' },
     ],
     Company: [
-      { name: 'About', href: '/about', type: 'route' },
-      { name: 'Careers', href: '/careers', type: 'route' },
+      { name: 'About', href: '/About', type: 'route' },
+      { name: 'Careers', href: '/Careers', type: 'route' },
       { name: 'Blog', href: '/blog', type: 'route' },
       { name: 'Press', href: '/press', type: 'route' },
     ],
     Resources: [
-      { name: 'Help Center', href: '/help', type: 'route' },
+      { name: 'Help Center', href: '/help-center', type: 'route' },
       { name: 'Tutorials', href: '/tutorials', type: 'route' },
-      { name: 'API Docs', href: '/docs', type: 'route' },
+      { name: 'API Docs', href: '/api-Docs', type: 'route' },
       { name: 'Community', href: '/community', type: 'route' },
     ],
     Legal: [
-      { name: 'Terms & Conditions', href: '/terms', type: 'route' },
-      { name: 'Privacy Policy', href: '/privacy', type: 'route' },
-      { name: 'Refund Policy', href: '/refund-policy', type: 'route' },
-      { name: 'Cookie Policy', href: '/cookie-policy', type: 'route' },
-      { name: 'Data Handling & Security', href: '/data-security', type: 'route' },
-      { name: 'AI Use Disclosure', href: '/ai-use-disclosure', type: 'route' },
+      { name: 'Terms & Conditions', href: '/terms-and-conditions', type: 'route' },
+      { name: 'Privacy Policy', href: '/privacy-policy', type: 'route' },
+      { name: 'Refund Policy', href: '/refund-cancellation', type: 'route' },
+      { name: 'Cookie Policy', href: '/cookiepolicy', type: 'route' },
+      { name: 'Data Handling & Security', href: '/data-handling-security', type: 'route' },
+      { name: 'AI Use Disclosure', href: '/ai-disclosure', type: 'route' },
     ],
   };
 
@@ -56,7 +56,7 @@ const Footer: React.FC = () => {
       { name: 'About', href: '/about', type: 'route' },
       { name: 'Careers', href: '/careers', type: 'route' },
       { name: 'Blog', href: '/blog', type: 'route' },
-      { name: 'Contact', href: '/contact', type: 'route' },
+      { name: 'Contact', href: '/Contact', type: 'route' },
     ],
   };
 
