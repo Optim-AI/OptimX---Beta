@@ -100,7 +100,7 @@ const PrivacyPolicy: React.FC = () => {
         </header>
 
         {/* Content Card */}
-        <section className="max-w-5xl mx-auto mt-6">
+        <section className="max-w-8xl mx-auto mt-6">
           <div className="p-8 rounded-2xl glass-card border" style={{ borderColor: withAlpha(colors.border, 0.6), background: colors.card }}>
             <div className="mb-6">
               <h1 className="text-4xl font-extrabold mb-2" style={{ color: colors.foreground }}>Privacy Policy</h1>
