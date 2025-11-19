@@ -112,23 +112,23 @@ const PrivacyPolicy: React.FC = () => {
                 This Privacy Policy explains how OptimX ("we", "our", "us") collects, uses, stores, and protects your information when you use our website, app, and related services ("Services"). By using OptimX, you agree to the practices described here.
               </p>
 
-              <h3 className="mt-8">1. Information We Collect</h3>
+              <h3 className="font-bold mt-8">1. Information We Collect</h3>
               <p>Information you provide</p>
               <ul className="list-disc ml-4">
-                <li>name, email, phone</li>
-                <li>business info</li>
-                <li>payment info (processed by Razorpay)</li>
-                <li>uploaded media (logos, images, captions, etc.)</li>
-                <li>campaign inputs, AI prompts, generated content</li>
+                <li>name, email, phone.</li>
+                <li>business info.</li>
+                <li>payment info. (processed by Razorpay)</li>
+                <li>uploaded media. (logos, images, captions, etc.)</li>
+                <li>campaign inputs, AI prompts, generated content.</li>
               </ul>
 
               <p><strong>Automatically collected</strong></p>
               <ul className="list-disc ml-4">
-                <li>IP address</li>
-                <li>device/browser info</li>
-                <li>usage & analytics</li>
-                <li>location (approximate/IP-based)</li>
-                <li>cookies and tracking data</li>
+                <li>IP address.</li>
+                <li>device/browser info.</li>
+                <li>usage & analytics.</li>
+                <li>location. (approximate/IP-based)</li>
+                <li>cookies and tracking data.</li>
               </ul>
 
               <p><strong>From third-party platforms</strong></p>
