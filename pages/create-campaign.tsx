@@ -1163,7 +1163,7 @@ const CampaignCreate: React.FC = () => {
   "Keep brand names intact. Only return the enhanced description, nothing else.\n\n" +
   `Original: ${text}`;
 
-const resp = await fetch("/api/enhancePrompt", {
+const resp = await fetch("/api/generateCaption", {
   method: "POST",
   headers: {
     "Content-Type": "application/json",
