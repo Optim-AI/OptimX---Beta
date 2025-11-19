@@ -85,7 +85,7 @@ const CookiePolicy: React.FC = () => {
         </header>
 
         {/* Content Card */}
-        <section className="max-w-3xl mx-auto mt-6">
+        <section className="max-w-5xl mx-auto mt-6">
           <div className="p-8 rounded-2xl glass-card border" style={{ borderColor: withAlpha(colors.border, 0.6), background: colors.card }}>
             <div className="mb-6">
               <h1 className="text-3xl font-extrabold mb-2" style={{ color: colors.foreground }}>Cookie Policy</h1>
@@ -97,20 +97,20 @@ const CookiePolicy: React.FC = () => {
                 This Cookie Policy explains how OptimX ("we", "our", "us") uses cookies and similar tracking technologies on our website and services. By using OptimX, you consent to cookies as described here. If you do not agree, please manage your cookie settings or discontinue use.
               </p>
 
-              <h3>1. What are cookies?</h3>
+              <h3 className="font-bold mt-8">1. What are cookies?</h3>
               <p>Cookies are small text files placed on your device (computer, tablet, mobile) that help the site remember information about your visit. They are widely used to make websites work more efficiently and to provide information to site owners.</p>
 
-              <h3>2. Types of cookies we use</h3>
-              <ul>
+              <h3 className="font-bold mt-8">2. Types of cookies we use</h3>
+              <ul className="list-disc ml-4">
                 <li><strong>Strictly necessary:</strong> Required for core platform operations (authentication, security, session management). These cannot be disabled if you wish to use OptimX.</li>
                 <li><strong>Preferences:</strong> Remember choices you make (language, display preferences).</li>
                 <li><strong>Analytics:</strong> Help us understand how the site is used (page views, events) so we can improve the product.</li>
                 <li><strong>Marketing:</strong> Used to deliver and measure ads and retargeting (e.g., Meta pixel). These are only used for campaign delivery and reporting within your account and not for external profiling.</li>
               </ul>
 
-              <h3>3. Third-party cookies</h3>
+              <h3 className="font-bold mt-8">3. Third-party cookies</h3>
               <p>We may use third-party services that set cookies, such as:</p>
-              <ul>
+              <ul className="list-disc ml-4">
                 <li><strong>Google Analytics</strong> — analytics and product usage.
                 </li>
                 <li><strong>Meta (Facebook/Instagram) Pixel</strong> — used only when you connect and use our publishing/ads features.
@@ -118,37 +118,37 @@ const CookiePolicy: React.FC = () => {
                 <li><strong>Razorpay</strong> — payment provider; cookies used for payment flow are controlled by Razorpay.</li>
               </ul>
 
-              <h3>4. How we use cookies</h3>
-              <ul>
+              <h3 className="font-bold mt-8">4. How we use cookies</h3>
+              <ul className="list-disc ml-4">
                 <li>Maintain sessions and authentication</li>
                 <li>Remember user preferences</li>
                 <li>Collect analytics and usage metrics</li>
                 <li>Enable advertising features for campaigns you run (only within your account)</li>
               </ul>
 
-              <h3>5. Consent &amp; managing cookies</h3>
+              <h3 className="font-bold mt-8">5. Consent &amp; managing cookies</h3>
               <p>When you first visit OptimX, we show a cookie consent banner (where applicable). You can manage cookies via your browser settings or via the banner controls. Disabling non-essential cookies may reduce functionality.</p>
 
-              <h3>6. Do we use cookies for training AI?</h3>
+              <h3 className="font-bold mt-8">6. Do we use cookies for training AI?</h3>
               <p>No. We do not use Meta/Google API data or cookie-derived personal data to train our internal AI models unless you explicitly opt in as described in our AI Training Policy.</p>
 
-              <h3>7. Data sharing &amp; retention</h3>
+              <h3 className="font-bold mt-8">7. Data sharing &amp; retention</h3>
               <p>
                 Cookie and analytics data may be shared with our service providers (Google, Meta, Razorpay, analytics vendors) to operate features. Data retention follows our general retention policy: analytics logs kept for 60–90 days; cookies persist according to their lifespan (session or persistent). For more details, see our <a href="/pages/data-handling-security">Data Handling &amp; Security Standard</a> and <a href="/pages/privacy-policy">Privacy Policy</a>.
               </p>
 
-              <h3>8. Your choices</h3>
+              <h3 className="font-bold mt-8">8. Your choices</h3>
               <p>You can:</p>
-              <ul>
+              <ul className="list-disc ml-4">
                 <li>Manage cookies via your browser settings (delete or block cookies)</li>
                 <li>Use the cookie banner to opt-out of non-essential cookies</li>
                 <li>Disconnect Meta/Google integrations in your account settings to stop related cookies originating from those integrations</li>
               </ul>
 
-              <h3>9. Changes to this policy</h3>
+              <h3 className="font-bold mt-8">9. Changes to this policy</h3>
               <p>We may update this Cookie Policy. Changes will be posted with an updated "Last Updated" date. Continued use means acceptance of the updated policy.</p>
 
-              <h3>10. Contact</h3>
+              <h3 className="font-bold mt-8">10. Contact</h3>
               <p>
                 For questions about cookies or data practices, email us at <strong>info@optimx.app</strong> or write to:
                 <br />
