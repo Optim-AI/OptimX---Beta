@@ -80,12 +80,12 @@ const CookiePolicy: React.FC = () => {
               <span style={{ color: colors.foreground }}>Optim</span>
               <span style={{ color: colors.primary, fontFamily: "inherit" }}>X</span>
             </div>
-            <div className="text-sm text-[14px]" style={{ color: colors.mutedForeground }}>Cookie Policy</div>
+            <div className="text-sm text-[14px]" style={{ color: colors.mutedForeground }}>Cookie Policy</div>              
           </div> */}
         </header>
 
         {/* Content Card */}
-        <section className="max-w-5xl mx-auto mt-6">
+        <section className="max-w-8xl mx-auto mt-6">
           <div className="p-8 rounded-2xl glass-card border" style={{ borderColor: withAlpha(colors.border, 0.6), background: colors.card }}>
             <div className="mb-6">
               <h1 className="text-3xl font-extrabold mb-2" style={{ color: colors.foreground }}>Cookie Policy</h1>
