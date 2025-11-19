@@ -114,7 +114,7 @@ const TermsAndConditions: React.FC = () => {
                 Welcome to OptimX ("Company", "we", "our", "us"). These Terms &amp; Conditions ("Terms") govern your access and use of the OptimX app, website, and all related services ("Services"). By accessing or using OptimX, you agree to these Terms. If you do not agree, do not use OptimX.
               </p>
 
-              <h3><strong>1. About OptimX</h3></strong>
+              <h3>1. About OptimX</h3>
               <p>
                 OptimX is an AI-powered campaign creation and marketing automation platform that helps businesses:
               </p>
@@ -137,7 +137,7 @@ const TermsAndConditions: React.FC = () => {
                 <li>use OptimX only for lawful business purposes</li>
               </ul>
 
-              <h3><strong>3. Account Registration</h3></strong>
+              <h3>3. Account Registration</h3>
               <p>
                 You must provide accurate information. You are responsible for safeguarding your login credentials, maintaining account security, and all actions taken through your account. If you connect Meta, Google, or other social accounts, you authorize OptimX to access the necessary data to provide services.
               </p>
