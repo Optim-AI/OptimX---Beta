@@ -119,7 +119,7 @@ const RefundCancellation: React.FC = () => {
                 Refunds, if approved, will be processed within 5–10 working days to the original payment method.
               </p>
 
-              <h3>Cancellation Policy</h3>
+              <h3 className="font-bold mt-8">Cancellation Policy</h3>
               <p>Users may cancel their subscription at any time.</p>
               <ul className="list-disc">
                 <li>Your plan remains active until the end of the billing cycle</li>
@@ -127,17 +127,17 @@ const RefundCancellation: React.FC = () => {
                 <li>Remaining credits expire at the end of the cycle unless otherwise stated</li>
               </ul>
 
-              <h3>Credit Expiry</h3>
+              <h3 className="font-bold mt-8">Credit Expiry</h3>
               <p>Credits may have an expiration period depending on your plan. Expired credits cannot be reinstated or refunded.</p>
 
-              <h3>Ad Spend</h3>
+              <h3 className="font-bold mt-8">Ad Spend</h3>
               <p>Ad spend paid directly to Meta/Google platforms is not refundable by OptimX.</p>
 
-              <h3>How to Request a Refund</h3>
+              <h3 className="font-bold mt-8">How to Request a Refund</h3>
               <p>
                 Email: info@optimx.app
               </p>
-              <p>Please include:</p>
+              <p><strong>Please include:</strong></p>
               <ul className="list-disc">
                 <li>Registered email</li>
                 <li>Payment ID</li>
