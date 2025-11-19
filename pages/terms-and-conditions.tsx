@@ -118,7 +118,7 @@ const TermsAndConditions: React.FC = () => {
               <p>
                 OptimX is an AI-powered campaign creation and marketing automation platform that helps businesses:
               </p>
-              <ul>
+              <ul className="list-disc ml-4">
                 <li>generate creatives and captions</li>
                 <li>publish posts</li>
                 <li>run ads</li>
@@ -131,7 +131,7 @@ const TermsAndConditions: React.FC = () => {
 
               <h3 className="font-bold mt-8">2. Eligibility</h3>
               <p>You must:</p>
-              <ul>
+              <ul className="list-disc ml-4">
                 <li>be at least 18 years old</li>
                 <li>have legal authority to enter this agreement</li>
                 <li>use OptimX only for lawful business purposes</li>
@@ -144,7 +144,7 @@ const TermsAndConditions: React.FC = () => {
 
               <h3 className="font-bold mt-8">4. Use of Services</h3>
               <p>You agree not to:</p>
-              <ul>
+              <ul className="list-disc ml-4">
                 <li>misuse, reverse engineer, or attempt unauthorized access</li>
                 <li>interfere with service operations</li>
                 <li>publish harmful, unlawful, misleading, or abusive content</li>
@@ -156,7 +156,7 @@ const TermsAndConditions: React.FC = () => {
               <h3 className="font-bold mt-8">5. Meta API &amp; Google API Compliance</h3>
               <p>By connecting Meta or Google accounts, you acknowledge:</p>
               <p><strong>We do NOT:</strong></p>
-              <ul>
+              <ul className="list-disc ml-4">
                 <li>sell or share your Meta/Google data</li>
                 <li>use your data for advertising outside your campaigns</li>
                 <li>store your data longer than necessary</li>
@@ -165,7 +165,7 @@ const TermsAndConditions: React.FC = () => {
               </ul>
 
               <p><strong>We DO:</strong></p>
-              <ul>
+              <ul className="list-disc ml-4">
                 <li>use Meta/Google data only to provide analytics, insights, and publishing</li>
                 <li>store access tokens securely and in encrypted form</li>
                 <li>delete your data promptly when you disconnect or request deletion</li>
@@ -181,12 +181,12 @@ const TermsAndConditions: React.FC = () => {
                 OptimX uses AI to generate text, images, recommendations, and insights. You understand and agree that AI output may contain inaccuracies. You must review and approve AI-generated content. You are responsible for final published content. OptimX is not liable for errors in AI-generated output.
               </p>
 
-              <h4>6.1 AI Training Policy</h4>
+              <h4 className="font-bold>6.1 AI Training Policy</h4>
               <p>
                 OptimX may use user-generated content that you manually create, upload, or provide directly inside our platform (such as captions, prompts, uploaded images, and brand assets) to improve and fine-tune certain internal AI models. We do not use Meta API data, Instagram or Facebook insights or media, Google API data, Third-party platform data, or Social login data for any AI model training. Training data is used only with your explicit opt-in consent. You may withdraw your consent at any time, and we will exclude your data from future training datasets.
               </p>
 
-              <h3 className="font-bold mt-8">7. Payments, Credits &amp; Refunds</h3>f
+              <h3 className="font-bold mt-8">7. Payments, Credits &amp; Refunds</h3>
               <p>
                 <strong>Credits:</strong> OptimX uses a credit-based system for AI generation and campaign actions. Credit consumption varies by feature.
               </p>
@@ -242,7 +242,7 @@ const TermsAndConditions: React.FC = () => {
             <div className="mt-8 flex justify-between items-center">
               <div className="flex items-center gap-3 text-sm" style={{ color: colors.mutedForeground }}>
                 <Sparkles className="h-4 w-4" style={{ color: colors.primary }} />
-                <span>OptimX — AI-powered campaigns</span>
+                <span>OptimX AI — Marketing Made Simple, For Everyone.</span>
               </div>
 
               <div className="flex items-center gap-3">
