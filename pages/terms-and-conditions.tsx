@@ -101,7 +101,7 @@ const TermsAndConditions: React.FC = () => {
         </header>
 
         {/* Content Card */}
-        <section className="max-w-4xl mx-auto mt-6">
+        <section className="max-w-5xl mx-auto mt-6">
           <div className="p-8 rounded-2xl glass-card border" style={{ borderColor: withAlpha(colors.border, 0.6), background: colors.card }}>
             <div className="mb-6">
               <h1 className="text-4xl font-extrabold mb-2" style={{ color: colors.foreground }}>Terms &amp; Conditions</h1>
@@ -109,12 +109,12 @@ const TermsAndConditions: React.FC = () => {
             </div>
 
             <article className="prose prose-invert max-w-none" style={{ color: colors.foreground }}>
-              <h2>Welcome to OptimX</h2>
+              <h2 className="font-bold">Welcome to OptimX</h2>
               <p>
-                Welcome to OptimX ("Company", "we", "our", "us"). These Terms &amp; Conditions ("Terms") govern your access and use of the OptimX app, website, and all related services ("Services"). By accessing or using OptimX, you agree to these Terms. If you do not agree, do not use OptimX.
+              OptimX ("Company", "we", "our", "us"). These Terms &amp; Conditions ("Terms") govern your access and use of the OptimX app, website, and all related services ("Services"). By accessing or using OptimX, you agree to these Terms. If you do not agree, do not use OptimX.
               </p>
 
-              <h3>1. About OptimX</h3>
+              <h3 className="font-bold mt-8">1. About OptimX</h3>
               <p>
                 OptimX is an AI-powered campaign creation and marketing automation platform that helps businesses:
               </p>
@@ -129,7 +129,7 @@ const TermsAndConditions: React.FC = () => {
                 OptimX integrates with third-party services including Meta, Google, and Razorpay.
               </p>
 
-              <h3>2. Eligibility</h3>
+              <h3 className="font-bold mt-8">2. Eligibility</h3>
               <p>You must:</p>
               <ul>
                 <li>be at least 18 years old</li>
@@ -137,12 +137,12 @@ const TermsAndConditions: React.FC = () => {
                 <li>use OptimX only for lawful business purposes</li>
               </ul>
 
-              <h3>3. Account Registration</h3>
+              <h3 className="font-bold mt-8">3. Account Registration</h3>
               <p>
                 You must provide accurate information. You are responsible for safeguarding your login credentials, maintaining account security, and all actions taken through your account. If you connect Meta, Google, or other social accounts, you authorize OptimX to access the necessary data to provide services.
               </p>
 
-              <h3>4. Use of Services</h3>
+              <h3 className="font-bold mt-8">4. Use of Services</h3>
               <p>You agree not to:</p>
               <ul>
                 <li>misuse, reverse engineer, or attempt unauthorized access</li>
@@ -153,7 +153,7 @@ const TermsAndConditions: React.FC = () => {
               </ul>
               <p>OptimX may suspend or terminate your access for violations.</p>
 
-              <h3>5. Meta API &amp; Google API Compliance</h3>
+              <h3 className="font-bold mt-8">5. Meta API &amp; Google API Compliance</h3>
               <p>By connecting Meta or Google accounts, you acknowledge:</p>
               <p><strong>We do NOT:</strong></p>
               <ul>
@@ -176,7 +176,7 @@ const TermsAndConditions: React.FC = () => {
                 You may revoke OptimX’s access anytime through: Facebook Settings → Business Integrations or Google Account → Security → Third-party Access
               </p>
 
-              <h3>6. AI Usage</h3>
+              <h3 className="font-bold mt-8">6. AI Usage</h3>
               <p>
                 OptimX uses AI to generate text, images, recommendations, and insights. You understand and agree that AI output may contain inaccuracies. You must review and approve AI-generated content. You are responsible for final published content. OptimX is not liable for errors in AI-generated output.
               </p>
@@ -186,7 +186,7 @@ const TermsAndConditions: React.FC = () => {
                 OptimX may use user-generated content that you manually create, upload, or provide directly inside our platform (such as captions, prompts, uploaded images, and brand assets) to improve and fine-tune certain internal AI models. We do not use Meta API data, Instagram or Facebook insights or media, Google API data, Third-party platform data, or Social login data for any AI model training. Training data is used only with your explicit opt-in consent. You may withdraw your consent at any time, and we will exclude your data from future training datasets.
               </p>
 
-              <h3>7. Payments, Credits &amp; Refunds</h3>
+              <h3 className="font-bold mt-8">7. Payments, Credits &amp; Refunds</h3>f
               <p>
                 <strong>Credits:</strong> OptimX uses a credit-based system for AI generation and campaign actions. Credit consumption varies by feature.
               </p>
@@ -200,38 +200,38 @@ const TermsAndConditions: React.FC = () => {
                 <strong>Cancellation:</strong> You may cancel anytime, but partial-month refunds are not provided.
               </p>
 
-              <h3>8. Intellectual Property</h3>
+              <h3 className="font-bold mt-8">8. Intellectual Property</h3>
               <p>
                 All software, branding, UI, and platform assets belong to OptimX. Users own their uploaded content. AI-generated content is licensed to users for business use.
               </p>
 
-              <h3>9. Beta Disclaimer</h3>
+              <h3 className="font-bold mt-8">9. Beta Disclaimer</h3>
               <p>
                 OptimX is currently in its MVP/Beta phase. You acknowledge that the service may contain bugs, experience outages, produce inconsistent AI results, and have incomplete features. We appreciate feedback to improve the platform.
               </p>
 
-              <h3>10. Data &amp; Analytics</h3>
+              <h3 className="font-bold mt-8">10. Data &amp; Analytics</h3>
               <p>
                 We may analyze anonymized usage data to improve features. We do not sell user data, share personal data with advertisers, or use campaign data for profiling outside your use-case.
               </p>
 
-              <h3>11. Termination</h3>
+              <h3 className="font-bold mt-8">11. Termination</h3>
               <p>
                 We may suspend or terminate your account if you violate Terms, your actions threaten system integrity, or required third-party permissions are revoked. You may delete your account anytime by contacting support.
               </p>
 
-              <h3>12. Limitation of Liability</h3>
+              <h3 className="font-bold mt-8">12. Limitation of Liability</h3>
               <p>
                 OptimX is provided “as is.” We are not liable for business losses, ad rejections by Meta/Google, inaccuracies in AI output, service interruptions caused by third-party APIs, or data loss due to technical issues. Total liability is limited to the amount paid in the last 3 months.
               </p>
 
-              <h3>13. Governing Law</h3>
+              <h3 className="font-bold mt-8">13. Governing Law</h3>
               <p>These Terms are governed by the laws of India, and disputes will be resolved in Chennai, Tamil Nadu.</p>
 
-              <h3>14. Changes to Terms</h3>
+              <h3 className="font-bold mt-8">14. Changes to Terms</h3>
               <p>We may update these Terms periodically. Continued use of the platform means acceptance of updated Terms.</p>
 
-              <h3>15. Contact</h3>
+              <h3 className="font-bold mt-8">15. Contact</h3>
               <p>
                 support: info@optimx.app
                 <br />
