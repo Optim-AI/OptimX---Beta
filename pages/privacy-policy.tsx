@@ -40,7 +40,7 @@ const PrivacyPolicy: React.FC = () => {
 
       {/* Background layers + orbs (matching Hero theme) */}
       <div
-        className="absolute inset-0 className="backdrop-blur-xl"
+        className="absolute inset-0 backdrop-blur-xl"
         style={{
           backgroundImage: `linear-gradient(135deg, ${colors.background} 0%, ${withAlpha("hsl(213 90% 96%)", 0.18)} 40%, ${colors.background} 100%)`,
         }}
