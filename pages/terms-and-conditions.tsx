@@ -181,7 +181,7 @@ const TermsAndConditions: React.FC = () => {
                 OptimX uses AI to generate text, images, recommendations, and insights. You understand and agree that AI output may contain inaccuracies. You must review and approve AI-generated content. You are responsible for final published content. OptimX is not liable for errors in AI-generated output.
               </p>
 
-              <h4 className="font-bold>6.1 AI Training Policy</h4>
+              <h4 className="font-bold">6.1 AI Training Policy</h4>
               <p>
                 OptimX may use user-generated content that you manually create, upload, or provide directly inside our platform (such as captions, prompts, uploaded images, and brand assets) to improve and fine-tune certain internal AI models. We do not use Meta API data, Instagram or Facebook insights or media, Google API data, Third-party platform data, or Social login data for any AI model training. Training data is used only with your explicit opt-in consent. You may withdraw your consent at any time, and we will exclude your data from future training datasets.
               </p>
