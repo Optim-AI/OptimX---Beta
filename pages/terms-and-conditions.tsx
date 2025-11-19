@@ -151,7 +151,7 @@ const TermsAndConditions: React.FC = () => {
                 <li>use OptimX to violate advertising policies of Meta/Google</li>
                 <li>use AI-generated content for illegal or harmful purposes</li>
               </ul>
-              <p>OptimX may suspend or terminate your access for violations.</p>
+              <p><strong>OptimX may suspend or terminate your access for violations.</strong></p>
 
               <h3 className="font-bold mt-8">5. Meta API &amp; Google API Compliance</h3>
               <p>By connecting Meta or Google accounts, you acknowledge:</p>
