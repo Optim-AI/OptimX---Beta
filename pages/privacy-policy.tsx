@@ -40,20 +40,20 @@ const PrivacyPolicy: React.FC = () => {
 
       {/* Background layers + orbs (matching Hero theme) */}
       <div
-        className="absolute inset-0"
+        className="absolute inset-0 className="backdrop-blur-xl"
         style={{
-          backgroundImage: `linear-gradient(135deg, ${colors.background} 0%, ${withAlpha("hsl(213 90% 96%)", 0.28)} 40%, ${colors.background} 100%)`,
+          backgroundImage: `linear-gradient(135deg, ${colors.background} 0%, ${withAlpha("hsl(213 90% 96%)", 0.18)} 40%, ${colors.background} 100%)`,
         }}
       />
-      <div className="absolute inset-0" style={{ background: colors.gradientMesh, opacity: 0.35 }} />
+      <div className="absolute inset-0" style={{ background: colors.gradientMesh, opacity: 0.18 }} />
 
       <div
         className="absolute -left-10 top-16 w-72 h-72 rounded-full blur-3xl animation-float"
-        style={{ backgroundColor: withAlpha(colors.primary, 0.28) }}
+        style={{ backgroundColor: withAlpha(colors.primary, 0.12) }}
       />
       <div
         className="absolute right-10 bottom-20 w-96 h-96 rounded-full blur-3xl animation-float"
-        style={{ backgroundColor: withAlpha(colors.primary, 0.18), animationDelay: "2s" }}
+        style={{ backgroundColor: withAlpha(colors.primary, 0.08), animationDelay: "2s" }}
       />
       <div
         className="absolute inset-0 flex items-start justify-center pointer-events-none"
