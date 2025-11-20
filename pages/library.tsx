@@ -1,176 +1,143 @@
+// pages/campaigns.tsx
 "use client";
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/router";
 import { Button } from "../app/web/src/components/ui/button";
 import { Card, CardContent } from "../app/web/src/components/ui/card";
-import { Plus, Search, Filter } from "lucide-react";
+import { Plus, Search } from "lucide-react";
 import { Input } from "../app/web/src/components/ui/input";
 import Sidebar from "../app/web/src/components/Sidebar";
 import { supabase } from "../lib/supabaseClient";
-import { apiFetch } from "../lib/apiFetch";
-import type { JSX } from "react"; 
+import type { JSX } from "react";
 // exact colors import path you requested — do NOT change
 import colors from "../lib/colors";
-
-/**
- * Campaigns Page (Next.js, Tailwind v4)
- * - Shows ROAS/CTR/Spend for ads
- * - Shows Likes/Comments for posts (if present or fetched)
- * - Attempts to fetch campaign-level metrics from /api/campaigns/metrics?campaignId=<id> when necessary
- */
 
 type Campaign = {
   id: string;
   name: string;
   campaign_type: string | null;
-  image_url: any;
+  image_url?: string | null;
   is_published: boolean;
   created_at?: string;
-  spend?: number | string | null;
-  roas?: string | null;
-  ctr?: string | null;
-  impressions?: string | null;
   platform?: string | null;
-
-  // social/post fields
-  likes?: number | null;
-  comments?: number | null;
+  _raw?: Record<string, any>;
+  [k: string]: any;
 };
 
-const {
-  primary,
-  mutedForeground,
-  gradientPrimary,
-} = (colors as any) || {};
-
+const { mutedForeground, gradientPrimary, primary } = (colors as any) || {};
 const primaryColor = typeof primary === "string" ? primary : undefined;
 const mutedFg = typeof mutedForeground === "string" ? mutedForeground : undefined;
+
+function fmtDate(iso?: string) {
+  if (!iso) return "—";
+  try {
+    return new Date(iso).toLocaleString();
+  } catch {
+    return iso;
+  }
+}
 
 export default function CampaignsPage(): JSX.Element {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
-  const [statuses, setStatuses] = useState<Record<string, any> | null>(null);
-  const LS_KEY = "integrations_status_v1";
+  const router = useRouter();
 
   useEffect(() => {
     fetchCampaigns();
-    fetchStatuses();
-
-    function onStorage(e: StorageEvent) {
-      if (e.key === LS_KEY) {
-        try {
-          const parsed = e.newValue ? JSON.parse(e.newValue) : null;
-          setStatuses(parsed);
-        } catch {}
-      }
-    }
-    window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const fetchCampaigns = async () => {
+  /**
+   * Try to fetch campaigns owned by the signed-in user.
+   * We attempt a few common column names to be defensive:
+   *  - user_id
+   *  - created_by
+   *  - owner
+   *
+   * If no user is present we redirect to signin.
+   */
+  async function fetchCampaigns() {
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from("campaigns")
-        .select("*")
-        .order("created_at", { ascending: false });
+      const { data: userData, error: userErr } = await supabase.auth.getUser();
 
-      if (error) {
-        console.error("Error fetching campaigns:", error);
-        setCampaigns([]);
-      } else {
-        // normalize fields used by UI (backwards compatible with your static example)
-        const normalized = (data as any[] || []).map((c) => ({
-          id: c.id ?? (c.name || Math.random()).toString(),
-          name: c.name ?? "Untitled",
-          campaign_type: c.campaign_type ?? c.type ?? null,
-          image_url: c.image_url ?? null,
-          is_published: !!c.is_published,
-          created_at: c.created_at ?? undefined,
-          spend: c.spend ?? (c.spend_usd ? `$${c.spend_usd}` : undefined) ?? null,
-          roas: c.roas ?? c.roas_text ?? null,
-          ctr: c.ctr ?? null,
-          impressions: Array.isArray(c.image_url) ? `${(c.image_url.length || 0)} imgs` : (c.impressions ?? null),
-          platform: c.platform ?? c.source ?? (c.campaign_type ?? "Meta"),
-          likes: (c.likes ?? c.social_likes) ?? null,
-          comments: (c.comments ?? c.social_comments) ?? null,
-        })) as Campaign[];
-
-        setCampaigns(normalized);
-
-        // After setting campaigns, try to fetch missing metrics where applicable
-        // (do this after state is set to avoid race conditions)
-        setTimeout(() => {
-          normalized.forEach((camp) => {
-            // If it's a post and likes/comments missing -> try fetch
-            const isPost = String(camp.campaign_type ?? "").toLowerCase().includes("post");
-            if (isPost && (camp.likes == null || camp.comments == null)) {
-              fetchCampaignMetrics(camp.id);
-            }
-            // If it's an ad and roas/ctr/spend missing -> try fetch
-            if (!isPost && (camp.roas == null || camp.ctr == null || camp.spend == null)) {
-              fetchCampaignMetrics(camp.id);
-            }
-          });
-        }, 200);
+      if (userErr) {
+        console.error("Error getting user from supabase.auth:", userErr);
+        // If we cannot get the user, treat as not-signed-in
+        router.push("/auth/signin");
+        return;
       }
+
+      const user = (userData as any)?.user ?? null;
+      if (!user) {
+        // not signed in -> redirect to sign in
+        router.push("/auth/signin");
+        return;
+      }
+
+      // Helper to run a filtered query by column name
+      async function queryByColumn(column: string) {
+        try {
+          const { data, error } = await supabase
+            .from("campaigns")
+            .select("*")
+            .eq(column, user.id)
+            .order("created_at", { ascending: false })
+            .limit(200);
+
+          if (error) {
+            // return null on error so caller can try another column
+            console.warn(`Query by ${column} returned error:`, error);
+            return null;
+          }
+          return data as any[] | null;
+        } catch (err) {
+          console.warn(`Query by ${column} failed:`, err);
+          return null;
+        }
+      }
+
+      // Try the common columns in order
+      const candidateColumns = ["user_id", "created_by", "owner", "profile_id", "author_id"];
+      let rows: any[] | null = null;
+      for (const col of candidateColumns) {
+        rows = await queryByColumn(col);
+        if (rows && rows.length > 0) {
+          break;
+        }
+      }
+
+      // If none of the filtered queries returned data, return empty list (do NOT fetch all campaigns)
+      if (!rows || rows.length === 0) {
+        // It's possible the campaigns table really uses a different column name.
+        // To avoid exposing other users' campaigns we intentionally return empty here
+        // instead of falling back to selecting all campaigns.
+        setCampaigns([]);
+        return;
+      }
+
+      const normalized = (rows || []).map((c) => ({
+        id: c.id ?? (c.name || Math.random()).toString(),
+        name: c.name ?? "Untitled",
+        campaign_type: c.campaign_type ?? c.type ?? null,
+        image_url: c.image_url ?? c.image_url_public ?? c.preview_url ?? null,
+        is_published: !!c.is_published,
+        created_at: c.created_at ?? undefined,
+        platform: c.platform ?? c.source ?? null,
+        _raw: c,
+      })) as Campaign[];
+
+      setCampaigns(normalized);
     } catch (err) {
       console.error("Fetch error:", err);
       setCampaigns([]);
     } finally {
       setLoading(false);
     }
-  };
-
-  const fetchStatuses = async () => {
-    try {
-      const res = await apiFetch("/api/integrations/status");
-      if (res.ok) {
-        const j = await res.json();
-        setStatuses(j);
-        try { localStorage.setItem(LS_KEY, JSON.stringify(j)); } catch {}
-      }
-    } catch (err) {
-      // ignore
-    }
-  };
-
-  /**
-   * Try to fetch campaign-level metrics from a backend endpoint.
-   * Expected response shape (any subset):
-   * { likes?: number, comments?: number, roas?: string, ctr?: string, spend?: string }
-   *
-   * This function is intentionally defensive — if the endpoint doesn't exist or fails,
-   * we silently ignore and keep whatever values are already present in the DB row.
-   */
-  const fetchCampaignMetrics = async (campaignId: string) => {
-    try {
-      const resp = await fetch(`/api/campaigns/metrics?campaignId=${encodeURIComponent(campaignId)}`);
-      if (!resp.ok) return;
-      const json = await resp.json();
-      // Accept either { likes, comments } or { roas, ctr, spend } etc.
-      setCampaigns((prev) =>
-        prev.map((c) => {
-          if (c.id !== campaignId) return c;
-          return {
-            ...c,
-            likes: typeof json.likes === "number" ? json.likes : c.likes,
-            comments: typeof json.comments === "number" ? json.comments : c.comments,
-            roas: json.roas ?? c.roas,
-            ctr: json.ctr ?? c.ctr,
-            spend: json.spend ?? c.spend,
-          };
-        })
-      );
-    } catch (err) {
-      // endpoint absent or failure — ignore to keep UI resilient
-      // console.debug("campaign metrics fetch failed", err);
-    }
-  };
+  }
 
   const filtered = campaigns.filter((c) => {
     if (!query) return true;
@@ -182,25 +149,14 @@ export default function CampaignsPage(): JSX.Element {
     );
   });
 
-  const isMetaConnectedLocal = (s?: Record<string, any> | null) => {
-    const st = s ?? statuses;
-    if (!st) return false;
-    if (st.meta === true) return true;
-    if (typeof st.meta === "object" && (st.meta.connected === true || st.meta === true)) return true;
-    for (const [k, v] of Object.entries(st)) {
-      const low = k.toLowerCase();
-      if (low.includes("meta") || low.includes("facebook") || low.includes("instagram")) {
-        if (v === true) return true;
-        if (typeof v === "object" && v.connected === true) return true;
-        if (typeof v === "string" && v === "true") return true;
-      }
+  // Open image in new tab if image exists; otherwise open campaign detail page
+  const handleView = (campaign: Campaign) => {
+    if (campaign.image_url) {
+      // if it's a relative path, browser will resolve it; open in new tab
+      window.open(campaign.image_url, "_blank", "noopener,noreferrer");
+    } else {
+      window.location.href = `/campaigns/${campaign.id}`;
     }
-    return false;
-  };
-
-  const goToIntegrations = (platform?: string) => {
-    if (platform) window.location.href = `/integrations?connected=${platform}`;
-    else window.location.href = "/integrations";
   };
 
   return (
@@ -212,25 +168,37 @@ export default function CampaignsPage(): JSX.Element {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-3xl font-bold mb-2">Campaigns</h1>
-            <p className="text-sm" style={mutedFg ? { color: mutedFg } : undefined}>Manage and optimize your ad campaigns</p>
+            <p className="text-sm" style={mutedFg ? { color: mutedFg } : undefined}>
+              Manage your ad & post campaigns (only your campaigns are shown)
+            </p>
           </div>
 
           <div className="flex items-center gap-3">
             <Link href="/create-campaign" legacyBehavior>
               <a>
-                <Button size="lg" className="gradient-primary" style={primaryColor ? { background: gradientPrimary ?? primaryColor } : undefined}>
+                <Button
+                  size="lg"
+                  className="gradient-primary"
+                  style={primaryColor ? { background: gradientPrimary ?? primaryColor } : undefined}
+                >
                   <Plus className="w-5 h-5 mr-2" />
                   New Campaign
                 </Button>
               </a>
             </Link>
-            <Button variant="outline" onClick={() => { fetchCampaigns(); fetchStatuses(); }}>
+
+            <Button
+              variant="outline"
+              onClick={() => {
+                fetchCampaigns();
+              }}
+            >
               Refresh
             </Button>
           </div>
         </div>
 
-        {/* Search & Filters */}
+        {/* Search */}
         <div className="flex gap-4 mb-6">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -242,26 +210,14 @@ export default function CampaignsPage(): JSX.Element {
             />
           </div>
 
-          <Button variant="outline">
-            <Filter className="w-4 h-4 mr-2" />
-            Filters
-          </Button>
+          <div>
+            <Button variant="outline" onClick={() => setQuery("")}>
+              Clear
+            </Button>
+          </div>
         </div>
 
-        {/* Meta connection CTA */}
-        {!isMetaConnectedLocal() && (
-          <div className="mb-4 p-4 rounded-lg bg-yellow-50 border border-yellow-100 flex items-center justify-between">
-            <div>
-              <div className="font-medium">Meta not connected</div>
-              <div className="text-sm text-slate-600">Connect your Facebook / Instagram account to see live campaign insights and auto-posting features.</div>
-            </div>
-            <div>
-              <button onClick={() => goToIntegrations("meta")} className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700">Connect Meta</button>
-            </div>
-          </div>
-        )}
-
-        {/* Campaigns Grid */}
+        {/* Campaigns List */}
         <div className="space-y-3">
           {loading ? (
             <div className="text-sm text-slate-500">Loading campaigns...</div>
@@ -269,81 +225,52 @@ export default function CampaignsPage(): JSX.Element {
             <div className="text-sm text-slate-500">No campaigns found. Create one to get started.</div>
           ) : null}
 
-          {filtered.map((campaign, i) => {
-            const isPost = String(campaign.campaign_type ?? "").toLowerCase().includes("post");
-
-            return (
-              <Card key={campaign.id ?? i} className="glass-card hover:shadow-lg transition-all">
-                <CardContent className="p-6">
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
+          {filtered.map((campaign, i) => (
+            <Card key={campaign.id ?? i} className="glass-card hover:shadow-lg transition-all">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex-1 pr-6">
+                    <div className="flex items-start justify-between mb-2">
+                      <div>
                         <h3 className="text-xl font-bold">{campaign.name}</h3>
-                        <div
-                          className={`px-3 py-1 rounded-full text-xs font-medium ${
-                            campaign.is_published ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400"
-                          }`}
-                        >
-                          {campaign.is_published ? "Active" : "Paused"}
+                        <div className="text-sm mt-1" style={mutedFg ? { color: mutedFg } : undefined}>
+                          {campaign.campaign_type ? `${campaign.campaign_type}` : "Campaign"} •{" "}
+                          {fmtDate(campaign.created_at)}
                         </div>
                       </div>
-                      <p className="text-sm" style={mutedFg ? { color: mutedFg } : undefined}>
-                        {(campaign.platform ?? "Meta")} • {campaign.impressions ?? "—"} impressions
-                      </p>
-                    </div>
 
-                    <div className="flex items-center gap-8">
-                      {/* Show Likes/Comments for posts, OR ROAS/CTR/Spend for ads */}
-                      {isPost ? (
-                        <>
-                          <div className="text-center">
-                            <div className="text-2xl font-bold">{campaign.likes ?? "—"}</div>
-                            <div className="text-xs" style={mutedFg ? { color: mutedFg } : undefined}>Likes</div>
-                          </div>
-
-                          <div className="text-center">
-                            <div className="text-2xl font-bold">{campaign.comments ?? "—"}</div>
-                            <div className="text-xs" style={mutedFg ? { color: mutedFg } : undefined}>Comments</div>
-                          </div>
-                        </>
-                      ) : (
-                        <>
-                          <div className="text-center">
-                            <div
-                              className="text-2xl font-bold"
-                              style={primaryColor ? { color: primaryColor } : undefined}
-                            >
-                              {campaign.roas ?? "—"}
-                            </div>
-                            <div className="text-xs" style={mutedFg ? { color: mutedFg } : undefined}>ROAS</div>
-                          </div>
-
-                          <div className="text-center">
-                            <div className="text-2xl font-bold">{campaign.ctr ?? "—"}</div>
-                            <div className="text-xs" style={mutedFg ? { color: mutedFg } : undefined}>CTR</div>
-                          </div>
-
-                          <div className="text-center">
-                            <div className="text-2xl font-bold">{campaign.spend ?? "—"}</div>
-                            <div className="text-xs" style={mutedFg ? { color: mutedFg } : undefined}>Spend</div>
-                          </div>
-                        </>
-                      )}
-
-                      <div className="flex gap-2">
-                        <Link href={`/campaigns/${campaign.id}/edit`} legacyBehavior>
-                          <a><Button variant="outline" size="sm">Edit</Button></a>
-                        </Link>
-                        <Link href={`/campaigns/${campaign.id}`} legacyBehavior>
-                          <a><Button variant="outline" size="sm">View</Button></a>
-                        </Link>
+                      {/* STATUS TEXT (plain text, not a button) */}
+                      <div className="text-sm font-medium select-none self-start" aria-hidden>
+                        {campaign.is_published ? "Active" : "Paused"}
                       </div>
                     </div>
+
+                    {/* Actions */}
+                    <div className="flex gap-2 mt-3">
+                      <Button variant="outline" size="sm" onClick={() => handleView(campaign)}>
+                        View
+                      </Button>
+                    </div>
                   </div>
-                </CardContent>
-              </Card>
-            );
-          })}
+
+                  {/* Image on the right */}
+                  <div className="w-40 h-28 flex-shrink-0 rounded overflow-hidden border border-slate-100 bg-white flex items-center justify-center">
+                    {campaign.image_url ? (
+                      <a href={campaign.image_url} target="_blank" rel="noopener noreferrer">
+                        <img
+                          src={campaign.image_url}
+                          alt={campaign.name || "campaign image"}
+                          className="w-full h-full object-cover"
+                        />
+                      </a>
+                    ) : (
+                      <div className="text-xs text-slate-500">No image</div>
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
         </div>
       </main>
     </div>

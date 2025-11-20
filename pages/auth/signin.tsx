@@ -1,55 +1,50 @@
-// pages/auth/signin.tsx
-'use client';
+"use client";
 
-import React, { useEffect, useState } from 'react';
-import { useRouter } from 'next/router';
-import { supabase } from '../../lib/supabaseClient';
-import colors from '../../lib/colors';
+import React, { useEffect, useState } from "react";
+import { useRouter } from "next/router";
+import { supabase } from "../../lib/supabaseClient";
+import colors from "../../lib/colors";
 
 export default function SignInPage(): React.ReactElement {
   const router = useRouter();
 
-  const [mode, setMode] = useState<'magic' | 'password'>('magic');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [mode, setMode] = useState<"magic" | "password">("magic");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
 
-  // small helper: validate email format
   function isValidEmail(e: string) {
-    // simple but effective check
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
   }
 
-  // Robust helper — handles hsl(), rgb(), hex (#RGB/#RRGGBB) and returns hsla()/rgba(...)
   function withAlpha(tokenInput: string | undefined | null, alpha: number) {
-    const token = String(tokenInput ?? '').trim();
+    const token = String(tokenInput ?? "").trim();
     if (!token) return token;
 
-    // hsl(...) -> hsla(...)
-    const hslMatch = token.match(/hsl\(\s*([\d.]+)\s+([\d.]+)%\s+([\d.]+)%\s*\)/i);
+    const hslMatch = token.match(
+      /hsl\(\s*([\d.]+)\s+([\d.]+)%\s+([\d.]+)%\s*\)/i
+    );
     if (hslMatch) {
       const [, h, s, l] = hslMatch;
       return `hsla(${h}, ${s}%, ${l}%, ${alpha})`;
     }
 
-    // hsla(...) already
     if (/hsla\(/i.test(token)) return token;
 
-    // rgb(r,g,b) -> rgba(r,g,b,a)
-    const rgbMatch = token.match(/rgb\(\s*([0-9]{1,3})[,\s]+([0-9]{1,3})[,\s]+([0-9]{1,3})\s*\)/i);
+    const rgbMatch = token.match(
+      /rgb\(\s*([0-9]{1,3})[,\s]+([0-9]{1,3})[,\s]+([0-9]{1,3})\s*\)/i
+    );
     if (rgbMatch) {
       const [, r, g, b] = rgbMatch;
       return `rgba(${r}, ${g}, ${b}, ${alpha})`;
     }
 
-    // rgba already
     if (/rgba\(/i.test(token)) return token;
 
-    // hex #RGB or #RRGGBB
-    const hex = token.replace(/^#/, '');
+    const hex = token.replace(/^#/, "");
     if (/^[0-9a-f]{3}$/i.test(hex)) {
       const r = parseInt(hex[0] + hex[0], 16);
       const g = parseInt(hex[1] + hex[1], 16);
@@ -63,24 +58,77 @@ export default function SignInPage(): React.ReactElement {
       return `rgba(${r}, ${g}, ${b}, ${alpha})`;
     }
 
-    // fallback: return token unchanged
     return token;
   }
 
-  // Listen for auth state changes so we catch OAuth/magic-link sign-ins after redirect
-  useEffect(() => {
-    const subscription = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_IN') {
-        router.replace('/welcome');
-      }
-    });
+  // Upsert profile row for a signed-in user.
+  // This uses common profile fields: id (supabase auth user id), email, full_name and username.
+  // Adjust field names if your `profiles` table uses different column names.
+  async function upsertProfile(user: any) {
+    if (!user || !user.id) return;
+    try {
+      const id = user.id;
+      const email = user.email ?? user.user_metadata?.email ?? null;
+      const full_name =
+        user.user_metadata?.full_name ??
+        user.user_metadata?.name ??
+        user.user_metadata?.given_name ??
+        null;
+      // derive a sensible username fallback from email if not present
+      const usernameFallback =
+        (email && typeof email === "string" ? email.split("@")[0] : null) ??
+        null;
+      const username =
+        user.user_metadata?.username ??
+        user.user_metadata?.preferred_username ??
+        usernameFallback;
 
-    // the SDK returns { data: { subscription } } in older versions and a listener object in others.
-    // handle both shapes safely:
+      // only send fields that exist; keep it minimal to avoid overwriting other columns unintentionally
+      const payload: Record<string, any> = { id };
+      if (email) payload.email = email;
+      if (full_name) payload.full_name = full_name;
+      if (username) payload.username = username;
+
+      // upsert into profiles; onConflict = id so this merges into existing row
+      const { error } = await supabase.from("profiles").upsert(payload, {
+        onConflict: "id",
+      });
+
+      if (error) {
+        // non-fatal in client-side flow; log for debugging
+        console.error("profiles upsert error:", error);
+      } else {
+        // optional: you could set a flag/local state to indicate profile exists
+        console.debug("profiles upserted for user:", id);
+      }
+    } catch (err) {
+      console.error("upsertProfile unexpected error:", err);
+    }
+  }
+
+  useEffect(() => {
+    const subscription = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        // when user completes sign-in (magic link / oauth / password) this fires
+        if (event === "SIGNED_IN" && session?.user) {
+          try {
+            // ensure profile row exists / updated
+            await upsertProfile(session.user);
+          } catch (e) {
+            console.error("error upserting profile on SIGNED_IN:", e);
+          } finally {
+            // keep original behaviour: redirect to welcome
+            router.replace("/welcome");
+          }
+        }
+      }
+    );
+
     const cleanup = () => {
       try {
         // @ts-ignore
-        if (subscription?.data?.subscription?.unsubscribe) subscription.data.subscription.unsubscribe();
+        if (subscription?.data?.subscription?.unsubscribe)
+          subscription.data.subscription.unsubscribe();
         // @ts-ignore
         else if (subscription?.unsubscribe) subscription.unsubscribe();
       } catch {
@@ -91,13 +139,18 @@ export default function SignInPage(): React.ReactElement {
     return cleanup;
   }, [router]);
 
-  // If already signed in, immediately go to /welcome
   useEffect(() => {
     (async () => {
       try {
+        // if user already signed in (page load), upsert profile and redirect
         const { data } = await supabase.auth.getUser();
         if (data?.user) {
-          router.replace('/welcome');
+          try {
+            await upsertProfile(data.user);
+          } catch (e) {
+            console.error("error upserting profile on mount:", e);
+          }
+          router.replace("/welcome");
         }
       } catch {
         // ignore
@@ -105,47 +158,42 @@ export default function SignInPage(): React.ReactElement {
     })();
   }, [router]);
 
-  // --- Magic link wiring ---
   const sendMagicLink = async () => {
     setError(null);
     setInfo(null);
 
     if (!email) {
-      setError('Please enter an email.');
+      setError("Please enter an email.");
       return;
     }
     if (!isValidEmail(email)) {
-      setError('Please enter a valid email address.');
+      setError("Please enter a valid email address.");
       return;
     }
 
     setLoading(true);
     try {
-      // ensure redirect points to your site welcome route after user clicks magic link
-      const redirectTo = `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/welcome`;
+      const isDev = process.env.NODE_ENV === "development";
+      const redirectTo = isDev
+        ? "http://localhost:3000/welcome"
+        : `${process.env.NEXT_PUBLIC_SITE_URL || "https://optimx.app"}/welcome`;
 
-      // Using Supabase Auth: signInWithOtp sends magic link to the email
-      // The response shape: { data, error }
       const { data, error: signError } = await supabase.auth.signInWithOtp({
         email,
         options: { emailRedirectTo: redirectTo },
       });
 
       if (signError) {
-        // better error messaging for debugging
-        setError(signError.message || 'Failed to send magic link. Try again.');
+        setError(signError.message || "Failed to send magic link. Try again.");
         setLoading(false);
         return;
       }
 
-      // success path: Supabase sends the email. You can give a friendly message.
-      setInfo('Magic link sent — check your email (and spam) to complete sign-in.');
-
-      // NOTE: Some Supabase configurations return data.url for hosted flows.
-      // We do NOT force-redirect the user here; magic link email will handle sign-in.
-      // If you want to start a hosted sign-in flow immediately, uncomment below:
-      // if (data?.url) window.location.href = data.url;
-
+      // Note: user will be created/available only after they click the magic link and complete sign-in.
+      // We can't set the profile.id until we have a user id. The onAuthStateChange handler will upsert after SIGNED_IN.
+      setInfo(
+        "Magic link sent — check your email (and spam) to complete sign-in."
+      );
     } catch (e: any) {
       setError(e?.message ?? String(e));
     } finally {
@@ -158,17 +206,28 @@ export default function SignInPage(): React.ReactElement {
     setError(null);
     setInfo(null);
     if (!email || !password) {
-      setError('Email and password are required.');
+      setError("Email and password are required.");
       return;
     }
     setLoading(true);
     try {
-      const { error: signError } = await supabase.auth.signInWithPassword({ email, password });
+      const { data, error: signError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
       if (signError) {
         setError(signError.message);
       } else {
-        // successful sign-in -> redirect
-        router.replace('/welcome');
+        // sign-in succeeded immediately; ensure profile upsert before redirect
+        const user = (data as any)?.user ?? null;
+        if (user && user.id) {
+          try {
+            await upsertProfile(user);
+          } catch (err) {
+            console.error("upsert after password sign-in failed:", err);
+          }
+        }
+        router.replace("/welcome");
       }
     } catch (e: any) {
       setError(e?.message ?? String(e));
@@ -177,11 +236,13 @@ export default function SignInPage(): React.ReactElement {
     }
   };
 
-  const oauthLogin = async (provider: 'google' | 'facebook') => {
+  const oauthLogin = async (provider: "google" | "facebook") => {
     setError(null);
     setInfo(null);
     try {
-      const redirectTo = `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/welcome`;
+      const redirectTo = `${
+        process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"
+      }/welcome`;
       const { data, error: oauthError } = await supabase.auth.signInWithOAuth({
         provider,
         options: { redirectTo },
@@ -189,7 +250,7 @@ export default function SignInPage(): React.ReactElement {
       if (oauthError) {
         setError(oauthError.message);
       } else if (data?.url) {
-        // redirect to Supabase hosted OAuth flow
+        // redirect to provider consent screen; after redirect back, onAuthStateChange will upsert profile
         window.location.href = data.url;
       }
     } catch (e: any) {
@@ -200,113 +261,356 @@ export default function SignInPage(): React.ReactElement {
   return (
     <>
       <style jsx global>{`
-        :root { --optim-blue: #0088FF; --border: #C2C2C2; --link-color:#0a66ff; --muted:#6F6F6F; }
-        *{box-sizing:border-box}
-        html,body,#__next{height:100%;margin:0}
-        body{font-family:Poppins,Inter,system-ui;-webkit-font-smoothing:antialiased}
-        .page-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden}
-        .bg-shape{position:absolute;border-radius:9999px;pointer-events:none;filter:blur(120px);opacity:.95;z-index:0}
-        .bg-shape.left{width:520px;height:520px;left:-140px;top:-80px}
-        .bg-shape.mid{width:380px;height:380px;left:420px;top:120px}
-        .bg-shape.right{width:600px;height:600px;right:-160px;bottom:-60px}
-        .mesh-gradient{mix-blend-mode:overlay}
-        .animation-float{ animation: float 8s ease-in-out infinite; transform-origin:center; }
+        :root {
+          --optim-blue: #0088ff;
+          --border: #c2c2c2;
+          --link-color: #0a66ff;
+          --muted: #6f6f6f;
+        }
+        * {
+          box-sizing: border-box;
+        }
+        html,
+        body,
+        #__next {
+          height: 100%;
+          margin: 0;
+        }
+        body {
+          font-family: Poppins, Inter, system-ui;
+          -webkit-font-smoothing: antialiased;
+        }
+        .page-wrap {
+          min-height: 100vh;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          position: relative;
+          overflow: hidden;
+        }
+        .bg-shape {
+          position: absolute;
+          border-radius: 9999px;
+          pointer-events: none;
+          filter: blur(120px);
+          opacity: 0.95;
+          z-index: 0;
+        }
+        .bg-shape.left {
+          width: 520px;
+          height: 520px;
+          left: -140px;
+          top: -80px;
+        }
+        .bg-shape.mid {
+          width: 380px;
+          height: 380px;
+          left: 420px;
+          top: 120px;
+        }
+        .bg-shape.right {
+          width: 600px;
+          height: 600px;
+          right: -160px;
+          bottom: -60px;
+        }
+        .mesh-gradient {
+          mix-blend-mode: overlay;
+        }
+        .animation-float {
+          animation: float 8s ease-in-out infinite;
+          transform-origin: center;
+        }
         @keyframes float {
-          0% { transform: translateY(0) translateX(0) scale(1); opacity: .9; }
-          50% { transform: translateY(-18px) translateX(6px) scale(1.02); opacity: .95; }
-          100% { transform: translateY(0) translateX(0) scale(1); opacity: .9; }
+          0% {
+            transform: translateY(0) translateX(0) scale(1);
+            opacity: 0.9;
+          }
+          50% {
+            transform: translateY(-18px) translateX(6px) scale(1.02);
+            opacity: 0.95;
+          }
+          100% {
+            transform: translateY(0) translateX(0) scale(1);
+            opacity: 0.9;
+          }
         }
 
-        /* CARD + LAYOUT */
-        .auth-card{
-          z-index:3;
-          width:680px;
-          border-radius:28px;
-          backdrop-filter:blur(6px);
-          padding:32px;
-          box-shadow:0 20px 80px rgba(2,6,23,.12);
-          border:1px solid rgba(226,232,240,.6);
-          display:flex;
-          flex-direction:column;
-          align-items:center;
-          position:relative;     /* contain inner bg */
-          overflow:hidden;       /* clip inner background to card */
+        /* CARD + LAYOUT - reduced size to make inputs less large */
+        .auth-card {
+          z-index: 3;
+          width: 500px; /* reduced further from 560px -> 480px */
+          border-radius: 18px; /* slightly smaller radius */
+          backdrop-filter: blur(6px);
+          padding: 20px; /* reduced padding */
+          box-shadow: 0 20px 80px rgba(2, 6, 23, 0.12);
+          border: 1px solid rgba(226, 232, 240, 0.6);
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          position: relative;
+          overflow: hidden;
         }
-        .card-bg{ position:absolute; inset:0; pointer-events:none; z-index:0; } /* inner card background layer */
-        .auth-content{ position:relative; z-index:2; width:100%; display:flex; flex-direction:column; align-items:center; } /* content sits above inner bg */
+        .card-bg {
+          position: absolute;
+          inset: 0;
+          pointer-events: none;
+          z-index: 0;
+        }
+        .auth-content {
+          position: relative;
+          z-index: 2;
+          width: 100%;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+        }
 
-        .brand-badge{width:90px;height:90px;border-radius:16px;display:flex;align-items:center;justify-content:center;background:linear-gradient(180deg,#36A7FF,#0F62FF);box-shadow:0 0 9.65px rgba(188,215,255,.24)}
-        .brand-title{margin-top:10px;font-weight:700;font-size:43px;line-height:65px;color:#1E1E1E;text-align:center}
-        .brand-sub{margin-top:4px;color:#5f6b73;font-weight:500;font-size:15px;text-align:center;margin-bottom:18px} /* increased bottom gap */
+        .brand-badge {
+          width: 64px;
+          height: 64px;
+          border-radius: 12px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: linear-gradient(180deg, #36a7ff, #0f62ff);
+          box-shadow: 0 0 9.65px rgba(188, 215, 255, 0.24);
+        }
+        .brand-title {
+          margin-top: 8px;
+          font-weight: 700;
+          font-size: 32px;
+          line-height: 40px;
+          color: #1e1e1e;
+          text-align: center;
+        } /* reduced size */
+        .brand-sub {
+          margin-top: 4px;
+          color: #5f6b73;
+          font-weight: 500;
+          font-size: 13px;
+          text-align: center;
+          margin-bottom: 12px;
+        }
 
-        /* OAUTH ROW */
-        .oauth-row{margin-top:50px;width:100%;display:grid;grid-template-columns:1fr 1fr;gap:14px} /* increased top gap and gap */
-        .oauth-btn{display:flex;align-items:center;justify-content:flex-start;gap:12px;background:#fff;border:1px solid var(--border);border-radius:12px;padding:12px 16px;cursor:pointer;font-weight:600;height:56px;width:100%}
-        .oauth-btn img, .oauth-btn svg{flex:0 0 20px;height:20px;width:20px}
+        .oauth-row {
+          margin-top: 28px;
+          width: 100%;
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 10px;
+        }
+        .oauth-btn {
+          display: flex;
+          align-items: center;
+          justify-content: flex-start;
+          gap: 12px;
+          background: #fff;
+          border: 1px solid var(--border);
+          border-radius: 12px;
+          padding: 10px 12px;
+          cursor: pointer;
+          font-weight: 600;
+          height: 44px;
+          width: 100%;
+        }
+        .oauth-btn img,
+        .oauth-btn svg {
+          flex: 0 0 20px;
+          height: 20px;
+          width: 20px;
+        }
 
-        .segmented{display:flex;background:#fafafa;padding:6px;border-radius:12px;gap:8px;border:1px solid #F0F0F0}
-        .segmented button{border-radius:9999px;padding:12px 24px;border:1px solid transparent;background:transparent;cursor:pointer;font-weight:700;min-width:120px}
-        .segmented .active{background:linear-gradient(180deg,var(--optim-blue),#0a7df0);color:white;box-shadow:0 10px 30px rgba(8,136,255,.18)}
+        .segmented {
+          display: flex;
+          background: #fafafa;
+          padding: 6px;
+          border-radius: 12px;
+          gap: 8px;
+          border: 1px solid #f0f0f0;
+        }
+        .segmented button {
+          border-radius: 9999px;
+          padding: 8px 14px;
+          border: 1px solid transparent;
+          background: transparent;
+          cursor: pointer;
+          font-weight: 700;
+          min-width: 88px;
+        }
+        .segmented .active {
+          background: linear-gradient(180deg, var(--optim-blue), #0a7df0);
+          color: white;
+          box-shadow: 0 10px 30px rgba(8, 136, 255, 0.18);
+        }
 
-        /* FORM + INPUTS - extended widths and spacing */
-        .form{margin-top:18px;width:100%;display:flex;flex-direction:column;gap:12px}
-        label{font-size:12px;font-weight:500;color:#1E1E1E;margin-bottom:6px;display:block}
-        .input{height:56px;border-radius:12px;border:1px solid var(--border);padding:12px 14px;font-size:16px;background:#fff;width:100%;display:block}
-        .pw-wrap{position:relative;width:100%} /* ensure password wrapper is full width */
-        .pw-toggle{position:absolute;right:12px;top:12px;height:32px;width:40px;border:none;background:transparent;cursor:pointer}
-        .cta{margin-top:6px;height:56px;border-radius:12px;background:var(--optim-blue);color:white;display:flex;align-items:center;justify-content:center;font-weight:800;border:none;font-size:16px;width:100%}
-        .policy{font-size:12px;text-align:center;color:#7E7E7E;margin-top:10px}
-        .policy a{color:var(--link-color);text-decoration:underline;font-weight:600}
-        .msg{margin-top:8px;font-size:13px;text-align:center}
+        .form {
+          margin-top: 12px;
+          width: 100%;
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+        label {
+          font-size: 12px;
+          font-weight: 500;
+          color: #1e1e1e;
+          margin-bottom: 6px;
+          display: block;
+        }
+        .input {
+          height: 44px;
+          border-radius: 10px;
+          border: 1px solid var(--border);
+          padding: 10px 12px;
+          font-size: 15px;
+          background: #fff;
+          width: 100%;
+          display: block;
+        }
+        .pw-wrap {
+          position: relative;
+          width: 100%;
+        }
+        .pw-toggle {
+          position: absolute;
+          right: 12px;
+          top: 10px;
+          height: 28px;
+          width: 36px;
+          border: none;
+          background: transparent;
+          cursor: pointer;
+        }
+        .cta {
+          margin-top: 6px;
+          height: 44px;
+          border-radius: 12px;
+          background: var(--optim-blue);
+          color: white;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-weight: 800;
+          border: none;
+          font-size: 15px;
+          width: 100%;
+        }
+        .policy {
+          font-size: 12px;
+          text-align: center;
+          color: #7e7e7e;
+          margin-top: 10px;
+        }
+        .policy a {
+          color: var(--link-color);
+          text-decoration: underline;
+          font-weight: 600;
+        }
+        .msg {
+          margin-top: 8px;
+          font-size: 13px;
+          text-align: center;
+        }
 
-        @media (max-width:820px){
-          .auth-card{width:calc(100% - 40px);padding:20px;border-radius:20px}
-          .brand-title{font-size:32px}
-          .segmented button{min-width:90px;padding:8px 12px}
-          .oauth-row{grid-template-columns:1fr;gap:10px}
+        /* helper row added for password mode (new user / forgot password) */
+        .helper-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 12px;
+          margin-top: 8px;
+        }
+        .helper-row a {
+          font-size: 13px;
+          color: var(--link-color);
+          text-decoration: none;
+          font-weight: 600;
+        }
+        .helper-row a.secondary {
+          color: #6f6f6f;
+          font-weight: 600;
+          text-decoration: underline;
+        }
+
+        @media (max-width: 820px) {
+          .auth-card {
+            width: calc(100% - 40px);
+            padding: 16px;
+            border-radius: 14px;
+          }
+          .brand-title {
+            font-size: 26px;
+          }
+          .segmented button {
+            min-width: 76px;
+            padding: 6px 10px;
+          }
+          .oauth-row {
+            grid-template-columns: 1fr;
+            gap: 10px;
+          }
         }
       `}</style>
 
       <div className="page-wrap" role="region" aria-label="Sign in page">
-        {/* Original Background Layers (kept exactly as requested) */}
         <div
           className="absolute inset-0"
           style={{
             backgroundImage: `linear-gradient(135deg, ${
-              (colors as any)?.background ?? '#ffffff'
-            } 0%, ${withAlpha((colors as any)?.primary ?? 'hsl(213 90% 96%)', 0.3)} 50%, ${
-              (colors as any)?.background ?? '#ffffff'
-            } 100%)`,
+              (colors as any)?.background ?? "#ffffff"
+            } 0%, ${withAlpha(
+              (colors as any)?.primary ?? "hsl(213 90% 96%)",
+              0.3
+            )} 50%, ${(colors as any)?.background ?? "#ffffff"} 100%)`,
             zIndex: 0,
           }}
         />
         <div
           className="absolute inset-0 mesh-gradient"
           style={{
-            background: (colors as any)?.gradientMesh ?? 'linear-gradient(180deg,#f0f8ff00,#ffffff00)',
+            background:
+              (colors as any)?.gradientMesh ??
+              "linear-gradient(180deg,#f0f8ff00,#ffffff00)",
             opacity: 0.4,
             zIndex: 0,
           }}
         />
 
-        {/* Animated Orbs (outside the card) - unchanged */}
         <div
           className="absolute top-20 left-10 w-72 h-72 rounded-full blur-3xl animation-float"
-          style={{ backgroundColor: withAlpha((colors as any)?.primary ?? 'hsl(213 90% 50%)', 0.3), zIndex: 0 }}
+          style={{
+            backgroundColor: withAlpha(
+              (colors as any)?.primary ?? "hsl(213 90% 50%)",
+              0.3
+            ),
+            zIndex: 0,
+          }}
         />
         <div
           className="absolute bottom-20 right-10 w-96 h-96 rounded-full blur-3xl animation-float"
           style={{
-            backgroundColor: withAlpha((colors as any)?.primary ?? 'hsl(213 90% 50%)', 0.2),
-            animationDelay: '2s',
+            backgroundColor: withAlpha(
+              (colors as any)?.primary ?? "hsl(213 90% 50%)",
+              0.2
+            ),
+            animationDelay: "2s",
             zIndex: 0,
           }}
         />
         <div
           className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full blur-3xl animation-float"
           style={{
-            backgroundImage: `linear-gradient(90deg, ${withAlpha((colors as any)?.primary ?? 'hsl(213 90% 50%)', 0.1)} 0%, ${withAlpha(((colors as any)?.primaryGlow ?? (colors as any)?.primary) ?? 'hsl(213 90% 50%)', 0.08)} 100%)`,
-            animationDelay: '4s',
+            backgroundImage: `linear-gradient(90deg, ${withAlpha(
+              (colors as any)?.primary ?? "hsl(213 90% 50%)",
+              0.1
+            )} 0%, ${withAlpha(
+              (colors as any)?.primaryGlow ??
+                (colors as any)?.primary ??
+                "hsl(213 90% 50%)",
+              0.08
+            )} 100%)`,
+            animationDelay: "4s",
             zIndex: 0,
           }}
         />
@@ -316,172 +620,367 @@ export default function SignInPage(): React.ReactElement {
           role="main"
           aria-labelledby="signin-title"
           style={{
-            background:
-              ((colors as any)?.gradientCard
-                ? (colors as any)?.gradientCard
-                : `linear-gradient(180deg, ${withAlpha((colors as any)?.background ?? '#ffffff', 0.12)}, ${withAlpha((colors as any)?.primary ?? 'hsl(213 90% 96%)', 0.04)})`),
+            background: (colors as any)?.gradientCard
+              ? (colors as any)?.gradientCard
+              : `linear-gradient(180deg, ${withAlpha(
+                  (colors as any)?.background ?? "#ffffff",
+                  0.12
+                )}, ${withAlpha(
+                  (colors as any)?.primary ?? "hsl(213 90% 96%)",
+                  0.04
+                )})`,
           }}
         >
-          {/* Card-local background layer: mirrors the outside animated orbs + mesh, clipped inside the card */}
           <div className="card-bg" aria-hidden>
             <div
               style={{
-                position: 'absolute',
+                position: "absolute",
                 inset: 0,
                 zIndex: 0,
                 opacity: 1,
-                pointerEvents: 'none',
-                overflow: 'hidden',
+                pointerEvents: "none",
+                overflow: "hidden",
               }}
             >
-              {/* inner mesh overlay */}
               <div
                 style={{
-                  position: 'absolute',
+                  position: "absolute",
                   inset: 0,
-                  background: (colors as any)?.gradientMesh ?? 'linear-gradient(180deg,#f0f8ff00,#ffffff00)',
-                  mixBlendMode: 'overlay',
+                  background:
+                    (colors as any)?.gradientMesh ??
+                    "linear-gradient(180deg,#f0f8ff00,#ffffff00)",
+                  mixBlendMode: "overlay",
                   opacity: 0.5,
                 }}
               />
-              {/* smaller inner orbs - placed inside the card */}
               <div
                 style={{
-                  position: 'absolute',
+                  position: "absolute",
                   top: 12,
                   left: 12,
                   width: 220,
                   height: 220,
                   borderRadius: 9999,
-                  filter: 'blur(84px)',
-                  transformOrigin: 'center',
-                  animation: 'float 8s ease-in-out infinite',
-                  backgroundColor: withAlpha((colors as any)?.primary ?? 'hsl(213 90% 50%)', 0.28),
+                  filter: "blur(84px)",
+                  transformOrigin: "center",
+                  animation: "float 8s ease-in-out infinite",
+                  backgroundColor: withAlpha(
+                    (colors as any)?.primary ?? "hsl(213 90% 50%)",
+                    0.28
+                  ),
                 }}
               />
               <div
                 style={{
-                  position: 'absolute',
+                  position: "absolute",
                   bottom: 10,
                   right: 20,
                   width: 300,
                   height: 300,
                   borderRadius: 9999,
-                  filter: 'blur(84px)',
-                  transformOrigin: 'center',
-                  animation: 'float 8s ease-in-out infinite',
-                  animationDelay: '2s',
-                  backgroundColor: withAlpha((colors as any)?.primary ?? 'hsl(213 90% 50%)', 0.18),
+                  filter: "blur(84px)",
+                  transformOrigin: "center",
+                  animation: "float 8s ease-in-out infinite",
+                  animationDelay: "2s",
+                  backgroundColor: withAlpha(
+                    (colors as any)?.primary ?? "hsl(213 90% 50%)",
+                    0.18
+                  ),
                 }}
               />
               <div
                 style={{
-                  position: 'absolute',
-                  top: '50%',
-                  left: '50%',
+                  position: "absolute",
+                  top: "50%",
+                  left: "50%",
                   width: 420,
                   height: 420,
                   borderRadius: 9999,
-                  transform: 'translate(-50%,-50%)',
-                  filter: 'blur(84px)',
-                  transformOrigin: 'center',
-                  animation: 'float 8s ease-in-out infinite',
-                  animationDelay: '4s',
-                  backgroundImage: `linear-gradient(90deg, ${withAlpha((colors as any)?.primary ?? 'hsl(213 90% 50%)', 0.1)} 0%, ${withAlpha(((colors as any)?.primaryGlow ?? (colors as any)?.primary) ?? 'hsl(213 90% 50%)', 0.06)} 100%)`,
+                  transform: "translate(-50%,-50%)",
+                  filter: "blur(84px)",
+                  transformOrigin: "center",
+                  animation: "float 8s ease-in-out infinite",
+                  animationDelay: "4s",
+                  backgroundImage: `linear-gradient(90deg, ${withAlpha(
+                    (colors as any)?.primary ?? "hsl(213 90% 50%)",
+                    0.1
+                  )} 0%, ${withAlpha(
+                    (colors as any)?.primaryGlow ??
+                      (colors as any)?.primary ??
+                      "hsl(213 90% 50%)",
+                    0.06
+                  )} 100%)`,
                 }}
               />
             </div>
           </div>
 
-          {/* Actual card content sits above the inner background */}
           <div className="auth-content" role="region" aria-label="Sign in form">
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-              <div className="brand-badge" aria-hidden>
-                <svg width="56" height="56" viewBox="0 0 24 24" fill="none" aria-hidden>
-                  <path d="M12 2 L20 7 v10 l-8 5 l-8 -5 V7 Z" fill="#ffffff" opacity="0.96" />
-                  <circle cx="12" cy="11.5" r="2.5" fill="#60A5FA" />
-                </svg>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+              }}
+            >
+              <div
+                className="brand-badge"
+                aria-hidden
+                style={{ background: "transparent", boxShadow: "none" }}
+              >
+                <img
+                  src="/images/OptimX_Logo.svg"
+                  alt="OptimX"
+                  style={{ width: 56, height: 56, objectFit: "contain" }}
+                />
               </div>
 
               <h1 id="signin-title" className="brand-title">
-                Optim<span className="x" style={{ color: (colors as any)?.primary ?? '#0088FF' }}>X</span>
+                Optim
+                <span
+                  className="x"
+                  style={{ color: (colors as any)?.primary ?? "#0088FF" }}
+                >
+                  X
+                </span>
               </h1>
-              <div className="brand-sub">Welcome, Please create an account.</div>
+              <div className="brand-sub">
+                Welcome, Please create an account.
+              </div>
             </div>
 
-            {/* OAUTH - spacing increased top-to-bottom */}
-            <div className="oauth-row" role="group" aria-label="Third party sign in">
+            <div
+              className="oauth-row"
+              role="group"
+              aria-label="Third party sign in"
+            >
               <button
                 className="oauth-btn"
-                onClick={() => oauthLogin('google')}
+                onClick={() => oauthLogin("google")}
                 type="button"
-                aria-label="Sign in with Google"
+                aria-label="Google Signin"
               >
-                <img src="/shape3421-rnx.svg" alt="Google" style={{ width: 20, height: 20 }} />
-                <span style={{ marginLeft: 6 }}>Sign in with Google</span>
+                {/* Inline Google 'G' logo so you don't need an external image file */}
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 48 48"
+                  xmlns="http://www.w3.org/2000/svg"
+                  aria-hidden
+                >
+                  <path
+                    fill="#fbc02d"
+                    d="M43.6 20.4H42V20H24v8h11.3C33.6 33 29.1 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.1 8.1 2.9l6-6C34.6 4.9 29.6 3 24 3 12.9 3 4 11.9 4 23s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.6-.4-3.6z"
+                  />
+                  <path
+                    fill="#e53935"
+                    d="M6.3 14.9l6.6 4.8C14 16.1 18.6 13 24 13c3.1 0 5.9 1.1 8.1 2.9l6-6C34.6 4.9 29.6 3 24 3 16.7 3 10.2 7.9 6.3 14.9z"
+                  />
+                  <path
+                    fill="#4caf50"
+                    d="M24 43c5.1 0 9.6-2 13-5.2l-6-4.9C29.9 34.9 27.1 36 24 36c-5.1 0-9.6-2-13-5.2l-6.6 4.8C10.2 40.1 16.7 44 24 44z"
+                  />
+                  <path
+                    fill="#1565c0"
+                    d="M43.6 20.4H42V20H24v8h11.3c-1 2.8-3 5.2-5.5 6.8l6 4.9C39.9 36.3 44 30 44 23c0-1.3-.1-2.6-.4-3.6z"
+                  />
+                </svg>
+                <span style={{ marginLeft: 6 }}>Google Signin</span>
               </button>
 
               <button
                 className="oauth-btn"
-                onClick={() => oauthLogin('facebook')}
+                onClick={() => oauthLogin("facebook")}
                 type="button"
-                aria-label="Sign in with Facebook"
+                aria-label="Facebook Signin"
               >
                 <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden>
-                  <path d="M22 12c0-5.5-4.5-10-10-10S2 6.5 2 12c0 4.9 3.5 9 8.1 9.9v-7H7.9v-2.9h2.2V9.7c0-2.2 1.3-3.4 3.3-3.4.95 0 1.9.17 1.9.17v2.1h-1.08c-1.06 0-1.39.66-1.39 1.33v1.6h2.36l-.38 2.9h-1.98v7C18.5 21 22 16.9 22 12z" fill="#0866FF" />
+                  <path
+                    d="M22 12c0-5.5-4.5-10-10-10S2 6.5 2 12c0 4.9 3.5 9 8.1 9.9v-7H7.9v-2.9h2.2V9.7c0-2.2 1.3-3.4 3.3-3.4.95 0 1.9.17 1.9.17v2.1h-1.08c-1.06 0-1.39.66-1.39 1.33v1.6h2.36l-.38 2.9h-1.98v7C18.5 21 22 16.9 22 12z"
+                    fill="#0866FF"
+                  />
                 </svg>
-                <span style={{ marginLeft: 6 }}>Sign in with Facebook</span>
+                <span style={{ marginLeft: 6 }}>Facebook Signin</span>
               </button>
             </div>
 
-            <div style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, marginTop: 50 }}>
-              <div style={{ flex: 1, height: 1, background: '#E6E6E6' }} />
-              <div style={{ color: '#9aa0a6', fontSize: 13 }}>Or continue with</div>
-              <div style={{ flex: 1, height: 1, background: '#E6E6E6' }} />
+            <div
+              style={{
+                width: "100%",
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                marginTop: 32,
+              }}
+            >
+              <div style={{ flex: 1, height: 1, background: "#E6E6E6" }} />
+              <div style={{ color: "#9aa0a6", fontSize: 13 }}>
+                Or continue with
+              </div>
+              <div style={{ flex: 1, height: 1, background: "#E6E6E6" }} />
             </div>
 
-            <div style={{ width: '100%', display: 'flex', justifyContent: 'center', marginTop: 50 }}>
-              <div style={{ width: '100%'}} className={`segmented`} role="tablist" aria-label="Choose sign in method">
-                <button type="button" style={{ width: '50%'}} aria-pressed={mode === 'magic'} className={mode === 'magic' ? 'active' : ''} onClick={() => setMode('magic')}>Magic Link</button>
-                <button type="button" style={{ width: '50%'}} aria-pressed={mode === 'password'} className={mode === 'password' ? 'active' : ''} onClick={() => setMode('password')}>Password</button>
+            <div
+              style={{
+                width: "100%",
+                display: "flex",
+                justifyContent: "center",
+                marginTop: 26,
+              }}
+            >
+              <div
+                style={{ width: "100%" }}
+                className={`segmented`}
+                role="tablist"
+                aria-label="Choose sign in method"
+              >
+                <button
+                  type="button"
+                  style={{ width: "50%" }}
+                  aria-pressed={mode === "magic"}
+                  className={mode === "magic" ? "active" : ""}
+                  onClick={() => setMode("magic")}
+                >
+                  Magic Link
+                </button>
+                <button
+                  type="button"
+                  style={{ width: "50%" }}
+                  aria-pressed={mode === "password"}
+                  className={mode === "password" ? "active" : ""}
+                  onClick={() => setMode("password")}
+                >
+                  Password
+                </button>
               </div>
             </div>
 
             <div className="form" aria-labelledby="signin-title">
               <div>
                 <label htmlFor="email">Email</label>
-                <input id="email" className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="example@domain.com" autoComplete="email" />
+                <input
+                  id="email"
+                  className="input"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="example@domain.com"
+                  autoComplete="email"
+                />
               </div>
 
-              {mode === 'password' && (
+              {mode === "password" && (
                 <div>
                   <label htmlFor="password">Password</label>
                   <div className="pw-wrap">
-                    <input id="password" className="input" type={showPw ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Enter your password" autoComplete="current-password" style={{ paddingRight: 56 }} />
-                    <button type="button" className="pw-toggle" onClick={() => setShowPw((s) => !s)} aria-label={showPw ? 'Hide password' : 'Show password'}>
-                      {showPw ? '🙈' : '👁️'}
+                    <input
+                      id="password"
+                      className="input"
+                      type={showPw ? "text" : "password"}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Enter your password"
+                      autoComplete="current-password"
+                      style={{ paddingRight: 56 }}
+                    />
+                    <button
+                      type="button"
+                      className="pw-toggle"
+                      onClick={() => setShowPw((s) => !s)}
+                      aria-label={showPw ? "Hide password" : "Show password"}
+                    >
+                      {showPw ? "🙈" : "👁️"}
                     </button>
+                  </div>
+
+                  {/* helper row with New user and Forgot password */}
+                  <div
+                    className="helper-row"
+                    role="group"
+                    aria-label="Password helpers"
+                  >
+                    <a
+                      href="/auth/signup"
+                      onClick={(e) => {
+                        /* simple client navigation — let router handle if needed */
+                        e.preventDefault();
+                        router.push("/auth/signup");
+                      }}
+                    >
+                      New user? Create account
+                    </a>
+
+                    <a
+                      href="/auth/forgot-password"
+                      className="secondary"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        router.push("/auth/forgot-password");
+                      }}
+                    >
+                      Forgot password?
+                    </a>
                   </div>
                 </div>
               )}
 
-              <div style={{ fontSize: 11, textAlign: 'center', color: '#6F6F6F', marginTop: 6 }}>we will send you a magic link for password free sign in</div>
-
-              {error && <div className="msg" style={{ color: '#d9534f' }}>{error}</div>}
-              {info && <div className="msg" style={{ color: '#2f855a' }}>{info}</div>}
-
-              <div className="policy" style={{ marginTop: 80 }}>
-                By proceeding, you consent to our <a href="#" onClick={(e) => e.preventDefault()}>Privacy policy</a> &amp; <a href="#" onClick={(e) => e.preventDefault()}>Terms &amp; Conditions</a>
+              <div
+                style={{
+                  fontSize: 11,
+                  textAlign: "center",
+                  color: "#6F6F6F",
+                  marginTop: 6,
+                }}
+              >
+                we will send you a magic link for password free sign in
               </div>
 
-              {mode === 'magic' ? (
-                <button className="cta" onClick={sendMagicLink} disabled={loading} type="button">{loading ? 'Sending...' : 'Send Magic Link'}</button>
+              {error && (
+                <div className="msg" style={{ color: "#d9534f" }}>
+                  {error}
+                </div>
+              )}
+              {info && (
+                <div className="msg" style={{ color: "#2f855a" }}>
+                  {info}
+                </div>
+              )}
+
+              <div className="policy" style={{ marginTop: 52 }}>
+                By proceeding, you consent to our{" "}
+                <a href="#" onClick={(e) => e.preventDefault()}>
+                  Privacy policy
+                </a>{" "}
+                &amp;{" "}
+                <a href="#" onClick={(e) => e.preventDefault()}>
+                  Terms &amp; Conditions
+                </a>
+              </div>
+
+              {mode === "magic" ? (
+                <button
+                  className="cta"
+                  onClick={sendMagicLink}
+                  disabled={loading}
+                  type="button"
+                >
+                  {loading ? "Sending..." : "Send Magic Link"}
+                </button>
               ) : (
-                <button className="cta" onClick={(e) => signInWithPassword(e)} disabled={loading} type="button">{loading ? 'Signing in...' : 'Sign In'}</button>
+                <button
+                  className="cta"
+                  onClick={(e) => signInWithPassword(e)}
+                  disabled={loading}
+                  type="button"
+                >
+                  {loading ? "Signing in..." : "Sign In"}
+                </button>
               )}
             </div>
 
-            <div style={{ marginTop: 12, fontSize: 13, color: '#8b8b8b' }}>© {new Date().getFullYear()} OptimX</div>
+            <div style={{ marginTop: 12, fontSize: 13, color: "#8b8b8b" }}>
+              © {new Date().getFullYear()} OptimX
+            </div>
           </div>
         </main>
       </div>

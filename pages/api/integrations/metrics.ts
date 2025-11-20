@@ -47,12 +47,29 @@ function daysForPreset(preset: string) {
   }
 }
 
+/** Redact sensitive fields before sending back raw debug info to client */
+function redactIntegrationForDebug(row: any) {
+  if (!row) return null;
+  const clone = JSON.parse(JSON.stringify(row));
+  const toRedact = ["access_token", "refresh_token", "token", "pageAccessToken", "userAccessToken", "raw", "raw_token", "tokenJson"];
+  toRedact.forEach((k) => {
+    if (clone[k]) clone[k] = "[REDACTED]";
+    if (clone.raw && clone.raw[k]) clone.raw[k] = "[REDACTED]";
+    if (clone.metadata && clone.metadata[k]) clone.metadata[k] = "[REDACTED]";
+  });
+  // If raw contains tokenJson, remove it
+  if (clone.raw && clone.raw.tokenJson) clone.raw.tokenJson = "[REDACTED]";
+  return clone;
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
     const userId = await getUserIdFromRequest(req);
-    if (!userId) return res.status(401).json({ error: "missing_user", details: "Auth session missing!" });
+    if (!userId) {
+      return res.status(401).json({ ok: false, error: "missing_user", details: "Auth session missing!" });
+    }
 
-    // Fetch the user's meta integration row
+    // Fetch only this user's meta integration row (user-scoped)
     const { data: integration, error: intErr } = await supabaseAdmin
       .from("integrations")
       .select("*")
@@ -63,30 +80,44 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     if (intErr) {
       console.error("integrations.metrics db error:", intErr);
-      return res.status(500).json({ error: "db_error", details: intErr.message });
-    }
-    if (!integration) return res.status(404).json({ error: "no_integration", details: "No meta integration row for this user" });
-
-    // Attempt to build a response from stored fields (raw / metadata) if already present
-    const raw = integration.raw ?? integration.metadata ?? integration;
-
-    // If integration raw already contains a meta summary shape, return it
-    if (raw?.meta?.current) {
-      return res.status(200).json({ ok: true, meta: raw.meta, ranges: null, raw: { source: "row" } });
+      return res.status(500).json({ ok: false, error: "db_error", details: intErr.message });
     }
 
-    // Determine access token and ad account id from integration row
-    // Prefer: refresh_token (long user token) -> access_token (page token) -> metadata fields -> raw.tokenJson.access_token
+    // If user has no integration at all -> return safe "no metrics" response (do not mark connected)
+    if (!integration) {
+      return res.status(200).json({
+        ok: true,
+        meta: { current: null, previous: null, change: null },
+        ranges: null,
+        raw: { note: "no_integration_for_user" },
+      });
+    }
+
+    // prefer refresh_token (long user token) -> access_token (page token) -> metadata fields -> raw.tokenJson.access_token
     const userAccessToken = integration.refresh_token ?? integration.access_token ?? integration.metadata?.userAccessToken ?? integration.metadata?.pageAccessToken ?? integration.raw?.tokenJson?.access_token ?? null;
-    let rawAdAccount = integration.ad_account_id ?? integration.metadata?.adAccountId ?? integration.raw?.adAccountsJson?.data?.[0]?.account_id ?? process.env.AD_ACCOUNT_ID ?? null;
+
+    // Do NOT fall back to global env ad account — require per-user ad account. If missing, return safe meta null
+    const rawAdAccount = integration.ad_account_id ?? integration.metadata?.adAccountId ?? integration.raw?.adAccountsJson?.data?.[0]?.account_id ?? null;
 
     if (!userAccessToken || !rawAdAccount) {
-      // If metrics not precomputed and no token/adAccount, can't call Graph. Return stored info (if any) or error
-      return res.status(400).json({ error: "missing_token_or_adaccount", details: "Integration row missing access token or ad account id" });
+      // return safe shape — client will treat as not connected / no metrics
+      return res.status(200).json({
+        ok: true,
+        meta: { current: null, previous: null, change: null },
+        ranges: null,
+        raw: { note: "integration_missing_token_or_adAccount", debug: redactIntegrationForDebug(integration) },
+      });
     }
 
     const numericAdId = String(stripActPrefix(rawAdAccount));
-    if (!numericAdId) return res.status(400).json({ error: "adAccountId_unparsable" });
+    if (!numericAdId) {
+      return res.status(200).json({
+        ok: true,
+        meta: { current: null, previous: null, change: null },
+        ranges: null,
+        raw: { note: "adAccountId_unparsable", debug: redactIntegrationForDebug(integration) },
+      });
+    }
     const graphAdAccount = `act_${numericAdId}`;
 
     // compute ranges
@@ -98,8 +129,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     if (startQ && endQ) {
       const startDate = parseISODateString(startQ); const endDate = parseISODateString(endQ);
-      if (!startDate || !endDate) return res.status(400).json({ error: "Invalid start/end" });
-      if (startDate.getTime() > endDate.getTime()) return res.status(400).json({ error: "start must be <= end" });
+      if (!startDate || !endDate) return res.status(400).json({ ok: false, error: "Invalid start/end" });
+      if (startDate.getTime() > endDate.getTime()) return res.status(400).json({ ok: false, error: "start must be <= end" });
       const msPerDay = 24 * 60 * 60 * 1000;
       const lengthDays = Math.round((endDate.getTime() - startDate.getTime()) / msPerDay) + 1;
       const prevEnd = new Date(startDate.getTime() - msPerDay);
@@ -109,7 +140,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     } else if (rangeQ) {
       const preset = Array.isArray(rangeQ) ? rangeQ[0] : (rangeQ ?? "7d");
       const days = daysForPreset(preset);
-      if (!days) return res.status(400).json({ error: "Unsupported range preset." });
+      if (!days) return res.status(400).json({ ok: false, error: "Unsupported range preset." });
       const end = yesterday(); const start = new Date(end); start.setDate(end.getDate() - (days - 1));
       const prevEnd = new Date(start); prevEnd.setDate(start.getDate() - 1); const prevStart = new Date(prevEnd); prevStart.setDate(prevEnd.getDate() - (days - 1));
       currRange = { since: isoDate(start), until: isoDate(end) }; prevRange = { since: isoDate(prevStart), until: isoDate(prevEnd) };
@@ -199,11 +230,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           return { daily_budget_sum: dailySumMajor, lifetime_budget_sum: lifetimeSumMajor, count: rows.length, raw: info.json, ok: true, url: info.url };
         }
       }
-      return { daily_budget_sum: 0, lifetime_budget_sum: 0, count: 0, raw: { currRaw, prevRaw }, ok: false };
+      return { daily_budget_sum: 0, lifetime_budget_sum: 0, count: 0, raw: { currRaw: currRaw ?? null, prevRaw: prevRaw ?? null }, ok: false };
     }
 
     const budgetInfo = await fetchCampaignsBudget();
     const changePct = (curr: number | null, prev: number | null) => { const c = curr ?? 0; const p = prev ?? 0; if (p === 0) return c === 0 ? 0 : 100; return ((c - p) / Math.abs(p)) * 100; };
+
+    // Build final safe response. If Graph calls returned non-ok, still return ok:true but meta.current may be null
+    const gotMeaningful = (currAgg && (currAgg.spend || currAgg.reach || currAgg.conversions || currAgg.purchase_value));
+
+    if (!gotMeaningful) {
+      // No useful metrics — return safe null meta so client won't treat this as "connected"
+      return res.status(200).json({
+        ok: true,
+        ranges: { current: currRange, previous: prevRange },
+        meta: { current: null, previous: null, change: null },
+        raw: { note: "no_meaningful_metrics", debug: redactIntegrationForDebug(integration), debugGraph: { currRaw: currRaw ?? null, prevRaw: prevRaw ?? null, budgetInfo } },
+      });
+    }
 
     const response = {
       ok: true,
@@ -213,12 +257,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         previous: { total_spend: prevAgg.spend, total_reach: prevAgg.reach, avg_ctr: prevAgg.ctr, conversions: prevAgg.conversions, roas: prevAgg.roas, purchase_value: prevAgg.purchase_value },
         change: { total_spend_pct: changePct(currAgg.spend, prevAgg.spend), total_reach_pct: changePct(currAgg.reach, prevAgg.reach), avg_ctr_pct: changePct(currAgg.ctr, prevAgg.ctr), conversions_pct: changePct(currAgg.conversions, prevAgg.conversions), roas_pct: currAgg.roas === null || prevAgg.roas === null ? null : changePct(currAgg.roas, prevAgg.roas) },
       },
-      raw: { currentRaw: currRaw ?? null, previousRaw: prevRaw ?? null, budgetInfo, adAccountUsed: { numericAdId, graphAdAccount, original: rawAdAccount } },
+      raw: { currentRaw: currRaw ?? null, previousRaw: prevRaw ?? null, budgetInfo, adAccountUsed: { numericAdId, graphAdAccount, original: rawAdAccount }, integration: redactIntegrationForDebug(integration) },
     };
 
     return res.status(200).json(response);
   } catch (err: any) {
     console.error("integrations/metrics error:", err);
-    return res.status(500).json({ error: err?.message ?? String(err), stack: err?.stack ?? null });
+    return res.status(500).json({ ok: false, error: err?.message ?? String(err), stack: err?.stack ?? null });
   }
 }

@@ -1350,7 +1350,6 @@ return enhanced;
       toast.error("No generated image to proceed with");
       return;
     }
-
     setGeneratedImages((prev) => {
       const next = [
         pendingGeneratedImage!,
@@ -1358,7 +1357,6 @@ return enhanced;
       ];
       return next;
     });
-
     const confirmMsg = {
       role: "assistant",
       content: "User proceeded to publish with this creative.",
@@ -1370,9 +1368,7 @@ return enhanced;
     setPendingGeneratedImage(null);
     setShowPublishPanel(true);
   };
-
   /* -------------------- Caption & Publish flows -------------------- */
-
   const generateCaption = async (
     promptText: string,
     setResult: (text: string) => void
@@ -3042,3 +3038,5 @@ return enhanced;
 };
 
 export default CampaignCreate;
+
+
