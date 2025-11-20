@@ -26,7 +26,7 @@ const Footer: React.FC = () => {
     Company: [
       { name: 'About', href: '/About', type: 'route' },
       { name: 'Careers', href: '/Careers', type: 'route' },
-      { name: 'Blog', href: '/blog', type: 'route' },
+      { name: 'Blog', href: '/blogs', type: 'route' },
       { name: 'Press', href: '/press', type: 'route' },
     ],
     Resources: [

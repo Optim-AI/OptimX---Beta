@@ -1343,7 +1343,6 @@ const CampaignCreate: React.FC = () => {
       toast.error("No generated image to proceed with");
       return;
     }
-
     setGeneratedImages((prev) => {
       const next = [
         pendingGeneratedImage!,
@@ -1351,7 +1350,6 @@ const CampaignCreate: React.FC = () => {
       ];
       return next;
     });
-
     const confirmMsg = {
       role: "assistant",
       content: "User proceeded to publish with this creative.",
@@ -1363,9 +1361,7 @@ const CampaignCreate: React.FC = () => {
     setPendingGeneratedImage(null);
     setShowPublishPanel(true);
   };
-
   /* -------------------- Caption & Publish flows -------------------- */
-
   const generateCaption = async (
     promptText: string,
     setResult: (text: string) => void
@@ -3035,3 +3031,5 @@ const CampaignCreate: React.FC = () => {
 };
 
 export default CampaignCreate;
+
+

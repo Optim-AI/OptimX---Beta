@@ -248,52 +248,51 @@ export default function OnboardingInfoPage(): JSX.Element {
   };
 
   // Parallax & gentle tilt based on mouse position for subtle motion
-  // Parallax & gentle tilt based on mouse position for subtle motion
-useEffect(() => {
-  // Guard early if the container never mounts
-  if (!containerRef) return;
+  useEffect(() => {
+    // Guard early if the container never mounts
+    if (!containerRef) return;
 
-  function handleMove(e: MouseEvent) {
-    const containerEl = containerRef.current;
-    if (!containerEl) return; // <--- explicit runtime & TS-safe check
+    function handleMove(e: MouseEvent) {
+      const containerEl = containerRef.current;
+      if (!containerEl) return; // <--- explicit runtime & TS-safe check
 
-    const rect = containerEl.getBoundingClientRect();
-    const cx = rect.left + rect.width / 2;
-    const cy = rect.top + rect.height / 2;
-    const dx = (e.clientX - cx) / rect.width; // -0.5..0.5
-    const dy = (e.clientY - cy) / rect.height;
+      const rect = containerEl.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      const dx = (e.clientX - cx) / rect.width; // -0.5..0.5
+      const dy = (e.clientY - cy) / rect.height;
 
-    if (orbOuterRef.current) {
-      orbOuterRef.current.style.transform = `translate3d(${dx * 30}px, ${dy * 20}px, 0)`;
+      if (orbOuterRef.current) {
+        orbOuterRef.current.style.transform = `translate3d(${dx * 30}px, ${dy * 20}px, 0)`;
+      }
+      if (orbInnerRef.current) {
+        orbInnerRef.current.style.transform = `translate3d(${dx * 16}px, ${dy * 10}px, 0)`;
+      }
+      if (cardRef.current) {
+        const tiltX = dy * 6; // degrees
+        const tiltY = dx * -6;
+        cardRef.current.style.transform = `perspective(1000px) rotateX(${tiltX}deg) rotateY(${tiltY}deg) translateZ(0)`;
+      }
     }
-    if (orbInnerRef.current) {
-      orbInnerRef.current.style.transform = `translate3d(${dx * 16}px, ${dy * 10}px, 0)`;
+
+    function handleLeave() {
+      if (orbOuterRef.current) orbOuterRef.current.style.transform = "";
+      if (orbInnerRef.current) orbInnerRef.current.style.transform = "";
+      if (cardRef.current) cardRef.current.style.transform = "";
     }
-    if (cardRef.current) {
-      const tiltX = dy * 6; // degrees
-      const tiltY = dx * -6;
-      cardRef.current.style.transform = `perspective(1000px) rotateX(${tiltX}deg) rotateY(${tiltY}deg) translateZ(0)`;
-    }
-  }
 
-  function handleLeave() {
-    if (orbOuterRef.current) orbOuterRef.current.style.transform = "";
-    if (orbInnerRef.current) orbInnerRef.current.style.transform = "";
-    if (cardRef.current) cardRef.current.style.transform = "";
-  }
+    const el = containerRef.current;
+    // If element isn't mounted yet, no event listeners to attach.
+    if (!el) return;
 
-  const el = containerRef.current;
-  // If element isn't mounted yet, no event listeners to attach.
-  if (!el) return;
+    el.addEventListener("mousemove", handleMove);
+    el.addEventListener("mouseleave", handleLeave);
 
-  el.addEventListener("mousemove", handleMove);
-  el.addEventListener("mouseleave", handleLeave);
-
-  return () => {
-    el.removeEventListener("mousemove", handleMove);
-    el.removeEventListener("mouseleave", handleLeave);
-  };
-}, []); // refs are stable, empty deps are fine
+    return () => {
+      el.removeEventListener("mousemove", handleMove);
+      el.removeEventListener("mouseleave", handleLeave);
+    };
+  }, []); // refs are stable, empty deps are fine
 
 
   if (loading) return <div style={{ padding: 24 }}>Loading…</div>;
@@ -425,6 +424,33 @@ useEffect(() => {
             animation: "cardEntrance 700ms cubic-bezier(.2,.9,.3,1) both",
           }}
         >
+          {/* Back button placed on the container (card) top-left */}
+          <button
+            aria-label="Go back"
+            onClick={() => router.back()}
+            style={{
+              position: "absolute",
+              top: 14,
+              left: 14,
+              zIndex: 6,
+              height: 36,
+              width: 36,
+              borderRadius: 10,
+              border: "none",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "rgba(255,255,255,0.6)",
+              boxShadow: "0 6px 20px rgba(8,32,80,0.06)",
+              cursor: "pointer",
+              padding: 6,
+            }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <path d="M15 19l-7-7 7-7" stroke="#0f172a" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
+
           {/* Inner layered background */}
           <div
             aria-hidden
@@ -565,9 +591,9 @@ useEffect(() => {
                 style={{ width: 56, height: 56, objectFit: "contain", display: "block" }}
               />
 
+              {/* No space between Optim and X; X colored */}
               <div style={{ fontSize: 24, fontWeight: 800, color: "#0f172a", lineHeight: 1 }}>
-                <span>Optim</span>
-                <span style={{ color: colors.primary, marginLeft: 6 }}>X</span>
+                <span>Optim</span><span style={{ color: colors.primary }}>X</span>
               </div>
 
               <div style={{ fontSize: 18, color: "#111827", fontWeight: 600 }}>

@@ -3,15 +3,12 @@
 
 import React, { useEffect, useState, useMemo } from "react";
 import type { JSX } from "react"; // ✅ Fix: allows JSX.Element type without TS errors
-import Link from "next/link";
 import Sidebar from "../app/web/src/components/Sidebar";
 import { apiFetch } from "../lib/apiFetch";
 import { supabase } from "../lib/supabaseClient";
-import colors from "../lib/colors";
 
 import { Card, CardContent, CardHeader, CardTitle } from "../app/web/src/components/ui/card";
 import { Button } from "../app/web/src/components/ui/button";
-import { Badge } from "../app/web/src/components/ui/badge";
 
 import {
   BarChart3,
@@ -26,7 +23,6 @@ import {
   Area,
   BarChart,
   Bar,
-  ComposedChart,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -125,7 +121,6 @@ function normalizeRec(x: any): Recommendation {
   const id = x.id ?? (Math.random() + "").slice(2);
   const title = x.title ?? x.heading ?? x.name ?? (typeof x === "string" ? x : undefined);
   const impact = x.impact ?? x.level ?? x.priority;
-  const reason = x.reason ?? x.explanation ?? x.summary ?? x.description ?? (typeof x === "string" ? x : undefined);
   let actions: string[] = [];
   if (Array.isArray(x.actions)) actions = x.actions;
   else if (typeof x.actions === "string") {
@@ -138,11 +133,10 @@ function normalizeRec(x: any): Recommendation {
   const campaignId = x.campaignId ?? x.campaign_id ?? x.c;
   const confidence = x.confidence ?? x.conf ?? undefined;
   const effort = x.effort ?? x.estimated_effort ?? undefined;
-  return { id, title, impact, reason, actions, estimate, campaignId, resolved: false, confidence, effort };
+  return { id, title, impact, reason: x.reason, actions, estimate, campaignId, resolved: false, confidence, effort };
 }
 
 /* -------------------- FIXED Tooltip -------------------- */
-/* Recharts TS typings are broken → use any */
 
 const GenericTooltip = (props: any) => {
   const { active, payload, label } = props;
@@ -169,7 +163,7 @@ const GenericTooltip = (props: any) => {
   );
 };
 
-/* -------------------- JSON extraction -------------------- */
+/* -------------------- JSON extraction helpers -------------------- */
 
 function extractJsonFromText(text: string): any | null {
   if (!text) return null;
@@ -220,7 +214,6 @@ function splitTextIntoRecommendations(text: string): string[] {
 /* -------------------- component -------------------- */
 
 export default function Analytics(): JSX.Element {
-  /* STATE – unchanged */
   const [statuses, setStatuses] = useState<Record<string, any> | null>(null);
   const [statusLoading, setStatusLoading] = useState(false);
 
@@ -229,8 +222,9 @@ export default function Analytics(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
 
   const [recList, setRecList] = useState<Recommendation[]>([]);
-  const [aiRaw, setAiRaw] = useState<any | null>(null);
   const [recLoading, setRecLoading] = useState(false);
+  // only show recs after user clicks
+  const [recsRequested, setRecsRequested] = useState(false);
 
   const ranges = ["1d", "7d", "15d", "1m", "3m", "6m", "1y", "custom"] as const;
   const [selectedRange, setSelectedRange] = useState<typeof ranges[number]>("7d");
@@ -245,12 +239,10 @@ export default function Analytics(): JSX.Element {
 
   const [series, setSeries] = useState<TimeSeriesPoint[]>([]);
 
-  /* -------------------- EFFECT -------------------- */
-
   useEffect(() => {
     fetchCampaigns();
     fetchStatuses();
-    fetchMetrics();
+    fetchMetrics({ range: selectedRange });
 
     function onStorage(e: StorageEvent) {
       if (e.key === LS_KEY) {
@@ -261,21 +253,68 @@ export default function Analytics(): JSX.Element {
     }
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
-  }, []);
-
-  /* -------------------- fetchCampaigns -------------------- */
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function fetchCampaigns() {
     setCampaignsLoading(true);
+
     try {
+      // get signed-in user id (client side)
+      const { data: sessionData, error: sessionErr } = await supabase.auth.getSession();
+      const user = (sessionData as any)?.session?.user ?? null;
+      if (!user || !user.id) {
+        // not signed in — return empty list
+        setCampaigns([]);
+        setCampaignsLoading(false);
+        return;
+      }
+      const uid = user.id;
+
+      // Attempt server-side filter using common user-id column names.
+      // If your campaigns table uses a different column for ownership, replace with that column.
+      // This uses an OR so we only fetch rows that match the current user.
+      const orFilter = `user_id.eq.${uid},owner.eq.${uid},created_by.eq.${uid},profile_id.eq.${uid}`;
+
       const { data, error } = await supabase
         .from("campaigns")
         .select("*")
+        .or(orFilter)
         .order("created_at", { ascending: false });
 
       if (error) {
-        console.error("Error fetching campaigns:", error);
-        setCampaigns([]);
+        console.error("Error fetching campaigns (user-scoped):", error);
+        // fallback: fetch all and filter client-side (defensive)
+        const { data: allData, error: allErr } = await supabase
+          .from("campaigns")
+          .select("*")
+          .order("created_at", { ascending: false });
+
+        if (allErr || !Array.isArray(allData)) {
+          setCampaigns([]);
+        } else {
+          const filtered = (allData as any[]).filter((c) =>
+            [c.user_id, c.owner, c.created_by, c.profile_id, c.userId, c.owner_id].some(
+              (v) => v === uid
+            )
+          );
+          const normalized = filtered.map((c) => ({
+            id: c.id ?? (c.name || Math.random()).toString(),
+            name: c.name ?? "Untitled",
+            campaign_type: c.campaign_type ?? c.type ?? null,
+            image_url: c.image_url ?? null,
+            is_published: !!c.is_published,
+            created_at: c.created_at ?? undefined,
+            spend: c.spend_inr ?? c.spend ?? undefined,
+            roas: c.roas ?? undefined,
+            ctr: c.ctr ?? undefined,
+            impressions: c.impressions ?? undefined,
+            platform: c.platform ?? c.source ?? (c.campaign_type ?? "Meta"),
+            conversions: c.conversions ?? 0,
+            budget: c.budget_inr ?? c.budget ?? undefined,
+          })) as Campaign[];
+
+          setCampaigns(normalized.slice(0, 3));
+        }
       } else {
         const normalized = (data as any[]).map((c) => ({
           id: c.id ?? (c.name || Math.random()).toString(),
@@ -292,15 +331,17 @@ export default function Analytics(): JSX.Element {
           conversions: c.conversions ?? 0,
           budget: c.budget_inr ?? c.budget ?? undefined,
         })) as Campaign[];
-        setCampaigns(normalized);
-      }
-    } catch {
-      setCampaigns([]);
-    }
-    setCampaignsLoading(false);
-  }
 
-  /* -------------------- fetchStatuses -------------------- */
+        // only 3 campaigns
+        setCampaigns(normalized.slice(0, 3));
+      }
+    } catch (err) {
+      console.error("fetchCampaigns unexpected error:", err);
+      setCampaigns([]);
+    } finally {
+      setCampaignsLoading(false);
+    }
+  }
 
   async function fetchStatuses() {
     setStatusLoading(true);
@@ -315,17 +356,12 @@ export default function Analytics(): JSX.Element {
     setStatusLoading(false);
   }
 
-  /* -------------------- meta connection check -------------------- */
-
   function isMetaConnectedLocal(s?: Record<string, any> | null) {
     const st = s ?? statuses;
     if (!st) return false;
-
     if (st.meta === true) return true;
-
     if (typeof st.meta === "object" && (st.meta.connected === true || st.meta === true))
       return true;
-
     for (const [k, v] of Object.entries(st)) {
       const low = k.toLowerCase();
       if (low.includes("meta") || low.includes("facebook") || low.includes("instagram")) {
@@ -337,9 +373,8 @@ export default function Analytics(): JSX.Element {
     return false;
   }
 
-  /* -------------------- fetchMetrics -------------------- */
-
-  async function fetchMetrics() {
+  // fetchMetrics accepts explicit options so clicks update immediately
+  async function fetchMetrics(opts?: { range?: string; start?: string; end?: string }) {
     setLoadingMeta(true);
     setError(null);
     let token: string | null = null;
@@ -353,7 +388,14 @@ export default function Analytics(): JSX.Element {
       const headers: any = {};
       if (token) headers["Authorization"] = `Bearer ${token}`;
       const query = new URLSearchParams();
-      query.set("range", selectedRange === "custom" ? "7d" : selectedRange);
+
+      if (opts?.start && opts?.end) {
+        query.set("start", opts.start);
+        query.set("end", opts.end);
+      } else {
+        const r = opts?.range ?? selectedRange;
+        query.set("range", r === "custom" ? "7d" : r);
+      }
 
       const resp = await fetch(`/api/integrations/metrics?${query.toString()}`, {
         headers,
@@ -374,8 +416,6 @@ export default function Analytics(): JSX.Element {
     }
     setLoadingMeta(false);
   }
-
-  /* -------------------- hydrateUiFromMeta -------------------- */
 
   function safeNum(v: any, fallback = 0) {
     if (v == null || v === "") return fallback;
@@ -458,7 +498,7 @@ export default function Analytics(): JSX.Element {
       }
     }
 
-    /* --- build recommendations (unchanged logic, only type fix) --- */
+    // build suggestions but only set into state if user asked
     const suggestions: Recommendation[] = [];
 
     if (summary?.meta?.current) {
@@ -553,20 +593,20 @@ export default function Analytics(): JSX.Element {
       );
     }
 
-    const deduped: Record<string, Recommendation> = {};
-    for (const s of suggestions) {
-      if (!s.id) s.id = (Math.random() + "").slice(2);
-      deduped[s.id] = s;
+    if (recsRequested) {
+      const deduped: Record<string, Recommendation> = {};
+      for (const s of suggestions) {
+        if (!s.id) s.id = (Math.random() + "").slice(2);
+        deduped[s.id] = s;
+      }
+      setRecList(Object.values(deduped));
     }
-    setRecList(Object.values(deduped));
   }
-
-  /* -------------------- askRecommendations -------------------- */
 
   async function askRecommendations() {
     setRecLoading(true);
+    setRecsRequested(true);
     setRecList([]);
-    setAiRaw(null);
 
     try {
       const metricsPayload = {
@@ -581,8 +621,8 @@ export default function Analytics(): JSX.Element {
       });
 
       const j = await resp.json();
-      setAiRaw(j);
 
+      // parse recommendations from response (best-effort)
       let parsed: any = j?.parsed ?? null;
 
       if (!parsed && j?.raw?.choices?.[0]?.message?.content)
@@ -676,18 +716,16 @@ export default function Analytics(): JSX.Element {
         }
       }
 
+      // final set to state (only minimal fields will show in UI)
       setRecList(deduped);
 
     } catch (err: any) {
       console.error("askRecommendations error", err);
-      setAiRaw({ error: String(err) });
       setRecList([]);
     }
 
     setRecLoading(false);
   }
-
-  /* -------------------- resolveRecommendation -------------------- */
 
   function resolveRecommendation(id?: string) {
     if (!id) return;
@@ -739,15 +777,13 @@ export default function Analytics(): JSX.Element {
     );
   }
 
-  /* -------------------- date range actions -------------------- */
-
   function handleRangeClick(r: typeof ranges[number]) {
     setSelectedRange(r);
 
     if (r !== "custom") {
       setCustomStart("");
       setCustomEnd("");
-      fetchMetrics();
+      fetchMetrics({ range: r });
     }
   }
 
@@ -766,28 +802,7 @@ export default function Analytics(): JSX.Element {
     setLoadingMeta(true);
 
     try {
-      let token: string | null = null;
-      try {
-        const { data } = await supabase.auth.getSession();
-        token = (data as any)?.session?.access_token;
-      } catch {}
-
-      const headers: any = {};
-      if (token) headers["Authorization"] = `Bearer ${token}`;
-
-      const q = new URLSearchParams();
-      q.set("start", customStart);
-      q.set("end", customEnd);
-
-      const resp = await fetch(`/api/integrations/metrics?${q.toString()}`, {
-        headers,
-      });
-
-      if (resp.ok) {
-        const j = await resp.json();
-        setMetaSummary(j);
-        hydrateUiFromMeta(j);
-      } else setError(await resp.text());
+      await fetchMetrics({ start: customStart, end: customEnd });
     } catch (err: any) {
       setError(String(err));
     }
@@ -798,8 +813,6 @@ export default function Analytics(): JSX.Element {
   function goToIntegrations() {
     window.location.href = "/integrations";
   }
-
-  /* -------------------- derived UI values -------------------- */
 
   const metaSpend = metaSummary?.meta?.current?.total_spend ?? 0;
   const metaBudgetDaily = metaSummary?.meta?.current?.budget_estimate_daily ?? null;
@@ -820,7 +833,8 @@ export default function Analytics(): JSX.Element {
             ((metaSummary.meta.current.total_reach ?? 0) *
               ((metaSummary.meta.current.avg_ctr ?? 0) / 100))
           ).toLocaleString()}`
-        : "—",
+
+      : "—",
       change: pctDisplay(metaSummary?.meta?.change?.avg_ctr_pct),
       trend: (metaSummary?.meta?.change?.avg_ctr_pct ?? 0) > 0 ? "up" : "down",
     },
@@ -864,18 +878,20 @@ export default function Analytics(): JSX.Element {
 
   const selectedCampaign = campaigns.find((c) => c.id === selectedCampaignId) ?? null;
 
-  const rightPanelRecs = selectedCampaignId
-    ? recList.filter((r) => r.campaignId === selectedCampaignId || !r.campaignId)
-    : recList.filter((r) => !r.campaignId);
+  // Only show recs if user requested them; keep only relevant recs for selected campaign if set
+  const rightPanelRecs = recsRequested
+    ? (selectedCampaignId
+        ? recList.filter((r) => r.campaignId === selectedCampaignId || !r.campaignId)
+        : recList)
+    : [];
 
   const dateRangeLabel = useMemo(() => {
-    if (!series.length) return "";
-    const first = series[0].date;
-    const last = series[series.length - 1].date;
-    return `${first} → ${last}`;
-  }, [series]);
-
-  /* -------------------- RENDER -------------------- */
+    if (selectedRange === "custom") {
+      if (customStart && customEnd) return `${customStart} → ${customEnd}`;
+      return "custom";
+    }
+    return selectedRange;
+  }, [selectedRange, customStart, customEnd]);
 
   return (
     <div className="min-h-screen flex bg-slate-50">
@@ -898,7 +914,7 @@ export default function Analytics(): JSX.Element {
               onClick={() => {
                 fetchCampaigns();
                 fetchStatuses();
-                fetchMetrics();
+                fetchMetrics({ range: selectedRange });
               }}
               className="px-3 py-2 text-sm rounded-lg border border-slate-300 hover:bg-slate-100"
             >
@@ -1025,7 +1041,7 @@ export default function Analytics(): JSX.Element {
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={series}>
                       <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="date" tick={{ fontSize: 12 }} />
+                      <XAxis dataKey="date" hide />
                       <YAxis />
                       <Tooltip content={<GenericTooltip />} />
                       <Legend />
@@ -1063,7 +1079,7 @@ export default function Analytics(): JSX.Element {
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={series}>
                       <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="date" />
+                      <XAxis dataKey="date" hide />
                       <YAxis />
                       <Tooltip content={<GenericTooltip />} />
                       <Area
@@ -1097,7 +1113,7 @@ export default function Analytics(): JSX.Element {
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={series}>
                       <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="date" />
+                      <XAxis dataKey="date" hide />
                       <YAxis />
                       <Tooltip content={<GenericTooltip />} />
                       <Bar dataKey="spend" name="Spend (INR)" fill="#3FA7FF" />
@@ -1127,7 +1143,7 @@ export default function Analytics(): JSX.Element {
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={series}>
                       <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="date" />
+                      <XAxis dataKey="date" hide />
                       <YAxis
                         domain={[0, "dataMax + 1"]}
                         tickFormatter={(v) => `${v}%`}
@@ -1164,7 +1180,7 @@ export default function Analytics(): JSX.Element {
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={series}>
                       <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="date" />
+                      <XAxis dataKey="date" hide />
                       <YAxis />
                       <Tooltip content={<GenericTooltip />} />
                       <Bar dataKey="conversions" name="Conversions" fill="#16A34A" />
@@ -1194,7 +1210,7 @@ export default function Analytics(): JSX.Element {
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={series}>
                       <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="date" />
+                      <XAxis dataKey="date" hide />
                       <YAxis />
                       <Tooltip content={<GenericTooltip />} />
                       <Area
@@ -1211,6 +1227,11 @@ export default function Analytics(): JSX.Element {
                 </div>
               </CardContent>
             </Card>
+          </div>
+
+          {/* Unified time-range label (replaces per-chart x-axis labels) */}
+          <div className="text-center text-sm text-slate-500 mt-3">
+            {dateRangeLabel}
           </div>
         </div>
 
@@ -1274,8 +1295,12 @@ export default function Analytics(): JSX.Element {
           </p>
         </div>
 
-        {recLoading ? (
+        {recLoading && recsRequested ? (
           <div className="text-sm text-slate-500">Generating recommendations…</div>
+        ) : !recsRequested ? (
+          <div className="text-sm text-slate-500">
+            No recommendations yet. Click "Get Recommendations".
+          </div>
         ) : rightPanelRecs.length > 0 ? (
           <div className="space-y-3">
             {rightPanelRecs.map((r) => (
@@ -1286,15 +1311,10 @@ export default function Analytics(): JSX.Element {
                 }`}
               >
                 <div className="flex justify-between items-start">
-                  <div>
-                    <div className="font-semibold text-slate-800">
-                      {r.title}
-                    </div>
-                    {r.reason && (
-                      <div className="text-sm text-gray-600 mt-1">
-                        {r.reason}
-                      </div>
-                    )}
+                  <div className="pr-3">
+                    <div className="font-semibold text-slate-800">{r.title}</div>
+
+                    {/* ONLY show actions (if any) — minimal UI */}
                     {r.actions && r.actions.length > 0 && (
                       <ul className="list-disc ml-5 mt-3 text-sm space-y-1">
                         {r.actions.map((a, i) => (
@@ -1304,7 +1324,7 @@ export default function Analytics(): JSX.Element {
                     )}
                   </div>
 
-                  <div className="text-right">
+                  <div className="text-right flex flex-col items-end gap-2">
                     <div
                       className={`text-xs px-2 py-1 rounded ${
                         r.impact === "High"
@@ -1314,10 +1334,10 @@ export default function Analytics(): JSX.Element {
                           : "bg-gray-400 text-white"
                       }`}
                     >
-                      {r.impact}
+                      {r.impact ?? "—"}
                     </div>
 
-                    <div className="mt-2">
+                    <div>
                       <button
                         onClick={() => resolveRecommendation(r.id)}
                         className="px-3 py-1 text-sm rounded bg-green-600 text-white hover:bg-green-700"
@@ -1327,24 +1347,12 @@ export default function Analytics(): JSX.Element {
                     </div>
                   </div>
                 </div>
-
-                {r.estimate && (
-                  <div className="text-xs text-gray-500 mt-3">{r.estimate}</div>
-                )}
-
-                {r.campaignId && (
-                  <div className="text-xs text-slate-400 mt-2">
-                    Campaign:{" "}
-                    {campaigns.find((c) => c.id === r.campaignId)?.name ??
-                      r.campaignId}
-                  </div>
-                )}
               </div>
             ))}
           </div>
         ) : (
           <div className="text-sm text-slate-500">
-            No recommendations yet. Click "Get Recommendations".
+            No recommendations found for the selected scope.
           </div>
         )}
       </aside>

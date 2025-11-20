@@ -1,3 +1,4 @@
+// pages/integrations.tsx
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
@@ -33,8 +34,6 @@ const PLATFORMS: Platform[] = [
   },
 ];
 
-const LS_KEY = "integrations_status_v1";
-
 /* ---------- color tokens from your file (graceful fallback) ---------- */
 const {
   green100,
@@ -47,6 +46,9 @@ const {
 
 export default function IntegrationsPage() {
   const router = useRouter();
+  const [userId, setUserId] = useState<string | null>(null);
+
+  // statuses are per-user now; key is platform -> boolean
   const [statuses, setStatuses] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
@@ -54,80 +56,92 @@ export default function IntegrationsPage() {
   const pollRef = useRef<number | null>(null);
   const crossOriginSeen = useRef<Record<string, boolean>>({});
 
-  function isPopupClosed(popup: Window | null) {
+  const isPopupClosed = (popup: Window | null) => {
     try {
       return !popup || popup.closed;
     } catch {
       return true;
     }
-  }
+  };
 
-  /* ---------- Fetch integration status ---------- */
-  const fetchStatuses = async () => {
-    setLoading(true);
+  // Namespaced LS key per user to avoid cross-user leakage
+  const LS_KEY_FOR = (uid: string | null) => `integrations_status_v1:${uid ?? "anon"}`;
 
-    // 1) Supabase app_settings.integrations_flags
+  /* ---------- get signed-in user ---------- */
+  const ensureUser = async (): Promise<string | null> => {
     try {
-      const { data, error } = await supabase
-        .from("app_settings")
-        .select("value")
-        .eq("key", "integrations_flags")
-        .maybeSingle();
-
-      if (!error && data && (data as any).value !== undefined) {
-        let val: any = (data as any).value;
-        if (typeof val === "string") {
-          try {
-            val = JSON.parse(val);
-          } catch {}
-        }
-
-        const normalized: Record<string, boolean> = {};
-        PLATFORMS.forEach((p) => {
-          normalized[p.id] = !!(val?.[p.id] ?? false);
-        });
-
-        setStatuses(normalized);
-        localStorage.setItem(LS_KEY, JSON.stringify(normalized));
-        setLoading(false);
-        return;
+      const { data, error } = await supabase.auth.getUser();
+      if (error) {
+        console.error("supabase.auth.getUser error:", error);
+        return null;
       }
-    } catch {}
+      const u = (data as any)?.user ?? null;
+      if (!u) return null;
+      return u.id as string;
+    } catch (err) {
+      console.error("getUser failed:", err);
+      return null;
+    }
+  };
 
-    // 2) API fallback
-    try {
-      const res = await apiFetch("/api/integrations/status");
-      if (!res.ok) throw new Error();
-      const data = await res.json();
-
-      const next: Record<string, boolean> = {};
-      PLATFORMS.forEach((p) => (next[p.id] = !!data[p.id]));
-
-      setStatuses(next);
-      localStorage.setItem(LS_KEY, JSON.stringify(next));
+  /* ---------- Fetch integration status (user scoped) ---------- */
+  const fetchStatuses = async (uid: string | null) => {
+    setLoading(true);
+    if (!uid) {
+      setStatuses({});
       setLoading(false);
       return;
-    } catch {}
+    }
 
-    // 3) LocalStorage fallback
+    const userScopedApi = (path: string) => {
+      // append userId to ensure server reads user-scoped data
+      const sep = path.includes("?") ? "&" : "?";
+      return `${path}${sep}userId=${encodeURIComponent(uid)}`;
+    };
+
+    // 1) Prefer server API (user-scoped)
     try {
-      const raw = localStorage.getItem(LS_KEY);
+      const res = await apiFetch(userScopedApi("/api/integrations/status"));
+      if (res.ok) {
+        const data = await res.json();
+        const next: Record<string, boolean> = {};
+        PLATFORMS.forEach((p) => (next[p.id] = !!data[p.id]));
+        setStatuses(next);
+        try {
+          localStorage.setItem(LS_KEY_FOR(uid), JSON.stringify(next));
+        } catch {}
+        setLoading(false);
+        return;
+      } else {
+        console.warn("user-scoped /api/integrations/status returned non-ok", res.status);
+      }
+    } catch (err) {
+      console.debug("user-scoped status fetch failed, falling back to local cache", err);
+    }
+
+    // 2) LocalStorage fallback (user-scoped)
+    try {
+      const raw = localStorage.getItem(LS_KEY_FOR(uid));
       if (raw) {
         setStatuses(JSON.parse(raw));
         setLoading(false);
         return;
       }
-    } catch {}
+    } catch (err) {
+      console.debug("localStorage read failed:", err);
+    }
 
-    // 4) Default false
+    // 3) Default: mark all false for safety
     const initial: Record<string, boolean> = {};
     PLATFORMS.forEach((p) => (initial[p.id] = false));
     setStatuses(initial);
-    localStorage.setItem(LS_KEY, JSON.stringify(initial));
+    try {
+      localStorage.setItem(LS_KEY_FOR(uid), JSON.stringify(initial));
+    } catch {}
     setLoading(false);
   };
 
-  /* ---------- Popup + OAuth polling ---------- */
+  /* ---------- Popup + OAuth polling (user scoped) ---------- */
   const openPopup = (url: string, name = "oauth_popup") => {
     const w = 900,
       h = 700;
@@ -140,7 +154,7 @@ export default function IntegrationsPage() {
     return popup;
   };
 
-  const pollStatusFor = (platformId: string, timeoutMs = 60000) => {
+  const pollStatusFor = (platformId: string, uid: string | null, timeoutMs = 60000) => {
     const start = Date.now();
     crossOriginSeen.current[platformId] = false;
 
@@ -149,17 +163,19 @@ export default function IntegrationsPage() {
     pollRef.current = window.setInterval(async () => {
       try {
         if (isPopupClosed(popupRef.current)) {
+          // popup closed — check if cross-origin handshake happened
           if (crossOriginSeen.current[platformId]) {
             setStatuses((s) => {
               const next = { ...s, [platformId]: true };
-              localStorage.setItem(LS_KEY, JSON.stringify(next));
+              try { if (uid) localStorage.setItem(LS_KEY_FOR(uid), JSON.stringify(next)); } catch {}
               return next;
             });
             localStorage.removeItem("pending_connect");
             setMessage(`${platformId} connected`);
             setTimeout(() => setMessage(null), 2000);
           } else {
-            await fetchStatuses();
+            // try fetching server-side user-scoped statuses once more
+            await fetchStatuses(uid);
           }
 
           clearInterval(pollRef.current!);
@@ -169,13 +185,14 @@ export default function IntegrationsPage() {
         }
 
         try {
+          // try to inspect popup's location for success query param (if same-origin)
           if (popupRef.current?.location?.href) {
             const u = new URL(popupRef.current.location.href);
             const q = u.searchParams.get("connected");
             if (q === platformId) {
               setStatuses((s) => {
                 const next = { ...s, [platformId]: true };
-                localStorage.setItem(LS_KEY, JSON.stringify(next));
+                try { if (uid) localStorage.setItem(LS_KEY_FOR(uid), JSON.stringify(next)); } catch {}
                 return next;
               });
               popupRef.current.close();
@@ -189,23 +206,32 @@ export default function IntegrationsPage() {
             }
           }
         } catch {
+          // cross-origin — mark that we've seen cross-origin and rely on server-side flags
           crossOriginSeen.current[platformId] = true;
         }
 
-        const res = await apiFetch("/api/integrations/status");
-        if (res.ok) {
-          const data = await res.json();
-          if (data[platformId]) {
-            setStatuses((s) => ({ ...s, [platformId]: true }));
-            localStorage.removeItem("pending_connect");
-            popupRef.current?.close?.();
-            setMessage(`${platformId} connected`);
-            setTimeout(() => setMessage(null), 2000);
-            clearInterval(pollRef.current!);
-            pollRef.current = null;
-            return;
+        // Query user-scoped status API
+        try {
+          const uidSuffix = uid ? `?userId=${encodeURIComponent(uid)}` : "";
+          const res = await apiFetch(`/api/integrations/status${uidSuffix}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data[platformId]) {
+              setStatuses((s) => {
+                const next = { ...s, [platformId]: true };
+                try { if (uid) localStorage.setItem(LS_KEY_FOR(uid), JSON.stringify(next)); } catch {}
+                return next;
+              });
+              localStorage.removeItem("pending_connect");
+              popupRef.current?.close?.();
+              setMessage(`${platformId} connected`);
+              setTimeout(() => setMessage(null), 2000);
+              clearInterval(pollRef.current!);
+              pollRef.current = null;
+              return;
+            }
           }
-        }
+        } catch {}
       } catch {}
 
       if (Date.now() - start > timeoutMs) {
@@ -220,7 +246,7 @@ export default function IntegrationsPage() {
     }, 1200);
   };
 
-  /* ---------- Supabase token ---------- */
+  /* ---------- Supabase token (used for popup query param) ---------- */
   const getSupabaseAccessToken = async (): Promise<string | null> => {
     try {
       const { data } = await supabase.auth.getSession();
@@ -230,9 +256,14 @@ export default function IntegrationsPage() {
     }
   };
 
-  /* ---------- Connect ---------- */
+  /* ---------- Connect (popup) ---------- */
   const handleConnect = async (platform: Platform) => {
     if (!platform.authPath) return;
+    if (!userId) {
+      setMessage("Please sign in first");
+      setTimeout(() => setMessage(null), 2000);
+      return;
+    }
 
     try {
       let url = platform.authPath;
@@ -241,32 +272,42 @@ export default function IntegrationsPage() {
       try {
         const u = new URL(platform.authPath, window.location.origin);
         if (token) u.searchParams.set("sb", token);
+        // mark user in popup flow (server should respect current session or userId)
+        u.searchParams.set("userId", userId);
         url = u.toString();
       } catch {}
 
       const popup = openPopup(url, `oauth_${platform.id}`);
       popupRef.current = popup;
       localStorage.setItem("pending_connect", platform.id);
-      pollStatusFor(platform.id);
+      pollStatusFor(platform.id, userId);
     } catch {
       setMessage("Popup blocked — allow popups");
       setTimeout(() => setMessage(null), 2500);
     }
   };
 
-  /* ---------- Disconnect ---------- */
+  /* ---------- Disconnect (user scoped) ---------- */
   const handleDisconnect = async (platformId: string) => {
+    if (!userId) {
+      setMessage("Please sign in first");
+      setTimeout(() => setMessage(null), 2000);
+      return;
+    }
+
     try {
-      await apiFetch("/api/integrations/disconnect", {
+      const res = await apiFetch("/api/integrations/disconnect", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ platform: platformId }),
+        body: JSON.stringify({ platform: platformId, userId }),
       });
 
-      await fetchStatuses();
+      if (!res.ok) throw new Error("disconnect failed");
+      await fetchStatuses(userId);
       setMessage("Disconnected");
       setTimeout(() => setMessage(null), 2000);
-    } catch {
+    } catch (err) {
+      console.error("disconnect error:", err);
       setMessage("Failed to disconnect");
       setTimeout(() => setMessage(null), 2000);
     }
@@ -274,16 +315,28 @@ export default function IntegrationsPage() {
 
   /* ---------- Effects ---------- */
   useEffect(() => {
-    fetchStatuses();
+    (async () => {
+      const uid = await ensureUser();
+      if (!uid) {
+        // redirect to signin if not authenticated
+        router.push("/auth/signin");
+        return;
+      }
+      setUserId(uid);
+      await fetchStatuses(uid);
+    })();
 
     const onMessage = (e: MessageEvent) => {
       try {
         const data = e.data;
-        if (data?.type === "oauth_connected" && data.platform) {
+        if (data?.type === "oauth_connected" && data.platform && data.userId) {
+          // only accept messages that match current user
+          if (userId && data.userId !== userId) return;
+
           const p = data.platform;
           setStatuses((s) => {
             const next = { ...s, [p]: true };
-            localStorage.setItem(LS_KEY, JSON.stringify(next));
+            try { if (userId) localStorage.setItem(LS_KEY_FOR(userId), JSON.stringify(next)); } catch {}
             return next;
           });
           popupRef.current?.close?.();
@@ -302,7 +355,8 @@ export default function IntegrationsPage() {
       window.removeEventListener("message", onMessage);
       if (pollRef.current) clearInterval(pollRef.current);
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
 
   /* ---------- UI ---------- */
   return (

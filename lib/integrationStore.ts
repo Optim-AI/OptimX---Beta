@@ -6,7 +6,20 @@ export type PlatformId = (typeof PLATFORMS)[number];
 
 type IntegrationRow = any;
 
-/** Get integration flags from app_settings (init if missing) */
+/**
+ * NOTE (security):
+ * - This module exposes two different kinds of helpers:
+ *   1) Global (admin) app_settings flags: getStatuses / setStatus
+ *   2) Per-user integration helpers: getUserStatuses / setUserStatusForUser,
+ *      saveIntegration(userId optional) and readSavedIntegration(userId optional)
+ *
+ * By default the integration read/write helpers are now user-scoped when a userId
+ * is passed. They will NOT silently update or return another user's row.
+ */
+
+/* -------------------- Admin/global app_settings helpers -------------------- */
+
+/** Get integration flags from app_settings (init if missing) — global (admin) flags */
 export async function getStatuses(): Promise<Record<string, boolean>> {
   const key = "integrations_flags";
   try {
@@ -31,7 +44,7 @@ export async function getStatuses(): Promise<Record<string, boolean>> {
   }
 }
 
-/** Set connection flag in app_settings */
+/** Set connection flag in app_settings — global (admin) flags */
 export async function setStatus(platformId: string, connected: boolean): Promise<void> {
   const key = "integrations_flags";
   const current = await getStatuses();
@@ -42,8 +55,58 @@ export async function setStatus(platformId: string, connected: boolean): Promise
   if (error) throw error;
 }
 
-/** Save or update integration row. Important: store pageAccessToken in access_token column. */
-export async function saveIntegration(savedObj: any, options?: { userId?: string | null; provider?: string }) {
+/* -------------------- Per-user integration flag helpers -------------------- */
+
+/** Get per-user integration flags stored in app_settings_user (creates if missing) */
+export async function getUserStatuses(userId: string): Promise<Record<string, boolean>> {
+  if (!userId) throw new Error("getUserStatuses requires userId");
+  const key = `integrations_flags_user:${userId}`;
+  try {
+    const { data, error } = await supabaseAdmin
+      .from("app_settings")
+      .select("value")
+      .eq("key", key)
+      .maybeSingle();
+    let val = data?.value ?? null;
+    if (!val) {
+      val = {};
+      PLATFORMS.forEach((p) => (val[p] = false));
+      await supabaseAdmin.from("app_settings").insert([{ key, value: val }]);
+    } else {
+      PLATFORMS.forEach((p) => { if (typeof val[p] === "undefined") val[p] = false; });
+    }
+    return val;
+  } catch (err) {
+    const fallback: Record<string, boolean> = {};
+    PLATFORMS.forEach((p) => (fallback[p] = false));
+    return fallback;
+  }
+}
+
+/** Set per-user integration flag in app_settings (user-scoped) */
+export async function setUserStatusForUser(userId: string, platformId: string, connected: boolean): Promise<void> {
+  if (!userId) throw new Error("setUserStatusForUser requires userId");
+  const key = `integrations_flags_user:${userId}`;
+  const current = await getUserStatuses(userId);
+  current[platformId] = connected;
+  const { error } = await supabaseAdmin
+    .from("app_settings")
+    .upsert([{ key, value: current }], { onConflict: "key" });
+  if (error) throw error;
+}
+
+/* -------------------- Integration rows (user-scoped) -------------------- */
+
+/**
+ * Save or update integration row.
+ * - IMPORTANT: store pageAccessToken in access_token column.
+ * - If userId is provided, this will only upsert rows for that user (no cross-user updates).
+ * - If userId is NOT provided, behavior is admin-style: find an existing provider row (last updated) or insert new.
+ */
+export async function saveIntegration(
+  savedObj: any,
+  options?: { userId?: string | null; provider?: string }
+) {
   const provider = options?.provider ?? "meta";
   const userId = options?.userId ?? null;
 
@@ -79,10 +142,10 @@ export async function saveIntegration(savedObj: any, options?: { userId?: string
     metadata: metadata,
   };
 
-  // Attempt to find existing row to update
   try {
     let existingId: string | null = null;
 
+    // If userId supplied: only look up rows for that user -> never touch other user's rows
     if (userId) {
       const { data, error } = await supabaseAdmin
         .from("integrations")
@@ -92,31 +155,34 @@ export async function saveIntegration(savedObj: any, options?: { userId?: string
         .limit(1)
         .maybeSingle();
       if (!error && data?.id) existingId = data.id;
-    }
 
-    if (!existingId && pageId) {
-      const { data, error } = await supabaseAdmin
-        .from("integrations")
-        .select("id")
-        .eq("page_id", pageId)
-        .eq("provider", provider)
-        .limit(1)
-        .maybeSingle();
-      if (!error && data?.id) existingId = data.id;
-    }
+      // Also allow matching by page_id for that same user (if present)
+      if (!existingId && pageId) {
+        const { data: d2, error: e2 } = await supabaseAdmin
+          .from("integrations")
+          .select("id")
+          .eq("user_id", userId)
+          .eq("page_id", pageId)
+          .eq("provider", provider)
+          .limit(1)
+          .maybeSingle();
+        if (!e2 && d2?.id) existingId = d2.id;
+      }
 
-    if (!existingId && igUserId) {
-      const { data, error } = await supabaseAdmin
-        .from("integrations")
-        .select("id")
-        .eq("ig_user_id", igUserId)
-        .eq("provider", provider)
-        .limit(1)
-        .maybeSingle();
-      if (!error && data?.id) existingId = data.id;
-    }
-
-    if (!existingId) {
+      // Also allow matching by ig_user_id for that same user (if present)
+      if (!existingId && igUserId) {
+        const { data: d3, error: e3 } = await supabaseAdmin
+          .from("integrations")
+          .select("id")
+          .eq("user_id", userId)
+          .eq("ig_user_id", igUserId)
+          .eq("provider", provider)
+          .limit(1)
+          .maybeSingle();
+        if (!e3 && d3?.id) existingId = d3.id;
+      }
+    } else {
+      // Admin fallback: find a recent provider row (existing behavior)
       const { data, error } = await supabaseAdmin
         .from("integrations")
         .select("id")
@@ -127,6 +193,7 @@ export async function saveIntegration(savedObj: any, options?: { userId?: string
     }
 
     if (existingId) {
+      // update only that specific row
       const { data, error } = await supabaseAdmin
         .from("integrations")
         .update(row)
@@ -136,6 +203,7 @@ export async function saveIntegration(savedObj: any, options?: { userId?: string
       if (error) throw error;
       return data;
     } else {
+      // insert new row (with user_id possibly null for admin/global)
       const { data, error } = await supabaseAdmin
         .from("integrations")
         .insert([row])
@@ -150,7 +218,13 @@ export async function saveIntegration(savedObj: any, options?: { userId?: string
   }
 }
 
-/** Read latest integration for provider and optional userId. Rebuild shape expected by endpoints. */
+/**
+ * Read latest integration for provider and optional userId.
+ * - If userId is provided, returns the latest integration row for that user and provider (or null).
+ * - If userId is NOT provided, returns the latest provider row (admin fallback).
+ *
+ * IMPORTANT: to avoid leaking other users' tokens, prefer calling this with userId.
+ */
 export async function readSavedIntegration(options?: { userId?: string | null; provider?: string }) {
   const provider = options?.provider ?? "meta";
   const userId = options?.userId ?? null;
@@ -182,6 +256,7 @@ export async function readSavedIntegration(options?: { userId?: string | null; p
       longUserToken: row.refresh_token ?? null,
       raw: row.raw ?? null,
       savedRowId: row.id ?? null,
+      user_id: row.user_id ?? null,
     };
 
     return rebuilt;
@@ -191,15 +266,19 @@ export async function readSavedIntegration(options?: { userId?: string | null; p
   }
 }
 
-/** small admin helpers */
-export async function listIntegrations(provider?: string) {
-  const q = supabaseAdmin.from("integrations").select("*").order("created_at", { ascending: false });
-  const query = provider ? (q.eq("provider", provider) as any) : q as any;
-  const { data, error } = await query;
+/* -------------------- small admin helpers (tweak: allow user-scoped listing) -------------------- */
+
+/** List integrations — if userId provided, list only that user's integrations. Otherwise admin list. */
+export async function listIntegrations(provider?: string, userId?: string | null) {
+  let q = supabaseAdmin.from("integrations").select("*").order("created_at", { ascending: false }) as any;
+  if (provider) q = q.eq("provider", provider);
+  if (userId) q = q.eq("user_id", userId);
+  const { data, error } = await q;
   if (error) throw error;
   return data;
 }
 
+/** Delete integration by id (admin). Keep this explicit. */
 export async function deleteIntegration(id: string) {
   const { error } = await supabaseAdmin.from("integrations").delete().eq("id", id);
   if (error) throw error;

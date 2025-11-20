@@ -2,13 +2,12 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { getUserIdFromRequest } from "../../../lib/requestHelpers";
 import { supabaseAdmin } from "../../../lib/supabaseClient";
-import { setStatus } from "../../../lib/integrationStore";
-import { PLATFORMS } from "../../../lib/integrationStore";
+import { PLATFORMS, setUserStatusForUser } from "../../../lib/integrationStore";
 
 /**
  * POST { platform: string }
- * Deletes the integration row for the authenticated user and provider,
- * then updates app_settings.integrations_flags to false for that platform.
+ * Deletes the integration row(s) for the authenticated user and provider,
+ * then updates per-user app_settings flags to false for that platform.
  */
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
@@ -27,7 +26,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ error: "invalid_platform" });
     }
 
-    // Delete integration rows for this user + provider
+    // Delete integration rows for this user + provider only (user-scoped)
     const { error: deleteError } = await supabaseAdmin
       .from("integrations")
       .delete()
@@ -39,12 +38,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(500).json({ error: "db_error", details: deleteError.message });
     }
 
-    // Update global flag in app_settings (best-effort)
+    // Update per-user flag in app_settings (best-effort)
     try {
-      await setStatus(platform, false);
+      await setUserStatusForUser(userId, platform, false);
     } catch (e) {
       // don't fail the whole request if this fails, but log for observability
-      console.warn("Failed to update integrations_flags after disconnect:", e);
+      console.warn("Failed to update user-scoped integrations_flags after disconnect:", e);
     }
 
     return res.status(200).json({ ok: true });

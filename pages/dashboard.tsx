@@ -3,7 +3,8 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import type { JSX } from "react"; 
+import { useRouter } from "next/router";
+import type { JSX } from "react";
 import Sidebar from "../app/web/src/components/Sidebar";
 import { Button } from "../app/web/src/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../app/web/src/components/ui/card";
@@ -79,6 +80,7 @@ type Campaign = {
   image_url?: any;
   is_published?: boolean;
   created_at?: string;
+  _raw?: any;
 };
 
 type Recommendation = {
@@ -91,6 +93,11 @@ type Recommendation = {
 
 /* -------------------- Component -------------------- */
 export default function DashboardPage(): JSX.Element {
+  const router = useRouter();
+
+  const [userId, setUserId] = useState<string | null>(null);
+
+  // statuses: per-user flags returned from /api/integrations/status and/or local cache
   const [statuses, setStatuses] = useState<Record<string, any> | null>(null);
   const [statusLoading, setStatusLoading] = useState(false);
 
@@ -107,61 +114,94 @@ export default function DashboardPage(): JSX.Element {
 
   const metricsRange = "7d";
 
-  const google = {
-    total_spend: 5200,
-    budget: 7000,
-    total_reach: 65000,
-    avg_ctr: 1.8,
-    conversions: 98,
-    roas: 2.1,
-    change: {
-      total_spend_pct: 3.4,
-      total_reach_pct: -1.2,
-      avg_ctr_pct: 0.2,
-      conversions_pct: 5.0,
-      roas_pct: 0.1,
-    },
-  };
+  // namespaced localStorage key for statuses to avoid cross-user collisions
+  const LS_KEY_FOR = (uid: string | null) => `integrations_status_v1:${uid ?? "anon"}`;
 
-  /* -------------------- Fetch statuses (no cache) -------------------- */
-  async function fetchStatuses() {
+  /* -------------------- Fetch statuses (user-scoped) --------------------
+     Uses the same robust approach as your integrations page:
+     1) Try server user-scoped API (/api/integrations/status) via apiFetch.
+     2) Fallback to localStorage user-scoped cache.
+     3) Default to explicit `meta: false` (do NOT assume connected).
+  -------------------------------------------------------------------- */
+  async function fetchStatuses(uid: string | null) {
     setStatusLoading(true);
     try {
-      // force fresh response
-      const resp = await fetch("/api/integrations/status", { cache: "no-store", credentials: "same-origin" });
-      if (resp.ok) {
-        const j = await resp.json();
-        console.debug("fetched statuses:", j);
-        setStatuses(j);
-        try { localStorage.setItem("integrations_status_v1", JSON.stringify(j)); } catch {}
+      if (!uid) {
+        setStatuses(null);
+        setStatusLoading(false);
         return;
       }
-      // fallback to apiFetch if direct fails (preserve behavior)
-      const fallback = await apiFetch("/api/integrations/status");
-      if (fallback.ok) {
-        const j = await fallback.json();
-        console.debug("fetched statuses (fallback):", j);
-        setStatuses(j);
-        try { localStorage.setItem("integrations_status_v1", JSON.stringify(j)); } catch {}
-      } else {
-        console.warn("statuses fetch returned !ok", fallback);
+
+      // Helper to call the server API with a user hint (server should still validate the session)
+      const userScopedApi = (path: string) => {
+        const sep = path.includes("?") ? "&" : "?";
+        return `${path}${sep}userId=${encodeURIComponent(uid)}`;
+      };
+
+      try {
+        // prefer server-side user-scoped status
+        const res = await apiFetch(userScopedApi("/api/integrations/status"));
+        if (res.ok) {
+          const data = await res.json();
+          // ensure boolean flags and at least explicit meta key
+          const next: Record<string, boolean> = { meta: false };
+          if (data && typeof data === "object") {
+            Object.keys(data).forEach((k) => {
+              next[k] = !!data[k];
+            });
+          }
+          setStatuses(next);
+          try {
+            localStorage.setItem(LS_KEY_FOR(uid), JSON.stringify(next));
+          } catch {}
+          setStatusLoading(false);
+          return;
+        } else {
+          console.warn("user-scoped /api/integrations/status returned non-ok", res.status);
+        }
+      } catch (err) {
+        console.debug("user-scoped status fetch failed, falling back to local cache", err);
       }
+
+      // LocalStorage fallback (user-scoped)
+      try {
+        const raw = localStorage.getItem(LS_KEY_FOR(uid));
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          // normalize to ensure meta key exists
+          const normalized: Record<string, boolean> = { meta: false, ...(parsed || {}) };
+          setStatuses(normalized);
+          setStatusLoading(false);
+          return;
+        }
+      } catch (err) {
+        console.debug("localStorage read failed:", err);
+      }
+
+      // Default: mark meta explicitly false (do NOT assume connected)
+      const initial: Record<string, boolean> = { meta: false };
+      setStatuses(initial);
+      try {
+        localStorage.setItem(LS_KEY_FOR(uid), JSON.stringify(initial));
+      } catch {}
     } catch (err) {
       console.error("fetchStatuses error:", err);
-      // try reading localStorage as best-effort fallback
-      try {
-        const raw = localStorage.getItem("integrations_status_v1");
-        if (raw) setStatuses(JSON.parse(raw));
-      } catch {}
+      setStatuses({ meta: false });
     } finally {
       setStatusLoading(false);
     }
   }
 
-  /* -------------------- Fetch meta metrics (no cache), include supabase token if present -------------------- */
-  async function fetchMetaMetricsAllTime() {
+  /* -------------------- Fetch meta metrics (no cache), include supabase token if present (user-scoped) -------------------- */
+  async function fetchMetaMetricsAllTime(uid: string | null) {
     setLoadingMeta(true);
     try {
+      if (!uid) {
+        setMetaSummary(null);
+        setLoadingMeta(false);
+        return;
+      }
+
       let token: string | null = null;
       try {
         const { data } = await supabase.auth.getSession();
@@ -173,34 +213,34 @@ export default function DashboardPage(): JSX.Element {
       const headers: HeadersInit = {};
       if (token) headers["Authorization"] = `Bearer ${token}`;
 
-      // force fresh fetch to avoid 304 from caching layers
       const q = new URLSearchParams();
       q.set("range", metricsRange);
-      const resp = await fetch(`/api/integrations/metrics?${q.toString()}`, { method: "GET", headers, cache: "no-store", credentials: "same-origin" });
+      q.set("userId", uid);
 
-      if (resp.status === 304) {
-        // shouldn't normally happen with cache: "no-store", but log anyway
-        console.debug("metrics responded 304 (cached).");
-      }
+      const resp = await fetch(`/api/integrations/metrics?${q.toString()}`, { method: "GET", headers, cache: "no-store", credentials: "same-origin" });
 
       if (resp.ok) {
         const j = await resp.json();
-        console.debug("fetched metrics:", j);
         setMetaSummary(j as SummaryResp);
 
-        // mark meta connected if we successfully got data
-        const normalized: Record<string, any> = { meta: true };
-        try {
-          const rawLs = localStorage.getItem("integrations_status_v1");
-          if (rawLs) Object.assign(normalized, JSON.parse(rawLs));
-        } catch {}
-        setStatuses(normalized);
-        try { localStorage.setItem("integrations_status_v1", JSON.stringify(normalized)); } catch {}
+        // Only mark meta connected if meaningful metrics exist (avoid false positives)
+        const hasMeaningfulMetrics = Boolean(j?.meta?.current && (j.meta.current.total_spend !== undefined || j.meta.current.total_reach !== undefined));
+        if (hasMeaningfulMetrics) {
+          const normalized: Record<string, any> = { meta: true };
+          try {
+            const rawLs = localStorage.getItem(LS_KEY_FOR(uid));
+            if (rawLs) {
+              const prev = JSON.parse(rawLs);
+              Object.assign(normalized, prev);
+            }
+          } catch {}
+          setStatuses(normalized);
+          try { localStorage.setItem(LS_KEY_FOR(uid), JSON.stringify(normalized)); } catch {}
+        }
 
         return;
       } else {
-        const text = await resp.text();
-        console.warn("metrics fetch returned non-ok:", resp.status, text);
+        console.warn("metrics fetch returned non-ok:", resp.status);
       }
     } catch (err) {
       console.error("fetchMetaMetricsAllTime error:", err);
@@ -209,17 +249,61 @@ export default function DashboardPage(): JSX.Element {
     }
   }
 
-  /* -------------------- campaigns -------------------- */
-  async function fetchCampaigns() {
+  /* -------------------- campaigns (only user's campaigns) -------------------- */
+  async function fetchCampaigns(uid: string | null) {
     setLoadingCampaigns(true);
     try {
-      const { data, error } = await supabase.from("campaigns").select("*").order("created_at", { ascending: false });
-      if (error) {
-        console.error("fetchCampaigns error:", error);
+      if (!uid) {
         setCampaigns([]);
-      } else {
-        setCampaigns((data as Campaign[]) || []);
+        setLoadingCampaigns(false);
+        return;
       }
+
+      // defensively try common ownership columns; DO NOT fetch all campaigns without an owner filter.
+      async function queryByColumn(column: string) {
+        try {
+          const { data, error } = await supabase
+            .from("campaigns")
+            .select("*")
+            .eq(column, uid)
+            .order("created_at", { ascending: false })
+            .limit(200);
+
+          if (error) {
+            console.debug(`campaigns query by ${column} error:`, (error as any).message || error);
+            return null;
+          }
+          return data as any[] | null;
+        } catch (err) {
+          console.debug(`campaigns query by ${column} failed:`, err);
+          return null;
+        }
+      }
+
+      const candidateColumns = ["user_id", "created_by", "owner", "profile_id", "author_id"];
+      let rows: any[] | null = null;
+      for (const col of candidateColumns) {
+        rows = await queryByColumn(col);
+        if (rows && rows.length > 0) break;
+      }
+
+      // If we didn't find campaigns using those columns, return empty list instead of leaking everyone else's data.
+      if (!rows || rows.length === 0) {
+        setCampaigns([]);
+        return;
+      }
+
+      const normalized = (rows || []).map((c) => ({
+        id: c.id ?? (c.name || Math.random()).toString(),
+        name: c.name ?? "Untitled",
+        campaign_type: c.campaign_type ?? c.type ?? null,
+        image_url: c.image_url ?? c.image_url_public ?? c.preview_url ?? null,
+        is_published: !!c.is_published,
+        created_at: c.created_at ?? undefined,
+        _raw: c,
+      })) as Campaign[];
+
+      setCampaigns(normalized);
     } catch (err) {
       console.error("fetchCampaigns exception:", err);
       setCampaigns([]);
@@ -349,14 +433,12 @@ export default function DashboardPage(): JSX.Element {
 
       setAutoRecs(final);
 
-      // persist to sessionStorage in exact shape Analytics expects
       try {
         sessionStorage.setItem("auto_recs_v1", JSON.stringify({
           recs: final,
           metaTotal: metaSummary?.meta?.current?.total_spend ?? null,
           ts: Date.now(),
         }));
-        console.debug("persisted auto_recs_v1", final);
       } catch (e) {
         console.warn("sessionStorage set error:", e);
       }
@@ -370,10 +452,33 @@ export default function DashboardPage(): JSX.Element {
     }
   }
 
-  /* -------------------- lifecycle: load data + hydrate recs from sessionStorage -------------------- */
+  /* -------------------- lifecycle: load data + hydrate recs -------------------- */
   useEffect(() => {
     (async () => {
-      await Promise.all([fetchStatuses(), fetchCampaigns(), fetchMetaMetricsAllTime()]);
+      // ensure authenticated user first
+      try {
+        const { data: userData, error: userErr } = await supabase.auth.getUser();
+        if (userErr) {
+          console.error("Error getting user from supabase.auth:", userErr);
+          router.push("/auth/signin");
+          return;
+        }
+        const user = (userData as any)?.user ?? null;
+        if (!user) {
+          router.push("/auth/signin");
+          return;
+        }
+        setUserId(user.id);
+
+        // fetch user-scoped pieces in parallel
+        await Promise.all([
+          fetchStatuses(user.id),
+          fetchCampaigns(user.id),
+          fetchMetaMetricsAllTime(user.id),
+        ]);
+      } catch (err) {
+        console.error("init dashboard error:", err);
+      }
 
       // hydrate recs from sessionStorage if available
       try {
@@ -383,7 +488,6 @@ export default function DashboardPage(): JSX.Element {
           if (parsed?.recs && Array.isArray(parsed.recs) && parsed.recs.length > 0) {
             setAutoRecs(parsed.recs.slice(0, 3));
             setRecsCentered(false);
-            console.debug("hydrated recs from sessionStorage");
           }
         }
       } catch (e) {
@@ -411,12 +515,20 @@ export default function DashboardPage(): JSX.Element {
 
   const metaCurrent = metaSummary?.meta?.current ?? null;
 
-  // robust connected check: either statuses flag OR fetched meta metrics
+  // robust connected check:
+  // - either statuses?.meta === true (explicit positive flag from server for this user)
+  // - OR we actually have useful metrics in metaCurrent (like total_spend or total_reach)
+  const isConnected = Boolean(
+    (statuses && statuses.meta === true) ||
+    (metaCurrent && (metaCurrent.total_spend !== undefined || metaCurrent.total_reach !== undefined))
+  );
+
+  // Stats array (only used when connected)
   const stats = [
-    { label: "Total Campaigns", value: String(campaigns.length ?? 0), icon: Eye, connected: !!(statuses?.meta || metaCurrent) },
-    { label: "Total Spend (All time)", value: metaCurrent ? fmtMoney(metaCurrent.total_spend) : fmtMoney(google.total_spend), icon: DollarSign, connected: !!(statuses?.meta || metaCurrent) },
-    { label: "Avg CTR (All time)", value: metaCurrent ? `${(metaCurrent.avg_ctr ?? 0).toFixed(2)}%` : `${google.avg_ctr}%`, icon: MousePointerClick, connected: !!(statuses?.meta || metaCurrent) },
-    { label: "ROAS (All time)", value: metaCurrent && metaCurrent.roas ? `${metaCurrent.roas.toFixed(2)}x` : `${google.roas}x`, icon: TrendingUp, connected: !!(statuses?.meta || metaCurrent) },
+    { label: "Total Campaigns", value: String(campaigns.length ?? 0), icon: Eye, connected: isConnected },
+    { label: "Total Spend (All time)", value: metaCurrent ? fmtMoney(metaCurrent.total_spend) : "—", icon: DollarSign, connected: isConnected },
+    { label: "Avg CTR (All time)", value: metaCurrent ? `${(metaCurrent.avg_ctr ?? 0).toFixed(2)}%` : "—", icon: MousePointerClick, connected: isConnected },
+    { label: "ROAS (All time)", value: metaCurrent && metaCurrent.roas ? `${metaCurrent.roas.toFixed(2)}x` : "—", icon: TrendingUp, connected: isConnected },
   ];
 
   function goToIntegrations(platform?: string) {
@@ -451,7 +563,7 @@ export default function DashboardPage(): JSX.Element {
                 </Button>
               </a>
             </Link>
-            <button onClick={() => { fetchStatuses(); fetchMetaMetricsAllTime(); fetchCampaigns(); }} className="px-3 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-sm">
+            <button onClick={() => { fetchStatuses(userId); fetchMetaMetricsAllTime(userId); fetchCampaigns(userId); }} className="px-3 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-sm">
               Refresh
             </button>
           </div>
@@ -459,40 +571,58 @@ export default function DashboardPage(): JSX.Element {
 
         <div className="grid grid-cols-1 gap-8">
           <div className="space-y-6">
-            <div className="pt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
-              {stats.map((stat, i) => {
-                const Icon = stat.icon;
-                const connected = stat.connected;
-                return (
-                  <Card key={i} className="glass-card transition-transform transform hover:-translate-y-1" style={{ boxShadow: "0 36px 90px rgba(2,6,23,0.16)", borderColor: primaryBorder10 ?? undefined, ...cardShadowStyle }}>
-                    <CardContent className="flex items-center justify-between gap-6 py-6">
-                      <div className="flex items-center gap-5">
-                        <div className="flex items-center justify-center rounded-md p-2 transition-shadow duration-200" style={{ color: primaryColor ?? "#0f172a" }}>
-                          <Icon className="w-6 h-6 hover:scale-110 hover:shadow-[0_8px_30px_rgba(59,130,246,0.18)]" strokeWidth={1.6} />
+            {/* -------------------- Stats area -------------------- */}
+            {isConnected ? (
+              <div className="pt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
+                {stats.map((stat, i) => {
+                  const Icon = stat.icon;
+                  const connected = stat.connected;
+                  return (
+                    <Card key={i} className="glass-card transition-transform transform hover:-translate-y-1" style={{ boxShadow: "0 36px 90px rgba(2,6,23,0.16)", borderColor: primaryBorder10 ?? undefined, ...cardShadowStyle }}>
+                      <CardContent className="flex items-center justify-between gap-6 py-6">
+                        <div className="flex items-center gap-5">
+                          <div className="flex items-center justify-center rounded-md p-2 transition-shadow duration-200" style={{ color: primaryColor ?? "#0f172a" }}>
+                            <Icon className="w-6 h-6 hover:scale-110 hover:shadow-[0_8px_30px_rgba(59,130,246,0.18)]" strokeWidth={1.6} />
+                          </div>
+
+                          <div>
+                            <div className="text-sm text-slate-500">{stat.label}</div>
+                            <div className="text-2xl font-semibold text-slate-900 mt-1">{stat.value}</div>
+                          </div>
                         </div>
 
-                        <div>
-                          <div className="text-sm text-slate-500">{stat.label}</div>
-                          <div className="text-2xl font-semibold text-slate-900 mt-1">{stat.value}</div>
+                        <div className="flex flex-col items-end gap-2">
+                          {connected ? (
+                            <span className="text-xs px-3 py-1 rounded-full bg-green-100 text-green-800">Connected</span>
+                          ) : (
+                            <button onClick={() => goToIntegrations("meta")} className="px-3 py-1 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-700">
+                              Connect Meta
+                            </button>
+                          )}
+                          <div className="text-xs text-gray-500">{i === 1 && metaSummary?.meta?.change ? `Change: ${pctDisplay(metaSummary?.meta?.change.total_spend_pct ?? null)}` : ""}</div>
                         </div>
-                      </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            ) : (
+              // when not connected: show single centered connect card (no hardcoded stats)
+              <Card className="glass-card" style={{ boxShadow: "0 36px 90px rgba(2,6,23,0.16)", borderColor: primaryBorder10 ?? undefined }}>
+                <CardContent className="py-12 flex flex-col items-center justify-center">
+                  <Sparkles className="w-8 h-8 mb-4" />
+                  <div className="text-lg font-semibold mb-2">Connect Meta</div>
+                  <div className="text-sm mb-6" style={mutedFg ? { color: mutedFg } : undefined}>Connect your Meta account to view accurate metrics and recommendations.</div>
+                  <div>
+                    <Button size="lg" onClick={() => goToIntegrations()} style={primaryColor ? { background: gradientPrimary ?? primaryColor, color: "#fff" } : undefined}>
+                      Connect
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
-                      <div className="flex flex-col items-end gap-2">
-                        {connected ? (
-                          <span className="text-xs px-3 py-1 rounded-full bg-green-100 text-green-800">Connected</span>
-                        ) : (
-                          <button onClick={() => goToIntegrations("meta")} className="px-3 py-1 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-700">
-                            Connect Meta
-                          </button>
-                        )}
-                        <div className="text-xs text-gray-500">{i === 1 && metaSummary?.meta?.change ? `Change: ${pctDisplay(metaSummary?.meta?.change.total_spend_pct ?? null)}` : ""}</div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
-
+            {/* -------------------- Recommendations -------------------- */}
             <Card className="glass-card" style={{ boxShadow: "0 48px 120px rgba(2,6,23,0.18)", borderColor: primaryBorder10 ?? undefined }}>
               <CardHeader className="flex items-center justify-between">
                 <CardTitle className="flex items-center gap-3 py-3">
@@ -552,6 +682,7 @@ export default function DashboardPage(): JSX.Element {
               </CardContent>
             </Card>
 
+            {/* -------------------- Recent Campaigns -------------------- */}
             <Card className="glass-card" style={{ boxShadow: "0 36px 72px rgba(15,23,42,0.14)" }}>
               <CardHeader>
                 <CardTitle className="py-3">Recent Campaigns</CardTitle>
@@ -560,7 +691,7 @@ export default function DashboardPage(): JSX.Element {
                 <div className="space-y-3">
                   {loadingCampaigns ? <div>Loading campaigns…</div> : campaigns.length === 0 ? <div className="text-sm text-gray-500">No campaigns yet. Create a campaign to get started.</div> : null}
 
-                  {campaigns.map((campaign) => (
+                  {campaigns.slice(0, 5).map((campaign) => (
                     <div key={campaign.id} className="flex items-center justify-between p-3 rounded-lg hover:bg-muted/50 transition-colors">
                       <div className="flex items-center gap-3">
                         {getCampaignImageUrl(campaign) ? (
@@ -578,8 +709,11 @@ export default function DashboardPage(): JSX.Element {
                       <div className="flex items-center gap-3">
                         <div className={`text-xs px-2 py-1 rounded-full ${campaign.is_published ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-600"}`}>{campaign.is_published ? "Active" : "Draft"}</div>
                         <div className="flex gap-2">
-                          <button className="px-3 py-1 text-sm border rounded-lg hover:bg-slate-100">View</button>
-                          <button className="px-3 py-1 text-sm border rounded-lg hover:bg-slate-100">Post</button>
+                          {getCampaignImageUrl(campaign) ? (
+                            <a href={getCampaignImageUrl(campaign)!} target="_blank" rel="noopener noreferrer" className="px-3 py-1 text-sm border rounded-lg hover:bg-slate-100">View</a>
+                          ) : (
+                            <a href={`/campaigns/${campaign.id}`} target="_blank" rel="noopener noreferrer" className="px-3 py-1 text-sm border rounded-lg hover:bg-slate-100">View</a>
+                          )}
                         </div>
                       </div>
                     </div>
