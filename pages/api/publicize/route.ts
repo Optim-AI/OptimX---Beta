@@ -1,6 +1,6 @@
 // pages/api/publicize.ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import { supabaseAdmin } from "../../lib/supabaseClient"; // same style as your other server files
+import { supabaseAdmin } from "../../../lib/supabaseClient"; // same style as your other server files
 
 function dataUrlToBuffer(dataUrl: string) {
   const m = dataUrl.match(/^data:(.+);base64,(.+)$/);
