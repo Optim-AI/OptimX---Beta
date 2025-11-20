@@ -20,6 +20,7 @@ import { apiFetch } from "../lib/apiFetch";
 
 type CampaignRow = {
   id: string;
+  user_id?: string;
   name?: string;
   created_at?: string | null;
   is_published?: boolean;
@@ -60,6 +61,13 @@ function timeAgo(iso?: string) {
   return `${Math.floor(diff / 86400)}d`;
 }
 
+function normalizeIso(ts?: any) {
+  if (!ts) return null;
+  const parsed = Date.parse(String(ts));
+  if (!isNaN(parsed)) return new Date(parsed).toISOString();
+  return null;
+}
+
 export default function NotificationsPage(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [campaigns, setCampaigns] = useState<CampaignRow[]>([]);
@@ -82,6 +90,19 @@ export default function NotificationsPage(): JSX.Element {
     return d.toISOString();
   }, []);
 
+  // sync read ids across tabs
+  useEffect(() => {
+    function onStorage(e: StorageEvent) {
+      if (e.key === NOTIF_READ_KEY && e.newValue) {
+        try {
+          setReadIds(JSON.parse(e.newValue));
+        } catch {}
+      }
+    }
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
   useEffect(() => {
     fetchAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -92,10 +113,27 @@ export default function NotificationsPage(): JSX.Element {
     setError(null);
 
     try {
-      // 1) Campaigns from Supabase within last 30 days
+      // get signed in user
+      // ‹ CHANGED ›: scope campaigns to the signed-in user
+      const { data: userData, error: userErr } = await supabase.auth.getUser();
+      if (userErr) {
+        console.warn("supabase.getUser error", userErr);
+      }
+      const userId = (userData as any)?.user?.id ?? (userData as any)?.id ?? null;
+
+      if (!userId) {
+        // not signed in, show nothing and bail
+        setCampaigns([]);
+        setMedia([]);
+        setLoading(false);
+        return;
+      }
+
+      // 1) Campaigns from Supabase within last 30 days, scoped to current user
       const { data: campData, error: campErr } = await supabase
         .from("campaigns")
         .select("*")
+        .eq("user_id", userId) // ‹ CHANGED › ensure only current user's campaigns
         .gte("created_at", cutoffIso)
         .order("created_at", { ascending: false })
         .limit(50);
@@ -108,12 +146,11 @@ export default function NotificationsPage(): JSX.Element {
       }
 
       // 2) Integrations recent media (defensive, best-effort)
-      // The integrations endpoint used in Analytics returns "recent_media" in the compact payload the user posted earlier.
-      // We'll call a conservative endpoint: /api/integrations/recent_media?since=YYYY-MM-DD
-      // If apiFetch is unavailable or returns non-ok, we gracefully continue.
+      // We'll add userId to the query so backend can optionally filter by user.
       const sinceDate = cutoffIso.slice(0, 10); // YYYY-MM-DD
       try {
-        const res = await apiFetch(`/api/integrations/recent_media?since=${sinceDate}`);
+        // ‹ CHANGED ›: append userId param so server can filter results to the current user
+        const res = await apiFetch(`/api/integrations/recent_media?since=${sinceDate}&userId=${encodeURIComponent(userId)}`);
         if (res.ok) {
           const j = await res.json();
           // support different shapes: j.recent_media or j.compact?.recent_media or j.data
@@ -124,16 +161,19 @@ export default function NotificationsPage(): JSX.Element {
           else if (Array.isArray(j)) items = j;
           // normalize timestamps to ISO if possible
           const normalized = items
-            .map((m: any) => ({
-              id: String(m.id),
-              caption: m.caption,
-              media_type: m.media_type,
-              permalink: m.permalink,
-              timestamp: m.timestamp, // ISO or parsable
-              likes: typeof m.likes === "number" ? m.likes : (m.likes ? Number(m.likes) : 0),
-              comments: typeof m.comments === "number" ? m.comments : (m.comments ? Number(m.comments) : 0),
-              raw: m,
-            }))
+            .map((m: any) => {
+              const iso = normalizeIso(m.timestamp) ?? new Date().toISOString();
+              return {
+                id: String(m.id),
+                caption: m.caption,
+                media_type: m.media_type,
+                permalink: m.permalink,
+                timestamp: iso,
+                likes: typeof m.likes === "number" ? m.likes : (m.likes ? Number(m.likes) : 0),
+                comments: typeof m.comments === "number" ? m.comments : (m.comments ? Number(m.comments) : 0),
+                raw: m,
+              };
+            })
             .filter(Boolean) as MediaItem[];
           setMedia(normalized);
         } else {
@@ -148,9 +188,9 @@ export default function NotificationsPage(): JSX.Element {
     } catch (e: any) {
       console.error("notifications fetch error", e);
       setError(String(e));
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   }
 
   // Build notifications from campaigns + media
@@ -286,9 +326,7 @@ export default function NotificationsPage(): JSX.Element {
               return (
                 <div
                   key={n.id}
-                  className={`p-5 rounded-xl border bg-white shadow-sm flex items-start transition-opacity ${
-                    isRead ? "opacity-60" : ""
-                  }`}
+                  className={`p-5 rounded-xl border bg-white shadow-sm flex items-start transition-opacity ${isRead ? "opacity-60" : ""}`}
                 >
                   <div className="text-2xl mr-3">{icon}</div>
 

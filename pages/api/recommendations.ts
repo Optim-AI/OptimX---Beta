@@ -1,294 +1,268 @@
-// pages/api/ai/recommendationsMeta.ts
+// pages/api/recommendations.ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import { readSavedIntegration } from "../../lib/integrationStore";
-import { getUserIdFromRequest } from "../../lib/requestHelpers";
+import { createClient } from "@supabase/supabase-js";
 
-const VERSION = process.env.FACEBOOK_API_VERSION || "23.0";
-const OPENAI_KEY = process.env.OPENAI_API_KEY ?? "";
+const SUPABASE_URL = process.env.SUPABASE_URL!;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const NEXT_PUBLIC_BASE_URL = process.env.NEXT_PUBLIC_BASE_URL ?? "http://localhost:3000";
 
-type GraphResp = { ok: boolean; status: number; json: any | null; text: string; url: string };
+const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-async function graphFetchJson(url: string): Promise<GraphResp> {
+// ------------------------------
+// Types
+// ------------------------------
+
+type AiRec = {
+  title?: string;
+  impact?: string;
+  related_to?: { type?: string; id?: string | null | undefined } | null;
+  reason?: string;
+  actions?: string[];
+  estimate?: string;
+  confidence?: number | null;
+};
+
+type ReturnedRec = {
+  id: string;
+  title: string;
+  reason?: string | null;
+  impact?: string | null;
+  confidence?: number | null;
+  campaignId?: string | undefined;
+  created_at: string;
+};
+
+// ------------------------------
+
+function uid() {
+  return (Math.random() + "").slice(2);
+}
+
+/** Call your internal AI endpoint. */
+async function callInternalMetaAI(baseUrl: string, token: string, body: any = {}) {
+  const url = `${baseUrl.replace(/\/$/, "")}/api/ai/recommendationsMeta`;
+
   try {
-    const r = await fetch(url);
-    const text = await r.text();
-    let json = null;
-    try { json = JSON.parse(text); } catch { json = null; }
-    return { ok: r.ok, status: r.status, json, text, url };
-  } catch (err: any) {
-    return { ok: false, status: 500, json: null, text: String(err), url };
-  }
-}
-
-function take<T>(arr: T[] | undefined, n = 5): T[] {
-  if (!arr) return [];
-  return arr.slice(0, n);
-}
-function isoDate(d: Date) { return d.toISOString().slice(0,10); }
-
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== "GET" && req.method !== "POST") {
-    res.status(405).json({ ok: false, error: "Method not allowed" });
-    return;
-  }
-
-  if (!OPENAI_KEY) {
-    res.status(500).json({ ok: false, error: "Missing OPENAI_API_KEY in environment" });
-    return;
-  }
-
-  try {
-    // Try to resolve user from request (optional). If present, readSavedIntegration will prefer that user's row.
-    let userId: string | null = null;
-    try {
-      userId = await getUserIdFromRequest(req);
-    } catch (e) {
-      userId = null;
-    }
-
-    const savedRaw = await readSavedIntegration({ userId: userId ?? undefined, provider: "meta" });
-
-    if (!savedRaw) {
-      return res.status(400).json({
-        ok: false,
-        error:
-          "No integration found in Supabase (integrations table). Create/connect a Meta integration first."
-      });
-    }
-
-    // Defensive cast so we can check multiple possible key names without TypeScript complaints:
-    const s: any = savedRaw;
-
-    // Preferred canonical keys from your helper:
-    const userAccessToken: string | undefined =
-      s.userAccessToken ?? s.longUserToken ?? s.user_access_token ?? s.refresh_token ?? undefined;
-
-    const pageAccessToken: string | undefined =
-      s.pageAccessToken ?? s.page_access_token ?? s.access_token ?? undefined;
-
-    const adAccountRaw: string | undefined =
-      s.adAccountId ?? s.ad_account_id ?? s.adAccountIdRaw ?? s.adAccount ?? undefined;
-
-    const igUserId: string | undefined =
-      s.igUserId ?? s.ig_user_id ?? s.provider_user_id ?? undefined;
-
-    const pageId: string | undefined =
-      s.pageId ?? s.page_id ?? undefined;
-
-    // Strict: no local file fallback. Return clear errors if required pieces absent.
-    if (!adAccountRaw) {
-      return res.status(400).json({ ok: false, error: "Missing ad account id in integrations row (adAccountId / ad_account_id)." });
-    }
-    if (!igUserId) {
-      return res.status(400).json({ ok: false, error: "Missing Instagram user id in integrations row (igUserId / ig_user_id)." });
-    }
-    if (!pageAccessToken && !userAccessToken) {
-      return res.status(400).json({ ok: false, error: "Missing page or user access token in integration row (access_token/refresh_token)." });
-    }
-
-    // Normalize ad account id
-    const numericAdId = String(adAccountRaw).replace(/^act_/, "").replace(/^act_act_/, "");
-    const adAccountGraphId = `act_${numericAdId}`;
-
-    // Range: last 7 days (ending yesterday)
-    const today = new Date();
-    const end = new Date(today); end.setDate(end.getDate() - 1);
-    const start = new Date(end); start.setDate(start.getDate() - 6);
-    const range = { since: isoDate(start), until: isoDate(end) };
-
-    // Choose token (prefer user token if present)
-    const tokenToUse = encodeURIComponent(userAccessToken ?? pageAccessToken!);
-
-    // 1) fetch campaigns
-    const campaignsUrl = `https://graph.facebook.com/v${VERSION}/${encodeURIComponent(adAccountGraphId)}/campaigns?fields=id,name,status,daily_budget,lifetime_budget&limit=50&access_token=${tokenToUse}`;
-    const campResp = await graphFetchJson(campaignsUrl);
-    const campaigns: any[] = Array.isArray(campResp.json?.data) ? campResp.json.data : [];
-
-    const rankedCampaigns = campaigns
-      .map((c:any) => ({ ...c, _daily: Number(c.daily_budget || 0) }))
-      .sort((a:any,b:any) => b._daily - a._daily)
-      .slice(0, 8);
-
-    async function fetchInsightsFor(objectId: string, fields: string[], timeRange = range) {
-      const timeRangeStr = encodeURIComponent(JSON.stringify(timeRange));
-      const f = encodeURIComponent(fields.join(","));
-      const url = `https://graph.facebook.com/v${VERSION}/${encodeURIComponent(objectId)}/insights?time_range=${timeRangeStr}&fields=${f}&access_token=${tokenToUse}&limit=500`;
-      return await graphFetchJson(url);
-    }
-
-    const summary: any = {
-      meta: { adAccount: adAccountGraphId, range, campaigns: [] },
-      ig: { igUserId, recentMedia: [] },
-      debug: { campaignsUrl: campResp.url, campaignsRaw: !!campResp.json, usedIntegrationRow: { id: s.savedRowId ?? null, pageId: !!pageId } }
-    };
-
-    // iterate campaigns -> adsets -> ads
-    for (const c of rankedCampaigns) {
-      const campId: string = c.id;
-      const campName: string = c.name ?? "";
-      const campStatus: string = c.status ?? "";
-
-      const ci = await fetchInsightsFor(campId, ["impressions","spend","reach","clicks","ctr","actions","action_values"]);
-      const campInsights = ci.json?.data ?? [];
-
-      // adsets
-      const adsetsUrl = `https://graph.facebook.com/v${VERSION}/${encodeURIComponent(campId)}/adsets?fields=id,name,status,daily_budget,lifetime_budget&limit=20&access_token=${tokenToUse}`;
-      const adsetsResp = await graphFetchJson(adsetsUrl);
-      const adsets = Array.isArray(adsetsResp.json?.data) ? adsetsResp.json.data : [];
-      const rankedAdsets = adsets
-        .map((a:any) => ({ ...a, _daily: Number(a.daily_budget||0) }))
-        .sort((a:any,b:any)=> b._daily - a._daily)
-        .slice(0, 5);
-
-      const adsetsWithInsights: any[] = [];
-      for (const a of rankedAdsets) {
-        const aId = a.id;
-        const ai = await fetchInsightsFor(aId, ["impressions","spend","reach","clicks","ctr","actions","action_values"]);
-        adsetsWithInsights.push({ ...a, insights: ai.json?.data ?? [] });
-      }
-
-      // ads
-      const adsUrl = `https://graph.facebook.com/v${VERSION}/${encodeURIComponent(campId)}/ads?fields=id,name,status,adset_id,effective_status&limit=50&access_token=${tokenToUse}`;
-      const adsResp = await graphFetchJson(adsUrl);
-      const ads = Array.isArray(adsResp.json?.data) ? adsResp.json.data : [];
-      const rankedAds = ads.slice(0, 6);
-      const adsWithInsights: any[] = [];
-      for (const ad of rankedAds) {
-        const adId = ad.id;
-        const ai = await fetchInsightsFor(adId, ["impressions","spend","reach","clicks","ctr","actions","action_values"]);
-        adsWithInsights.push({ ...ad, insights: ai.json?.data ?? [] });
-      }
-
-      summary.meta.campaigns.push({
-        id: campId,
-        name: campName,
-        status: campStatus,
-        daily_budget: c.daily_budget ?? null,
-        lifetime_budget: c.lifetime_budget ?? null,
-        insights: campInsights,
-        adsets: adsetsWithInsights,
-        ads: adsWithInsights,
-        raw: { campaign: c, adsetsResp: adsetsResp.json, adsResp: adsResp.json, campInsightsRaw: ci.json }
-      });
-    }
-
-    // 3) recent IG media
-    const igUrl = `https://graph.facebook.com/v${VERSION}/${encodeURIComponent(igUserId)}/media?fields=id,caption,media_type,media_url,permalink,timestamp,like_count,comments_count&limit=30&access_token=${tokenToUse}`;
-    const igResp = await graphFetchJson(igUrl);
-    const igMedia = Array.isArray(igResp.json?.data) ? igResp.json.data : [];
-    summary.ig.recentMedia = take(igMedia, 12);
-    summary.debug.igRaw = !!igResp.json;
-
-    // compact payload
-    function compactCampaign(c:any) {
-      const lastIns = Array.isArray(c.insights) && c.insights.length > 0 ? c.insights[0] : null;
-      return {
-        id: c.id,
-        name: c.name,
-        status: c.status,
-        daily_budget: c.daily_budget ?? null,
-        lifetime_budget: c.lifetime_budget ?? null,
-        last_insight: lastIns,
-        top_adsets: (c.adsets || []).slice(0,3).map((as:any)=>({
-          id: as.id, name: as.name, status: as.status, daily_budget: as.daily_budget ?? null, insight: (Array.isArray(as.insights) && as.insights.length>0) ? as.insights[0] : null
-        })),
-        top_ads: (c.ads || []).slice(0,3).map((ad:any)=>({
-          id: ad.id, name: ad.name, status: ad.status, insight: (Array.isArray(ad.insights) && ad.insights.length>0) ? ad.insights[0] : null
-        }))
-      };
-    }
-
-    const compact = {
-      ad_account: adAccountGraphId,
-      range,
-      campaigns: summary.meta.campaigns.map(compactCampaign),
-      recent_media: summary.ig.recentMedia.map((m:any)=>({
-        id: m.id, caption: m.caption, media_type: m.media_type, permalink: m.permalink, timestamp: m.timestamp, likes: m.like_count ?? 0, comments: m.comments_count ?? 0
-      }))
-    };
-
-    // OpenAI prompt (strict JSON output)
-    const systemPrompt = `
-You are an expert Facebook/Instagram ads analyst. You will receive a JSON object named "data" that contains:
-- ad_account id and a list of campaigns (each with id, name, status, budgets and last_insight),
-- for each campaign a few top adsets and top ads with their latest insights,
-- a list of recent instagram media (likes/comments).
-
-Your task: analyze the actual metrics and content, identify the **top issues and opportunities**, and produce **actionable, prioritized** recommendations tied to the exact object that motivated the recommendation (campaign/adset/ad/post).
-
-Return **ONLY** strict JSON in this exact schema:
-
-{
-  "recommendations": [
-    {
-      "title": "Short title",
-      "impact": "High" | "Medium" | "Low",
-      "related_to": { "type": "campaign"|"adset"|"ad"|"post"|"account", "id": "<id>" },
-      "reason": "1-line explanation referencing metrics (e.g. campaign X CTR 0.3% vs avg 1.2%)",
-      "actions": ["concrete step 1", "concrete step 2"],
-      "estimate": "Estimated impact (e.g. ~10% lift in conversions) or 'unknown'"
-    }
-  ],
-  "notes": "short freeform notes (optional)"
-}
-
-Prioritize high impact items first. Use metrics in 'last_insight' / adset/ad insight / post likes/comments to explain reasons. If data is missing for an object, recommend collecting the data or fixing permissions. Keep output JSON-only (no surrounding text).
-`;
-    const userPrompt = `Data (compact):\n${JSON.stringify(compact, null, 2)}\n\nProduce recommendations as JSON per schema. Limit to ~8 recommendations.`;
-
-    const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+    const r = await fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${OPENAI_KEY}`
+        Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [
-          { role: "system", content: systemPrompt.trim() },
-          { role: "user", content: userPrompt }
-        ],
-        temperature: 0.2,
-        max_tokens: 900,
-        top_p: 1
-      })
+      body: JSON.stringify(body),
     });
 
-    const rawText = await openaiRes.text();
-
-    let parsed: any = null;
-    let assistantText: string | null = null;
+    const txt = await r.text();
+    let json: any = null;
     try {
-      const wrapper = JSON.parse(rawText);
-      assistantText = wrapper?.choices?.[0]?.message?.content ?? wrapper?.choices?.[0]?.text ?? null;
+      json = JSON.parse(txt);
     } catch {
-      assistantText = rawText;
+      json = null;
     }
 
-    if (typeof assistantText === "string") {
-      const cleaned = assistantText.replace(/^\s*```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
-      try {
-        parsed = JSON.parse(cleaned);
-      } catch {
-        const first = cleaned.indexOf("{");
-        const last = cleaned.lastIndexOf("}");
-        if (first !== -1 && last !== -1 && last > first) {
-          try { parsed = JSON.parse(cleaned.slice(first, last + 1)); } catch { parsed = null; }
-        } else parsed = null;
-      }
+    if (!r.ok) {
+      return { ok: false, error: `AI route responded ${r.status}`, text: txt, json };
     }
+
+    return { ok: true, json };
+  } catch (err: any) {
+    return { ok: false, error: String(err) };
+  }
+}
+
+/** Extract rec array from AI payload. */
+function extractRecommendationsFromAI(aiJson: any): AiRec[] {
+  if (!aiJson) return [];
+
+  if (Array.isArray(aiJson)) return aiJson;
+  if (Array.isArray(aiJson?.recommendations)) return aiJson.recommendations;
+
+  const found = Object.values(aiJson).find(
+    (v) => Array.isArray(v) && v.length && typeof v[0] === "object"
+  );
+
+  return Array.isArray(found) ? found : [];
+}
+
+/** Fallback logic if AI unavailable. */
+function fallbackRecs(userId: string, campaigns: any[], metrics: any | null): AiRec[] {
+  const recs: AiRec[] = [];
+  const cur = metrics?.current ?? null;
+
+  if (cur) {
+    const roas = Number(cur.roas ?? 0);
+    const avg_ctr = Number(cur.avg_ctr ?? 0);
+    const reach = Number(cur.total_reach ?? 0);
+    const conversions = Number(cur.conversions ?? 0);
+    const spend = Number(cur.total_spend ?? 0);
+
+    if (!isNaN(roas) && roas < 3 && roas > 0) {
+      recs.push({
+        title: "Reallocate budget to top converting ad sets",
+        impact: "High",
+        reason: `ROAS low at ${roas.toFixed(2)}x`,
+        actions: ["Shift 20% budget to best adsets"],
+        confidence: 80,
+      });
+    }
+
+    if (!isNaN(avg_ctr) && avg_ctr < 1.5) {
+      recs.push({
+        title: "Refresh creatives",
+        impact: "Medium",
+        reason: `CTR only ${avg_ctr.toFixed(2)}%`,
+        actions: ["Test new images", "Try different hooks"],
+      });
+    }
+
+    if (reach > 100000 && conversions < 50) {
+      recs.push({
+        title: "Improve conversion tracking",
+        impact: "High",
+        reason: `High reach but low conversions`,
+        actions: ["Fix pixel", "Improve landing page"],
+      });
+    }
+  }
+
+  for (const c of campaigns.slice(0, 8)) {
+    const spent = Number(c.spend ?? c.spend_inr ?? 0);
+    const conv = Number(c.conversions ?? 0);
+
+    if (spent > 1000 && conv < 10) {
+      recs.push({
+        title: `Review ${c.name}`,
+        impact: "Medium",
+        reason: `High spend (${spent}) but low conversions (${conv})`,
+      });
+    }
+
+    if (!c.budget || Number(c.budget) === 0) {
+      recs.push({
+        title: `Set a daily budget for ${c.name}`,
+        impact: "Low",
+        reason: `${c.name} has no budget assigned`,
+      });
+    }
+  }
+
+  return recs.slice(0, 8);
+}
+
+/** Convert AI record → safe small response */
+function makeReturnedRec(aiRec: AiRec): ReturnedRec {
+  const campaignId =
+    aiRec?.related_to?.id != null ? String(aiRec.related_to.id) : undefined;
+
+  return {
+    id: uid(),
+    title: aiRec.title ?? "Recommendation",
+    reason: aiRec.reason ?? null,
+    impact: aiRec.impact ?? null,
+    confidence: typeof aiRec.confidence === "number" ? aiRec.confidence : null,
+    campaignId,
+    created_at: new Date().toISOString(),
+  };
+}
+
+// ------------------------------
+// Main Handler
+// ------------------------------
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (req.method !== "POST")
+    return res.status(405).json({ ok: false, error: "Method not allowed" });
+
+  try {
+    // Validate Bearer
+    const auth = req.headers.authorization;
+    if (!auth || !auth.startsWith("Bearer ")) {
+      return res.status(401).json({ ok: false, error: "Missing bearer token" });
+    }
+
+    const token = auth.split(" ")[1];
+
+    // Get user from Supabase
+    const { data: userData, error: userErr } = await supabaseAdmin.auth.getUser(token);
+    if (userErr || !userData?.user) {
+      return res.status(401).json({ ok: false, error: "Invalid token" });
+    }
+
+    const user = userData.user;
+    const userId = user.id;
+
+    // Get campaigns (user-specific)
+    const { data: campaignsData } = await supabaseAdmin
+      .from("campaigns")
+      .select("*")
+      .eq("user_id", userId)
+      .limit(50);
+
+    const campaigns = Array.isArray(campaignsData) ? campaignsData : [];
+
+    const incoming = req.body ?? {};
+    const metrics = incoming.metrics ?? null;
+    const range = incoming.range ?? null;
+
+    // Try real Meta AI
+    const aiAttempt = await callInternalMetaAI(NEXT_PUBLIC_BASE_URL, token, {
+      metrics,
+      range,
+    });
+
+    let aiRecs: AiRec[] = [];
+    let rawToPersist: any = null;
+    let usedSource = "fallback";
+
+    if (aiAttempt.ok && aiAttempt.json) {
+      const parsed = aiAttempt.json.parsed ?? aiAttempt.json;
+      rawToPersist = parsed;
+
+      aiRecs = extractRecommendationsFromAI(parsed);
+
+      if (!aiRecs.length) {
+        aiRecs = fallbackRecs(userId, campaigns, metrics);
+        usedSource = "fallback-after-empty-ai";
+      } else {
+        usedSource = "ai-route";
+      }
+    } else {
+      aiRecs = fallbackRecs(userId, campaigns, metrics);
+      rawToPersist = { error: aiAttempt.error ?? "AI unavailable" };
+      usedSource = "fallback-ai-failed";
+    }
+
+    // Persist
+    const now = new Date().toISOString();
+    const insertPayload = aiRecs.map((r) => ({
+      user_id: userId,
+      title: r.title ?? "Recommendation",
+      reason: r.reason ?? null,
+      impact: r.impact ?? null,
+      confidence: typeof r.confidence === "number" ? r.confidence : null,
+      campaign_id:
+        r.related_to?.id != null ? String(r.related_to.id) : null,
+      payload: { r, meta: { inserted_at: now, range } },
+      created_at: now,
+    }));
+
+    if (insertPayload.length > 0) {
+      await supabaseAdmin.from("recommendations").insert(insertPayload);
+    }
+
+    // Send small response to avoid 4MB limit
+    const returned: ReturnedRec[] = aiRecs.map(makeReturnedRec);
 
     return res.status(200).json({
       ok: true,
-      compact,
-      parsed,
-      assistantText,
-      rawOpenAI: rawText,
-      debug: { campaignCount: summary.meta.campaigns.length, usedIntegrationRowId: s.savedRowId ?? null }
+      source: usedSource,
+      count: returned.length,
+      recommendations: returned,
     });
-
   } catch (err: any) {
-    console.error("recommendationsMeta error:", err);
-    return res.status(500).json({ ok: false, error: err?.message ?? String(err) });
+    console.error("recommendations.ts error:", err);
+    return res.status(500).json({
+      ok: false,
+      error: err?.message ?? "Unknown error",
+    });
   }
 }

@@ -1,8 +1,8 @@
 // pages/analytics.tsx
 "use client";
 
-import React, { useEffect, useState, useMemo } from "react";
-import type { JSX } from "react"; // ✅ Fix: allows JSX.Element type without TS errors
+import React, { useEffect, useMemo, useState } from "react";
+import type { JSX } from "react";
 import Sidebar from "../app/web/src/components/Sidebar";
 import { apiFetch } from "../lib/apiFetch";
 import { supabase } from "../lib/supabaseClient";
@@ -10,10 +10,7 @@ import { supabase } from "../lib/supabaseClient";
 import { Card, CardContent, CardHeader, CardTitle } from "../app/web/src/components/ui/card";
 import { Button } from "../app/web/src/components/ui/button";
 
-import {
-  BarChart3,
-  Share2,
-} from "lucide-react";
+import { BarChart3, Share2 } from "lucide-react";
 
 import {
   ResponsiveContainer,
@@ -117,7 +114,7 @@ function pctDisplay(n: number | null | undefined) {
 }
 
 function normalizeRec(x: any): Recommendation {
-  if (!x) return {};
+  if (!x) return {} as Recommendation;
   const id = x.id ?? (Math.random() + "").slice(2);
   const title = x.title ?? x.heading ?? x.name ?? (typeof x === "string" ? x : undefined);
   const impact = x.impact ?? x.level ?? x.priority;
@@ -126,11 +123,11 @@ function normalizeRec(x: any): Recommendation {
   else if (typeof x.actions === "string") {
     actions = x.actions
       .split(/\n+/)
-      .map(s => s.replace(/^[\-\d\.\)\s]+/, "").trim())
+      .map((s: string) => s.replace(/^[\-\d\.\)\s]+/, "").trim())
       .filter(Boolean);
   }
   const estimate = x.estimate ?? x.estimate_uplift ?? x.uplift;
-  const campaignId = x.campaignId ?? x.campaign_id ?? x.c;
+  const campaignId = x.related_to?.id ?? x.campaignId ?? x.campaign_id ?? x.c;
   const confidence = x.confidence ?? x.conf ?? undefined;
   const effort = x.effort ?? x.estimated_effort ?? undefined;
   return { id, title, impact, reason: x.reason, actions, estimate, campaignId, resolved: false, confidence, effort };
@@ -163,54 +160,6 @@ const GenericTooltip = (props: any) => {
   );
 };
 
-/* -------------------- JSON extraction helpers -------------------- */
-
-function extractJsonFromText(text: string): any | null {
-  if (!text) return null;
-  const cleaned = text
-    .replace(/^\s*```(?:json)?\s*/i, "")
-    .replace(/\s*```\s*$/, "")
-    .trim();
-
-  const firstBrace = cleaned.indexOf("{");
-  const lastBrace = cleaned.lastIndexOf("}");
-  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-    const candidate = cleaned.slice(firstBrace, lastBrace + 1);
-    try {
-      return JSON.parse(candidate);
-    } catch {}
-  }
-  try {
-    return JSON.parse(cleaned);
-  } catch {
-    return null;
-  }
-}
-
-function splitTextIntoRecommendations(text: string): string[] {
-  if (!text) return [];
-
-  let parts = text.split(/\n\s*\d+\.\s/).map(s => s.trim()).filter(Boolean);
-  if (parts.length > 1) return parts;
-
-  parts = text.split(/\n{2,}/).map(s => s.trim()).filter(Boolean);
-  if (parts.length > 1) return parts;
-
-  parts = text.split(/[\u2022\u2023\-•\*]\s+/).map(s => s.trim()).filter(Boolean);
-  if (parts.length > 1) return parts;
-
-  const sentences = text.split(/[.?!]\s+/).map(s => s.trim()).filter(Boolean);
-  if (sentences.length === 0) return [text.trim()];
-
-  const chunks: string[] = [];
-  for (let i = 0; i < sentences.length; i += 2) {
-    const chunk = sentences.slice(i, i + 2).join(". ").trim();
-    if (chunk) chunks.push(chunk + (chunk.endsWith(".") ? "" : "."));
-    if (chunks.length >= 10) break;
-  }
-  return chunks.length ? chunks : [text.trim()];
-}
-
 /* -------------------- component -------------------- */
 
 export default function Analytics(): JSX.Element {
@@ -219,12 +168,11 @@ export default function Analytics(): JSX.Element {
 
   const [metaSummary, setMetaSummary] = useState<SummaryResp | null>(null);
   const [loadingMeta, setLoadingMeta] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const [recList, setRecList] = useState<Recommendation[]>([]);
   const [recLoading, setRecLoading] = useState(false);
-  // only show recs after user clicks
   const [recsRequested, setRecsRequested] = useState(false);
+  const [recError, setRecError] = useState<string | null>(null);
 
   const ranges = ["1d", "7d", "15d", "1m", "3m", "6m", "1y", "custom"] as const;
   const [selectedRange, setSelectedRange] = useState<typeof ranges[number]>("7d");
@@ -253,26 +201,22 @@ export default function Analytics(): JSX.Element {
     }
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
 
   async function fetchCampaigns() {
     setCampaignsLoading(true);
-
     try {
-      // get signed-in user id (client side)
-      const { data: sessionData, error: sessionErr } = await supabase.auth.getSession();
+      const { data: sessionData } = await supabase.auth.getSession();
       const user = (sessionData as any)?.session?.user ?? null;
       if (!user || !user.id) {
-        // not signed in — return empty list
         setCampaigns([]);
         setCampaignsLoading(false);
         return;
       }
       const uid = user.id;
 
-      // Attempt server-side filter using common user-id column names.
-      // If your campaigns table uses a different column for ownership, replace with that column.
-      // This uses an OR so we only fetch rows that match the current user.
       const orFilter = `user_id.eq.${uid},owner.eq.${uid},created_by.eq.${uid},profile_id.eq.${uid}`;
 
       const { data, error } = await supabase
@@ -283,38 +227,7 @@ export default function Analytics(): JSX.Element {
 
       if (error) {
         console.error("Error fetching campaigns (user-scoped):", error);
-        // fallback: fetch all and filter client-side (defensive)
-        const { data: allData, error: allErr } = await supabase
-          .from("campaigns")
-          .select("*")
-          .order("created_at", { ascending: false });
-
-        if (allErr || !Array.isArray(allData)) {
-          setCampaigns([]);
-        } else {
-          const filtered = (allData as any[]).filter((c) =>
-            [c.user_id, c.owner, c.created_by, c.profile_id, c.userId, c.owner_id].some(
-              (v) => v === uid
-            )
-          );
-          const normalized = filtered.map((c) => ({
-            id: c.id ?? (c.name || Math.random()).toString(),
-            name: c.name ?? "Untitled",
-            campaign_type: c.campaign_type ?? c.type ?? null,
-            image_url: c.image_url ?? null,
-            is_published: !!c.is_published,
-            created_at: c.created_at ?? undefined,
-            spend: c.spend_inr ?? c.spend ?? undefined,
-            roas: c.roas ?? undefined,
-            ctr: c.ctr ?? undefined,
-            impressions: c.impressions ?? undefined,
-            platform: c.platform ?? c.source ?? (c.campaign_type ?? "Meta"),
-            conversions: c.conversions ?? 0,
-            budget: c.budget_inr ?? c.budget ?? undefined,
-          })) as Campaign[];
-
-          setCampaigns(normalized.slice(0, 3));
-        }
+        setCampaigns([]);
       } else {
         const normalized = (data as any[]).map((c) => ({
           id: c.id ?? (c.name || Math.random()).toString(),
@@ -332,8 +245,7 @@ export default function Analytics(): JSX.Element {
           budget: c.budget_inr ?? c.budget ?? undefined,
         })) as Campaign[];
 
-        // only 3 campaigns
-        setCampaigns(normalized.slice(0, 3));
+        setCampaigns(normalized.slice(0, 10));
       }
     } catch (err) {
       console.error("fetchCampaigns unexpected error:", err);
@@ -351,9 +263,14 @@ export default function Analytics(): JSX.Element {
         const j = await res.json();
         setStatuses(j);
         localStorage.setItem(LS_KEY, JSON.stringify(j));
+      } else {
+        setStatuses(null);
       }
-    } catch {}
-    setStatusLoading(false);
+    } catch (e) {
+      setStatuses(null);
+    } finally {
+      setStatusLoading(false);
+    }
   }
 
   function isMetaConnectedLocal(s?: Record<string, any> | null) {
@@ -375,8 +292,15 @@ export default function Analytics(): JSX.Element {
 
   // fetchMetrics accepts explicit options so clicks update immediately
   async function fetchMetrics(opts?: { range?: string; start?: string; end?: string }) {
+    // If not connected, do NOT fetch, do NOT show dummy data.
+    if (!isMetaConnectedLocal()) {
+      setMetaSummary(null);
+      setSeries([]);
+      setLoadingMeta(false);
+      return;
+    }
+
     setLoadingMeta(true);
-    setError(null);
     let token: string | null = null;
 
     try {
@@ -401,20 +325,82 @@ export default function Analytics(): JSX.Element {
         headers,
       });
 
+      // if ok and payload has current -> use it
       if (resp.ok) {
         const j = await resp.json();
-        setMetaSummary(j);
-        hydrateUiFromMeta(j);
+
+        // If metrics are missing or empty => persist zeros (no alert)
+        const hasCurr = !!(j?.meta && j.meta.current);
+        if (!hasCurr) {
+          // create zeroed meta but keep shape
+          const zeroMeta: SummaryResp = {
+            ok: true,
+            meta: {
+              current: {
+                total_spend: 0,
+                budget_estimate_daily: null,
+                total_reach: 0,
+                avg_ctr: 0,
+                conversions: 0,
+                roas: null,
+              },
+              change: {
+                total_reach_pct: 0,
+                avg_ctr_pct: 0,
+                total_spend_pct: 0,
+                conversions_pct: 0,
+              },
+              time_series: [],
+            }
+          };
+          setMetaSummary(zeroMeta);
+          hydrateUiFromMeta(zeroMeta);
+        } else {
+          setMetaSummary(j);
+          hydrateUiFromMeta(j);
+        }
       } else {
-        const errText = await resp.text();
-        setError(errText);
-        hydrateUiFromMeta(null);
+        // non-ok -> treat as empty range: show zeros (persisted), no alert
+        const zeroMeta: SummaryResp = {
+          ok: false,
+          meta: {
+            current: {
+              total_spend: 0,
+              budget_estimate_daily: null,
+              total_reach: 0,
+              avg_ctr: 0,
+              conversions: 0,
+              roas: null,
+            },
+            change: {},
+            time_series: [],
+          }
+        };
+        setMetaSummary(zeroMeta);
+        hydrateUiFromMeta(zeroMeta);
       }
-    } catch (e: any) {
-      setError(String(e));
-      hydrateUiFromMeta(null);
+    } catch (e) {
+      console.error("fetchMetrics error", e);
+      const zeroMeta: SummaryResp = {
+        ok: false,
+        meta: {
+          current: {
+            total_spend: 0,
+            budget_estimate_daily: null,
+            total_reach: 0,
+            avg_ctr: 0,
+            conversions: 0,
+            roas: null,
+          },
+          change: {},
+          time_series: [],
+        }
+      };
+      setMetaSummary(zeroMeta);
+      hydrateUiFromMeta(zeroMeta);
+    } finally {
+      setLoadingMeta(false);
     }
-    setLoadingMeta(false);
   }
 
   function safeNum(v: any, fallback = 0) {
@@ -440,291 +426,136 @@ export default function Analytics(): JSX.Element {
       .filter(Boolean) as Date[];
 
     if (dates.length === 0) return null;
-
     return new Date(Math.max(...dates.map(d => d.getTime())));
   }
 
   function hydrateUiFromMeta(summary: SummaryResp | null) {
-    if (summary?.meta?.time_series && summary.meta.time_series.length > 0) {
+    // If disconnected/summary null -> keep series empty
+    if (!summary || !summary.meta) {
+      setSeries([]);
+      return;
+    }
+
+    // if time_series present and non-empty: map and set
+    if (summary.meta.time_series && summary.meta.time_series.length > 0) {
       const ordered = summary.meta.time_series.map((p: any) => ({
-        date: new Date(p.date).toLocaleDateString("en-IN", {
-          day: "numeric",
-          month: "short",
-        }),
+        date: new Date(p.date).toLocaleDateString("en-IN", { day: "numeric", month: "short" }),
         impressions: safeNum(p.impressions),
         clicks: safeNum(p.clicks),
         spend: safeNum(p.spend),
-        ctr: p.ctr != null ? safeNum(p.ctr) : undefined,
+        ctr: p.ctr != null ? safeNum(p.ctr) : 0,
         conversions: safeNum(p.conversions),
         roas: p.roas ?? null,
       }));
       setSeries(ordered);
+      return;
+    }
+
+    // else: produce zero-series if meta.current exists (even if ok:false)
+    const pointCount = 7;
+    const lastActivity = inferLatestActivityDate(campaigns);
+    const endDate = lastActivity ?? new Date();
+    const labels = generateDateLabels(pointCount, endDate);
+
+    const cur = summary.meta.current ?? {
+      total_reach: 0,
+      total_spend: 0,
+      avg_ctr: 0,
+      conversions: 0,
+      roas: null,
+    };
+
+    const allZero =
+      (cur.total_reach ?? 0) === 0 &&
+      (cur.total_spend ?? 0) === 0 &&
+      (cur.conversions ?? 0) === 0;
+
+    if (allZero) {
+      const zeroSeries = labels.map((lab) => ({
+        date: lab,
+        impressions: 0,
+        clicks: 0,
+        spend: 0,
+        ctr: 0,
+        conversions: 0,
+        roas: null,
+      }));
+      setSeries(zeroSeries);
     } else {
-      const pointCount = 7;
-      const lastActivity = inferLatestActivityDate(campaigns);
-      const endDate = lastActivity ?? new Date();
-
-      const labels = generateDateLabels(pointCount, endDate);
-
-      if (summary?.meta?.current) {
-        const cur = summary.meta.current;
-        const weights = [0.08, 0.09, 0.14, 0.16, 0.18, 0.17, 0.18];
-
-        const synth = labels.map((lab, i) => ({
-          date: lab,
-          impressions: Math.round((cur.total_reach ?? 0) * weights[i]),
-          clicks: Math.round(((cur.total_reach ?? 0) * ((cur.avg_ctr ?? 0) / 100)) * weights[i]),
-          spend: Math.round((cur.total_spend ?? 0) * weights[i]),
-          ctr: cur.avg_ctr ?? undefined,
-          conversions: Math.round((cur.conversions ?? 0) * weights[i]),
-          roas: cur.roas,
-        }));
-        setSeries(synth);
-      } else {
-        const syntheticImpr = [120000, 125000, 118000, 132000, 128000, 135000, 142000];
-        const syntheticClicks = [4200, 4500, 4100, 4800, 4600, 5000, 5300];
-        const syntheticSpend = [1200, 1250, 1180, 1320, 1280, 1350, 1420];
-
-        const synth = labels.map((lab, i) => ({
-          date: lab,
-          impressions: syntheticImpr[i],
-          clicks: syntheticClicks[i],
-          spend: syntheticSpend[i],
-          ctr: Number(((syntheticClicks[i] / syntheticImpr[i]) * 100).toFixed(2)),
-          conversions: Math.round(syntheticClicks[i] * 0.08),
-          roas: null,
-        }));
-        setSeries(synth);
-      }
-    }
-
-    // build suggestions but only set into state if user asked
-    const suggestions: Recommendation[] = [];
-
-    if (summary?.meta?.current) {
-      const cur = summary.meta.current;
-
-      if (cur.roas && cur.roas < 3) {
-        suggestions.push(
-          normalizeRec({
-            id: "rec-roas-1",
-            title: "Reallocate budget to top converting ad sets",
-            reason: `Account ROAS ${cur.roas.toFixed(2)}x — shift budget to highest converting ad sets.`,
-            impact: "High",
-            campaignId: campaigns[0]?.id,
-            confidence: 88,
-            effort: "low",
-          })
-        );
-      }
-
-      if ((cur.avg_ctr ?? 0) < 1.5) {
-        suggestions.push(
-          normalizeRec({
-            id: "rec-ctr-1",
-            title: "Refresh creatives to improve CTR",
-            reason: `Avg CTR ${(cur.avg_ctr ?? 0).toFixed(2)}% — test new creatives.`,
-            impact: "Medium",
-            campaignId: campaigns[1]?.id,
-            confidence: 76,
-            effort: "medium",
-          })
-        );
-      }
-
-      if ((cur.total_reach ?? 0) > 100000 && (cur.conversions ?? 0) < 50) {
-        suggestions.push(
-          normalizeRec({
-            id: "rec-conv-1",
-            title: "Optimize landing page & tracking",
-            reason: `High reach but low conversions (${cur.conversions ?? 0}). Check funnel & tracking.`,
-            impact: "High",
-            campaignId: campaigns[2]?.id,
-            confidence: 91,
-            effort: "high",
-          })
-        );
-      }
-    }
-
-    for (const c of campaigns) {
-      const spentNum = Number(c.spend ?? 0);
-      if (c.is_published && spentNum > 1000 && (c.conversions ?? 0) < 10) {
-        suggestions.push(
-          normalizeRec({
-            id: `rec-campaign-${c.id}-1`,
-            title: `Review ${c.name} targeting & creative`,
-            reason: `High spend but low conversions for ${c.name}. Consider creative refresh or audience change.`,
-            impact: "Medium",
-            campaignId: c.id,
-            confidence: 72,
-            effort: "medium",
-          })
-        );
-      }
-
-      if (!c.budget) {
-        suggestions.push(
-          normalizeRec({
-            id: `rec-campaign-${c.id}-setbudget`,
-            title: `Set daily budget for ${c.name}`,
-            reason: `${c.name} has no budget set — add a daily budget to keep pacing controlled.`,
-            impact: "Low",
-            campaignId: c.id,
-            confidence: 60,
-            effort: "low",
-          })
-        );
-      }
-    }
-
-    if (suggestions.length === 0) {
-      suggestions.push(
-        normalizeRec({
-          id: "rec-sample-1",
-          title: "Monitor frequency and ad fatigue",
-          reason:
-            "Audience frequency may be climbing — monitor fatigue and refresh creatives when CTR drops.",
-          impact: "Medium",
-          campaignId: campaigns[0]?.id,
-          confidence: 65,
-          effort: "low",
-        })
-      );
-    }
-
-    if (recsRequested) {
-      const deduped: Record<string, Recommendation> = {};
-      for (const s of suggestions) {
-        if (!s.id) s.id = (Math.random() + "").slice(2);
-        deduped[s.id] = s;
-      }
-      setRecList(Object.values(deduped));
+      const weights = [0.08, 0.09, 0.14, 0.16, 0.18, 0.17, 0.18];
+      const synth = labels.map((lab, i) => ({
+        date: lab,
+        impressions: Math.round((cur.total_reach ?? 0) * weights[i]),
+        clicks: Math.round(((cur.total_reach ?? 0) * ((cur.avg_ctr ?? 0) / 100)) * weights[i]),
+        spend: Math.round((cur.total_spend ?? 0) * weights[i]),
+        ctr: cur.avg_ctr ?? 0,
+        conversions: Math.round((cur.conversions ?? 0) * weights[i]),
+        roas: cur.roas,
+      }));
+      setSeries(synth);
     }
   }
 
+  // ---------- Recommendations (USER-SPECIFIC) ----------
   async function askRecommendations() {
+    setRecError(null);
     setRecLoading(true);
     setRecsRequested(true);
     setRecList([]);
 
+    // must be connected to Meta
+    if (!isMetaConnectedLocal()) {
+      setRecError("Please connect Meta to generate recommendations.");
+      setRecLoading(false);
+      return;
+    }
+
+    // get token
+    let token: string | null = null;
     try {
-      const metricsPayload = {
-        meta: metaSummary?.meta ?? null,
-        note: "Return JSON with key 'recommendations'...",
+      const { data } = await supabase.auth.getSession();
+      token = (data as any)?.session?.access_token ?? null;
+    } catch (e) {
+      token = null;
+    }
+
+    if (!token) {
+      setRecError("Not signed in.");
+      setRecLoading(false);
+      return;
+    }
+
+    try {
+      const body = {
+        metrics: metaSummary?.meta ?? null,
+        range: selectedRange === "custom" ? { start: customStart, end: customEnd } : { range: selectedRange },
       };
 
       const resp = await fetch("/api/recommendations", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ metrics: metricsPayload }),
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(body),
       });
 
+      if (!resp.ok) {
+        const txt = await resp.text();
+        setRecError(txt || "Failed to generate recommendations.");
+        setRecLoading(false);
+        return;
+      }
+
       const j = await resp.json();
-
-      // parse recommendations from response (best-effort)
-      let parsed: any = j?.parsed ?? null;
-
-      if (!parsed && j?.raw?.choices?.[0]?.message?.content)
-        parsed = extractJsonFromText(j.raw.choices[0].message.content);
-
-      if (!parsed && typeof j?.raw === "string")
-        parsed = extractJsonFromText(j.raw);
-
-      if (!parsed && typeof j?.text === "string")
-        parsed = extractJsonFromText(j.text);
-
-      if (!parsed)
-        parsed = extractJsonFromText(JSON.stringify(j));
-
-      let arr: any[] = [];
-      if (parsed) {
-        if (Array.isArray(parsed)) arr = parsed;
-        else if (Array.isArray(parsed.recommendations)) arr = parsed.recommendations;
-        else {
-          const maybe = Object.values(parsed).find(v => Array.isArray(v));
-          if (maybe) arr = maybe as any[];
-        }
-      }
-
-      const candidateTexts: string[] = [];
-      if (arr.length === 0) {
-        if (typeof j?.raw === "string") candidateTexts.push(j.raw);
-        if (typeof j?.text === "string") candidateTexts.push(j.text);
-      }
-      if (arr.length === 0 && j?.raw?.choices?.[0]?.message?.content)
-        candidateTexts.push(j.raw.choices[0].message.content);
-
-      for (const t of candidateTexts) {
-        const parts = splitTextIntoRecommendations(String(t));
-        for (const p of parts) arr.push({ reason: p });
-      }
-
-      if (arr.length > 0 && arr.length < 10) {
-        const rawAll = JSON.stringify(j);
-        const more = splitTextIntoRecommendations(rawAll);
-        for (const p of more) {
-          if (arr.length < 10) arr.push({ reason: p });
-        }
-      }
-
-      if (arr.length === 0) {
-        const fallback: any[] = [];
-        if (metaSummary?.meta?.current) {
-          const cur = metaSummary.meta.current;
-          if (cur.roas == null || cur.roas < 3)
-            fallback.push({ title: "Check top converting adsets", reason: "Low ROAS" });
-
-          if ((cur.avg_ctr ?? 0) < 1.5)
-            fallback.push({ title: "Test new creatives", reason: "Low CTR" });
-        }
-        while (fallback.length < 5)
-          fallback.push({ reason: "Monitor ad fatigue — refresh creatives." });
-
-        arr = fallback;
-      }
-
-      const normalized = arr.slice(0, 10).map(normalizeRec);
-
-      const seen = new Set<string>();
-      const deduped: Recommendation[] = [];
-
-      for (const r of normalized) {
-        const key = (r.title ?? r.reason ?? "").slice(0, 200);
-        if (!key) continue;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        deduped.push(r);
-      }
-
-      if (deduped.length < 3) {
-        if (metaSummary?.meta?.current) {
-          const cur = metaSummary.meta.current;
-          if ((cur.avg_ctr ?? 0) < 2)
-            deduped.push(normalizeRec({
-              title: "Improve CTR",
-              reason: "CTR below 2%",
-              impact: "Medium"
-            }));
-
-          if ((cur.roas ?? 0) < 3)
-            deduped.push(normalizeRec({
-              title: "Improve ROAS",
-              reason: "ROAS below 3x",
-              impact: "High"
-            }));
-        }
-      }
-
-      // final set to state (only minimal fields will show in UI)
-      setRecList(deduped);
-
+      const recs = Array.isArray(j.recommendations) ? j.recommendations : [];
+      const normalized = recs.map(normalizeRec);
+      setRecList(normalized);
+      setRecError(null);
     } catch (err: any) {
       console.error("askRecommendations error", err);
+      setRecError("Failed to generate recommendations. Try again.");
       setRecList([]);
+    } finally {
+      setRecLoading(false);
     }
-
-    setRecLoading(false);
   }
 
   function resolveRecommendation(id?: string) {
@@ -744,7 +575,7 @@ export default function Analytics(): JSX.Element {
 
           if (rec.title?.toLowerCase().includes("ctr"))
             updated.ctr = updated.ctr
-              ? `${Math.min(10, Number(updated.ctr.replace("%", "")) + 0.8)}%`
+              ? `${Math.min(10, Number(String(updated.ctr).replace("%", "")) + 0.8)}%`
               : "1.6%";
 
           if (rec.title?.toLowerCase().includes("roas"))
@@ -789,25 +620,14 @@ export default function Analytics(): JSX.Element {
 
   async function handleApplyCustomRange() {
     if (!customStart || !customEnd) {
-      setError("Pick start and end");
       return;
     }
 
     if (customStart > customEnd) {
-      setError("Start must be before end");
       return;
     }
 
-    setError(null);
-    setLoadingMeta(true);
-
-    try {
-      await fetchMetrics({ start: customStart, end: customEnd });
-    } catch (err: any) {
-      setError(String(err));
-    }
-
-    setLoadingMeta(false);
+    await fetchMetrics({ start: customStart, end: customEnd });
   }
 
   function goToIntegrations() {
@@ -821,8 +641,8 @@ export default function Analytics(): JSX.Element {
     {
       label: "Impressions",
       value: metaSummary?.meta?.current?.total_reach
-        ? `${Math.round(metaSummary.meta.current.total_reach / 1000)}K`
-        : "—",
+        ? `${Math.round(metaSummary!.meta!.current!.total_reach / 1000)}K`
+        : "0",
       change: pctDisplay(metaSummary?.meta?.change?.total_reach_pct),
       trend: (metaSummary?.meta?.change?.total_reach_pct ?? 0) > 0 ? "up" : "down",
     },
@@ -830,19 +650,18 @@ export default function Analytics(): JSX.Element {
       label: "Clicks",
       value: metaSummary?.meta?.current?.avg_ctr
         ? `${Math.round(
-            ((metaSummary.meta.current.total_reach ?? 0) *
-              ((metaSummary.meta.current.avg_ctr ?? 0) / 100))
+            ((metaSummary!.meta!.current!.total_reach ?? 0) *
+              ((metaSummary!.meta!.current!.avg_ctr ?? 0) / 100))
           ).toLocaleString()}`
-
-      : "—",
+      : "0",
       change: pctDisplay(metaSummary?.meta?.change?.avg_ctr_pct),
       trend: (metaSummary?.meta?.change?.avg_ctr_pct ?? 0) > 0 ? "up" : "down",
     },
     {
       label: "CTR",
       value: metaSummary?.meta?.current?.avg_ctr
-        ? `${metaSummary.meta.current.avg_ctr.toFixed(2)}%`
-        : "—",
+        ? `${metaSummary!.meta!.current!.avg_ctr.toFixed(2)}%`
+        : "0%",
       change: pctDisplay(metaSummary?.meta?.change?.avg_ctr_pct),
       trend: (metaSummary?.meta?.change?.avg_ctr_pct ?? 0) > 0 ? "up" : "down",
     },
@@ -860,7 +679,7 @@ export default function Analytics(): JSX.Element {
     },
     {
       label: "Conversions",
-      value: metaSummary?.meta?.current?.conversions ?? "—",
+      value: (metaSummary?.meta?.current?.conversions ?? 0).toString(),
       change: pctDisplay(metaSummary?.meta?.change?.conversions_pct),
       trend: (metaSummary?.meta?.change?.conversions_pct ?? 0) > 0 ? "up" : "down",
     },
@@ -878,7 +697,6 @@ export default function Analytics(): JSX.Element {
 
   const selectedCampaign = campaigns.find((c) => c.id === selectedCampaignId) ?? null;
 
-  // Only show recs if user requested them; keep only relevant recs for selected campaign if set
   const rightPanelRecs = recsRequested
     ? (selectedCampaignId
         ? recList.filter((r) => r.campaignId === selectedCampaignId || !r.campaignId)
@@ -892,6 +710,8 @@ export default function Analytics(): JSX.Element {
     }
     return selectedRange;
   }, [selectedRange, customStart, customEnd]);
+
+  const metaConnected = isMetaConnectedLocal();
 
   return (
     <div className="min-h-screen flex bg-slate-50">
@@ -976,7 +796,7 @@ export default function Analytics(): JSX.Element {
 
             {statusLoading ? (
               <div>Checking connection status…</div>
-            ) : !isMetaConnectedLocal() ? (
+            ) : !metaConnected ? (
               <div className="p-6 text-center">
                 <div className="text-lg font-semibold text-slate-800">Please connect Meta</div>
                 <div className="text-sm text-slate-600 mt-2">
@@ -993,7 +813,8 @@ export default function Analytics(): JSX.Element {
               </div>
             ) : loadingMeta ? (
               <div>Loading Meta metrics…</div>
-            ) : metaSummary?.meta?.current ? (
+            ) : (
+              // Always show overview — if metrics empty we set zeros in state
               <div className="grid grid-cols-6 gap-4">
                 {overallMetrics.map((m, i) => (
                   <div key={i} className="p-4 bg-gray-50 rounded">
@@ -1009,227 +830,236 @@ export default function Analytics(): JSX.Element {
                   </div>
                 ))}
               </div>
-            ) : (
-              <div className="text-red-600">
-                Could not fetch Meta metrics.
-                {error && <pre className="text-xs mt-2">{error}</pre>}
-              </div>
             )}
           </div>
 
           {/* CHARTS */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Impressions */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <BarChart3 className="w-5 h-5" /> Impressions — {dateRangeLabel}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center gap-4 mb-3">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="w-3 h-3 rounded-full"
-                      style={{ background: "hsl(210 100% 56%)" }}
-                    />
-                    Impressions
-                  </div>
-                </div>
-
-                <div className="h-[260px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={series}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="date" hide />
-                      <YAxis />
-                      <Tooltip content={<GenericTooltip />} />
-                      <Legend />
-                      <Line
-                        type="monotone"
-                        dataKey="impressions"
-                        name="Impressions"
-                        stroke="hsl(210 100% 56%)"
-                        strokeWidth={2}
-                        dot={{ r: 3 }}
+          {!metaConnected ? (
+            <div className="p-6 bg-white rounded-xl shadow text-center">
+              <div className="text-lg font-semibold mb-2">Connect Meta to view charts</div>
+              <div className="text-sm text-slate-500 mb-4">Charts & deeper insights require a connection to Meta.</div>
+              <div>
+                <button
+                  onClick={() => goToIntegrations()}
+                  className="px-4 py-2 rounded bg-blue-600 text-white"
+                >
+                  Connect Meta
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Impressions */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <BarChart3 className="w-5 h-5" /> Impressions — {dateRangeLabel}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center gap-4 mb-3">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="w-3 h-3 rounded-full"
+                        style={{ background: "hsl(210 100% 56%)" }}
                       />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Clicks */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Clicks — {dateRangeLabel}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center gap-4 mb-3">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="w-3 h-3 rounded-full"
-                      style={{ background: "hsl(200 80% 45%)" }}
-                    />
-                    Clicks
+                      Impressions
+                    </div>
                   </div>
-                </div>
 
-                <div className="h-[260px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={series}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="date" hide />
-                      <YAxis />
-                      <Tooltip content={<GenericTooltip />} />
-                      <Area
-                        type="monotone"
-                        dataKey="clicks"
-                        name="Clicks"
-                        stroke="hsl(200 80% 45%)"
-                        fill="rgba(30,130,230,0.12)"
-                        strokeWidth={2}
+                  <div className="h-[260px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={series}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="date" hide />
+                        <YAxis />
+                        <Tooltip content={<GenericTooltip />} />
+                        <Legend />
+                        <Line
+                          type="monotone"
+                          dataKey="impressions"
+                          name="Impressions"
+                          stroke="hsl(210 100% 56%)"
+                          strokeWidth={2}
+                          dot={{ r: 3 }}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Clicks */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Clicks — {dateRangeLabel}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center gap-4 mb-3">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="w-3 h-3 rounded-full"
+                        style={{ background: "hsl(200 80% 45%)" }}
                       />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Spend */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Spend — {dateRangeLabel}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center gap-4 mb-3">
-                  <div className="flex items-center gap-2">
-                    <span className="w-3 h-3 rounded-full" style={{ background: "#3FA7FF" }} />
-                    Spend
+                      Clicks
+                    </div>
                   </div>
-                </div>
 
-                <div className="h-[260px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={series}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="date" hide />
-                      <YAxis />
-                      <Tooltip content={<GenericTooltip />} />
-                      <Bar dataKey="spend" name="Spend (INR)" fill="#3FA7FF" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* CTR */}
-            <Card>
-              <CardHeader>
-                <CardTitle>CTR (%) — {dateRangeLabel}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center gap-4 mb-3">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="w-3 h-3 rounded-full"
-                      style={{ background: "hsl(210 80% 50%)" }}
-                    />
-                    CTR
+                  <div className="h-[260px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={series}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="date" hide />
+                        <YAxis />
+                        <Tooltip content={<GenericTooltip />} />
+                        <Area
+                          type="monotone"
+                          dataKey="clicks"
+                          name="Clicks"
+                          stroke="hsl(200 80% 45%)"
+                          fill="rgba(30,130,230,0.12)"
+                          strokeWidth={2}
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
                   </div>
-                </div>
+                </CardContent>
+              </Card>
 
-                <div className="h-[260px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={series}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="date" hide />
-                      <YAxis
-                        domain={[0, "dataMax + 1"]}
-                        tickFormatter={(v) => `${v}%`}
+              {/* Spend */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Spend — {dateRangeLabel}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center gap-4 mb-3">
+                    <div className="flex items-center gap-2">
+                      <span className="w-3 h-3 rounded-full" style={{ background: "#3FA7FF" }} />
+                      Spend
+                    </div>
+                  </div>
+
+                  <div className="h-[260px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={series}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="date" hide />
+                        <YAxis />
+                        <Tooltip content={<GenericTooltip />} />
+                        <Bar dataKey="spend" name="Spend (INR)" fill="#3FA7FF" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* CTR */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>CTR (%) — {dateRangeLabel}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center gap-4 mb-3">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="w-3 h-3 rounded-full"
+                        style={{ background: "hsl(210 80% 50%)" }}
                       />
-                      <Tooltip content={<GenericTooltip />} />
-                      <Line
-                        type="monotone"
-                        dataKey="ctr"
-                        name="CTR (%)"
-                        stroke="hsl(210 80% 50%)"
-                        strokeWidth={2}
-                        dot={{ r: 3 }}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Conversions */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Conversions — {dateRangeLabel}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center gap-4 mb-3">
-                  <div className="flex items-center gap-2">
-                    <span className="w-3 h-3 rounded-full" style={{ background: "#16A34A" }} />
-                    Conversions
+                      CTR
+                    </div>
                   </div>
-                </div>
 
-                <div className="h-[260px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={series}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="date" hide />
-                      <YAxis />
-                      <Tooltip content={<GenericTooltip />} />
-                      <Bar dataKey="conversions" name="Conversions" fill="#16A34A" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* ROAS */}
-            <Card>
-              <CardHeader>
-                <CardTitle>ROAS — {dateRangeLabel}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center gap-4 mb-3">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="w-3 h-3 rounded-full"
-                      style={{ background: "rgba(99,102,241,1)" }}
-                    />
-                    ROAS
+                  <div className="h-[260px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={series}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="date" hide />
+                        <YAxis
+                          domain={[0, "dataMax + 1"]}
+                          tickFormatter={(v) => `${v}%`}
+                        />
+                        <Tooltip content={<GenericTooltip />} />
+                        <Line
+                          type="monotone"
+                          dataKey="ctr"
+                          name="CTR (%)"
+                          stroke="hsl(210 80% 50%)"
+                          strokeWidth={2}
+                          dot={{ r: 3 }}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
                   </div>
-                </div>
+                </CardContent>
+              </Card>
 
-                <div className="h-[260px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={series}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="date" hide />
-                      <YAxis />
-                      <Tooltip content={<GenericTooltip />} />
-                      <Area
-                        type="monotone"
-                        dataKey="roas"
-                        name="ROAS"
-                        stroke="rgba(99,102,241,1)"
-                        fill="rgba(99,102,241,0.12)"
-                        strokeWidth={2}
+              {/* Conversions */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Conversions — {dateRangeLabel}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center gap-4 mb-3">
+                    <div className="flex items-center gap-2">
+                      <span className="w-3 h-3 rounded-full" style={{ background: "#16A34A" }} />
+                      Conversions
+                    </div>
+                  </div>
+
+                  <div className="h-[260px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={series}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="date" hide />
+                        <YAxis />
+                        <Tooltip content={<GenericTooltip />} />
+                        <Bar dataKey="conversions" name="Conversions" fill="#16A34A" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* ROAS */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>ROAS — {dateRangeLabel}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center gap-4 mb-3">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="w-3 h-3 rounded-full"
+                        style={{ background: "rgba(99,102,241,1)" }}
                       />
-                      <ReferenceLine y={1} stroke="rgba(0,0,0,0.08)" />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+                      ROAS
+                    </div>
+                  </div>
 
-          {/* Unified time-range label (replaces per-chart x-axis labels) */}
+                  <div className="h-[260px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={series}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="date" hide />
+                        <YAxis />
+                        <Tooltip content={<GenericTooltip />} />
+                        <Area
+                          type="monotone"
+                          dataKey="roas"
+                          name="ROAS"
+                          stroke="rgba(99,102,241,1)"
+                          fill="rgba(99,102,241,0.12)"
+                          strokeWidth={2}
+                        />
+                        <ReferenceLine y={1} stroke="rgba(0,0,0,0.08)" />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
           <div className="text-center text-sm text-slate-500 mt-3">
             {dateRangeLabel}
           </div>
@@ -1261,9 +1091,7 @@ export default function Analytics(): JSX.Element {
             {filteredCampaigns.map((c) => (
               <Card
                 key={c.id}
-                className={`p-4 ${
-                  selectedCampaignId === c.id ? "ring-2 ring-blue-500" : ""
-                }`}
+                className={`p-4 ${selectedCampaignId === c.id ? "ring-2 ring-blue-500" : ""}`}
                 onClick={() => setSelectedCampaignId(c.id)}
               >
                 <CardContent className="flex items-center justify-between">
@@ -1275,9 +1103,7 @@ export default function Analytics(): JSX.Element {
                   </div>
 
                   <div className="text-sm text-slate-400">
-                    {c.created_at
-                      ? new Date(c.created_at).toLocaleString()
-                      : "—"}
+                    {c.created_at ? new Date(c.created_at).toLocaleString() : "—"}
                   </div>
                 </CardContent>
               </Card>
@@ -1291,11 +1117,15 @@ export default function Analytics(): JSX.Element {
         <div>
           <h3 className="text-lg font-bold">Recommendations</h3>
           <p className="text-sm text-slate-500">
-            Dynamic suggestions based on account & campaigns
+            Dynamic suggestions based on account & campaigns (user-specific)
           </p>
         </div>
 
-        {recLoading && recsRequested ? (
+        {!metaConnected && recsRequested ? (
+          <div className="text-sm text-slate-500">
+            Please connect Meta to generate recommendations.
+          </div>
+        ) : recLoading && recsRequested ? (
           <div className="text-sm text-slate-500">Generating recommendations…</div>
         ) : !recsRequested ? (
           <div className="text-sm text-slate-500">
@@ -1306,21 +1136,22 @@ export default function Analytics(): JSX.Element {
             {rightPanelRecs.map((r) => (
               <div
                 key={r.id}
-                className={`p-4 rounded-lg shadow-md bg-white ${
-                  r.resolved ? "opacity-60" : ""
-                }`}
+                className={`p-4 rounded-lg shadow-md bg-white ${r.resolved ? "opacity-60" : ""}`}
               >
                 <div className="flex justify-between items-start">
                   <div className="pr-3">
                     <div className="font-semibold text-slate-800">{r.title}</div>
 
-                    {/* ONLY show actions (if any) — minimal UI */}
                     {r.actions && r.actions.length > 0 && (
                       <ul className="list-disc ml-5 mt-3 text-sm space-y-1">
                         {r.actions.map((a, i) => (
                           <li key={i}>{a}</li>
                         ))}
                       </ul>
+                    )}
+
+                    {r.reason && (
+                      <div className="text-xs text-slate-500 mt-2">{r.reason}</div>
                     )}
                   </div>
 
@@ -1352,7 +1183,7 @@ export default function Analytics(): JSX.Element {
           </div>
         ) : (
           <div className="text-sm text-slate-500">
-            No recommendations found for the selected scope.
+            {recError ?? "No recommendations found for the selected scope."}
           </div>
         )}
       </aside>

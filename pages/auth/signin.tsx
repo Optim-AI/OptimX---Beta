@@ -61,45 +61,68 @@ export default function SignInPage(): React.ReactElement {
     return token;
   }
 
+  // Derive a sane full name from metadata or email when missing
+  function deriveFullName(user: any): string | null {
+    if (!user) return null;
+    const m = user.user_metadata ?? {};
+    // Common metadata fields
+    const candidates = [
+      m.full_name,
+      m.name,
+      m.preferred_username,
+      m.given_name && (m.family_name ? `${m.given_name} ${m.family_name}` : m.given_name),
+      m.given_name,
+      m.family_name,
+    ];
+    for (const c of candidates) {
+      if (c && typeof c === "string" && c.trim().length > 0) return c.trim();
+    }
+    // as a last resort, try to get from email local part
+    if (user.email && typeof user.email === "string") {
+      const local = user.email.split("@")[0] ?? null;
+      if (local) return local.replace(/[._\-0-9]+/g, " ").trim();
+    }
+    return null;
+  }
+
+  // Derive a sensible username fallback
+  function deriveUsername(user: any): string | null {
+    if (!user) return null;
+    const m = user.user_metadata ?? {};
+    if (m.username) return String(m.username);
+    if (m.preferred_username) return String(m.preferred_username);
+    if (user.email && typeof user.email === "string") return user.email.split("@")[0];
+    return null;
+  }
+
   // Upsert profile row for a signed-in user.
-  // This uses common profile fields: id (supabase auth user id), email, full_name and username.
-  // Adjust field names if your `profiles` table uses different column names.
+  // Writes id (supabase user id), email and full_name (as requested).
   async function upsertProfile(user: any) {
     if (!user || !user.id) return;
     try {
       const id = user.id;
-      const email = user.email ?? user.user_metadata?.email ?? null;
-      const full_name =
-        user.user_metadata?.full_name ??
-        user.user_metadata?.name ??
-        user.user_metadata?.given_name ??
-        null;
-      // derive a sensible username fallback from email if not present
-      const usernameFallback =
-        (email && typeof email === "string" ? email.split("@")[0] : null) ??
-        null;
-      const username =
-        user.user_metadata?.username ??
-        user.user_metadata?.preferred_username ??
-        usernameFallback;
+      // Prefer explicit fields, then metadata fallbacks
+      const emailValue = user.email ?? user.user_metadata?.email ?? null;
+      const full_name_value = deriveFullName(user);
+      const username = deriveUsername(user);
 
-      // only send fields that exist; keep it minimal to avoid overwriting other columns unintentionally
       const payload: Record<string, any> = { id };
-      if (email) payload.email = email;
-      if (full_name) payload.full_name = full_name;
+      if (emailValue) payload.email = emailValue;
+      if (full_name_value) payload.full_name = full_name_value;
       if (username) payload.username = username;
 
-      // upsert into profiles; onConflict = id so this merges into existing row
-      const { error } = await supabase.from("profiles").upsert(payload, {
-        onConflict: "id",
-      });
+      // Perform upsert and request the row back; select() helps surface errors
+      const { data: upserted, error: upsertError } = await supabase
+        .from("profiles")
+        .upsert(payload, { onConflict: "id" })
+        .select()
+        .maybeSingle();
 
-      if (error) {
-        // non-fatal in client-side flow; log for debugging
-        console.error("profiles upsert error:", error);
+      if (upsertError) {
+        // log full error for debugging
+        console.error("profiles upsert error:", upsertError);
       } else {
-        // optional: you could set a flag/local state to indicate profile exists
-        console.debug("profiles upserted for user:", id);
+        console.debug("profiles upserted for user:", id, upserted ?? payload);
       }
     } catch (err) {
       console.error("upsertProfile unexpected error:", err);
@@ -144,16 +167,18 @@ export default function SignInPage(): React.ReactElement {
       try {
         // if user already signed in (page load), upsert profile and redirect
         const { data } = await supabase.auth.getUser();
-        if (data?.user) {
+        const user = (data as any)?.user ?? null;
+        if (user) {
           try {
-            await upsertProfile(data.user);
+            await upsertProfile(user);
           } catch (e) {
             console.error("error upserting profile on mount:", e);
           }
           router.replace("/welcome");
         }
-      } catch {
-        // ignore
+      } catch (e) {
+        // ignore, but log for debugging
+        console.debug("getUser failed on mount:", e);
       }
     })();
   }, [router]);
@@ -189,11 +214,8 @@ export default function SignInPage(): React.ReactElement {
         return;
       }
 
-      // Note: user will be created/available only after they click the magic link and complete sign-in.
-      // We can't set the profile.id until we have a user id. The onAuthStateChange handler will upsert after SIGNED_IN.
-      setInfo(
-        "Magic link sent — check your email (and spam) to complete sign-in."
-      );
+      // Inform user; actual profile creation happens after they click the link which triggers SIGNED_IN.
+      setInfo("Magic link sent — check your email (and spam) to complete sign-in.");
     } catch (e: any) {
       setError(e?.message ?? String(e));
     } finally {
@@ -570,8 +592,7 @@ export default function SignInPage(): React.ReactElement {
           className="absolute inset-0 mesh-gradient"
           style={{
             background:
-              (colors as any)?.gradientMesh ??
-              "linear-gradient(180deg,#f0f8ff00,#ffffff00)",
+              (colors as any)?.gradientMesh ?? "linear-gradient(180deg,#f0f8ff00,#ffffff00)",
             opacity: 0.4,
             zIndex: 0,
           }}
@@ -605,9 +626,7 @@ export default function SignInPage(): React.ReactElement {
               (colors as any)?.primary ?? "hsl(213 90% 50%)",
               0.1
             )} 0%, ${withAlpha(
-              (colors as any)?.primaryGlow ??
-                (colors as any)?.primary ??
-                "hsl(213 90% 50%)",
+              (colors as any)?.primaryGlow ?? (colors as any)?.primary ?? "hsl(213 90% 50%)",
               0.08
             )} 100%)`,
             animationDelay: "4s",
@@ -647,8 +666,7 @@ export default function SignInPage(): React.ReactElement {
                   position: "absolute",
                   inset: 0,
                   background:
-                    (colors as any)?.gradientMesh ??
-                    "linear-gradient(180deg,#f0f8ff00,#ffffff00)",
+                    (colors as any)?.gradientMesh ?? "linear-gradient(180deg,#f0f8ff00,#ffffff00)",
                   mixBlendMode: "overlay",
                   opacity: 0.5,
                 }}
@@ -664,10 +682,7 @@ export default function SignInPage(): React.ReactElement {
                   filter: "blur(84px)",
                   transformOrigin: "center",
                   animation: "float 8s ease-in-out infinite",
-                  backgroundColor: withAlpha(
-                    (colors as any)?.primary ?? "hsl(213 90% 50%)",
-                    0.28
-                  ),
+                  backgroundColor: withAlpha((colors as any)?.primary ?? "hsl(213 90% 50%)", 0.28),
                 }}
               />
               <div
@@ -682,10 +697,7 @@ export default function SignInPage(): React.ReactElement {
                   transformOrigin: "center",
                   animation: "float 8s ease-in-out infinite",
                   animationDelay: "2s",
-                  backgroundColor: withAlpha(
-                    (colors as any)?.primary ?? "hsl(213 90% 50%)",
-                    0.18
-                  ),
+                  backgroundColor: withAlpha((colors as any)?.primary ?? "hsl(213 90% 50%)", 0.18),
                 }}
               />
               <div
@@ -701,15 +713,7 @@ export default function SignInPage(): React.ReactElement {
                   transformOrigin: "center",
                   animation: "float 8s ease-in-out infinite",
                   animationDelay: "4s",
-                  backgroundImage: `linear-gradient(90deg, ${withAlpha(
-                    (colors as any)?.primary ?? "hsl(213 90% 50%)",
-                    0.1
-                  )} 0%, ${withAlpha(
-                    (colors as any)?.primaryGlow ??
-                      (colors as any)?.primary ??
-                      "hsl(213 90% 50%)",
-                    0.06
-                  )} 100%)`,
+                  backgroundImage: `linear-gradient(90deg, ${withAlpha((colors as any)?.primary ?? "hsl(213 90% 50%)", 0.1)} 0%, ${withAlpha((colors as any)?.primaryGlow ?? (colors as any)?.primary ?? "hsl(213 90% 50%)", 0.06)} 100%)`,
                 }}
               />
             </div>
@@ -723,133 +727,51 @@ export default function SignInPage(): React.ReactElement {
                 alignItems: "center",
               }}
             >
-              <div
-                className="brand-badge"
-                aria-hidden
-                style={{ background: "transparent", boxShadow: "none" }}
-              >
-                <img
-                  src="/images/OptimX_Logo.svg"
-                  alt="OptimX"
-                  style={{ width: 56, height: 56, objectFit: "contain" }}
-                />
+              <div className="brand-badge" aria-hidden style={{ background: "transparent", boxShadow: "none" }}>
+                <img src="/images/OptimX_Logo.svg" alt="OptimX" style={{ width: 56, height: 56, objectFit: "contain" }} />
               </div>
 
               <h1 id="signin-title" className="brand-title">
                 Optim
-                <span
-                  className="x"
-                  style={{ color: (colors as any)?.primary ?? "#0088FF" }}
-                >
+                <span className="x" style={{ color: (colors as any)?.primary ?? "#0088FF" }}>
                   X
                 </span>
               </h1>
-              <div className="brand-sub">
-                Welcome, Please create an account.
-              </div>
+              <div className="brand-sub">Welcome, Please create an account.</div>
             </div>
 
-            <div
-              className="oauth-row"
-              role="group"
-              aria-label="Third party sign in"
-            >
-              <button
-                className="oauth-btn"
-                onClick={() => oauthLogin("google")}
-                type="button"
-                aria-label="Google Signin"
-              >
+            <div className="oauth-row" role="group" aria-label="Third party sign in">
+              <button className="oauth-btn" onClick={() => oauthLogin("google")} type="button" aria-label="Google Signin">
                 {/* Inline Google 'G' logo so you don't need an external image file */}
-                <svg
-                  width="20"
-                  height="20"
-                  viewBox="0 0 48 48"
-                  xmlns="http://www.w3.org/2000/svg"
-                  aria-hidden
-                >
-                  <path
-                    fill="#fbc02d"
-                    d="M43.6 20.4H42V20H24v8h11.3C33.6 33 29.1 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.1 8.1 2.9l6-6C34.6 4.9 29.6 3 24 3 12.9 3 4 11.9 4 23s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.6-.4-3.6z"
-                  />
-                  <path
-                    fill="#e53935"
-                    d="M6.3 14.9l6.6 4.8C14 16.1 18.6 13 24 13c3.1 0 5.9 1.1 8.1 2.9l6-6C34.6 4.9 29.6 3 24 3 16.7 3 10.2 7.9 6.3 14.9z"
-                  />
-                  <path
-                    fill="#4caf50"
-                    d="M24 43c5.1 0 9.6-2 13-5.2l-6-4.9C29.9 34.9 27.1 36 24 36c-5.1 0-9.6-2-13-5.2l-6.6 4.8C10.2 40.1 16.7 44 24 44z"
-                  />
-                  <path
-                    fill="#1565c0"
-                    d="M43.6 20.4H42V20H24v8h11.3c-1 2.8-3 5.2-5.5 6.8l6 4.9C39.9 36.3 44 30 44 23c0-1.3-.1-2.6-.4-3.6z"
-                  />
+                <svg width="20" height="20" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+                  <path fill="#fbc02d" d="M43.6 20.4H42V20H24v8h11.3C33.6 33 29.1 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.1 8.1 2.9l6-6C34.6 4.9 29.6 3 24 3 12.9 3 4 11.9 4 23s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.6-.4-3.6z" />
+                  <path fill="#e53935" d="M6.3 14.9l6.6 4.8C14 16.1 18.6 13 24 13c3.1 0 5.9 1.1 8.1 2.9l6-6C34.6 4.9 29.6 3 24 3 16.7 3 10.2 7.9 6.3 14.9z" />
+                  <path fill="#4caf50" d="M24 43c5.1 0 9.6-2 13-5.2l-6-4.9C29.9 34.9 27.1 36 24 36c-5.1 0-9.6-2-13-5.2l-6.6 4.8C10.2 40.1 16.7 44 24 44z" />
+                  <path fill="#1565c0" d="M43.6 20.4H42V20H24v8h11.3c-1 2.8-3 5.2-5.5 6.8l6 4.9C39.9 36.3 44 30 44 23c0-1.3-.1-2.6-.4-3.6z" />
                 </svg>
                 <span style={{ marginLeft: 6 }}>Google Signin</span>
               </button>
 
-              <button
-                className="oauth-btn"
-                onClick={() => oauthLogin("facebook")}
-                type="button"
-                aria-label="Facebook Signin"
-              >
+              <button className="oauth-btn" onClick={() => oauthLogin("facebook")} type="button" aria-label="Facebook Signin">
                 <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden>
-                  <path
-                    d="M22 12c0-5.5-4.5-10-10-10S2 6.5 2 12c0 4.9 3.5 9 8.1 9.9v-7H7.9v-2.9h2.2V9.7c0-2.2 1.3-3.4 3.3-3.4.95 0 1.9.17 1.9.17v2.1h-1.08c-1.06 0-1.39.66-1.39 1.33v1.6h2.36l-.38 2.9h-1.98v7C18.5 21 22 16.9 22 12z"
-                    fill="#0866FF"
-                  />
+                  <path d="M22 12c0-5.5-4.5-10-10-10S2 6.5 2 12c0 4.9 3.5 9 8.1 9.9v-7H7.9v-2.9h2.2V9.7c0-2.2 1.3-3.4 3.3-3.4.95 0 1.9.17 1.9.17v2.1h-1.08c-1.06 0-1.39.66-1.39 1.33v1.6h2.36l-.38 2.9h-1.98v7C18.5 21 22 16.9 22 12z" fill="#0866FF" />
                 </svg>
                 <span style={{ marginLeft: 6 }}>Facebook Signin</span>
               </button>
             </div>
 
-            <div
-              style={{
-                width: "100%",
-                display: "flex",
-                alignItems: "center",
-                gap: 12,
-                marginTop: 32,
-              }}
-            >
+            <div style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, marginTop: 32 }}>
               <div style={{ flex: 1, height: 1, background: "#E6E6E6" }} />
-              <div style={{ color: "#9aa0a6", fontSize: 13 }}>
-                Or continue with
-              </div>
+              <div style={{ color: "#9aa0a6", fontSize: 13 }}>Or continue with</div>
               <div style={{ flex: 1, height: 1, background: "#E6E6E6" }} />
             </div>
 
-            <div
-              style={{
-                width: "100%",
-                display: "flex",
-                justifyContent: "center",
-                marginTop: 26,
-              }}
-            >
-              <div
-                style={{ width: "100%" }}
-                className={`segmented`}
-                role="tablist"
-                aria-label="Choose sign in method"
-              >
-                <button
-                  type="button"
-                  style={{ width: "50%" }}
-                  aria-pressed={mode === "magic"}
-                  className={mode === "magic" ? "active" : ""}
-                  onClick={() => setMode("magic")}
-                >
+            <div style={{ width: "100%", display: "flex", justifyContent: "center", marginTop: 26 }}>
+              <div style={{ width: "100%" }} className={`segmented`} role="tablist" aria-label="Choose sign in method">
+                <button type="button" style={{ width: "50%" }} aria-pressed={mode === "magic"} className={mode === "magic" ? "active" : ""} onClick={() => setMode("magic")}>
                   Magic Link
                 </button>
-                <button
-                  type="button"
-                  style={{ width: "50%" }}
-                  aria-pressed={mode === "password"}
-                  className={mode === "password" ? "active" : ""}
-                  onClick={() => setMode("password")}
-                >
+                <button type="button" style={{ width: "50%" }} aria-pressed={mode === "password"} className={mode === "password" ? "active" : ""} onClick={() => setMode("password")}>
                   Password
                 </button>
               </div>
@@ -858,93 +780,36 @@ export default function SignInPage(): React.ReactElement {
             <div className="form" aria-labelledby="signin-title">
               <div>
                 <label htmlFor="email">Email</label>
-                <input
-                  id="email"
-                  className="input"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="example@domain.com"
-                  autoComplete="email"
-                />
+                <input id="email" className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="example@domain.com" autoComplete="email" />
               </div>
 
               {mode === "password" && (
                 <div>
                   <label htmlFor="password">Password</label>
                   <div className="pw-wrap">
-                    <input
-                      id="password"
-                      className="input"
-                      type={showPw ? "text" : "password"}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="Enter your password"
-                      autoComplete="current-password"
-                      style={{ paddingRight: 56 }}
-                    />
-                    <button
-                      type="button"
-                      className="pw-toggle"
-                      onClick={() => setShowPw((s) => !s)}
-                      aria-label={showPw ? "Hide password" : "Show password"}
-                    >
+                    <input id="password" className="input" type={showPw ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Enter your password" autoComplete="current-password" style={{ paddingRight: 56 }} />
+                    <button type="button" className="pw-toggle" onClick={() => setShowPw((s) => !s)} aria-label={showPw ? "Hide password" : "Show password"}>
                       {showPw ? "🙈" : "👁️"}
                     </button>
                   </div>
 
                   {/* helper row with New user and Forgot password */}
-                  <div
-                    className="helper-row"
-                    role="group"
-                    aria-label="Password helpers"
-                  >
-                    <a
-                      href="/auth/signup"
-                      onClick={(e) => {
-                        /* simple client navigation — let router handle if needed */
-                        e.preventDefault();
-                        router.push("/auth/signup");
-                      }}
-                    >
+                  <div className="helper-row" role="group" aria-label="Password helpers">
+                    <a href="/auth/signup" onClick={(e) => { e.preventDefault(); router.push("/auth/signup"); }}>
                       New user? Create account
                     </a>
 
-                    <a
-                      href="/auth/forgot-password"
-                      className="secondary"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        router.push("/auth/forgot-password");
-                      }}
-                    >
+                    <a href="/auth/forgot-password" className="secondary" onClick={(e) => { e.preventDefault(); router.push("/auth/forgot-password"); }}>
                       Forgot password?
                     </a>
                   </div>
                 </div>
               )}
 
-              <div
-                style={{
-                  fontSize: 11,
-                  textAlign: "center",
-                  color: "#6F6F6F",
-                  marginTop: 6,
-                }}
-              >
-                we will send you a magic link for password free sign in
-              </div>
+              <div style={{ fontSize: 11, textAlign: "center", color: "#6F6F6F", marginTop: 6 }}>we will send you a magic link for password free sign in</div>
 
-              {error && (
-                <div className="msg" style={{ color: "#d9534f" }}>
-                  {error}
-                </div>
-              )}
-              {info && (
-                <div className="msg" style={{ color: "#2f855a" }}>
-                  {info}
-                </div>
-              )}
+              {error && <div className="msg" style={{ color: "#d9534f" }}>{error}</div>}
+              {info && <div className="msg" style={{ color: "#2f855a" }}>{info}</div>}
 
               <div className="policy" style={{ marginTop: 52 }}>
                 By proceeding, you consent to our{" "}
@@ -958,29 +823,17 @@ export default function SignInPage(): React.ReactElement {
               </div>
 
               {mode === "magic" ? (
-                <button
-                  className="cta"
-                  onClick={sendMagicLink}
-                  disabled={loading}
-                  type="button"
-                >
+                <button className="cta" onClick={sendMagicLink} disabled={loading} type="button">
                   {loading ? "Sending..." : "Send Magic Link"}
                 </button>
               ) : (
-                <button
-                  className="cta"
-                  onClick={(e) => signInWithPassword(e)}
-                  disabled={loading}
-                  type="button"
-                >
+                <button className="cta" onClick={(e) => signInWithPassword(e)} disabled={loading} type="button">
                   {loading ? "Signing in..." : "Sign In"}
                 </button>
               )}
             </div>
 
-            <div style={{ marginTop: 12, fontSize: 13, color: "#8b8b8b" }}>
-              © {new Date().getFullYear()} OptimX
-            </div>
+            <div style={{ marginTop: 12, fontSize: 13, color: "#8b8b8b" }}>© {new Date().getFullYear()} OptimX</div>
           </div>
         </main>
       </div>
