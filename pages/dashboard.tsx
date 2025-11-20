@@ -107,9 +107,13 @@ export default function DashboardPage(): JSX.Element {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loadingCampaigns, setLoadingCampaigns] = useState(true);
 
+  // IMPORTANT: recommendations must NOT show until user explicitly clicks button.
+  // Start with no recommendations and centered prompt.
   const [autoRecs, setAutoRecs] = useState<Recommendation[]>([]);
   const [recLoading, setRecLoading] = useState(false);
+  const [recError, setRecError] = useState<string | null>(null);
 
+  // show the centered prompt until user clicks the button
   const [recsCentered, setRecsCentered] = useState<boolean>(true);
 
   const metricsRange = "7d";
@@ -117,12 +121,7 @@ export default function DashboardPage(): JSX.Element {
   // namespaced localStorage key for statuses to avoid cross-user collisions
   const LS_KEY_FOR = (uid: string | null) => `integrations_status_v1:${uid ?? "anon"}`;
 
-  /* -------------------- Fetch statuses (user-scoped) --------------------
-     Uses the same robust approach as your integrations page:
-     1) Try server user-scoped API (/api/integrations/status) via apiFetch.
-     2) Fallback to localStorage user-scoped cache.
-     3) Default to explicit `meta: false` (do NOT assume connected).
-  -------------------------------------------------------------------- */
+  /* -------------------- Fetch statuses (user-scoped) -------------------- */
   async function fetchStatuses(uid: string | null) {
     setStatusLoading(true);
     try {
@@ -132,18 +131,15 @@ export default function DashboardPage(): JSX.Element {
         return;
       }
 
-      // Helper to call the server API with a user hint (server should still validate the session)
       const userScopedApi = (path: string) => {
         const sep = path.includes("?") ? "&" : "?";
         return `${path}${sep}userId=${encodeURIComponent(uid)}`;
       };
 
       try {
-        // prefer server-side user-scoped status
         const res = await apiFetch(userScopedApi("/api/integrations/status"));
         if (res.ok) {
           const data = await res.json();
-          // ensure boolean flags and at least explicit meta key
           const next: Record<string, boolean> = { meta: false };
           if (data && typeof data === "object") {
             Object.keys(data).forEach((k) => {
@@ -163,12 +159,10 @@ export default function DashboardPage(): JSX.Element {
         console.debug("user-scoped status fetch failed, falling back to local cache", err);
       }
 
-      // LocalStorage fallback (user-scoped)
       try {
         const raw = localStorage.getItem(LS_KEY_FOR(uid));
         if (raw) {
           const parsed = JSON.parse(raw);
-          // normalize to ensure meta key exists
           const normalized: Record<string, boolean> = { meta: false, ...(parsed || {}) };
           setStatuses(normalized);
           setStatusLoading(false);
@@ -178,7 +172,6 @@ export default function DashboardPage(): JSX.Element {
         console.debug("localStorage read failed:", err);
       }
 
-      // Default: mark meta explicitly false (do NOT assume connected)
       const initial: Record<string, boolean> = { meta: false };
       setStatuses(initial);
       try {
@@ -223,7 +216,6 @@ export default function DashboardPage(): JSX.Element {
         const j = await resp.json();
         setMetaSummary(j as SummaryResp);
 
-        // Only mark meta connected if meaningful metrics exist (avoid false positives)
         const hasMeaningfulMetrics = Boolean(j?.meta?.current && (j.meta.current.total_spend !== undefined || j.meta.current.total_reach !== undefined));
         if (hasMeaningfulMetrics) {
           const normalized: Record<string, any> = { meta: true };
@@ -259,7 +251,6 @@ export default function DashboardPage(): JSX.Element {
         return;
       }
 
-      // defensively try common ownership columns; DO NOT fetch all campaigns without an owner filter.
       async function queryByColumn(column: string) {
         try {
           const { data, error } = await supabase
@@ -287,7 +278,6 @@ export default function DashboardPage(): JSX.Element {
         if (rows && rows.length > 0) break;
       }
 
-      // If we didn't find campaigns using those columns, return empty list instead of leaking everyone else's data.
       if (!rows || rows.length === 0) {
         setCampaigns([]);
         return;
@@ -400,7 +390,6 @@ export default function DashboardPage(): JSX.Element {
       score: 3,
     });
 
-    // dedupe by title then sort desc
     const unique: Record<string, { r: Recommendation; score: number }> = {};
     for (const c of candidates) {
       const key = (c.r.title ?? "").trim();
@@ -421,41 +410,145 @@ export default function DashboardPage(): JSX.Element {
   }
 
   /* -------------------- Generate & persist recommendations -------------------- */
+  // THIS is the updated function — it calls your server endpoint when connected
   async function handleGetRecommendations() {
     setRecLoading(true);
+    setRecError(null);
+
+    // robust connected check:
+    const metaCurrent = metaSummary?.meta?.current ?? null;
+    const isConnected = Boolean(
+      (statuses && statuses.meta === true) ||
+      (metaCurrent && (metaCurrent.total_spend !== undefined || metaCurrent.total_reach !== undefined))
+    );
+
+    if (!isConnected) {
+      setRecError("Please connect Meta to get recommendations.");
+      setAutoRecs([]);
+      setRecsCentered(false);
+      setRecLoading(false);
+      return;
+    }
+
     try {
-      const all = buildDynamicCandidates(metaSummary, campaigns);
-      const chosen = pickTopPriorityRecommendations(all, 3);
-
-      const final = (chosen && chosen.length > 0) ? chosen : [
-        { title: "Account structure audit", impact: "Low", reason: "Run a quick audit for budget pacing and targeting.", actions: ["Check pacing", "Check placements & bids"], estimate: "Operational improvements" }
-      ];
-
-      setAutoRecs(final);
-
+      let token: string | null = null;
       try {
-        sessionStorage.setItem("auto_recs_v1", JSON.stringify({
-          recs: final,
-          metaTotal: metaSummary?.meta?.current?.total_spend ?? null,
-          ts: Date.now(),
-        }));
+        const { data } = await supabase.auth.getSession();
+        token = (data as any)?.session?.access_token ?? null;
       } catch (e) {
-        console.warn("sessionStorage set error:", e);
+        token = null;
       }
 
-      setRecsCentered(false);
+      if (!token) {
+        setRecError("Not signed in.");
+        setRecLoading(false);
+        return;
+      }
+
+      const payload = {
+        metrics: metaSummary?.meta ?? null,
+        range: metricsRange,
+      };
+
+      const resp = await fetch("/api/recommendations", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!resp.ok) {
+        // fallback to local builder (keeps existing UX)
+        try {
+          const all = buildDynamicCandidates(metaSummary, campaigns);
+          const chosen = pickTopPriorityRecommendations(all, 3);
+          setAutoRecs(chosen);
+          try {
+            sessionStorage.setItem("auto_recs_v1", JSON.stringify({
+              recs: chosen,
+              metaTotal: metaSummary?.meta?.current?.total_spend ?? null,
+              ts: Date.now(),
+            }));
+          } catch {}
+          setRecsCentered(false);
+          setRecError("Failed to fetch server recommendations — showing local suggestions.");
+        } catch (fallbackErr) {
+          console.error("fallback builder error", fallbackErr);
+          setAutoRecs([]);
+          setRecError("Failed to generate recommendations.");
+        } finally {
+          setRecLoading(false);
+        }
+        return;
+      }
+
+      const j = await resp.json();
+      const recs = Array.isArray(j.recommendations) ? j.recommendations : [];
+      // backend returns minimal records (id,title,reason,impact,confidence,campaignId,created_at)
+      const normalized: Recommendation[] = recs.slice(0, 3).map((r: any) => ({
+        title: r.title ?? r.name ?? "Recommendation",
+        reason: r.reason ?? undefined,
+        impact: r.impact ?? undefined,
+        actions: r.actions ?? undefined,
+        estimate: r.estimate ?? undefined,
+      }));
+
+      if (normalized.length === 0) {
+        // fallback to local builder (only if server returned empty)
+        const all = buildDynamicCandidates(metaSummary, campaigns);
+        const chosen = pickTopPriorityRecommendations(all, 3);
+        setAutoRecs(chosen);
+        try {
+          sessionStorage.setItem("auto_recs_v1", JSON.stringify({
+            recs: chosen,
+            metaTotal: metaSummary?.meta?.current?.total_spend ?? null,
+            ts: Date.now(),
+          }));
+        } catch {}
+        setRecsCentered(false);
+        setRecError(null);
+      } else {
+        setAutoRecs(normalized);
+        try {
+          sessionStorage.setItem("auto_recs_v1", JSON.stringify({
+            recs: normalized,
+            metaTotal: metaSummary?.meta?.current?.total_spend ?? null,
+            ts: Date.now(),
+          }));
+        } catch {}
+        setRecsCentered(false);
+        setRecError(null);
+      }
     } catch (err) {
       console.error("handleGetRecommendations error:", err);
-      setAutoRecs([]);
+      // fallback to local builder on any exception
+      try {
+        const all = buildDynamicCandidates(metaSummary, campaigns);
+        const chosen = pickTopPriorityRecommendations(all, 3);
+        setAutoRecs(chosen);
+        try {
+          sessionStorage.setItem("auto_recs_v1", JSON.stringify({
+            recs: chosen,
+            metaTotal: metaSummary?.meta?.current?.total_spend ?? null,
+            ts: Date.now(),
+          }));
+        } catch {}
+        setRecsCentered(false);
+        setRecError("Failed to fetch recommendations — showing local suggestions.");
+      } catch {
+        setAutoRecs([]);
+        setRecError("Failed to generate recommendations.");
+      }
     } finally {
       setRecLoading(false);
     }
   }
 
-  /* -------------------- lifecycle: load data + hydrate recs -------------------- */
+  /* -------------------- lifecycle: load data -------------------- */
   useEffect(() => {
     (async () => {
-      // ensure authenticated user first
       try {
         const { data: userData, error: userErr } = await supabase.auth.getUser();
         if (userErr) {
@@ -470,7 +563,6 @@ export default function DashboardPage(): JSX.Element {
         }
         setUserId(user.id);
 
-        // fetch user-scoped pieces in parallel
         await Promise.all([
           fetchStatuses(user.id),
           fetchCampaigns(user.id),
@@ -480,19 +572,8 @@ export default function DashboardPage(): JSX.Element {
         console.error("init dashboard error:", err);
       }
 
-      // hydrate recs from sessionStorage if available
-      try {
-        const raw = sessionStorage.getItem("auto_recs_v1");
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (parsed?.recs && Array.isArray(parsed.recs) && parsed.recs.length > 0) {
-            setAutoRecs(parsed.recs.slice(0, 3));
-            setRecsCentered(false);
-          }
-        }
-      } catch (e) {
-        console.debug("hydrate recs error:", e);
-      }
+      // NOTE: Deliberately DO NOT hydrate previous recommendations from sessionStorage
+      // per user's request: show NO recommendations until the user clicks the button.
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -515,15 +596,11 @@ export default function DashboardPage(): JSX.Element {
 
   const metaCurrent = metaSummary?.meta?.current ?? null;
 
-  // robust connected check:
-  // - either statuses?.meta === true (explicit positive flag from server for this user)
-  // - OR we actually have useful metrics in metaCurrent (like total_spend or total_reach)
   const isConnected = Boolean(
     (statuses && statuses.meta === true) ||
     (metaCurrent && (metaCurrent.total_spend !== undefined || metaCurrent.total_reach !== undefined))
   );
 
-  // Stats array (only used when connected)
   const stats = [
     { label: "Total Campaigns", value: String(campaigns.length ?? 0), icon: Eye, connected: isConnected },
     { label: "Total Spend (All time)", value: metaCurrent ? fmtMoney(metaCurrent.total_spend) : "—", icon: DollarSign, connected: isConnected },
@@ -607,7 +684,6 @@ export default function DashboardPage(): JSX.Element {
                 })}
               </div>
             ) : (
-              // when not connected: show single centered connect card (no hardcoded stats)
               <Card className="glass-card" style={{ boxShadow: "0 36px 90px rgba(2,6,23,0.16)", borderColor: primaryBorder10 ?? undefined }}>
                 <CardContent className="py-12 flex flex-col items-center justify-center">
                   <Sparkles className="w-8 h-8 mb-4" />
@@ -649,7 +725,13 @@ export default function DashboardPage(): JSX.Element {
                   </div>
                 ) : (
                   <>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {recError ? (
+                      <div className="py-6 px-4 bg-yellow-50 border border-yellow-100 rounded text-sm text-amber-800">
+                        {recError}
+                      </div>
+                    ) : null}
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-3">
                       {autoRecs.map((r, idx) => {
                         const impact = r.impact ?? "Medium";
                         const impactClass = impact === "High" ? "bg-red-600 text-white" : impact === "Medium" ? "bg-orange-400 text-white" : "bg-gray-400 text-white";
