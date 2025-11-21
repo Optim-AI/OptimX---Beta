@@ -116,7 +116,7 @@ export async function POST(req: Request) {
     const response = await client.responses.create({
       model: "gpt-4o-mini",
       instructions: systemInstruction,
-      input: `User input: ${prompt}\n\nConstraints:\n- Keep under 2200 chars\n- enhance and emphathize the prompt like a graphic designer\n- Use emojis sparingly`,
+      input: `User input: ${prompt}\n\nConstraints:\n- Keep under 2200 chars\n- enhance and emphathize the prompt like a creative graphic designer`,
       max_output_tokens: 200,
     });
 
