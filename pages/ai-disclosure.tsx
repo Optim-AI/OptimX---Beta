@@ -23,6 +23,9 @@ const AIUseDisclosure: React.FC = () => {
     topRef.current?.scrollTo({ top: 0 });
   }, []);
 
+
+  ///just some comments
+
   return (
     <main
       ref={topRef}
