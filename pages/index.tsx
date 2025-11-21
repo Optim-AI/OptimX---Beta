@@ -30,3 +30,9 @@ const Home: React.FC = () => (
 );
 
 export default Home;
+
+export async function getServerSideProps() {
+  return {
+    props: {}, // This forces the page to be server-side rendered on every request
+  };
+}
