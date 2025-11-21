@@ -21,7 +21,6 @@ const Footer: React.FC = () => {
       { name: 'Features', href: '/#features', type: 'section' },
       { name: 'Pricing', href: '/#pricing', type: 'section' },
       { name: 'Roadmap', href: '/roadmap', type: 'route' },
-      { name: 'Integrations', href: '/integrations-page', type: 'route' },
     ],
     Company: [
       { name: 'About', href: '/About', type: 'route' },
@@ -257,7 +256,7 @@ const Footer: React.FC = () => {
             © {new Date().getFullYear()} OptimX. All rights reserved.
           </div>
           <div style={{ color: colors.mutedForeground, fontSize: 14 }}>
-            Made with ❤️ for small businesses everywhere
+            Made with ❤️ for small & Medium businesses everywhere
           </div>
         </div>
       </div>

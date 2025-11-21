@@ -16,11 +16,11 @@ function withAlpha(token: string, alpha: number) {
 }
 
 const roadmapItems = [
-  { id: "r1", title: "AI video generation", desc: "Generate short product videos from prompts and images.", eta: "Q1 2026", status: "Planned", icon: Rocket },
+  { id: "r1", title: "AI video generation", desc: "Generate short product videos from prompts and images.", eta: "Q4 2025", status: "Beta", icon: Rocket },
   { id: "r2", title: "Multi-account ad manager", desc: "Manage multiple Meta/Google accounts from a single UI.", eta: "Q4 2025", status: "In Progress", icon: Zap },
-  { id: "r3", title: "Team seats & RBAC", desc: "Invite teammates, granular roles, and audit logs.", eta: "Q4 2025", status: "Beta", icon: CheckCircle2 },
+  { id: "r3", title: "Team seats & RBAC", desc: "Invite teammates, granular roles, and audit logs.", eta: "Q3 2026", status: "In progress", icon: CheckCircle2 },
   { id: "r4", title: "Advanced analytics & attribution", desc: "Attribution windows, cohort analysis, and A/B testing.", eta: "Q2 2026", status: "Planned", icon: Calendar },
-  { id: "r5", title: "One-click ad rescue", desc: "Auto-suggest edits for rejected ads and resubmit.", eta: "Q1 2026", status: "Planned", icon: MessageSquare },
+  { id: "r5", title: "One-click ad rescue", desc: "Auto-suggest edits for rejected ads and resubmit.", eta: "Q1 2026", status: "In progress", icon: MessageSquare },
 ];
 
 const Roadmap: React.FC = () => {
@@ -129,7 +129,7 @@ const Roadmap: React.FC = () => {
 
                 <div className="mt-6">
                   <h4 style={{ color: colors.foreground, fontWeight: 700 }}>Contact</h4>
-                  <div style={{ color: colors.mutedForeground, marginTop: 6 }}>Email: <strong>info@optimx.app</strong><br/>Address: Thiruvanmiyur, Chennai, India</div>
+                  <div style={{ color: colors.mutedForeground, marginTop: 6 }}>Email: <strong>info@optimx.app</strong></div>
                 </div>
               </aside>
 

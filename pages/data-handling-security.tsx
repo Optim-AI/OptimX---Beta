@@ -85,7 +85,7 @@ const DataHandlingSecurity: React.FC = () => {
                     </Link>
         </header>
 
-        <section className="max-w-4xl mx-auto mt-6">
+        <section className="max-w-8xl mx-auto mt-6">
           <div className="p-8 rounded-2xl glass-card border" style={{ borderColor: withAlpha(colors.border, 0.6), background: colors.card }}>
             <div className="mb-6">
               <h1 className="text-4xl font-extrabold mb-2" style={{ color: colors.foreground }}>Data Handling &amp; Security Standard</h1>
@@ -93,20 +93,20 @@ const DataHandlingSecurity: React.FC = () => {
             </div>
 
             <article className="prose prose-invert max-w-none" style={{ color: colors.foreground }}>
-              <h3>1. Data We Store</h3>
+              <h3 className="font-bold mt-8">1. Data We Store</h3>
               <p>
                 We only store the minimum necessary to operate the platform.
               </p>
 
               <p><strong>Personal Data</strong></p>
-              <ul>
+              <ul className="list-disc ml-4">
                 <li>Name, email, contact info</li>
                 <li>Business profile details</li>
                 <li>Uploaded brand assets (logos, product images)</li>
               </ul>
 
               <p><strong>Operational Data</strong></p>
-              <ul>
+              <ul className="list-disc ml-4">
                 <li>Campaign drafts</li>
                 <li>AI prompts and user-generated content</li>
                 <li>Credit usage logs</li>
@@ -115,7 +115,7 @@ const DataHandlingSecurity: React.FC = () => {
               </ul>
 
               <p><strong>Does NOT include:</strong></p>
-              <ul>
+              <ul className="ml-4">
                 <li>❌ Meta ad data</li>
                 <li>❌ Instagram media fetched through APIs</li>
                 <li>❌ Google OAuth data</li>
@@ -124,8 +124,8 @@ const DataHandlingSecurity: React.FC = () => {
 
               <p>API-fetched data is processed in-memory and not stored unless required for core functionality (e.g., analytics).</p>
 
-              <h3>2. Token Storage &amp; Access</h3>
-              <ul>
+              <h3 className="font-bold mt-8">2. Token Storage &amp; Access</h3>
+              <ul className="list-disc ml-4">
                 <li>Access tokens (Meta, Google, Razorpay keys): Stored only in encrypted form</li>
                 <li>Stored using industry-best practices (AES-256)</li>
                 <li>Never shared with any third party</li>
@@ -133,9 +133,9 @@ const DataHandlingSecurity: React.FC = () => {
                 <li>Only backend systems—not frontend clients—can access these tokens.</li>
               </ul>
 
-              <h3>3. Data Processing</h3>
+              <h3 className="font-bold mt-8">3. Data Processing</h3>
               <p>We process data strictly to:</p>
-              <ul>
+              <ul className="list-disc ml-4">
                 <li>Publish posts</li>
                 <li>Run ads</li>
                 <li>Fetch analytics</li>
@@ -146,8 +146,8 @@ const DataHandlingSecurity: React.FC = () => {
 
               <p>We never use Meta/Google data for AI training or internal model development.</p>
 
-              <h3>4. Security Controls</h3>
-              <ul>
+              <h3 className="font-bold mt-8">4. Security Controls</h3>
+              <ul className="list-disc ml-4">
                 <li>SSL/TLS enforced</li>
                 <li>Database encryption at rest</li>
                 <li>Supabase RLS policies enabled</li>
@@ -160,8 +160,8 @@ const DataHandlingSecurity: React.FC = () => {
                 <li>Firewall &amp; WAF protection</li>
               </ul>
 
-              <h3>5. Data Retention</h3>
-              <ul>
+              <h3 className="font-bold mt-8">5. Data Retention</h3>
+              <ul className="list-disc ml-4">
                 <li>User account data: retained until deletion</li>
                 <li>API tokens: deleted immediately upon revocation</li>
                 <li>Analytics logs: 60–90 days</li>
@@ -169,9 +169,9 @@ const DataHandlingSecurity: React.FC = () => {
                 <li>Support conversations: 6 months</li>
               </ul>
 
-              <h3>6. User Controls</h3>
+              <h3 className="font-bold mt-8">6. User Controls</h3>
               <p>Users can:</p>
-              <ul>
+              <ul className="list-disc ml-4">
                 <li>Delete their account</li>
                 <li>Disconnect their Meta/Google integrations</li>
                 <li>Request deletion of all stored data</li>

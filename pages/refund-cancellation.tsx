@@ -85,7 +85,7 @@ const RefundCancellation: React.FC = () => {
                     </Link>
         </header>
 
-        <section className="max-w-3xl mx-auto mt-6">
+        <section className="max-w-8xl mx-auto mt-6">
           <div className="p-8 rounded-2xl glass-card border" style={{ borderColor: withAlpha(colors.border, 0.6), background: colors.card }}>
             <div className="mb-6">
               <h1 className="text-3xl font-extrabold mb-2" style={{ color: colors.foreground }}>Refund &amp; Cancellation Policy</h1>
@@ -93,20 +93,20 @@ const RefundCancellation: React.FC = () => {
             </div>
 
             <article className="prose prose-invert max-w-none" style={{ color: colors.foreground }}>
-              <h3>Refund Policy</h3>
+              <h3 className="font-bold mt-8">Refund Policy</h3>
 
               <p>
                 We want every user to have a great experience with OptimX. However, due to the nature of AI credits and digital services:
               </p>
 
               <p><strong>Refunds are issued only for:</strong></p>
-              <ul>
+              <ul className="list-disc">
                 <li>Unused AI credits</li>
                 <li>Requested within 7 days of purchase</li>
               </ul>
 
               <p><strong>Refunds are NOT issued for:</strong></p>
-              <ul>
+              <ul className="list-disc">
                 <li>Credits already consumed</li>
                 <li>Subscription renewals already processed</li>
                 <li>Partially used billing cycles</li>
@@ -119,26 +119,26 @@ const RefundCancellation: React.FC = () => {
                 Refunds, if approved, will be processed within 5–10 working days to the original payment method.
               </p>
 
-              <h3>Cancellation Policy</h3>
+              <h3 className="font-bold mt-8">Cancellation Policy</h3>
               <p>Users may cancel their subscription at any time.</p>
-              <ul>
+              <ul className="list-disc">
                 <li>Your plan remains active until the end of the billing cycle</li>
                 <li>No partial refunds or prorated refunds are provided</li>
                 <li>Remaining credits expire at the end of the cycle unless otherwise stated</li>
               </ul>
 
-              <h3>Credit Expiry</h3>
+              <h3 className="font-bold mt-8">Credit Expiry</h3>
               <p>Credits may have an expiration period depending on your plan. Expired credits cannot be reinstated or refunded.</p>
 
-              <h3>Ad Spend</h3>
+              <h3 className="font-bold mt-8">Ad Spend</h3>
               <p>Ad spend paid directly to Meta/Google platforms is not refundable by OptimX.</p>
 
-              <h3>How to Request a Refund</h3>
+              <h3 className="font-bold mt-8">How to Request a Refund</h3>
               <p>
                 Email: info@optimx.app
               </p>
-              <p>Please include:</p>
-              <ul>
+              <p><strong>Please include:</strong></p>
+              <ul className="list-disc">
                 <li>Registered email</li>
                 <li>Payment ID</li>
                 <li>Reason for refund request</li>
