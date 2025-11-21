@@ -111,14 +111,40 @@ export async function POST(req: Request) {
     }
 
     // keep your exact system instruction / prompt behavior
-    const systemInstruction = `Provide enhanced AI prompt for this no captions and no hastag`;
+    const systemInstruction = `Generate exactly the prompt as requested without rewriting or optimizing it. Do not add captions, hashtags, or meta comments. Output only the enhanced poster generation prompt.`;
 
     const response = await client.responses.create({
-      model: "gpt-4o-mini",
-      instructions: systemInstruction,
-      input: `User input: ${prompt}\n\nConstraints:\n- Keep under 2200 chars\n- enhance and emphathize the prompt like a creative graphic designer`,
-      max_output_tokens: 200,
-    });
+  model: "gpt-4o-mini",
+  instructions: systemInstruction,
+  input: `Create a professional advertising poster that looks like it was designed by a top creative agency. Focus on visual storytelling, brand personality, and striking ad aesthetics.
+
+Design style requirements:
+• Bold, clean composition with perfect visual hierarchy
+• Eye-catching colors and premium typography combinations
+• Strong focal point showcasing the product/offer visually
+• Modern studio-quality lighting and realistic textures
+• Zero clutter. Zero random decorations.
+
+Copywriting requirements:
+• Clear headline that instantly communicates the core benefit
+• Short supporting subtext with persuasive tone
+• A single strong CTA button or tag (ex: Order Now / Enroll Today / Try Free)
+• All text must be easy to read even from a distance
+
+Brand requirements:
+• Present the brand name and logo area clearly
+• Use colors and theme that match the product category and target audience
+• Poster should look instantly usable for marketing and advertising
+
+Format:
+• Aspect ratio 4:5 or 1080×1350
+• High resolution suitable for ads, print and social media
+• No watermarks, no unrealistic distortions, no stretched text
+
+Now generate the best possible poster for this user input:
+${prompt}`,
+  max_output_tokens: 200,
+});
 
     const caption = extractTextFromResponse(response as any);
 
