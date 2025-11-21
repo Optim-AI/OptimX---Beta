@@ -178,18 +178,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       },
     ];
 
+    // Build messages explicitly and cast to `any` to avoid TypeScript union confusion.
+    // This keeps strong runtime behavior while avoiding SDK/TS typing mismatches caused by widened types.
+    const messages: any[] = [
+      { role: "system", content: systemInstruction },
+      // add a tiny few-shot
+      ...examples.flatMap((ex) => [
+        { role: "user", content: `User input: ${ex.user}\nReturn only the caption.` },
+        { role: "assistant", content: ex.assistant },
+      ]),
+      { role: "user", content: `User input: ${usedPrompt}\nReturn only the caption.` },
+    ];
+
     // 2) Call Chat Completions (predictable choices shape)
     const chatResp = await client.chat.completions.create({
       model: "gpt-4o-mini",
-      messages: [
-        { role: "system", content: systemInstruction },
-        // add a tiny few-shot
-        ...examples.flatMap((ex) => [
-          { role: "user", content: `User input: ${ex.user}\nReturn only the caption.` },
-          { role: "assistant", content: ex.assistant },
-        ]),
-        { role: "user", content: `User input: ${usedPrompt}\nReturn only the caption.` },
-      ],
+      messages: messages as any, // <-- explicit cast fixes the TS overload/type error
       max_tokens: 200,
       temperature: 0.7,
     });
@@ -207,7 +211,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           max_output_tokens: 200,
         });
         caption = extractTextFromAnyResponse(respAlt as any);
-        // prefer chatResp raw if caption found from respAlt we'll return that as raw
         if (!caption) {
           return res.status(500).json({ error: "No caption returned from model", raw: chatResp });
         }
