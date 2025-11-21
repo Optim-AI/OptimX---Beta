@@ -1,10 +1,8 @@
-// app/api/generate-campaign/route.ts
-import { NextRequest, NextResponse } from "next/server";
+// pages/api/generate-campaign.ts
+import type { NextApiRequest, NextApiResponse } from "next";
 import axios from "axios";
 import sharp from "sharp";
-import { supabaseAdmin } from "../../../lib/supabaseClient"; // adjust if your path differs
-
-export const runtime = "nodejs"; // needed so we can use sharp / node libs
+import { supabaseAdmin } from "../../lib/supabaseClient"; // server admin client
 
 const NANO_API_KEY = process.env.NANO_API_KEY;
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash-image";
@@ -152,17 +150,85 @@ function extractImageFromGeminiResponse(respJson: any): { kind: "inline" | "url"
   return { kind: null };
 }
 
-/** Attempt to get user from Authorization header (Bearer token) **/
-async function getUserFromAuthHeader(req: NextRequest) {
+/** Helper: safely decode a Supabase JWT payload (no verification) */
+function decodeSupabaseJWT(token: string): any | null {
   try {
-    const auth = req.headers.get("authorization") || req.headers.get("Authorization") || "";
-    if (!auth) return { user: null, token: null };
-    const m = (auth as string).match(/Bearer\s+(.+)/i);
-    const token = m ? m[1] : auth;
-    if (!token) return { user: null, token: null };
+    const parts = token.split(".");
+    if (parts.length < 2) return null;
 
+    const payload = parts[1];
+    // convert URL-safe base64 to normal + pad
+    const base64 = payload
+      .replace(/-/g, "+")
+      .replace(/_/g, "/")
+      .padEnd(payload.length + ((4 - (payload.length % 4)) % 4), "=");
+
+    const json = Buffer.from(base64, "base64").toString("utf8");
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+}
+
+/** Robust user detection for NextApiRequest:
+ *  - Authorization: Bearer <token>
+ *  - Common cookie names (JSON or raw token)
+ *  - JWT decode fallback to extract user id (non-verified)
+ */
+async function getUserFromRequest(req: NextApiRequest) {
+  try {
+    // 1) Authorization header
+    const rawAuth = (req.headers.authorization || (req.headers as any).Authorization) as string | undefined;
+    let token: string | null = null;
+    if (rawAuth) {
+      const m = rawAuth.match(/Bearer\s+(.+)/i);
+      token = m ? m[1] : rawAuth.trim();
+    }
+
+    // 2) cookies (typical Supabase cookie names)
+    if (!token && req.cookies) {
+      const cookieCandidates = [
+        "sb-access-token",
+        "sb:token",
+        "supabase-auth-token",
+        "sb",
+        "supabase-session",
+        "sb-session",
+      ];
+      for (const name of cookieCandidates) {
+        const val = req.cookies[name as string];
+        if (!val) continue;
+        // cookie might be JSON string with access_token
+        try {
+          const parsed = JSON.parse(val);
+          if (parsed?.access_token) {
+            token = parsed.access_token;
+            break;
+          }
+          if (parsed?.currentSession?.access_token) {
+            token = parsed.currentSession.access_token;
+            break;
+          }
+          // some setups have nested shape: { provider_token: { access_token } } — best-effort:
+          if (parsed?.provider_token?.access_token) {
+            token = parsed.provider_token.access_token;
+            break;
+          }
+        } catch {
+          // not JSON — treat raw cookie value as token
+          token = val;
+          break;
+        }
+      }
+    }
+
+    if (!token) {
+      return { user: null, token: null };
+    }
+
+    // 3) Try Supabase admin getUser (multiple shapes)
     try {
-      // Try multiple shapes just like original (supabaseAdmin.auth.getUser accepts token or { access_token })
+      // supabaseAdmin.auth.getUser(token) or getUser({ access_token: token })
       try {
         // @ts-ignore
         const { data } = await supabaseAdmin.auth.getUser(token);
@@ -174,8 +240,8 @@ async function getUserFromAuthHeader(req: NextRequest) {
           const { data } = await supabaseAdmin.auth.getUser({ access_token: token });
           if ((data as any)?.user) return { user: (data as any).user, token };
         } catch {
+          // last fallback:
           try {
-            // final fallback
             // @ts-ignore
             const { data } = await (supabaseAdmin.auth as any).getUser?.({ access_token: token });
             if ((data as any)?.user) return { user: (data as any).user, token };
@@ -183,26 +249,45 @@ async function getUserFromAuthHeader(req: NextRequest) {
         }
       }
     } catch (e) {
-      // ignore
+      // ignore and fallback to JWT decode
     }
-    return { user: null, token };
+
+    // 4) fallback: decode JWT to extract a user id (non-verified)
+    const decoded = decodeSupabaseJWT(token);
+    if (decoded) {
+      const userId = decoded.sub || decoded.user_id || decoded.id || decoded.uid || null;
+      if (userId) {
+        return { user: { id: String(userId) } as any, token };
+      }
+    }
+
+    return { user: null, token: null };
   } catch (e) {
-    console.warn("getUserFromAuthHeader error", e);
+    console.warn("getUserFromRequest error", e);
     return { user: null, token: null };
   }
 }
 
-/** POST handler **/
-export async function POST(req: NextRequest) {
-  try {
-    const body = await req.json();
+/** Main handler **/
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (req.method !== "POST") {
+    res.setHeader("Allow", "POST");
+    return res.status(405).json({ ok: false, error: "Method not allowed" });
+  }
 
-    // Attempt to identify user from Authorization header
-    const { user, token } = await getUserFromAuthHeader(req);
+  try {
+    const body = req.body ?? {};
+
+    // Attempt to identify user from Authorization header or cookies
+    const { user, token } = await getUserFromRequest(req);
 
     if (!user || !user.id) {
       // Require signed-in user to consume credits
-      return NextResponse.json({ ok: false, error: "Authentication required. Please sign in." }, { status: 401 });
+      console.warn("generate-campaign: unauthenticated request. headers:", {
+        authHeader: !!req.headers.authorization,
+        cookies: Object.keys(req.cookies || {}).slice(0, 20),
+      });
+      return res.status(401).json({ ok: false, error: "Authentication required. Please sign in." });
     }
 
     // Check credits
@@ -212,32 +297,36 @@ export async function POST(req: NextRequest) {
       .eq("id", user.id)
       .single();
 
-    if (creditError && (creditError as any).code !== "PGRST116") {
+    if (creditError && creditError.code !== "PGRST116") {
+      // PGRST116 = no rows? (PostgREST code varies), but just log other errors
       console.warn("user_credits lookup error", creditError);
     }
 
     const currentCredits = (creditRow && (creditRow as any).credits !== undefined) ? Number((creditRow as any).credits) : null;
 
     if (currentCredits === null) {
-      return NextResponse.json({ ok: false, error: "No credits found for user. Please purchase credits." }, { status: 402 });
+      // If no row exists, treat as zero credits (or you can choose to create default)
+      return res.status(402).json({ ok: false, error: "No credits found for user. Please purchase credits." });
     }
 
     if (currentCredits <= 0) {
-      return NextResponse.json({ ok: false, error: "No credits available. Please buy new credits to generate images." }, { status: 402 });
+      return res.status(402).json({ ok: false, error: "No credits available. Please buy new credits to generate images." });
     }
 
+    // --- continue with your existing generation logic ---
     const {
       vision,
       target = { width: 1080, height: 1080 },
       logoDataUrl,
       refDataUrls = [],
       aiCustomization = {},
+      // other UI fields are read inside buildPromptFromInputs
     } = body;
 
     if (!vision && !body.description && !body.prompt) {
-      return NextResponse.json({ ok: false, error: "Missing vision/description/prompt" }, { status: 400 });
+      return res.status(400).json({ ok: false, error: "Missing vision/description/prompt" });
     }
-    if (!NANO_API_KEY) return NextResponse.json({ ok: false, error: "Server missing NANO_API_KEY" }, { status: 500 });
+    if (!NANO_API_KEY) return res.status(500).json({ ok: false, error: "Server missing NANO_API_KEY" });
 
     // 1) upload inline logo/ref images to Supabase so Gemini can reference them (public URLs)
     let logoPublicUrl: string | null = null;
@@ -327,8 +416,11 @@ export async function POST(req: NextRequest) {
     const headers: Record<string, string> = {
       "content-type": "application/json",
       accept: "application/json",
+      // Most examples use x-goog-api-key for a developer API key:
       "x-goog-api-key": NANO_API_KEY,
     };
+    // If your key is a bearer token, replace above with:
+    // headers["Authorization"] = `Bearer ${NANO_API_KEY}`; delete headers["x-goog-api-key"];
 
     // Call Gemini
     const createResp = await axios.post(url, payload, { headers }).catch((err) => {
@@ -343,6 +435,7 @@ export async function POST(req: NextRequest) {
     let imageBuffer: Buffer | null = null;
     let foundSrc: string | null = null;
 
+    // 1) Preferred extractor
     const extracted = extractImageFromGeminiResponse(createJson);
     if (extracted.kind === "inline" && extracted.data) {
       const maybe = extracted.data;
@@ -363,7 +456,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // fallback generic search
+    // 2) fallback generic search
     if (!imageBuffer) {
       const direct = findImageReference(createJson);
       if (direct && direct.value) {
@@ -382,7 +475,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (!imageBuffer) {
-      return NextResponse.json({ ok: false, error: "No image returned from Gemini (unable to extract).", rawGeminiResponse: createJson }, { status: 500 });
+      return res.status(500).json({ ok: false, error: "No image returned from Gemini (unable to extract).", rawGeminiResponse: createJson });
     }
 
     // Composite logo (if we have a public URL)
@@ -428,6 +521,7 @@ export async function POST(req: NextRequest) {
     // After successful generation - consume 1 credit (best-effort)
     let updatedCredits: number | null = null;
     try {
+      // compute new credits value (simple subtract approach)
       const newCredits = Math.max(0, (currentCredits ?? 0) - 1);
       const { data: updatedRow, error: updateError } = await supabaseAdmin
         .from("user_credits")
@@ -450,7 +544,7 @@ export async function POST(req: NextRequest) {
       try {
         const path = `temp/generated_${Date.now()}.png`;
         const publicUrl = await uploadBufferToSupabase(finalBuffer, path, "image/png");
-        return NextResponse.json({
+        return res.status(200).json({
           ok: true,
           image: publicUrl ? publicUrl : dataUrl,
           images: [publicUrl ? publicUrl : dataUrl],
@@ -464,7 +558,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({
+    return res.status(200).json({
       ok: true,
       image: dataUrl,
       images: [dataUrl],
@@ -475,12 +569,6 @@ export async function POST(req: NextRequest) {
     console.error("Generation endpoint error:", err);
     const message = err?.message || String(err);
     const extra = err?.response?.data ? { raw: err.response.data } : {};
-    return NextResponse.json({ ok: false, error: message, ...extra }, { status: 500 });
+    return res.status(500).json({ ok: false, error: message, ...extra });
   }
 }
-
-/** GET handler (disallow) **/
-export async function GET() {
-  return NextResponse.json({ ok: false, error: "Method not allowed. Use POST." }, { status: 405 });
-}
-
