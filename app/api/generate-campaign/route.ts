@@ -1,14 +1,12 @@
-// pages/api/generate-campaign.ts
-import type { NextApiRequest, NextApiResponse } from "next";
+// app/api/generate-campaign/route.ts
 import axios from "axios";
 import sharp from "sharp";
+import { NextResponse } from "next/server";
 import { supabaseAdmin } from "../../../lib/supabaseClient"; // server admin client
 
 const NANO_API_KEY = process.env.NANO_API_KEY;
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash-image";
 const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
-
-// Starter credits if row missing. Configure in Vercel env or default to 5.
 const DEFAULT_INITIAL_CREDITS = Number(process.env.DEFAULT_INITIAL_CREDITS ?? 5);
 
 if (!NANO_API_KEY) {
@@ -150,19 +148,16 @@ function extractImageFromGeminiResponse(respJson: any): { kind: "inline" | "url"
 }
 
 /** Attempt to get user from Authorization header (Bearer token) **/
-async function getUserFromAuthHeader(req: NextApiRequest) {
+async function getUserFromAuthHeader(request: Request) {
   try {
-    const auth = (req.headers.authorization ||
-      (req.headers as any).Authorization) as string | undefined;
-
+    const auth = request.headers.get("authorization") || request.headers.get("Authorization") || "";
     if (!auth) return { user: null, token: null };
-
     const m = auth.match(/Bearer\s+(.+)/i);
     const token = m ? m[1] : auth.trim();
     if (!token) return { user: null, token: null };
 
     try {
-      // @ts-ignore
+      // @ts-ignore - supabaseAdmin.auth.getUser accepts token
       const { data } = await supabaseAdmin.auth.getUser(token);
       if ((data as any)?.user) {
         return { user: (data as any).user, token };
@@ -171,7 +166,6 @@ async function getUserFromAuthHeader(req: NextApiRequest) {
       // fallback to decode JWT
     }
 
-    // fallback decode JWT quickly
     try {
       const parts = token.split(".");
       if (parts.length >= 2) {
@@ -193,23 +187,18 @@ async function getUserFromAuthHeader(req: NextApiRequest) {
   }
 }
 
-/** Main handler **/
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== "POST") {
-    res.setHeader("Allow", "POST");
-    return res.status(405).json({ ok: false, error: "Method not allowed" });
-  }
-
+/** POST handler for app router **/
+export async function POST(request: Request) {
   try {
-    const body = req.body ?? {};
+    const body = (await request.json()) ?? {};
 
-    const { user, token } = await getUserFromAuthHeader(req);
+    const { user, token } = await getUserFromAuthHeader(request);
 
     if (!user || !user.id) {
-      return res.status(401).json({ ok: false, error: "Authentication required. Please sign in." });
+      return NextResponse.json({ ok: false, error: "Authentication required. Please sign in." }, { status: 401 });
     }
 
-    // Check credits: if row missing, create it with DEFAULT_INITIAL_CREDITS (so new users can try)
+    // Check credits: if row missing, create it with DEFAULT_INITIAL_CREDITS
     let currentCredits: number | null = null;
     try {
       const { data: creditRow, error: creditError } = await supabaseAdmin
@@ -225,7 +214,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (creditRow && (creditRow as any).credits !== undefined) {
         currentCredits = Number((creditRow as any).credits);
       } else {
-        // Row missing — create one with DEFAULT_INITIAL_CREDITS (safe server-side)
         const seed = DEFAULT_INITIAL_CREDITS;
         try {
           const { data: upserted, error: upsertError } = await supabaseAdmin
@@ -238,7 +226,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             currentCredits = Number((upserted as any).credits);
             console.log(`Seeded user_credits for ${user.id} with ${seed} credits.`);
           } else {
-            // if upsert fails, treat as null and let later logic return error
             console.warn("Failed to seed user_credits", upsertError);
             currentCredits = null;
           }
@@ -253,14 +240,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     if (currentCredits === null) {
-      return res.status(402).json({ ok: false, error: "No credits found for user. Please purchase credits." });
+      return NextResponse.json({ ok: false, error: "No credits found for user. Please purchase credits." }, { status: 402 });
     }
 
     if (currentCredits <= 0) {
-      return res.status(402).json({ ok: false, error: "No credits available. Please buy new credits to generate images." });
+      return NextResponse.json({ ok: false, error: "No credits available. Please buy new credits to generate images." }, { status: 402 });
     }
 
-    // --- existing generation logic continues unchanged ---
+    // --- generation logic continues ---
     const {
       vision,
       target = { width: 1080, height: 1080 },
@@ -270,9 +257,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     } = body;
 
     if (!vision && !body.description && !body.prompt) {
-      return res.status(400).json({ ok: false, error: "Missing vision/description/prompt" });
+      return NextResponse.json({ ok: false, error: "Missing vision/description/prompt" }, { status: 400 });
     }
-    if (!NANO_API_KEY) return res.status(500).json({ ok: false, error: "Server missing NANO_API_KEY" });
+    if (!NANO_API_KEY) return NextResponse.json({ ok: false, error: "Server missing NANO_API_KEY" }, { status: 500 });
 
     // Upload inline logo/ref images to Supabase so Gemini can reference them (public URLs)
     let logoPublicUrl: string | null = null;
@@ -416,7 +403,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     if (!imageBuffer) {
-      return res.status(500).json({ ok: false, error: "No image returned from Gemini (unable to extract).", rawGeminiResponse: createJson });
+      return NextResponse.json({ ok: false, error: "No image returned from Gemini (unable to extract).", rawGeminiResponse: createJson }, { status: 500 });
     }
 
     // Composite logo (if we have a public URL)
@@ -484,7 +471,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       try {
         const path = `temp/generated_${Date.now()}.png`;
         const publicUrl = await uploadBufferToSupabase(finalBuffer, path, "image/png");
-        return res.status(200).json({
+        return NextResponse.json({
           ok: true,
           image: publicUrl ? publicUrl : dataUrl,
           images: [publicUrl ? publicUrl : dataUrl],
@@ -492,23 +479,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           savedPublicUrl: publicUrl ?? null,
           creditsRemaining: updatedCredits,
           credits_depleted: updatedCredits !== null ? updatedCredits <= 0 : undefined,
-        });
+        }, { status: 200 });
       } catch (e) {
         console.warn("Temp upload failed", e);
       }
     }
 
-    return res.status(200).json({
+    return NextResponse.json({
       ok: true,
       image: dataUrl,
       images: [dataUrl],
       creditsRemaining: updatedCredits,
       credits_depleted: updatedCredits !== null ? updatedCredits <= 0 : undefined,
-    });
+    }, { status: 200 });
+
   } catch (err: any) {
     console.error("Generation endpoint error:", err);
     const message = err?.message || String(err);
     const extra = err?.response?.data ? { raw: err.response.data } : {};
-    return res.status(500).json({ ok: false, error: message, ...extra });
+    return NextResponse.json({ ok: false, error: message, ...extra }, { status: 500 });
   }
 }
