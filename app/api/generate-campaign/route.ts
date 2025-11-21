@@ -1,8 +1,10 @@
 // app/api/generate-campaign/route.ts
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import axios from "axios";
 import sharp from "sharp";
-import { supabaseAdmin } from "../../../lib/supabaseClient"; // adjust if your path is different
+import { supabaseAdmin } from "../../../lib/supabaseClient"; // adjust if your path differs
+
+export const runtime = "nodejs"; // needed so we can use sharp / node libs
 
 const NANO_API_KEY = process.env.NANO_API_KEY;
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash-image";
@@ -18,19 +20,13 @@ function dataUrlToBuffer(dataUrl: string) {
   if (!m) throw new Error("Invalid data URL");
   return Buffer.from(m[2], "base64");
 }
-
 async function fetchUrlToBuffer(url: string) {
   const resp = await fetch(url);
   if (!resp.ok) throw new Error(`Failed to fetch ${url}: ${resp.status}`);
   const arr = await resp.arrayBuffer();
   return Buffer.from(arr);
 }
-
-async function uploadBufferToSupabase(
-  buffer: Buffer,
-  path: string,
-  contentType = "image/png"
-) {
+async function uploadBufferToSupabase(buffer: Buffer, path: string, contentType = "image/png") {
   const bucket = "campaign-assets";
   const { error } = await supabaseAdmin.storage.from(bucket).upload(path, buffer, {
     cacheControl: "3600",
@@ -42,16 +38,15 @@ async function uploadBufferToSupabase(
   return (data as any)?.publicUrl ?? null;
 }
 
+/** Find image reference (data: or urls) anywhere in an object (fallback) */
 function findImageReference(obj: any): { kind: "data" | "url" | null; value: string | null } {
   if (!obj || typeof obj !== "object") return { kind: null, value: null };
   for (const k of Object.keys(obj)) {
     const v = obj[k];
     if (typeof v === "string") {
       if (v.startsWith("data:")) return { kind: "data", value: v };
-      if (/^https?:\/\//.test(v) && /\.(png|jpe?g|webp|gif)(\?.*)?$/i.test(v))
-        return { kind: "url", value: v };
-      if (/^https?:\/\//.test(v) && (v.includes("/outputs/") || v.includes("/generated/") || v.includes("/images/")))
-        return { kind: "url", value: v };
+      if (/^https?:\/\//.test(v) && /\.(png|jpe?g|webp|gif)(\?.*)?$/i.test(v)) return { kind: "url", value: v };
+      if (/^https?:\/\//.test(v) && (v.includes("/outputs/") || v.includes("/generated/") || v.includes("/images/"))) return { kind: "url", value: v };
     } else if (Array.isArray(v)) {
       for (const el of v) {
         if (typeof el === "string") {
@@ -70,19 +65,17 @@ function findImageReference(obj: any): { kind: "data" | "url" | null; value: str
   return { kind: null, value: null };
 }
 
+/** Build a detailed prompt using your UI inputs */
 function buildPromptFromInputs(body: any) {
   const parts: string[] = [];
 
-  if (body.mode === "post")
-    parts.push("Create a social media post visual and short caption.");
-  else
-    parts.push("Create a high impact ad visual suitable for feed and story placements.");
+  if (body.mode === "post") parts.push("Create a social media post visual and short caption.");
+  else parts.push("Create a high impact ad visual suitable for feed and story placements.");
 
   if (body.campaignName) parts.push(`Campaign name: ${body.campaignName}`);
   if (body.postName) parts.push(`Post name: ${body.postName}`);
   if (body.objective) parts.push(`Objective: ${body.objective}`);
-  if (Array.isArray(body.platforms) && body.platforms.length)
-    parts.push(`Platforms: ${body.platforms.join(", ")}`);
+  if (Array.isArray(body.platforms) && body.platforms.length) parts.push(`Platforms: ${body.platforms.join(", ")}`);
   if (body.campaignType) parts.push(`Campaign type: ${body.campaignType}`);
   if (body.brandName) parts.push(`Brand: ${body.brandName}`);
   if (body.tagline) parts.push(`Tagline: ${body.tagline}`);
@@ -91,54 +84,34 @@ function buildPromptFromInputs(body: any) {
   if (body.description) parts.push(`Description: ${body.description}`);
   if (body.offerInfo) parts.push(`Offer: ${body.offerInfo}`);
   if (body.emotion) parts.push(`Vibe/emotion: ${body.emotion}`);
-  if (body.ageRange && Array.isArray(body.ageRange))
-    parts.push(`Age: ${body.ageRange[0]}-${body.ageRange[1]}`);
+  if (body.ageRange && Array.isArray(body.ageRange)) parts.push(`Age: ${body.ageRange[0]}-${body.ageRange[1]}`);
   if (body.gender) parts.push(`Gender target: ${body.gender}`);
   if (body.location) parts.push(`Location: ${body.location}`);
   if (body.interests) parts.push(`Interests: ${body.interests}`);
-  if (body.budget)
-    parts.push(`Budget: ${body.budget} (${body.budgetType || "daily"})`);
-  if (body.startDate || body.endDate)
-    parts.push(`Schedule: ${body.startDate || "start"} → ${body.endDate || "end"}`);
+  if (body.budget) parts.push(`Budget: ${body.budget} (${body.budgetType || "daily"})`);
+  if (body.startDate || body.endDate) parts.push(`Schedule: ${body.startDate || "start"} → ${body.endDate || "end"}`);
 
-  const refUrls = Array.isArray(body.refUrls)
-    ? body.refUrls
-    : body.aiCustomization?.refUrls ?? [];
+  const refUrls = Array.isArray(body.refUrls) ? body.refUrls : body.aiCustomization?.refUrls ?? [];
   if (refUrls && refUrls.length) {
-    parts.push(
-      `Reference images: ${refUrls.join(
-        ", "
-      )}. Use them as style reference — do not copy copyrighted elements exactly.`
-    );
+    parts.push(`Reference images: ${refUrls.join(", ")}. Use them as style reference — do not copy copyrighted elements exactly.`);
   }
-  const logoCandidate = body.logoDataUrl
-    ? "logo provided (inline)"
-    : body.aiCustomization?.logoUrl ?? body.logoUrl ?? null;
+  const logoCandidate = body.logoDataUrl ? "logo provided (inline)" : (body.aiCustomization?.logoUrl ?? body.logoUrl ?? null);
   if (logoCandidate) {
     parts.push(`Use brand logo (placed bottom-right with padding).`);
   }
 
   const width = body.target?.width || 1080;
   const height = body.target?.height || 1080;
-  parts.push(
-    `Produce a clear, high-quality visual sized approximately ${width}×${height}. Center composition with negative space for headline / CTA.`
-  );
+  parts.push(`Produce a clear, high-quality visual sized approximately ${width}×${height}. Center composition with negative space for headline / CTA.`);
 
   return parts.filter(Boolean).join("\n\n");
 }
 
-function extractImageFromGeminiResponse(respJson: any): {
-  kind: "inline" | "url" | null;
-  data?: string;
-  url?: string;
-} {
+/** Extract image from Gemini response (common shapes) */
+function extractImageFromGeminiResponse(respJson: any): { kind: "inline" | "url" | null; data?: string; url?: string } {
   try {
-    const candidates =
-      respJson?.response?.candidates ??
-      respJson?.candidates ??
-      respJson?.result?.candidates ??
-      respJson?.parts ??
-      null;
+    // candidates path: response.candidates[*].content.parts[*]
+    const candidates = respJson?.response?.candidates ?? respJson?.candidates ?? respJson?.result?.candidates ?? respJson?.parts ?? null;
     if (Array.isArray(candidates) && candidates.length > 0) {
       for (const c of candidates) {
         const parts = c?.content?.parts ?? c?.content ?? c?.parts ?? null;
@@ -161,11 +134,7 @@ function extractImageFromGeminiResponse(respJson: any): {
       }
     }
 
-    const topFiles =
-      respJson?.files ??
-      respJson?.outputs ??
-      respJson?.generated_images ??
-      respJson?.images;
+    const topFiles = respJson?.files ?? respJson?.outputs ?? respJson?.generated_images ?? respJson?.images;
     if (Array.isArray(topFiles) && topFiles.length > 0) {
       const f = topFiles[0];
       if (typeof f === "string") {
@@ -177,41 +146,44 @@ function extractImageFromGeminiResponse(respJson: any): {
         return { kind: "url", url: f.uri };
       }
     }
-  } catch {
+  } catch (e) {
     // ignore
   }
   return { kind: null };
 }
 
-/** App Router version: get user from Request headers */
-async function getUserFromAuthHeader(req: Request) {
+/** Attempt to get user from Authorization header (Bearer token) **/
+async function getUserFromAuthHeader(req: NextRequest) {
   try {
-    const auth =
-      req.headers.get("authorization") || req.headers.get("Authorization");
+    const auth = req.headers.get("authorization") || req.headers.get("Authorization") || "";
     if (!auth) return { user: null, token: null };
-
-    const m = auth.match(/Bearer\s+(.+)/i);
+    const m = (auth as string).match(/Bearer\s+(.+)/i);
     const token = m ? m[1] : auth;
     if (!token) return { user: null, token: null };
 
     try {
-      // @ts-ignore
-      const { data } = await supabaseAdmin.auth.getUser(token);
-      if ((data as any)?.user) return { user: (data as any).user, token };
-    } catch {
+      // Try multiple shapes just like original (supabaseAdmin.auth.getUser accepts token or { access_token })
       try {
         // @ts-ignore
-        const { data } = await supabaseAdmin.auth.getUser({ access_token: token });
+        const { data } = await supabaseAdmin.auth.getUser(token);
         if ((data as any)?.user) return { user: (data as any).user, token };
       } catch {
+        // fallback
         try {
           // @ts-ignore
-          const { data } = await (supabaseAdmin.auth as any).getUser?.({
-            access_token: token,
-          });
+          const { data } = await supabaseAdmin.auth.getUser({ access_token: token });
           if ((data as any)?.user) return { user: (data as any).user, token };
-        } catch {}
+        } catch {
+          try {
+            // final fallback
+            // @ts-ignore
+            const { data } = await (supabaseAdmin.auth as any).getUser?.({ access_token: token });
+            if ((data as any)?.user) return { user: (data as any).user, token };
+          } catch {}
+        }
       }
+    } catch (e) {
+      // ignore
     }
     return { user: null, token };
   } catch (e) {
@@ -220,66 +192,40 @@ async function getUserFromAuthHeader(req: Request) {
   }
 }
 
-/** MAIN HANDLER – App Router */
-export async function POST(req: Request) {
+/** POST handler **/
+export async function POST(req: NextRequest) {
   try {
-    const body = await req.json().catch(() => ({}));
+    const body = await req.json();
 
-    const { user } = await getUserFromAuthHeader(req);
+    // Attempt to identify user from Authorization header
+    const { user, token } = await getUserFromAuthHeader(req);
+
     if (!user || !user.id) {
-      return NextResponse.json(
-        { ok: false, error: "Authentication required. Please sign in." },
-        { status: 401 }
-      );
+      // Require signed-in user to consume credits
+      return NextResponse.json({ ok: false, error: "Authentication required. Please sign in." }, { status: 401 });
     }
 
-    // ---------- credits check ----------
+    // Check credits
     const { data: creditRow, error: creditError } = await supabaseAdmin
       .from("user_credits")
       .select("credits")
       .eq("id", user.id)
       .single();
 
-    if (creditError && creditError.code !== "PGRST116") {
+    if (creditError && (creditError as any).code !== "PGRST116") {
       console.warn("user_credits lookup error", creditError);
     }
 
-    const DEFAULT_CREDITS = 100;
-
-    let currentCredits =
-      creditRow && (creditRow as any).credits !== undefined
-        ? Number((creditRow as any).credits)
-        : null;
+    const currentCredits = (creditRow && (creditRow as any).credits !== undefined) ? Number((creditRow as any).credits) : null;
 
     if (currentCredits === null) {
-      const { data: newRow, error: upsertError } = await supabaseAdmin
-        .from("user_credits")
-        .upsert({ id: user.id, credits: DEFAULT_CREDITS })
-        .select()
-        .single();
-
-      if (upsertError) {
-        console.warn("user_credits upsert error", upsertError);
-        return NextResponse.json(
-          { ok: false, error: "Failed to initialize credits." },
-          { status: 500 }
-        );
-      }
-
-      currentCredits = Number((newRow as any).credits ?? DEFAULT_CREDITS);
+      return NextResponse.json({ ok: false, error: "No credits found for user. Please purchase credits." }, { status: 402 });
     }
 
     if (currentCredits <= 0) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "No credits available. Please buy new credits to generate images.",
-        },
-        { status: 402 }
-      );
+      return NextResponse.json({ ok: false, error: "No credits available. Please buy new credits to generate images." }, { status: 402 });
     }
 
-    // ------ your existing generation logic, but using NextResponse ------
     const {
       vision,
       target = { width: 1080, height: 1080 },
@@ -289,20 +235,11 @@ export async function POST(req: Request) {
     } = body;
 
     if (!vision && !body.description && !body.prompt) {
-      return NextResponse.json(
-        { ok: false, error: "Missing vision/description/prompt" },
-        { status: 400 }
-      );
+      return NextResponse.json({ ok: false, error: "Missing vision/description/prompt" }, { status: 400 });
     }
+    if (!NANO_API_KEY) return NextResponse.json({ ok: false, error: "Server missing NANO_API_KEY" }, { status: 500 });
 
-    if (!NANO_API_KEY) {
-      return NextResponse.json(
-        { ok: false, error: "Server missing NANO_API_KEY" },
-        { status: 500 }
-      );
-    }
-
-    // 1) logo + refs upload
+    // 1) upload inline logo/ref images to Supabase so Gemini can reference them (public URLs)
     let logoPublicUrl: string | null = null;
     if (logoDataUrl && typeof logoDataUrl === "string" && logoDataUrl.startsWith("data:")) {
       try {
@@ -336,8 +273,7 @@ export async function POST(req: Request) {
         }
       }
     } else if (Array.isArray(aiCustomization?.refUrls) && aiCustomization.refUrls.length) {
-      for (const u of aiCustomization.refUrls)
-        if (typeof u === "string") refPublicUrls.push(u);
+      for (const u of aiCustomization.refUrls) if (typeof u === "string") refPublicUrls.push(u);
     }
 
     const mergedAi = {
@@ -346,16 +282,13 @@ export async function POST(req: Request) {
       refUrls: refPublicUrls.length ? refPublicUrls : aiCustomization?.refUrls ?? [],
     };
 
-    const prompt = buildPromptFromInputs({
-      ...body,
-      vision,
-      aiCustomization: mergedAi,
-      target,
-    });
+    // Build prompt
+    const prompt = buildPromptFromInputs({ ...body, vision, aiCustomization: mergedAi, target });
 
+    // map target width/height to an aspect ratio supported by Gemini
     const targetW = Number(target?.width || 1080);
     const targetH = Number(target?.height || 1080);
-    let aspectRatio = "1:1";
+    let aspectRatio = "1:1"; // default
     if (targetW && targetH) {
       const ratio = Math.round((targetW / targetH) * 1000) / 1000;
       const candidates = ["1:1","2:3","3:2","3:4","4:3","4:5","5:4","9:16","16:9","21:9"];
@@ -372,11 +305,20 @@ export async function POST(req: Request) {
       aspectRatio = best;
     }
 
+    // Build Gemini payload (correct REST shape — imageConfig uses aspectRatio)
     const payload: any = {
-      contents: [{ parts: [{ text: prompt }] }],
+      contents: [
+        {
+          parts: [
+            { text: prompt },
+          ],
+        },
+      ],
       generationConfig: {
         responseModalities: ["Image"],
-        imageConfig: { aspectRatio },
+        imageConfig: {
+          aspectRatio,
+        },
         candidateCount: 1,
       },
     };
@@ -385,9 +327,10 @@ export async function POST(req: Request) {
     const headers: Record<string, string> = {
       "content-type": "application/json",
       accept: "application/json",
-      "x-goog-api-key": NANO_API_KEY!,
+      "x-goog-api-key": NANO_API_KEY,
     };
 
+    // Call Gemini
     const createResp = await axios.post(url, payload, { headers }).catch((err) => {
       const r = err.response?.data ?? err.message;
       console.error("Gemini create error", r);
@@ -396,32 +339,41 @@ export async function POST(req: Request) {
 
     const createJson = createResp.data;
 
+    // Try extracting image buffer
     let imageBuffer: Buffer | null = null;
+    let foundSrc: string | null = null;
 
     const extracted = extractImageFromGeminiResponse(createJson);
     if (extracted.kind === "inline" && extracted.data) {
       const maybe = extracted.data;
       if (typeof maybe === "string" && maybe.startsWith("data:")) {
         imageBuffer = dataUrlToBuffer(maybe);
+        foundSrc = maybe;
       } else {
+        // raw base64 or raw base64-like string
         imageBuffer = Buffer.from(maybe, "base64");
+        foundSrc = `data:image/png;base64,${maybe}`;
       }
     } else if (extracted.kind === "url" && extracted.url) {
       try {
         imageBuffer = await fetchUrlToBuffer(extracted.url);
+        foundSrc = extracted.url;
       } catch (e) {
         console.warn("Failed to fetch image url from Gemini response", e);
       }
     }
 
+    // fallback generic search
     if (!imageBuffer) {
       const direct = findImageReference(createJson);
       if (direct && direct.value) {
         if (direct.kind === "data") {
           imageBuffer = dataUrlToBuffer(direct.value);
+          foundSrc = direct.value;
         } else if (direct.kind === "url") {
           try {
             imageBuffer = await fetchUrlToBuffer(direct.value);
+            foundSrc = direct.value;
           } catch (e) {
             console.warn("Fallback fetch failed", e);
           }
@@ -430,16 +382,10 @@ export async function POST(req: Request) {
     }
 
     if (!imageBuffer) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "No image returned from Gemini (unable to extract).",
-          rawGeminiResponse: createJson,
-        },
-        { status: 500 }
-      );
+      return NextResponse.json({ ok: false, error: "No image returned from Gemini (unable to extract).", rawGeminiResponse: createJson }, { status: 500 });
     }
 
+    // Composite logo (if we have a public URL)
     let finalBuffer = imageBuffer!;
     const logoUrlToUse = mergedAi.logoUrl ?? null;
     if (logoUrlToUse) {
@@ -479,6 +425,7 @@ export async function POST(req: Request) {
 
     const dataUrl = `data:image/png;base64,${finalBuffer.toString("base64")}`;
 
+    // After successful generation - consume 1 credit (best-effort)
     let updatedCredits: number | null = null;
     try {
       const newCredits = Math.max(0, (currentCredits ?? 0) - 1);
@@ -498,44 +445,42 @@ export async function POST(req: Request) {
       console.warn("Credit decrement failed", e);
     }
 
+    // Optionally save temporary public copy
     if (body.saveTemp === true) {
       try {
         const path = `temp/generated_${Date.now()}.png`;
         const publicUrl = await uploadBufferToSupabase(finalBuffer, path, "image/png");
-        return NextResponse.json(
-          {
-            ok: true,
-            image: publicUrl ? publicUrl : dataUrl,
-            images: [publicUrl ? publicUrl : dataUrl],
-            dataUrl,
-            savedPublicUrl: publicUrl ?? null,
-            creditsRemaining: updatedCredits,
-            credits_depleted: updatedCredits !== null ? updatedCredits <= 0 : undefined,
-          },
-          { status: 200 }
-        );
+        return NextResponse.json({
+          ok: true,
+          image: publicUrl ? publicUrl : dataUrl,
+          images: [publicUrl ? publicUrl : dataUrl],
+          dataUrl,
+          savedPublicUrl: publicUrl ?? null,
+          creditsRemaining: updatedCredits,
+          credits_depleted: updatedCredits !== null ? updatedCredits <= 0 : undefined,
+        });
       } catch (e) {
         console.warn("Temp upload failed", e);
       }
     }
 
-    return NextResponse.json(
-      {
-        ok: true,
-        image: dataUrl,
-        images: [dataUrl],
-        creditsRemaining: updatedCredits,
-        credits_depleted: updatedCredits !== null ? updatedCredits <= 0 : undefined,
-      },
-      { status: 200 }
-    );
+    return NextResponse.json({
+      ok: true,
+      image: dataUrl,
+      images: [dataUrl],
+      creditsRemaining: updatedCredits,
+      credits_depleted: updatedCredits !== null ? updatedCredits <= 0 : undefined,
+    });
   } catch (err: any) {
     console.error("Generation endpoint error:", err);
     const message = err?.message || String(err);
     const extra = err?.response?.data ? { raw: err.response.data } : {};
-    return NextResponse.json(
-      { ok: false, error: message, ...extra },
-      { status: 500 }
-    );
+    return NextResponse.json({ ok: false, error: message, ...extra }, { status: 500 });
   }
 }
+
+/** GET handler (disallow) **/
+export async function GET() {
+  return NextResponse.json({ ok: false, error: "Method not allowed. Use POST." }, { status: 405 });
+}
+
