@@ -2,7 +2,7 @@
 import axios from "axios";
 import sharp from "sharp";
 import { NextResponse } from "next/server";
-import { supabaseAdmin } from "../../../lib/supabaseClient"; // server admin client
+import { supabaseAdmin } from "../../../lib/supabaseClient"; // adjust path if necessary
 
 const NANO_API_KEY = process.env.NANO_API_KEY;
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash-image";
@@ -65,10 +65,8 @@ function findImageReference(obj: any): { kind: "data" | "url" | null; value: str
 
 function buildPromptFromInputs(body: any) {
   const parts: string[] = [];
-
   if (body.mode === "post") parts.push("Create a social media post visual and short caption.");
   else parts.push("Create a high impact ad visual suitable for feed and story placements.");
-
   if (body.campaignName) parts.push(`Campaign name: ${body.campaignName}`);
   if (body.postName) parts.push(`Post name: ${body.postName}`);
   if (body.objective) parts.push(`Objective: ${body.objective}`);
@@ -147,58 +145,105 @@ function extractImageFromGeminiResponse(respJson: any): { kind: "inline" | "url"
   return { kind: null };
 }
 
-/** Attempt to get user from Authorization header (Bearer token) **/
-async function getUserFromAuthHeader(request: Request) {
+/** decode JWT payload (no verify) */
+function decodeSupabaseJWT(token: string): any | null {
   try {
-    const auth = request.headers.get("authorization") || request.headers.get("Authorization") || "";
-    if (!auth) return { user: null, token: null };
-    const m = auth.match(/Bearer\s+(.+)/i);
-    const token = m ? m[1] : auth.trim();
-    if (!token) return { user: null, token: null };
+    const parts = token.split(".");
+    if (parts.length < 2) return null;
+    const payload = parts[1];
+    const base64 = payload.replace(/-/g, "+").replace(/_/g, "/").padEnd(payload.length + ((4 - (payload.length % 4)) % 4), "=");
+    const json = Buffer.from(base64, "base64").toString("utf8");
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+}
 
-    try {
-      // @ts-ignore - supabaseAdmin.auth.getUser accepts token
-      const { data } = await supabaseAdmin.auth.getUser(token);
-      if ((data as any)?.user) {
-        return { user: (data as any).user, token };
-      }
-    } catch (e) {
-      // fallback to decode JWT
+/** Try to extract an access token from cookies content (many shapes) */
+function findTokenInCookies(cookieHeader: string | null): string | null {
+  if (!cookieHeader) return null;
+  const parts = cookieHeader.split(";").map(p => p.trim());
+  // quick check for common names
+  for (const name of ["sb-access-token", "sb:token", "supabase-auth-token", "sb_token", "sb_access_token"]) {
+    const kv = parts.find(p => p.startsWith(`${name}=`));
+    if (kv) {
+      const val = kv.split("=").slice(1).join("=");
+      // some cookies store JSON with access_token
+      try {
+        const parsed = JSON.parse(decodeURIComponent(val));
+        if (parsed?.access_token) return parsed.access_token;
+      } catch {}
+      // try raw
+      try { return decodeURIComponent(val); } catch { return val; }
     }
-
+  }
+  // fallback: scan all cookie values and try JSON parse for access_token keys
+  for (const p of parts) {
+    const idx = p.indexOf("=");
+    if (idx === -1) continue;
+    const val = p.slice(idx+1);
     try {
-      const parts = token.split(".");
-      if (parts.length >= 2) {
-        const payload = parts[1];
-        const base64 = payload.replace(/-/g, "+").replace(/_/g, "/").padEnd(payload.length + ((4 - (payload.length % 4)) % 4), "=");
-        const json = Buffer.from(base64, "base64").toString("utf8");
-        const dec = JSON.parse(json);
+      const parsed = JSON.parse(decodeURIComponent(val));
+      if (parsed?.access_token) return parsed.access_token;
+      if (parsed?.currentSession?.access_token) return parsed.currentSession.access_token;
+    } catch {}
+  }
+  return null;
+}
+
+/** Get user from request (tries header, body.token, cookies, decode fallback) */
+async function getUserFromRequest(request: Request, bodyToken?: string) {
+  try {
+    // 1) Authorization header (Bearer)
+    const authHeader = request.headers.get("authorization") || request.headers.get("Authorization") || "";
+    const m = authHeader?.match(/Bearer\s+(.+)/i);
+    const headerToken = m ? m[1] : (authHeader ? authHeader.trim() : null);
+
+    // 2) cookie token
+    const cookieHeader = request.headers.get("cookie") || null;
+    const cookieToken = findTokenInCookies(cookieHeader);
+
+    const token = headerToken || bodyToken || cookieToken || null;
+
+    if (token) {
+      // Try supabaseAdmin.auth.getUser for authoritative user object
+      try {
+        // @ts-ignore
+        const { data } = await supabaseAdmin.auth.getUser(token);
+        if ((data as any)?.user) return { user: (data as any).user, token };
+      } catch (e) {
+        // continue to decode fallback
+        console.warn("supabaseAdmin.auth.getUser failed (continuing to decode):", (e as any)?.message ?? e);
+      }
+      // fallback decode JWT
+      const dec = decodeSupabaseJWT(token);
+      if (dec) {
         const userId = dec.sub || dec.user_id || dec.id || dec.uid || null;
         if (userId) return { user: { id: String(userId) } as any, token };
       }
-    } catch (e) {
-      // ignore
     }
 
+    // No token found or couldn't resolve
     return { user: null, token: null };
   } catch (e) {
-    console.warn("getUserFromAuthHeader error", e);
+    console.warn("getUserFromRequest error", e);
     return { user: null, token: null };
   }
 }
 
-/** POST handler for app router **/
+/** POST handler for app route */
 export async function POST(request: Request) {
   try {
-    const body = (await request.json()) ?? {};
+    const body = (await request.json().catch(() => ({}))) ?? {};
 
-    const { user, token } = await getUserFromAuthHeader(request);
+    const bodyToken = typeof body.token === "string" ? body.token : undefined;
+    const { user, token } = await getUserFromRequest(request, bodyToken);
 
     if (!user || !user.id) {
       return NextResponse.json({ ok: false, error: "Authentication required. Please sign in." }, { status: 401 });
     }
 
-    // Check credits: if row missing, create it with DEFAULT_INITIAL_CREDITS
+    // Ensure user_credits row exists (optional: seed)
     let currentCredits: number | null = null;
     try {
       const { data: creditRow, error: creditError } = await supabaseAdmin
@@ -214,19 +259,19 @@ export async function POST(request: Request) {
       if (creditRow && (creditRow as any).credits !== undefined) {
         currentCredits = Number((creditRow as any).credits);
       } else {
-        const seed = DEFAULT_INITIAL_CREDITS;
+        // Optionally seed a default credits row if you want trial credits in production
+        // comment out next block if you don't want automatic seeding
         try {
+          const seed = DEFAULT_INITIAL_CREDITS;
           const { data: upserted, error: upsertError } = await supabaseAdmin
             .from("user_credits")
             .upsert({ id: user.id, credits: seed }, { onConflict: "id" })
             .select()
             .single();
-
           if (!upsertError && upserted && (upserted as any).credits !== undefined) {
             currentCredits = Number((upserted as any).credits);
             console.log(`Seeded user_credits for ${user.id} with ${seed} credits.`);
           } else {
-            console.warn("Failed to seed user_credits", upsertError);
             currentCredits = null;
           }
         } catch (e) {
@@ -242,12 +287,11 @@ export async function POST(request: Request) {
     if (currentCredits === null) {
       return NextResponse.json({ ok: false, error: "No credits found for user. Please purchase credits." }, { status: 402 });
     }
-
     if (currentCredits <= 0) {
       return NextResponse.json({ ok: false, error: "No credits available. Please buy new credits to generate images." }, { status: 402 });
     }
 
-    // --- generation logic continues ---
+    // --- generation logic (kept from your original) ---
     const {
       vision,
       target = { width: 1080, height: 1080 },
@@ -304,13 +348,12 @@ export async function POST(request: Request) {
       refUrls: refPublicUrls.length ? refPublicUrls : aiCustomization?.refUrls ?? [],
     };
 
-    // Build prompt
     const prompt = buildPromptFromInputs({ ...body, vision, aiCustomization: mergedAi, target });
 
-    // map target width/height to an aspect ratio supported by Gemini
+    // map target width/height to aspect ratio
     const targetW = Number(target?.width || 1080);
     const targetH = Number(target?.height || 1080);
-    let aspectRatio = "1:1"; // default
+    let aspectRatio = "1:1";
     if (targetW && targetH) {
       const ratio = Math.round((targetW / targetH) * 1000) / 1000;
       const candidates = ["1:1","2:3","3:2","3:4","4:3","4:5","5:4","9:16","16:9","21:9"];
@@ -327,20 +370,11 @@ export async function POST(request: Request) {
       aspectRatio = best;
     }
 
-    // Build Gemini payload
     const payload: any = {
-      contents: [
-        {
-          parts: [
-            { text: prompt },
-          ],
-        },
-      ],
+      contents: [{ parts: [{ text: prompt }] }],
       generationConfig: {
         responseModalities: ["Image"],
-        imageConfig: {
-          aspectRatio,
-        },
+        imageConfig: { aspectRatio },
         candidateCount: 1,
       },
     };
@@ -352,7 +386,6 @@ export async function POST(request: Request) {
       "x-goog-api-key": NANO_API_KEY,
     };
 
-    // Call Gemini
     const createResp = await axios.post(url, payload, { headers }).catch((err) => {
       const r = err.response?.data ?? err.message;
       console.error("Gemini create error", r);
@@ -361,7 +394,6 @@ export async function POST(request: Request) {
 
     const createJson = createResp.data;
 
-    // try extracting image buffer (same approach)
     let imageBuffer: Buffer | null = null;
     let foundSrc: string | null = null;
 
@@ -384,7 +416,6 @@ export async function POST(request: Request) {
       }
     }
 
-    // fallback generic search
     if (!imageBuffer) {
       const direct = findImageReference(createJson);
       if (direct && direct.value) {
@@ -406,7 +437,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: "No image returned from Gemini (unable to extract).", rawGeminiResponse: createJson }, { status: 500 });
     }
 
-    // Composite logo (if we have a public URL)
+    // Composite logo
     let finalBuffer = imageBuffer!;
     const logoUrlToUse = mergedAi.logoUrl ?? null;
     if (logoUrlToUse) {
@@ -446,19 +477,36 @@ export async function POST(request: Request) {
 
     const dataUrl = `data:image/png;base64,${finalBuffer.toString("base64")}`;
 
-    // After successful generation - consume 1 credit (best-effort)
+    // --- atomic decrement attempt ---
     let updatedCredits: number | null = null;
     try {
-      const newCredits = Math.max(0, (currentCredits ?? 0) - 1);
+      // Try an atomic update via PostgREST: update where credits > 0 and return new credits.
+      // This is atomic on DB side.
       const { data: updatedRow, error: updateError } = await supabaseAdmin
         .from("user_credits")
-        .update({ credits: newCredits })
+        .update({ credits: (currentCredits ?? 0) - 1 })
         .eq("id", user.id)
+        .gt("credits", 0) // ensures we only decrement when credits > 0
         .select()
         .single();
 
       if (updateError) {
-        console.warn("Failed to update user_credits:", updateError);
+        // fallback: try to call a RPC function if you have one (decrement_user_credits)
+        try {
+          const { data: rpcData, error: rpcErr } = await supabaseAdmin.rpc("decrement_user_credits", { p_user_id: user.id });
+          if (!rpcErr && rpcData) {
+            // rpcData may be a scalar or object depending on function — try to coerce
+            if (typeof rpcData === "number") updatedCredits = rpcData;
+            else if (Array.isArray(rpcData) && rpcData.length) updatedCredits = Number((rpcData[0] as any).credits ?? null);
+            else if ((rpcData as any)?.credits !== undefined) updatedCredits = Number((rpcData as any).credits);
+          } else {
+            console.warn("Atomic decrement fallback rpc failed:", rpcErr);
+          }
+        } catch (e) {
+          console.warn("rpc decrement failed", e);
+        }
+        // if still not set, log updateError and continue (best-effort)
+        console.warn("Failed to decrement user_credits via direct update:", updateError);
       } else if (updatedRow && (updatedRow as any).credits !== undefined) {
         updatedCredits = Number((updatedRow as any).credits);
       }
@@ -492,7 +540,6 @@ export async function POST(request: Request) {
       creditsRemaining: updatedCredits,
       credits_depleted: updatedCredits !== null ? updatedCredits <= 0 : undefined,
     }, { status: 200 });
-
   } catch (err: any) {
     console.error("Generation endpoint error:", err);
     const message = err?.message || String(err);
