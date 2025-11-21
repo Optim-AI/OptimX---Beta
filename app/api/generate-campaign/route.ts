@@ -1,14 +1,15 @@
-// app/api/generate-campaign/route.ts
-import { NextRequest, NextResponse } from "next/server";
+// pages/api/generate-campaign.ts
+import type { NextApiRequest, NextApiResponse } from "next";
 import axios from "axios";
 import sharp from "sharp";
-import { supabaseAdmin } from "../../../lib/supabaseClient"; // adjust path if your lib is elsewhere
-
-export const runtime = "nodejs";
+import { supabaseAdmin } from "../../../lib/supabaseClient"; // server admin client
 
 const NANO_API_KEY = process.env.NANO_API_KEY;
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash-image";
 const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
+
+// Starter credits if row missing. Configure in Vercel env or default to 5.
+const DEFAULT_INITIAL_CREDITS = Number(process.env.DEFAULT_INITIAL_CREDITS ?? 5);
 
 if (!NANO_API_KEY) {
   console.warn("NANO_API_KEY not set - Gemini calls will fail.");
@@ -38,7 +39,7 @@ async function uploadBufferToSupabase(buffer: Buffer, path: string, contentType 
   return (data as any)?.publicUrl ?? null;
 }
 
-function findImageReference(obj: any): { kind: "data" | "url" | null; value?: string | null } {
+function findImageReference(obj: any): { kind: "data" | "url" | null; value: string | null } {
   if (!obj || typeof obj !== "object") return { kind: null, value: null };
   for (const k of Object.keys(obj)) {
     const v = obj[k];
@@ -148,113 +149,118 @@ function extractImageFromGeminiResponse(respJson: any): { kind: "inline" | "url"
   return { kind: null };
 }
 
-/** JWT decode helper (non-verified) */
-function decodeSupabaseJWT(token: string): any | null {
+/** Attempt to get user from Authorization header (Bearer token) **/
+async function getUserFromAuthHeader(req: NextApiRequest) {
   try {
-    const parts = token.split(".");
-    if (parts.length < 2) return null;
-    const payload = parts[1];
-    const base64 = payload.replace(/-/g, "+").replace(/_/g, "/").padEnd(payload.length + ((4 - (payload.length % 4)) % 4), "=");
-    const json = Buffer.from(base64, "base64").toString("utf8");
-    return JSON.parse(json);
-  } catch {
-    return null;
-  }
-}
+    const auth = (req.headers.authorization ||
+      (req.headers as any).Authorization) as string | undefined;
 
-/** Extract token from header/cookies and resolve user via supabaseAdmin or JWT */
-async function resolveUserFromRequest(req: NextRequest) {
-  try {
-    // Header
-    const rawAuth = req.headers.get("authorization") || req.headers.get("Authorization") || "";
-    let token: string | null = null;
-    if (rawAuth) {
-      const m = rawAuth.match(/Bearer\s+(.+)/i);
-      token = m ? m[1] : rawAuth;
-    }
+    if (!auth) return { user: null, token: null };
 
-    // Cookies (common Supabase shapes)
-    if (!token) {
-      const cookieCandidates = ["sb-access-token", "sb:token", "supabase-auth-token", "sb", "supabase-session", "sb-session"];
-      for (const name of cookieCandidates) {
-        const c = req.cookies.get(name);
-        if (!c) continue;
-        const val = c.value;
-        try {
-          const parsed = JSON.parse(val);
-          if (parsed?.access_token) { token = parsed.access_token; break; }
-          if (parsed?.currentSession?.access_token) { token = parsed.currentSession.access_token; break; }
-          if (parsed?.provider_token?.access_token) { token = parsed.provider_token.access_token; break; }
-        } catch {
-          token = val;
-          break;
-        }
-      }
-    }
+    const m = auth.match(/Bearer\s+(.+)/i);
+    const token = m ? m[1] : auth.trim();
+    if (!token) return { user: null, token: null };
 
-    if (!token) return { user: null as any, token: null };
-
-    // Try supabaseAdmin.getUser
     try {
       // @ts-ignore
       const { data } = await supabaseAdmin.auth.getUser(token);
-      if ((data as any)?.user) return { user: (data as any).user, token };
-    } catch {}
-    try {
-      // @ts-ignore
-      const { data } = await supabaseAdmin.auth.getUser({ access_token: token });
-      if ((data as any)?.user) return { user: (data as any).user, token };
-    } catch {}
-    try {
-      // @ts-ignore
-      const { data } = await (supabaseAdmin.auth as any).getUser?.({ access_token: token });
-      if ((data as any)?.user) return { user: (data as any).user, token };
-    } catch {}
-
-    // JWT decode fallback
-    const decoded = decodeSupabaseJWT(token);
-    if (decoded) {
-      const userId = decoded.sub || decoded.user_id || decoded.id || decoded.uid || null;
-      if (userId) return { user: { id: String(userId) } as any, token };
+      if ((data as any)?.user) {
+        return { user: (data as any).user, token };
+      }
+    } catch (e) {
+      // fallback to decode JWT
     }
 
-    return { user: null as any, token };
+    // fallback decode JWT quickly
+    try {
+      const parts = token.split(".");
+      if (parts.length >= 2) {
+        const payload = parts[1];
+        const base64 = payload.replace(/-/g, "+").replace(/_/g, "/").padEnd(payload.length + ((4 - (payload.length % 4)) % 4), "=");
+        const json = Buffer.from(base64, "base64").toString("utf8");
+        const dec = JSON.parse(json);
+        const userId = dec.sub || dec.user_id || dec.id || dec.uid || null;
+        if (userId) return { user: { id: String(userId) } as any, token };
+      }
+    } catch (e) {
+      // ignore
+    }
+
+    return { user: null, token: null };
   } catch (e) {
-    console.warn("resolveUserFromRequest error", e);
-    return { user: null as any, token: null };
+    console.warn("getUserFromAuthHeader error", e);
+    return { user: null, token: null };
   }
 }
 
-/** POST handler */
-export async function POST(req: NextRequest) {
+/** Main handler **/
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (req.method !== "POST") {
+    res.setHeader("Allow", "POST");
+    return res.status(405).json({ ok: false, error: "Method not allowed" });
+  }
+
   try {
-    const body = await req.json();
+    const body = req.body ?? {};
 
-    const { user } = await resolveUserFromRequest(req);
+    const { user, token } = await getUserFromAuthHeader(req);
+
     if (!user || !user.id) {
-      return NextResponse.json({ ok: false, error: "Authentication required. Please sign in." }, { status: 401 });
+      return res.status(401).json({ ok: false, error: "Authentication required. Please sign in." });
     }
 
-    // Credits lookup
-    const { data: creditRow, error: creditError } = await supabaseAdmin
-      .from("user_credits")
-      .select("credits")
-      .eq("id", user.id)
-      .single();
+    // Check credits: if row missing, create it with DEFAULT_INITIAL_CREDITS (so new users can try)
+    let currentCredits: number | null = null;
+    try {
+      const { data: creditRow, error: creditError } = await supabaseAdmin
+        .from("user_credits")
+        .select("credits")
+        .eq("id", user.id)
+        .single();
 
-    if (creditError && (creditError as any).code !== "PGRST116") {
-      console.warn("user_credits lookup error", creditError);
+      if (creditError && (creditError as any).code !== "PGRST116") {
+        console.warn("user_credits lookup error", creditError);
+      }
+
+      if (creditRow && (creditRow as any).credits !== undefined) {
+        currentCredits = Number((creditRow as any).credits);
+      } else {
+        // Row missing — create one with DEFAULT_INITIAL_CREDITS (safe server-side)
+        const seed = DEFAULT_INITIAL_CREDITS;
+        try {
+          const { data: upserted, error: upsertError } = await supabaseAdmin
+            .from("user_credits")
+            .upsert({ id: user.id, credits: seed }, { onConflict: "id" })
+            .select()
+            .single();
+
+          if (!upsertError && upserted && (upserted as any).credits !== undefined) {
+            currentCredits = Number((upserted as any).credits);
+            console.log(`Seeded user_credits for ${user.id} with ${seed} credits.`);
+          } else {
+            // if upsert fails, treat as null and let later logic return error
+            console.warn("Failed to seed user_credits", upsertError);
+            currentCredits = null;
+          }
+        } catch (e) {
+          console.warn("Seed credits failed", e);
+          currentCredits = null;
+        }
+      }
+    } catch (e) {
+      console.warn("credits lookup failed", e);
+      currentCredits = null;
     }
 
-    const currentCredits = (creditRow && (creditRow as any).credits !== undefined) ? Number((creditRow as any).credits) : null;
     if (currentCredits === null) {
-      return NextResponse.json({ ok: false, error: "No credits found for user. Please purchase credits." }, { status: 402 });
-    }
-    if (currentCredits <= 0) {
-      return NextResponse.json({ ok: false, error: "No credits available. Please buy new credits to generate images." }, { status: 402 });
+      return res.status(402).json({ ok: false, error: "No credits found for user. Please purchase credits." });
     }
 
-    // Unpack
+    if (currentCredits <= 0) {
+      return res.status(402).json({ ok: false, error: "No credits available. Please buy new credits to generate images." });
+    }
+
+    // --- existing generation logic continues unchanged ---
     const {
       vision,
       target = { width: 1080, height: 1080 },
@@ -264,11 +270,11 @@ export async function POST(req: NextRequest) {
     } = body;
 
     if (!vision && !body.description && !body.prompt) {
-      return NextResponse.json({ ok: false, error: "Missing vision/description/prompt" }, { status: 400 });
+      return res.status(400).json({ ok: false, error: "Missing vision/description/prompt" });
     }
-    if (!NANO_API_KEY) return NextResponse.json({ ok: false, error: "Server missing NANO_API_KEY" }, { status: 500 });
+    if (!NANO_API_KEY) return res.status(500).json({ ok: false, error: "Server missing NANO_API_KEY" });
 
-    // Upload inline logo/ref images
+    // Upload inline logo/ref images to Supabase so Gemini can reference them (public URLs)
     let logoPublicUrl: string | null = null;
     if (logoDataUrl && typeof logoDataUrl === "string" && logoDataUrl.startsWith("data:")) {
       try {
@@ -314,10 +320,10 @@ export async function POST(req: NextRequest) {
     // Build prompt
     const prompt = buildPromptFromInputs({ ...body, vision, aiCustomization: mergedAi, target });
 
-    // Aspect ratio
+    // map target width/height to an aspect ratio supported by Gemini
     const targetW = Number(target?.width || 1080);
     const targetH = Number(target?.height || 1080);
-    let aspectRatio = "1:1";
+    let aspectRatio = "1:1"; // default
     if (targetW && targetH) {
       const ratio = Math.round((targetW / targetH) * 1000) / 1000;
       const candidates = ["1:1","2:3","3:2","3:4","4:3","4:5","5:4","9:16","16:9","21:9"];
@@ -334,15 +340,20 @@ export async function POST(req: NextRequest) {
       aspectRatio = best;
     }
 
+    // Build Gemini payload
     const payload: any = {
       contents: [
         {
-          parts: [{ text: prompt }],
+          parts: [
+            { text: prompt },
+          ],
         },
       ],
       generationConfig: {
         responseModalities: ["Image"],
-        imageConfig: { aspectRatio },
+        imageConfig: {
+          aspectRatio,
+        },
         candidateCount: 1,
       },
     };
@@ -363,7 +374,7 @@ export async function POST(req: NextRequest) {
 
     const createJson = createResp.data;
 
-    // Extract image buffer
+    // try extracting image buffer (same approach)
     let imageBuffer: Buffer | null = null;
     let foundSrc: string | null = null;
 
@@ -386,16 +397,17 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // fallback generic search
     if (!imageBuffer) {
       const direct = findImageReference(createJson);
       if (direct && direct.value) {
         if (direct.kind === "data") {
-          imageBuffer = dataUrlToBuffer(direct.value as string);
-          foundSrc = direct.value as string;
+          imageBuffer = dataUrlToBuffer(direct.value);
+          foundSrc = direct.value;
         } else if (direct.kind === "url") {
           try {
-            imageBuffer = await fetchUrlToBuffer(direct.value as string);
-            foundSrc = direct.value as string;
+            imageBuffer = await fetchUrlToBuffer(direct.value);
+            foundSrc = direct.value;
           } catch (e) {
             console.warn("Fallback fetch failed", e);
           }
@@ -404,11 +416,11 @@ export async function POST(req: NextRequest) {
     }
 
     if (!imageBuffer) {
-      return NextResponse.json({ ok: false, error: "No image returned from Gemini (unable to extract).", rawGeminiResponse: createJson }, { status: 500 });
+      return res.status(500).json({ ok: false, error: "No image returned from Gemini (unable to extract).", rawGeminiResponse: createJson });
     }
 
-    // Composite logo if provided
-    let finalBuffer = imageBuffer;
+    // Composite logo (if we have a public URL)
+    let finalBuffer = imageBuffer!;
     const logoUrlToUse = mergedAi.logoUrl ?? null;
     if (logoUrlToUse) {
       try {
@@ -441,13 +453,13 @@ export async function POST(req: NextRequest) {
           .toBuffer();
       } catch (e) {
         console.warn("Logo composite failed; continuing with generated image", e);
-        finalBuffer = imageBuffer;
+        finalBuffer = imageBuffer!;
       }
     }
 
     const dataUrl = `data:image/png;base64,${finalBuffer.toString("base64")}`;
 
-    // Decrement credits (best-effort)
+    // After successful generation - consume 1 credit (best-effort)
     let updatedCredits: number | null = null;
     try {
       const newCredits = Math.max(0, (currentCredits ?? 0) - 1);
@@ -458,20 +470,21 @@ export async function POST(req: NextRequest) {
         .select()
         .single();
 
-      if (!updateError && updatedRow && (updatedRow as any).credits !== undefined) {
-        updatedCredits = Number((updatedRow as any).credits);
-      } else if (updateError) {
+      if (updateError) {
         console.warn("Failed to update user_credits:", updateError);
+      } else if (updatedRow && (updatedRow as any).credits !== undefined) {
+        updatedCredits = Number((updatedRow as any).credits);
       }
     } catch (e) {
       console.warn("Credit decrement failed", e);
     }
 
+    // Optionally save temporary public copy
     if (body.saveTemp === true) {
       try {
         const path = `temp/generated_${Date.now()}.png`;
-        const publicUrl = await uploadBufferToSupabase(finalBuffer as Buffer, path, "image/png");
-        return NextResponse.json({
+        const publicUrl = await uploadBufferToSupabase(finalBuffer, path, "image/png");
+        return res.status(200).json({
           ok: true,
           image: publicUrl ? publicUrl : dataUrl,
           images: [publicUrl ? publicUrl : dataUrl],
@@ -485,7 +498,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({
+    return res.status(200).json({
       ok: true,
       image: dataUrl,
       images: [dataUrl],
@@ -496,11 +509,6 @@ export async function POST(req: NextRequest) {
     console.error("Generation endpoint error:", err);
     const message = err?.message || String(err);
     const extra = err?.response?.data ? { raw: err.response.data } : {};
-    return NextResponse.json({ ok: false, error: message, ...extra }, { status: 500 });
+    return res.status(500).json({ ok: false, error: message, ...extra });
   }
-}
-
-/** GET handler - disallow */
-export async function GET() {
-  return NextResponse.json({ ok: false, error: "Method not allowed. Use POST." }, { status: 405 });
 }
