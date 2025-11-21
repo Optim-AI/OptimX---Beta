@@ -1,8 +1,10 @@
-// pages/api/generate-campaign.ts
-import type { NextApiRequest, NextApiResponse } from "next";
+// app/api/generate-campaign/route.ts
+import { NextRequest, NextResponse } from "next/server";
 import axios from "axios";
 import sharp from "sharp";
-import { supabaseAdmin } from "../../../lib/supabaseClient"; // server admin client
+import { supabaseAdmin } from "../../../lib/supabaseClient"; // adjust if your path differs
+
+export const runtime = "nodejs"; // needed so we can use sharp / node libs
 
 const NANO_API_KEY = process.env.NANO_API_KEY;
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash-image";
@@ -151,33 +153,37 @@ function extractImageFromGeminiResponse(respJson: any): { kind: "inline" | "url"
 }
 
 /** Attempt to get user from Authorization header (Bearer token) **/
-async function getUserFromAuthHeader(req: NextApiRequest) {
+async function getUserFromAuthHeader(req: NextRequest) {
   try {
-    const auth = (req.headers.authorization || req.headers.Authorization) as string | undefined;
+    const auth = req.headers.get("authorization") || req.headers.get("Authorization") || "";
     if (!auth) return { user: null, token: null };
-    const m = auth.match(/Bearer\s+(.+)/i);
+    const m = (auth as string).match(/Bearer\s+(.+)/i);
     const token = m ? m[1] : auth;
     if (!token) return { user: null, token: null };
 
-    // Try both common shapes — supabase JS v2 accepts { access_token }
     try {
-      // @ts-ignore - supabaseAdmin.auth.getUser may require different shapes depending on SDK version
-      const { data } = await supabaseAdmin.auth.getUser(token);
-      if ((data as any)?.user) return { user: (data as any).user, token };
-    } catch (e) {
-      // fallback to object shape
+      // Try multiple shapes just like original (supabaseAdmin.auth.getUser accepts token or { access_token })
       try {
         // @ts-ignore
-        const { data } = await supabaseAdmin.auth.getUser({ access_token: token });
+        const { data } = await supabaseAdmin.auth.getUser(token);
         if ((data as any)?.user) return { user: (data as any).user, token };
-      } catch (e2) {
-        // final fallback - try admin.api.getUser? ignore error
+      } catch {
+        // fallback
         try {
           // @ts-ignore
-          const { data } = await (supabaseAdmin.auth as any).getUser?.({ access_token: token });
+          const { data } = await supabaseAdmin.auth.getUser({ access_token: token });
           if ((data as any)?.user) return { user: (data as any).user, token };
-        } catch {}
+        } catch {
+          try {
+            // final fallback
+            // @ts-ignore
+            const { data } = await (supabaseAdmin.auth as any).getUser?.({ access_token: token });
+            if ((data as any)?.user) return { user: (data as any).user, token };
+          } catch {}
+        }
       }
+    } catch (e) {
+      // ignore
     }
     return { user: null, token };
   } catch (e) {
@@ -186,22 +192,17 @@ async function getUserFromAuthHeader(req: NextApiRequest) {
   }
 }
 
-/** Main handler **/
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== "POST") {
-    res.setHeader("Allow", "POST");
-    return res.status(405).json({ ok: false, error: "Method not allowed" });
-  }
-
+/** POST handler **/
+export async function POST(req: NextRequest) {
   try {
-    const body = req.body ?? {};
+    const body = await req.json();
 
     // Attempt to identify user from Authorization header
     const { user, token } = await getUserFromAuthHeader(req);
 
     if (!user || !user.id) {
       // Require signed-in user to consume credits
-      return res.status(401).json({ ok: false, error: "Authentication required. Please sign in." });
+      return NextResponse.json({ ok: false, error: "Authentication required. Please sign in." }, { status: 401 });
     }
 
     // Check credits
@@ -211,36 +212,32 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .eq("id", user.id)
       .single();
 
-    if (creditError && creditError.code !== "PGRST116") {
-      // PGRST116 = no rows? (PostgREST code varies), but just log other errors
+    if (creditError && (creditError as any).code !== "PGRST116") {
       console.warn("user_credits lookup error", creditError);
     }
 
     const currentCredits = (creditRow && (creditRow as any).credits !== undefined) ? Number((creditRow as any).credits) : null;
 
     if (currentCredits === null) {
-      // If no row exists, treat as zero credits (or you can choose to create default)
-      return res.status(402).json({ ok: false, error: "No credits found for user. Please purchase credits." });
+      return NextResponse.json({ ok: false, error: "No credits found for user. Please purchase credits." }, { status: 402 });
     }
 
     if (currentCredits <= 0) {
-      return res.status(402).json({ ok: false, error: "No credits available. Please buy new credits to generate images." });
+      return NextResponse.json({ ok: false, error: "No credits available. Please buy new credits to generate images." }, { status: 402 });
     }
 
-    // --- continue with your existing generation logic ---
     const {
       vision,
       target = { width: 1080, height: 1080 },
       logoDataUrl,
       refDataUrls = [],
       aiCustomization = {},
-      // other UI fields are read inside buildPromptFromInputs
     } = body;
 
     if (!vision && !body.description && !body.prompt) {
-      return res.status(400).json({ ok: false, error: "Missing vision/description/prompt" });
+      return NextResponse.json({ ok: false, error: "Missing vision/description/prompt" }, { status: 400 });
     }
-    if (!NANO_API_KEY) return res.status(500).json({ ok: false, error: "Server missing NANO_API_KEY" });
+    if (!NANO_API_KEY) return NextResponse.json({ ok: false, error: "Server missing NANO_API_KEY" }, { status: 500 });
 
     // 1) upload inline logo/ref images to Supabase so Gemini can reference them (public URLs)
     let logoPublicUrl: string | null = null;
@@ -330,11 +327,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const headers: Record<string, string> = {
       "content-type": "application/json",
       accept: "application/json",
-      // Most examples use x-goog-api-key for a developer API key:
       "x-goog-api-key": NANO_API_KEY,
     };
-    // If your key is a bearer token, replace above with:
-    // headers["Authorization"] = `Bearer ${NANO_API_KEY}`; delete headers["x-goog-api-key"];
 
     // Call Gemini
     const createResp = await axios.post(url, payload, { headers }).catch((err) => {
@@ -349,7 +343,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     let imageBuffer: Buffer | null = null;
     let foundSrc: string | null = null;
 
-    // 1) Preferred extractor
     const extracted = extractImageFromGeminiResponse(createJson);
     if (extracted.kind === "inline" && extracted.data) {
       const maybe = extracted.data;
@@ -370,7 +363,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     }
 
-    // 2) fallback generic search
+    // fallback generic search
     if (!imageBuffer) {
       const direct = findImageReference(createJson);
       if (direct && direct.value) {
@@ -389,7 +382,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     if (!imageBuffer) {
-      return res.status(500).json({ ok: false, error: "No image returned from Gemini (unable to extract).", rawGeminiResponse: createJson });
+      return NextResponse.json({ ok: false, error: "No image returned from Gemini (unable to extract).", rawGeminiResponse: createJson }, { status: 500 });
     }
 
     // Composite logo (if we have a public URL)
@@ -435,7 +428,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // After successful generation - consume 1 credit (best-effort)
     let updatedCredits: number | null = null;
     try {
-      // compute new credits value (simple subtract approach)
       const newCredits = Math.max(0, (currentCredits ?? 0) - 1);
       const { data: updatedRow, error: updateError } = await supabaseAdmin
         .from("user_credits")
@@ -458,7 +450,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       try {
         const path = `temp/generated_${Date.now()}.png`;
         const publicUrl = await uploadBufferToSupabase(finalBuffer, path, "image/png");
-        return res.status(200).json({
+        return NextResponse.json({
           ok: true,
           image: publicUrl ? publicUrl : dataUrl,
           images: [publicUrl ? publicUrl : dataUrl],
@@ -472,7 +464,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     }
 
-    return res.status(200).json({
+    return NextResponse.json({
       ok: true,
       image: dataUrl,
       images: [dataUrl],
@@ -483,6 +475,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     console.error("Generation endpoint error:", err);
     const message = err?.message || String(err);
     const extra = err?.response?.data ? { raw: err.response.data } : {};
-    return res.status(500).json({ ok: false, error: message, ...extra });
+    return NextResponse.json({ ok: false, error: message, ...extra }, { status: 500 });
   }
 }
+
+/** GET handler (disallow) **/
+export async function GET() {
+  return NextResponse.json({ ok: false, error: "Method not allowed. Use POST." }, { status: 405 });
+}
+

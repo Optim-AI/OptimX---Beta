@@ -1,5 +1,5 @@
-// pages/api/translate-prompt.ts
-import type { NextApiRequest, NextApiResponse } from "next";
+// app/api/translate-prompt/route.ts
+import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -8,7 +8,7 @@ function extractTextFromResponse(response: any): string | null {
   if (!response) return null;
   if (typeof response === "string") return response.trim();
   if (response?.output_text && typeof response.output_text === "string") return response.output_text.trim();
-  // Responses API shape: response.output (array)
+
   const output = response?.output;
   if (Array.isArray(output) && output.length) {
     const parts: string[] = [];
@@ -29,18 +29,31 @@ function extractTextFromResponse(response: any): string | null {
     const joined = parts.filter(Boolean).join("\n").trim();
     if (joined.length) return joined;
   }
-  // fallback
+
+  // Try common Response/Chat shapes
+  try {
+    const choices = response?.choices;
+    if (Array.isArray(choices) && choices.length > 0) {
+      const c = choices[0];
+      if (c?.message?.content && typeof c.message.content === "string") return c.message.content.trim();
+      if (typeof c.text === "string") return c.text.trim();
+    }
+  } catch (e) {
+    // ignore
+  }
+
   return null;
 }
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
-
+export async function POST(req: NextRequest) {
   try {
-    const { text, purpose = "ad", context = {} } = req.body ?? {};
-    if (!text || typeof text !== "string") return res.status(400).json({ error: "Missing text" });
+    const body = await req.json().catch(() => ({}));
+    const { text, purpose = "ad", context = {} } = body ?? {};
 
-    // Build system instruction to translate Tamil (or any language) to English and rewrite as Leonardo-friendly prompt
+    if (!text || typeof text !== "string") {
+      return NextResponse.json({ error: "Missing text" }, { status: 400 });
+    }
+
     const systemInstruction = `
 You are a translation + prompt-engineering assistant.
 1) Translate the user's input (which may be in Tamil or any other language) into clear, idiomatic English.
@@ -48,13 +61,12 @@ You are a translation + prompt-engineering assistant.
 3) Avoid any profanity and strip extraneous filler. Output only the final prompt (one paragraph, 1-3 sentences) and nothing else.
 `;
 
-    // include context (brand/tone) as helpful hints
     const contextParts: string[] = [];
-    if (context.brandName) contextParts.push(`Brand: ${context.brandName}`);
-    if (context.tone) contextParts.push(`Tone: ${context.tone}`);
-    if (context.campaignName) contextParts.push(`Campaign: ${context.campaignName}`);
-    if (context.tagline) contextParts.push(`Tagline: ${context.tagline}`);
-    if (context.hashtags) contextParts.push(`Hashtags: ${context.hashtags}`);
+    if (context?.brandName) contextParts.push(`Brand: ${context.brandName}`);
+    if (context?.tone) contextParts.push(`Tone: ${context.tone}`);
+    if (context?.campaignName) contextParts.push(`Campaign: ${context.campaignName}`);
+    if (context?.tagline) contextParts.push(`Tagline: ${context.tagline}`);
+    if (context?.hashtags) contextParts.push(`Hashtags: ${context.hashtags}`);
 
     const promptInput = `User text (may be Tamil):\n${text}\n\nContext:\n${contextParts.join(" | ")}\n\nPlease translate and produce a Leonardo-ready prompt.`;
 
@@ -68,12 +80,16 @@ You are a translation + prompt-engineering assistant.
     const translated = extractTextFromResponse(response as any);
 
     if (!translated) {
-      return res.status(500).json({ error: "Translation failed", raw: response });
+      return NextResponse.json({ error: "Translation failed", raw: response }, { status: 500 });
     }
 
-    return res.status(200).json({ translatedPrompt: translated.trim(), raw: response });
+    return NextResponse.json({ translatedPrompt: translated.trim(), raw: response });
   } catch (err: any) {
     console.error("translate-prompt error:", err);
-    return res.status(500).json({ error: String(err) });
+    return NextResponse.json({ error: String(err) }, { status: 500 });
   }
+}
+
+export async function GET() {
+  return NextResponse.json({ error: "Method not allowed. Use POST." }, { status: 405 });
 }
