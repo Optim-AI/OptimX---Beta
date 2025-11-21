@@ -2,7 +2,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import axios from "axios";
 import sharp from "sharp";
-import { supabaseAdmin } from "../../lib/supabaseClient"; // server admin client
+import { supabaseAdmin } from "../../../lib/supabaseClient"; // server admin client
 
 const NANO_API_KEY = process.env.NANO_API_KEY;
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash-image";
