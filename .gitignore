@@ -8,4 +8,4 @@ dist/
 *.log
 .next
 .vercel
-.next/
+.next/.env.local
