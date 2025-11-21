@@ -1,4 +1,4 @@
-// pages/api/enhancePrompt.ts
+// pages/api/generateCaption.ts
 import type { NextApiRequest, NextApiResponse } from "next";
 import OpenAI from "openai";
 
@@ -99,7 +99,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ error: "Prompt flagged by moderation", details: mod.results?.[0] });
     }
 
-    // 2) enhance Prompt with Responses API
+    // 2) Generate caption with Responses API
     const systemInstruction = `Provide enhanced AI prompt for this no captions and no hastag`;
 
     const response = await client.responses.create({
@@ -118,7 +118,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     return res.status(200).json({ caption: caption.trim(), raw: response });
   } catch (err: any) {
-    console.error("enhanceCaption error:", err);
+    console.error("generateCaption error:", err);
     return res.status(500).json({ error: String(err) });
   }
 }
