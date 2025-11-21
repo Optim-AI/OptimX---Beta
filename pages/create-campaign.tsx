@@ -3039,4 +3039,9 @@ return enhanced;
 
 export default CampaignCreate;
 
+export async function getServerSideProps() {
+  return {
+    props: {}, // This forces the page to be server-side rendered on every request
+  };
+}
 
