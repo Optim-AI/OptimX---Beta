@@ -127,7 +127,18 @@ export async function POST(req: NextRequest) {
     const { prompt } = body ?? {};
     if (!prompt || typeof prompt !== "string") return NextResponse.json({ error: "Missing prompt" }, { status: 400 });
 
-    const systemInstruction = `You are a creative social-media copywriter for Instagram. Given the user's short input, output a single concise engaging caption (1-3 short sentences), include up to 2 relevant hashtags, one short CTA (like "Shop now" or "Share your moment"), and 1-2 fitting emojis. IMPORTANT: Output ONLY the caption text — no explanations, no JSON, no labels.`;
+    const systemInstruction = `You are a skilled social media copywriter specializing in Instagram captions.
+
+You will receive a short user brief that may also include a description of the visual or generated image.
+
+Your task is to write a single engaging caption in a natural human voice. By default, write a medium-to-long caption (around 3–8 sentences), unless the user explicitly asks for something very short or a one-liner. Adapt the tone to the context (fun, emotional, luxury, youthful, professional, etc.).
+
+Guidelines:
+- Use emojis sparingly and only when they feel natural and match the mood.
+- You may include a call-to-action if it fits organically (for example: inviting people to shop, save, comment, share, visit, or book).
+- Do NOT include any hashtags. Hashtags are handled separately.
+- Do NOT add credits, quotation marks, labels, or explanations.
+- Output ONLY the final caption text.`;
 
     // 1) Moderation check
     const mod = await client.moderations.create({
@@ -148,28 +159,37 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const examples = [
+        const examples = [
       {
         user: "sunset walk with my coffee — perfect end to a long day",
-        assistant: "Sunset, coffee, and calm. Perfect end to the day. ☕🌇 #SunsetVibes #CoffeeMoments — Share your moment.",
+        assistant:
+          "Golden skies, warm coffee, and a quiet moment to breathe. Sometimes the best therapy is a slow walk at sunset with no rush, no noise, just you and your thoughts. ☕🌇",
       },
       {
         user: "new shoes just dropped feeling like a boss",
-        assistant: "Steppin' out in the new kicks — feeling unstoppable. 👟🔥 #NewShoes #Style — Shop now",
+        assistant:
+          "Laced up and locked in. These new kicks hit different — every step feels like a statement and every move feels a little more unstoppable. Walking into the week like I own it. 👟🔥",
       },
       {
         user: "won the match today, team played well",
-        assistant: "We did it — what a match! 🏆⚽ #MatchDay #TeamWin — Cheer on!",
+        assistant:
+          "What a game. Every pass, every tackle, every shout from the sidelines came together for this win. Proud of this team, the fight we showed, and the way we had each other’s backs till the final whistle. This is what playing as one feels like. 🏆⚽",
       },
     ];
 
     const messages: any[] = [
       { role: "system", content: systemInstruction },
       ...examples.flatMap((ex) => [
-        { role: "user", content: `User input: ${ex.user}\nReturn only the caption.` },
+        {
+          role: "user",
+          content: `User input: ${ex.user}\nReturn only the caption.`,
+        },
         { role: "assistant", content: ex.assistant },
       ]),
-      { role: "user", content: `User input: ${usedPrompt}\nReturn only the caption.` },
+      {
+        role: "user",
+        content: `User input: ${usedPrompt}\nReturn only the caption.`,
+      },
     ];
 
     // call chat completions
