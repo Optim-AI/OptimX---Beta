@@ -1,4 +1,4 @@
-"use client";
+// "use client";
 
 // pages/create-campaign.tsx
 // Supabase-only persistence: chats in user_chats, generated images in campaign-assets + user_generated_image.
@@ -6,6 +6,7 @@
 //   user-uploads/{USER_ID}/{optional-folder}/{filename}
 
 import React, { useEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import Sidebar from "../app/web/src/components/Sidebar";
@@ -3030,6 +3031,4 @@ const CampaignCreate: React.FC = () => {
   );
 };
 
-export default CampaignCreate;
-
-
+export default dynamic(()=> Promise.resolve(CampaignCreate), { ssr: false });
