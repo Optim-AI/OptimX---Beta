@@ -31,5 +31,8 @@ const Home: React.FC = () => (
 
 export default Home;
 
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
+export async function getServerSideProps(context: any) {
+  return {
+    props: {},
+  };
+}
