@@ -1158,33 +1158,26 @@ const CampaignCreate: React.FC = () => {
         toast.error("Sign in to use enhancer.");
         return null;
       }
-      const promptBody =
-  "Enhance the following campaign description for creative, clarity, persuasion, and ad copy effectiveness. " +
-  "Keep brand names intact. Only return the enhanced description, nothing else.\n\n" +
-  `Original: ${text}`;
-
-const resp = await fetch("/api/generateCaption", {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${token}`,
-  },
-  body: JSON.stringify({ prompt: promptBody }),
-});
-
-const json = await resp.json();
-if (!resp.ok || !json) {
-  throw new Error((json && json.error) || "Enhance failed");
-}
-
-const enhanced = json.caption ?? json.result ?? null;
-if (!enhanced) {
-  toast.error("Enhancer returned nothing.");
-  return null;
-}
-
-toast.success("Prompt enhanced");
-return enhanced;
+      const promptBody = `Enhance the following campaign description for clarity, persuasion, and ad copy effectiveness. Keep brand names intact. Only return the enhanced text (no commentary).\n\n---\n${text}`;
+      const resp = await fetch("/api/enhancePrompt", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ prompt: promptBody }),
+      });
+      const json = await resp.json();
+      if (!resp.ok || !json) {
+        throw new Error((json && json.error) || "Enhance failed");
+      }
+      const enhanced = json.caption ?? json.result ?? null;
+      if (!enhanced) {
+        toast.error("Enhancer returned nothing.");
+        return null;
+      }
+      toast.success("Prompt enhanced");
+      return enhanced;
     } catch (e: any) {
       console.error("enhancePrompt error", e);
       toast.error("Enhance failed: " + (e.message || String(e)));
@@ -3039,9 +3032,4 @@ return enhanced;
 
 export default CampaignCreate;
 
-export async function getServerSideProps() {
-  return {
-    props: {}, // This forces the page to be server-side rendered on every request
-  };
-}
 
