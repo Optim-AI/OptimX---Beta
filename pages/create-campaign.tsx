@@ -1160,7 +1160,7 @@ const CampaignCreate: React.FC = () => {
         return null;
       }
       const promptBody = `Enhance the following campaign description for clarity, persuasion, and ad copy effectiveness. Keep brand names intact. Only return the enhanced text (no commentary).\n\n---\n${text}`;
-      const resp = await fetch("/api/enhancePrompt/route", {
+      const resp = await fetch("/api/enhancePrompt", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
