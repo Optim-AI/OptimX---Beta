@@ -1,3 +1,4 @@
+// pages/integrations.tsx
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
@@ -62,39 +63,11 @@ export default function IntegrationsPage() {
     }
   }
 
-  /* ---------- Fetch integration status ---------- */
+  /* ---------- Fetch integration status (now user-specific) ---------- */
   const fetchStatuses = async () => {
     setLoading(true);
 
-    // 1) Supabase app_settings.integrations_flags
-    try {
-      const { data, error } = await supabase
-        .from("app_settings")
-        .select("value")
-        .eq("key", "integrations_flags")
-        .maybeSingle();
-
-      if (!error && data && (data as any).value !== undefined) {
-        let val: any = (data as any).value;
-        if (typeof val === "string") {
-          try {
-            val = JSON.parse(val);
-          } catch {}
-        }
-
-        const normalized: Record<string, boolean> = {};
-        PLATFORMS.forEach((p) => {
-          normalized[p.id] = !!(val?.[p.id] ?? false);
-        });
-
-        setStatuses(normalized);
-        localStorage.setItem(LS_KEY, JSON.stringify(normalized));
-        setLoading(false);
-        return;
-      }
-    } catch {}
-
-    // 2) API fallback
+    // 1) User-specific API (relies on current auth/session)
     try {
       const res = await apiFetch("/api/integrations/status");
       if (!res.ok) throw new Error();
@@ -104,12 +77,16 @@ export default function IntegrationsPage() {
       PLATFORMS.forEach((p) => (next[p.id] = !!data[p.id]));
 
       setStatuses(next);
-      localStorage.setItem(LS_KEY, JSON.stringify(next));
+      try {
+        localStorage.setItem(LS_KEY, JSON.stringify(next));
+      } catch {}
       setLoading(false);
       return;
-    } catch {}
+    } catch {
+      // fall through to localStorage
+    }
 
-    // 3) LocalStorage fallback
+    // 2) LocalStorage fallback (per-browser, but still only values this user got from API earlier)
     try {
       const raw = localStorage.getItem(LS_KEY);
       if (raw) {
@@ -119,11 +96,13 @@ export default function IntegrationsPage() {
       }
     } catch {}
 
-    // 4) Default false
+    // 3) Default false per platform
     const initial: Record<string, boolean> = {};
     PLATFORMS.forEach((p) => (initial[p.id] = false));
     setStatuses(initial);
-    localStorage.setItem(LS_KEY, JSON.stringify(initial));
+    try {
+      localStorage.setItem(LS_KEY, JSON.stringify(initial));
+    } catch {}
     setLoading(false);
   };
 
@@ -152,7 +131,9 @@ export default function IntegrationsPage() {
           if (crossOriginSeen.current[platformId]) {
             setStatuses((s) => {
               const next = { ...s, [platformId]: true };
-              localStorage.setItem(LS_KEY, JSON.stringify(next));
+              try {
+                localStorage.setItem(LS_KEY, JSON.stringify(next));
+              } catch {}
               return next;
             });
             localStorage.removeItem("pending_connect");
@@ -175,7 +156,9 @@ export default function IntegrationsPage() {
             if (q === platformId) {
               setStatuses((s) => {
                 const next = { ...s, [platformId]: true };
-                localStorage.setItem(LS_KEY, JSON.stringify(next));
+                try {
+                  localStorage.setItem(LS_KEY, JSON.stringify(next));
+                } catch {}
                 return next;
               });
               popupRef.current.close();
@@ -196,7 +179,13 @@ export default function IntegrationsPage() {
         if (res.ok) {
           const data = await res.json();
           if (data[platformId]) {
-            setStatuses((s) => ({ ...s, [platformId]: true }));
+            setStatuses((s) => {
+              const next = { ...s, [platformId]: true };
+              try {
+                localStorage.setItem(LS_KEY, JSON.stringify(next));
+              } catch {}
+              return next;
+            });
             localStorage.removeItem("pending_connect");
             popupRef.current?.close?.();
             setMessage(`${platformId} connected`);
@@ -283,7 +272,9 @@ export default function IntegrationsPage() {
           const p = data.platform;
           setStatuses((s) => {
             const next = { ...s, [p]: true };
-            localStorage.setItem(LS_KEY, JSON.stringify(next));
+            try {
+              localStorage.setItem(LS_KEY, JSON.stringify(next));
+            } catch {}
             return next;
           });
           popupRef.current?.close?.();

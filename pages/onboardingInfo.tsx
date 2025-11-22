@@ -5,6 +5,7 @@ import React, { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../lib/supabaseClient";
 import type { JSX } from "react"; 
+
 type ProfileRow = {
   id: string;
   email?: string | null;
@@ -95,12 +96,35 @@ function withAlpha(token: string, alpha: number) {
   return token;
 }
 
+/** Capitalize first letter (same idea as welcome.tsx) */
+function capitalize(str: string) {
+  return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
+/** Extract display name from user metadata/email (same logic style as welcome.tsx) */
+function extractName(user: any) {
+  if (!user) return null;
+  const meta = user.user_metadata ?? {};
+  const candidates = [
+    meta.full_name ?? meta.name ?? meta.fullName ?? meta.first_name ?? meta.given_name,
+    user.email ? user.email.split("@")[0] : undefined,
+  ];
+  for (const c of candidates) {
+    if (c && String(c).trim().length > 0) return String(c).trim();
+  }
+  return null;
+}
+
 export default function OnboardingInfoPage(): JSX.Element {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [step, setStep] = useState(1);
   const [userId, setUserId] = useState<string | null>(null);
   const [profile, setProfile] = useState<Partial<ProfileRow>>({});
+
+  // NEW: store email + full display name so we can both greet and save them
+  const [email, setEmail] = useState<string | null>(null);
+  const [fullName, setFullName] = useState<string | null>(null);
 
   const [businessName, setBusinessName] = useState("");
   const [location, setLocation] = useState("");
@@ -126,7 +150,7 @@ export default function OnboardingInfoPage(): JSX.Element {
   const COLOR_A = "#3b82f6";
   const COLOR_B = "#0ea5e9";
 
-  // Load user profile
+  // Load user + profile
   useEffect(() => {
     (async () => {
       setLoading(true);
@@ -138,6 +162,13 @@ export default function OnboardingInfoPage(): JSX.Element {
           return;
         }
         setUserId(user.id);
+
+        // NEW: derive display name & email using same style as welcome.tsx
+        const extracted = extractName(user);
+        if (extracted) {
+          setFullName(capitalize(extracted));
+        }
+        setEmail(user.email ?? null);
 
         const { data, error: fetchErr } = await supabase
           .from("profiles")
@@ -155,6 +186,7 @@ export default function OnboardingInfoPage(): JSX.Element {
           if (Array.isArray(data.use_case)) setUseCase(data.use_case);
           setHeardFrom(data.heard_from || HEARD_FROM_OPTIONS[0]);
           setHeardFromOther(data.heard_from_other || "");
+
           if (data.logo_path) {
             // getPublicUrl is synchronous and returns { data: { publicUrl } }
             const publicUrlResponse = supabase.storage
@@ -162,6 +194,14 @@ export default function OnboardingInfoPage(): JSX.Element {
               .getPublicUrl(data.logo_path);
             const publicUrl = (publicUrlResponse?.data as any)?.publicUrl;
             setLogoPreview(publicUrl || null);
+          }
+
+          // If profile already has full_name/email but we didn't set from auth, keep them as fallback
+          if (!fullName && data.full_name) {
+            setFullName(String(data.full_name));
+          }
+          if (!email && data.email) {
+            setEmail(String(data.email));
           }
         } else if (fetchErr) {
           // not fatal — may be first time user
@@ -173,6 +213,7 @@ export default function OnboardingInfoPage(): JSX.Element {
         setLoading(false);
       }
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
   useEffect(() => {
@@ -184,10 +225,19 @@ export default function OnboardingInfoPage(): JSX.Element {
     // if logoFile removed, keep previously loaded preview (from storage) intact
   }, [logoFile]);
 
+  // UPDATED: greeting uses same idea as welcome.tsx (name from auth, fallback to profile/email)
   const firstName = (() => {
-    const name = (profile.full_name || "")?.trim();
-    if (name) return name.split(" ")[0];
+    const nameFromState = (fullName || "")?.trim();
+    if (nameFromState) return nameFromState.split(" ")[0];
+
+    const nameFromProfile = (profile.full_name || "")?.trim();
+    if (nameFromProfile) return nameFromProfile.split(" ")[0];
+
+    const emailFromState = (email || "")?.trim();
+    if (emailFromState) return emailFromState.split("@")[0];
+
     if (profile.email) return (profile.email as string).split("@")[0];
+
     return "there";
   })();
 
@@ -222,6 +272,9 @@ export default function OnboardingInfoPage(): JSX.Element {
 
       const payload = {
         id: userId,
+        // NEW: make sure email + full_name are saved in profiles
+        email: email || profile.email || null,
+        full_name: fullName || profile.full_name || null,
         business_name: businessName || null,
         location: location || null,
         tagline: tagline || null,
@@ -239,7 +292,7 @@ export default function OnboardingInfoPage(): JSX.Element {
         .from("profiles")
         .upsert(payload as any, { onConflict: "id" });
       if (upErr) throw upErr;
-      router.push("/integrationsnew");
+      router.push("/integrationsbeta");
     } catch (e: any) {
       setError(e?.message ?? String(e));
     } finally {
@@ -596,6 +649,7 @@ export default function OnboardingInfoPage(): JSX.Element {
                 <span>Optim</span><span style={{ color: colors.primary }}>X</span>
               </div>
 
+              {/* This line now uses firstName derived like welcome.tsx */}
               <div style={{ fontSize: 18, color: "#111827", fontWeight: 600 }}>
                 Hello <span style={{ color: COLOR_B }}>{firstName}</span> — Let’s get to know your business
               </div>

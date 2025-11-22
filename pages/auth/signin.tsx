@@ -70,7 +70,8 @@ export default function SignInPage(): React.ReactElement {
       m.full_name,
       m.name,
       m.preferred_username,
-      m.given_name && (m.family_name ? `${m.given_name} ${m.family_name}` : m.given_name),
+      m.given_name &&
+        (m.family_name ? `${m.given_name} ${m.family_name}` : m.given_name),
       m.given_name,
       m.family_name,
     ];
@@ -91,7 +92,8 @@ export default function SignInPage(): React.ReactElement {
     const m = user.user_metadata ?? {};
     if (m.username) return String(m.username);
     if (m.preferred_username) return String(m.preferred_username);
-    if (user.email && typeof user.email === "string") return user.email.split("@")[0];
+    if (user.email && typeof user.email === "string")
+      return user.email.split("@")[0];
     return null;
   }
 
@@ -111,7 +113,6 @@ export default function SignInPage(): React.ReactElement {
       if (full_name_value) payload.full_name = full_name_value;
       if (username) payload.username = username;
 
-      // Perform upsert and request the row back; select() helps surface errors
       const { data: upserted, error: upsertError } = await supabase
         .from("profiles")
         .upsert(payload, { onConflict: "id" })
@@ -119,7 +120,6 @@ export default function SignInPage(): React.ReactElement {
         .maybeSingle();
 
       if (upsertError) {
-        // log full error for debugging
         console.error("profiles upsert error:", upsertError);
       } else {
         console.debug("profiles upserted for user:", id, upserted ?? payload);
@@ -129,43 +129,37 @@ export default function SignInPage(): React.ReactElement {
     }
   }
 
+  // Auth state listener: runs when we LAND BACK on /auth/signin after
+  // magic link / OAuth redirect, or any other sign in.
   useEffect(() => {
-    const subscription = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        // when user completes sign-in (magic link / oauth / password) this fires
-        if (event === "SIGNED_IN" && session?.user) {
-          try {
-            // ensure profile row exists / updated
-            await upsertProfile(session.user);
-          } catch (e) {
-            console.error("error upserting profile on SIGNED_IN:", e);
-          } finally {
-            // keep original behaviour: redirect to welcome
-            router.replace("/welcome");
-          }
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === "SIGNED_IN" && session?.user) {
+        try {
+          await upsertProfile(session.user);
+        } catch (e) {
+          console.error("error upserting profile on SIGNED_IN:", e);
+        } finally {
+          router.replace("/welcome");
         }
       }
-    );
+    });
 
-    const cleanup = () => {
+    return () => {
       try {
-        // @ts-ignore
-        if (subscription?.data?.subscription?.unsubscribe)
-          subscription.data.subscription.unsubscribe();
-        // @ts-ignore
-        else if (subscription?.unsubscribe) subscription.unsubscribe();
+        subscription?.unsubscribe();
       } catch {
         // ignore
       }
     };
-
-    return cleanup;
   }, [router]);
 
+  // If we hit /auth/signin while already signed in (e.g. browser back),
+  // upsert profile & push to /welcome.
   useEffect(() => {
     (async () => {
       try {
-        // if user already signed in (page load), upsert profile and redirect
         const { data } = await supabase.auth.getUser();
         const user = (data as any)?.user ?? null;
         if (user) {
@@ -177,7 +171,6 @@ export default function SignInPage(): React.ReactElement {
           router.replace("/welcome");
         }
       } catch (e) {
-        // ignore, but log for debugging
         console.debug("getUser failed on mount:", e);
       }
     })();
@@ -199,11 +192,15 @@ export default function SignInPage(): React.ReactElement {
     setLoading(true);
     try {
       const isDev = process.env.NODE_ENV === "development";
-      const redirectTo = isDev
-        ? "http://localhost:3000/welcome"
-        : `${process.env.NEXT_PUBLIC_SITE_URL || "https://optimx.app"}/welcome`;
+      const base =
+        process.env.NEXT_PUBLIC_SITE_URL ||
+        (isDev ? "http://localhost:3000" : "https://optimx.app");
 
-      const { data, error: signError } = await supabase.auth.signInWithOtp({
+      // IMPORTANT: come back to /auth/signin, then this page will
+      // upsert into profiles and redirect to /welcome.
+      const redirectTo = `${base}/auth/signin`;
+
+      const { error: signError } = await supabase.auth.signInWithOtp({
         email,
         options: { emailRedirectTo: redirectTo },
       });
@@ -214,8 +211,9 @@ export default function SignInPage(): React.ReactElement {
         return;
       }
 
-      // Inform user; actual profile creation happens after they click the link which triggers SIGNED_IN.
-      setInfo("Magic link sent — check your email (and spam) to complete sign-in.");
+      setInfo(
+        "Magic link sent — check your email (and spam) to complete sign-in."
+      );
     } catch (e: any) {
       setError(e?.message ?? String(e));
     } finally {
@@ -233,15 +231,17 @@ export default function SignInPage(): React.ReactElement {
     }
     setLoading(true);
     try {
-      const { data, error: signError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+      const { data, error: signError } = await supabase.auth.signInWithPassword(
+        {
+          email,
+          password,
+        }
+      );
       if (signError) {
         setError(signError.message);
       } else {
-        // sign-in succeeded immediately; ensure profile upsert before redirect
-        const user = (data as any)?.user ?? null;
+        const user =
+          (data as any)?.user ?? (data as any)?.session?.user ?? null;
         if (user && user.id) {
           try {
             await upsertProfile(user);
@@ -262,9 +262,14 @@ export default function SignInPage(): React.ReactElement {
     setError(null);
     setInfo(null);
     try {
-      const redirectTo = `${
-        process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"
-      }/welcome`;
+      const isDev = process.env.NODE_ENV === "development";
+      const base =
+        process.env.NEXT_PUBLIC_SITE_URL ||
+        (isDev ? "http://localhost:3000" : "https://optimx.app");
+
+      // Same idea: redirect back to /auth/signin first.
+      const redirectTo = `${base}/auth/signin`;
+
       const { data, error: oauthError } = await supabase.auth.signInWithOAuth({
         provider,
         options: { redirectTo },
@@ -272,7 +277,6 @@ export default function SignInPage(): React.ReactElement {
       if (oauthError) {
         setError(oauthError.message);
       } else if (data?.url) {
-        // redirect to provider consent screen; after redirect back, onAuthStateChange will upsert profile
         window.location.href = data.url;
       }
     } catch (e: any) {
@@ -358,13 +362,12 @@ export default function SignInPage(): React.ReactElement {
           }
         }
 
-        /* CARD + LAYOUT - reduced size to make inputs less large */
         .auth-card {
           z-index: 3;
-          width: 500px; /* reduced further from 560px -> 480px */
-          border-radius: 18px; /* slightly smaller radius */
+          width: 500px;
+          border-radius: 18px;
           backdrop-filter: blur(6px);
-          padding: 20px; /* reduced padding */
+          padding: 20px;
           box-shadow: 0 20px 80px rgba(2, 6, 23, 0.12);
           border: 1px solid rgba(226, 232, 240, 0.6);
           display: flex;
@@ -405,7 +408,7 @@ export default function SignInPage(): React.ReactElement {
           line-height: 40px;
           color: #1e1e1e;
           text-align: center;
-        } /* reduced size */
+        }
         .brand-sub {
           margin-top: 4px;
           color: #5f6b73;
@@ -535,7 +538,6 @@ export default function SignInPage(): React.ReactElement {
           text-align: center;
         }
 
-        /* helper row added for password mode (new user / forgot password) */
         .helper-row {
           display: flex;
           justify-content: space-between;
@@ -592,7 +594,8 @@ export default function SignInPage(): React.ReactElement {
           className="absolute inset-0 mesh-gradient"
           style={{
             background:
-              (colors as any)?.gradientMesh ?? "linear-gradient(180deg,#f0f8ff00,#ffffff00)",
+              (colors as any)?.gradientMesh ??
+              "linear-gradient(180deg,#f0f8ff00,#ffffff00)",
             opacity: 0.4,
             zIndex: 0,
           }}
@@ -626,7 +629,9 @@ export default function SignInPage(): React.ReactElement {
               (colors as any)?.primary ?? "hsl(213 90% 50%)",
               0.1
             )} 0%, ${withAlpha(
-              (colors as any)?.primaryGlow ?? (colors as any)?.primary ?? "hsl(213 90% 50%)",
+              (colors as any)?.primaryGlow ??
+                (colors as any)?.primary ??
+                "hsl(213 90% 50%)",
               0.08
             )} 100%)`,
             animationDelay: "4s",
@@ -666,7 +671,8 @@ export default function SignInPage(): React.ReactElement {
                   position: "absolute",
                   inset: 0,
                   background:
-                    (colors as any)?.gradientMesh ?? "linear-gradient(180deg,#f0f8ff00,#ffffff00)",
+                    (colors as any)?.gradientMesh ??
+                    "linear-gradient(180deg,#f0f8ff00,#ffffff00)",
                   mixBlendMode: "overlay",
                   opacity: 0.5,
                 }}
@@ -682,7 +688,10 @@ export default function SignInPage(): React.ReactElement {
                   filter: "blur(84px)",
                   transformOrigin: "center",
                   animation: "float 8s ease-in-out infinite",
-                  backgroundColor: withAlpha((colors as any)?.primary ?? "hsl(213 90% 50%)", 0.28),
+                  backgroundColor: withAlpha(
+                    (colors as any)?.primary ?? "hsl(213 90% 50%)",
+                    0.28
+                  ),
                 }}
               />
               <div
@@ -697,7 +706,10 @@ export default function SignInPage(): React.ReactElement {
                   transformOrigin: "center",
                   animation: "float 8s ease-in-out infinite",
                   animationDelay: "2s",
-                  backgroundColor: withAlpha((colors as any)?.primary ?? "hsl(213 90% 50%)", 0.18),
+                  backgroundColor: withAlpha(
+                    (colors as any)?.primary ?? "hsl(213 90% 50%)",
+                    0.18
+                  ),
                 }}
               />
               <div
@@ -713,13 +725,25 @@ export default function SignInPage(): React.ReactElement {
                   transformOrigin: "center",
                   animation: "float 8s ease-in-out infinite",
                   animationDelay: "4s",
-                  backgroundImage: `linear-gradient(90deg, ${withAlpha((colors as any)?.primary ?? "hsl(213 90% 50%)", 0.1)} 0%, ${withAlpha((colors as any)?.primaryGlow ?? (colors as any)?.primary ?? "hsl(213 90% 50%)", 0.06)} 100%)`,
+                  backgroundImage: `linear-gradient(90deg, ${withAlpha(
+                    (colors as any)?.primary ?? "hsl(213 90% 50%)",
+                    0.1
+                  )} 0%, ${withAlpha(
+                    (colors as any)?.primaryGlow ??
+                      (colors as any)?.primary ??
+                      "hsl(213 90% 50%)",
+                    0.06
+                  )} 100%)`,
                 }}
               />
             </div>
           </div>
 
-          <div className="auth-content" role="region" aria-label="Sign in form">
+          <div
+            className="auth-content"
+            role="region"
+            aria-label="Sign in form"
+          >
             <div
               style={{
                 display: "flex",
@@ -727,51 +751,142 @@ export default function SignInPage(): React.ReactElement {
                 alignItems: "center",
               }}
             >
-              <div className="brand-badge" aria-hidden style={{ background: "transparent", boxShadow: "none" }}>
-                <img src="/images/OptimX_Logo.svg" alt="OptimX" style={{ width: 56, height: 56, objectFit: "contain" }} />
+              <div
+                className="brand-badge"
+                aria-hidden
+                style={{ background: "transparent", boxShadow: "none" }}
+              >
+                <img
+                  src="/images/OptimX_Logo.svg"
+                  alt="OptimX"
+                  style={{
+                    width: 56,
+                    height: 56,
+                    objectFit: "contain",
+                  }}
+                />
               </div>
 
               <h1 id="signin-title" className="brand-title">
                 Optim
-                <span className="x" style={{ color: (colors as any)?.primary ?? "#0088FF" }}>
+                <span
+                  className="x"
+                  style={{
+                    color: (colors as any)?.primary ?? "#0088FF",
+                  }}
+                >
                   X
                 </span>
               </h1>
-              <div className="brand-sub">Welcome, Please create an account.</div>
+              <div className="brand-sub">
+                Welcome, Please create an account.
+              </div>
             </div>
 
-            <div className="oauth-row" role="group" aria-label="Third party sign in">
-              <button className="oauth-btn" onClick={() => oauthLogin("google")} type="button" aria-label="Google Signin">
-                {/* Inline Google 'G' logo so you don't need an external image file */}
-                <svg width="20" height="20" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" aria-hidden>
-                  <path fill="#fbc02d" d="M43.6 20.4H42V20H24v8h11.3C33.6 33 29.1 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.1 8.1 2.9l6-6C34.6 4.9 29.6 3 24 3 12.9 3 4 11.9 4 23s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.6-.4-3.6z" />
-                  <path fill="#e53935" d="M6.3 14.9l6.6 4.8C14 16.1 18.6 13 24 13c3.1 0 5.9 1.1 8.1 2.9l6-6C34.6 4.9 29.6 3 24 3 16.7 3 10.2 7.9 6.3 14.9z" />
-                  <path fill="#4caf50" d="M24 43c5.1 0 9.6-2 13-5.2l-6-4.9C29.9 34.9 27.1 36 24 36c-5.1 0-9.6-2-13-5.2l-6.6 4.8C10.2 40.1 16.7 44 24 44z" />
-                  <path fill="#1565c0" d="M43.6 20.4H42V20H24v8h11.3c-1 2.8-3 5.2-5.5 6.8l6 4.9C39.9 36.3 44 30 44 23c0-1.3-.1-2.6-.4-3.6z" />
+            <div
+              className="oauth-row"
+              role="group"
+              aria-label="Third party sign in"
+            >
+              <button
+                className="oauth-btn"
+                onClick={() => oauthLogin("google")}
+                type="button"
+                aria-label="Google Signin"
+              >
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 48 48"
+                  xmlns="http://www.w3.org/2000/svg"
+                  aria-hidden
+                >
+                  <path
+                    fill="#fbc02d"
+                    d="M43.6 20.4H42V20H24v8h11.3C33.6 33 29.1 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.1 8.1 2.9l6-6C34.6 4.9 29.6 3 24 3 12.9 3 4 11.9 4 23s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.6-.4-3.6z"
+                  />
+                  <path
+                    fill="#e53935"
+                    d="M6.3 14.9l6.6 4.8C14 16.1 18.6 13 24 13c3.1 0 5.9 1.1 8.1 2.9l6-6C34.6 4.9 29.6 3 24 3 16.7 3 10.2 7.9 6.3 14.9z"
+                  />
+                  <path
+                    fill="#4caf50"
+                    d="M24 43c5.1 0 9.6-2 13-5.2l-6-4.9C29.9 34.9 27.1 36 24 36c-5.1 0-9.6-2-13-5.2l-6.6 4.8C10.2 40.1 16.7 44 24 44z"
+                  />
+                  <path
+                    fill="#1565c0"
+                    d="M43.6 20.4H42V20H24v8h11.3c-1 2.8-3 5.2-5.5 6.8l6 4.9C39.9 36.3 44 30 44 23c0-1.3-.1-2.6-.4-3.6z"
+                  />
                 </svg>
                 <span style={{ marginLeft: 6 }}>Google Signin</span>
               </button>
 
-              <button className="oauth-btn" onClick={() => oauthLogin("facebook")} type="button" aria-label="Facebook Signin">
+              <button
+                className="oauth-btn"
+                onClick={() => oauthLogin("facebook")}
+                type="button"
+                aria-label="Facebook Signin"
+              >
                 <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden>
-                  <path d="M22 12c0-5.5-4.5-10-10-10S2 6.5 2 12c0 4.9 3.5 9 8.1 9.9v-7H7.9v-2.9h2.2V9.7c0-2.2 1.3-3.4 3.3-3.4.95 0 1.9.17 1.9.17v2.1h-1.08c-1.06 0-1.39.66-1.39 1.33v1.6h2.36l-.38 2.9h-1.98v7C18.5 21 22 16.9 22 12z" fill="#0866FF" />
+                  <path
+                    d="M22 12c0-5.5-4.5-10-10-10S2 6.5 2 12c0 4.9 3.5 9 8.1 9.9v-7H7.9v-2.9h2.2V9.7c0-2.2 1.3-3.4 3.3-3.4.95 0 1.9.17 1.9.17v2.1h-1.08c-1.06 0-1.39.66-1.39 1.33v1.6h2.36l-.38 2.9h-1.98v7C18.5 21 22 16.9 22 12z"
+                    fill="#0866FF"
+                  />
                 </svg>
                 <span style={{ marginLeft: 6 }}>Facebook Signin</span>
               </button>
             </div>
 
-            <div style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, marginTop: 32 }}>
-              <div style={{ flex: 1, height: 1, background: "#E6E6E6" }} />
-              <div style={{ color: "#9aa0a6", fontSize: 13 }}>Or continue with</div>
-              <div style={{ flex: 1, height: 1, background: "#E6E6E6" }} />
+            <div
+              style={{
+                width: "100%",
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                marginTop: 32,
+              }}
+            >
+              <div
+                style={{ flex: 1, height: 1, background: "#E6E6E6" }}
+              ></div>
+              <div style={{ color: "#9aa0a6", fontSize: 13 }}>
+                Or continue with
+              </div>
+              <div
+                style={{ flex: 1, height: 1, background: "#E6E6E6" }}
+              ></div>
             </div>
 
-            <div style={{ width: "100%", display: "flex", justifyContent: "center", marginTop: 26 }}>
-              <div style={{ width: "100%" }} className={`segmented`} role="tablist" aria-label="Choose sign in method">
-                <button type="button" style={{ width: "50%" }} aria-pressed={mode === "magic"} className={mode === "magic" ? "active" : ""} onClick={() => setMode("magic")}>
+            <div
+              style={{
+                width: "100%",
+                display: "flex",
+                justifyContent: "center",
+                marginTop: 26,
+              }}
+            >
+              <div
+                style={{ width: "100%" }}
+                className={`segmented`}
+                role="tablist"
+                aria-label="Choose sign in method"
+              >
+                <button
+                  type="button"
+                  style={{ width: "50%" }}
+                  aria-pressed={mode === "magic"}
+                  className={mode === "magic" ? "active" : ""}
+                  onClick={() => setMode("magic")}
+                >
                   Magic Link
                 </button>
-                <button type="button" style={{ width: "50%" }} aria-pressed={mode === "password"} className={mode === "password" ? "active" : ""} onClick={() => setMode("password")}>
+                <button
+                  type="button"
+                  style={{ width: "50%" }}
+                  aria-pressed={mode === "password"}
+                  className={mode === "password" ? "active" : ""}
+                  onClick={() => setMode("password")}
+                >
                   Password
                 </button>
               </div>
@@ -780,36 +895,91 @@ export default function SignInPage(): React.ReactElement {
             <div className="form" aria-labelledby="signin-title">
               <div>
                 <label htmlFor="email">Email</label>
-                <input id="email" className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="example@domain.com" autoComplete="email" />
+                <input
+                  id="email"
+                  className="input"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="example@domain.com"
+                  autoComplete="email"
+                />
               </div>
 
               {mode === "password" && (
                 <div>
                   <label htmlFor="password">Password</label>
                   <div className="pw-wrap">
-                    <input id="password" className="input" type={showPw ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Enter your password" autoComplete="current-password" style={{ paddingRight: 56 }} />
-                    <button type="button" className="pw-toggle" onClick={() => setShowPw((s) => !s)} aria-label={showPw ? "Hide password" : "Show password"}>
+                    <input
+                      id="password"
+                      className="input"
+                      type={showPw ? "text" : "password"}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Enter your password"
+                      autoComplete="current-password"
+                      style={{ paddingRight: 56 }}
+                    />
+                    <button
+                      type="button"
+                      className="pw-toggle"
+                      onClick={() => setShowPw((s) => !s)}
+                      aria-label={showPw ? "Hide password" : "Show password"}
+                    >
                       {showPw ? "🙈" : "👁️"}
                     </button>
                   </div>
 
-                  {/* helper row with New user and Forgot password */}
-                  <div className="helper-row" role="group" aria-label="Password helpers">
-                    <a href="/auth/signup" onClick={(e) => { e.preventDefault(); router.push("/auth/signup"); }}>
+                  <div
+                    className="helper-row"
+                    role="group"
+                    aria-label="Password helpers"
+                  >
+                    <a
+                      href="/auth/signup"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        router.push("/auth/signup");
+                      }}
+                    >
                       New user? Create account
                     </a>
 
-                    <a href="/auth/forgot-password" className="secondary" onClick={(e) => { e.preventDefault(); router.push("/auth/forgot-password"); }}>
+                    <a
+                      href="/auth/forgot-password"
+                      className="secondary"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        router.push("/auth/forgot-password");
+                      }}
+                    >
                       Forgot password?
                     </a>
                   </div>
                 </div>
               )}
 
-              <div style={{ fontSize: 11, textAlign: "center", color: "#6F6F6F", marginTop: 6 }}>we will send you a magic link for password free sign in</div>
+              <div
+                style={{
+                  fontSize: 11,
+                  textAlign: "center",
+                  color: "#6F6F6F",
+                  marginTop: 6,
+                }}
+              >
+                we will send you a magic link for password free sign in
+              </div>
 
-              {error && <div className="msg" style={{ color: "#d9534f" }}>{error}</div>}
-              {info && <div className="msg" style={{ color: "#2f855a" }}>{info}</div>}
+              {error && (
+                <div className="msg" style={{ color: "#d9534f" }}>
+                  {error}
+                </div>
+              )}
+              {info && (
+                <div className="msg" style={{ color: "#2f855a" }}>
+                  {info}
+                </div>
+              )}
 
               <div className="policy" style={{ marginTop: 52 }}>
                 By proceeding, you consent to our{" "}
@@ -823,17 +993,35 @@ export default function SignInPage(): React.ReactElement {
               </div>
 
               {mode === "magic" ? (
-                <button className="cta" onClick={sendMagicLink} disabled={loading} type="button">
+                <button
+                  className="cta"
+                  onClick={sendMagicLink}
+                  disabled={loading}
+                  type="button"
+                >
                   {loading ? "Sending..." : "Send Magic Link"}
                 </button>
               ) : (
-                <button className="cta" onClick={(e) => signInWithPassword(e)} disabled={loading} type="button">
+                <button
+                  className="cta"
+                  onClick={(e) => signInWithPassword(e)}
+                  disabled={loading}
+                  type="button"
+                >
                   {loading ? "Signing in..." : "Sign In"}
                 </button>
               )}
             </div>
 
-            <div style={{ marginTop: 12, fontSize: 13, color: "#8b8b8b" }}>© {new Date().getFullYear()} OptimX</div>
+            <div
+              style={{
+                marginTop: 12,
+                fontSize: 13,
+                color: "#8b8b8b",
+              }}
+            >
+              © {new Date().getFullYear()} OptimX
+            </div>
           </div>
         </main>
       </div>
