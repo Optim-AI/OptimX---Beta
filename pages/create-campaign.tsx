@@ -2092,7 +2092,7 @@ const CampaignCreate: React.FC = () => {
                   <div className="absolute bottom-full mb-2 right-0 bg-white border p-2 rounded shadow-lg z-40 w-44">
                     <div className="text-xs font-semibold mb-2">Pick theme</div>
                     <div className="flex flex-col gap-2">
-                      {["professional", "playful", "festive","minimal", "dynamic", "luxury", "elegant", "trendy", "bold-offer", "launch",  "testimonial", "Retro"].map(
+                      {["professional", "playful", "Realisitc, festive","minimal", "dynamic", "luxury", "elegant", "trendy", "bold-offer", "launch",  "testimonial", "Retro"].map(
                         (t) => (
                           <button
                             key={t}
