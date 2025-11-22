@@ -40,15 +40,15 @@ const withAlpha = (token: string | undefined, alpha: number) => {
  * Keeping it here so the SEO data exists in the module (you can move it to a server wrapper if you prefer).
  */
 export const metadata = {
-  title: "Contact Optim - AI Marketing Automation & Campaign Management",
+  title: "Contact OptimX - AI Marketing Automation & Campaign Management",
   description:
-    "Get in touch with Optim for AI-powered marketing automation solutions. Contact our expert team for personalized marketing campaigns, SEO optimization, and business growth strategies.",
+    "Get in touch with OptimX for AI-powered marketing automation solutions. Contact our expert team for personalized marketing campaigns, SEO optimization, and business growth strategies.",
   keywords:
-    "contact optim, AI marketing consultation, marketing automation support, campaign management contact, digital marketing help, business growth solutions, marketing strategy consultation",
+    "contact OptimX, AI marketing consultation, marketing automation support, campaign management contact, digital marketing help, business growth solutions, marketing strategy consultation",
   openGraph: {
     title: "Contact Optim - AI Marketing Automation Expert Support",
     description:
-      "Ready to transform your business with AI-powered marketing? Contact Optim's expert team for personalized marketing automation solutions and campaign management.",
+      "Ready to transform your business with AI-powered marketing? Contact OptimX's expert team for personalized marketing automation solutions and campaign management.",
     type: "website",
     url: "https://optim.com/contact",
   },
@@ -346,7 +346,6 @@ const Contact = () => {
                     className="text-2xl font-bold mb-6"
                     style={{ color: colors.foreground }}
                   >
-                    Why Choose Optim?
                   </h2>
 
                   <div className="space-y-6">
@@ -360,10 +359,10 @@ const Contact = () => {
                           className="font-semibold"
                           style={{ color: colors.foreground }}
                         >
-                          Direct Expert Contact
+                          Reachout to us
                         </h3>
                         <p style={{ color: colors.mutedForeground }}>
-                          reachout.optim@gmail.com
+                          info@optim.app
                         </p>
                         <p style={{ color: colors.mutedForeground }}>
                           <a
