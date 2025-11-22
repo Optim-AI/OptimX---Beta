@@ -116,34 +116,38 @@ export async function POST(req: Request) {
     const response = await client.responses.create({
   model: "gpt-4o-mini",
   instructions: systemInstruction,
-  input: `Create a professional advertising poster that looks like it was designed by a top creative agency. Focus on visual storytelling, brand personality, and striking ad aesthetics.
+  input: `Create a high–impact advertising poster engineered for real business results, with the visual quality of a top creative agency. Focus on visual storytelling, brand personality and striking aesthetics that drive conversions.
 
-Design style requirements:
-• Bold, clean composition with perfect visual hierarchy
-• Eye-catching colors and premium typography combinations
-• Strong focal point showcasing the product/offer visually
-• Modern studio-quality lighting and realistic textures
-• Zero clutter. Zero random decorations.
+Core creative direction:
+• Visually striking layout with clear hierarchy and a powerful focal point that supports the advertising message
+• Typography and composition must feel intentional, modern and well–balanced
+• Visual style, color palette and atmosphere must match the brand category and target audience
+• No unnecessary clutter, random shapes or distracting decorative elements
 
-Copywriting requirements:
-• Clear headline that instantly communicates the core benefit
-• Short supporting subtext with persuasive tone
-• A single strong CTA button or tag (ex: Order Now / Enroll Today / Try Free)
-• All text must be easy to read even from a distance
+Copywriting direction:
+• A bold headline that instantly communicates the core benefit or key selling point
+• A short supporting line that reinforces persuasion without long paragraphs
+• A single, strong CTA (e.g., Order Now, Enroll Today, Try Free, Book Appointment)
+• All text must be clean, readable and properly aligned
 
-Brand requirements:
-• Present the brand name and logo area clearly
-• Use colors and theme that match the product category and target audience
-• Poster should look instantly usable for marketing and advertising
+Branding direction:
+• Display the brand name clearly and allocate a logo placement space
+• Do NOT create, render or invent a new logo — the user will upload their own logo separately
+• Color palette and design style should support the brand personality and advertised offer
 
-Format:
-• Aspect ratio 4:5 or 1080×1350
-• High resolution suitable for ads, print and social media
-• No watermarks, no unrealistic distortions, no stretched text
+Adaptability rules:
+• The visual theme, mood, layout, color choices and graphic style must adapt to the selected campaign tone (professional, playful, minimal, luxury, dynamic, festive, elegant, trendy, bold-offer, launch, testimonial, etc.)
+• The overall look should make sense for the specific business category and target audience
+• Maintain balance between creativity and conversion — the ad should look artistic but still sell
+
+Technical requirements:
+• Use the aspect ratio chosen by the user (do NOT lock the design to a specific ratio)
+• Produce a clean and polished high–resolution output suitable for ads, print and social media
+• No watermarks, no invented brand elements, no distorted faces, no stretched text, no AI artifacts
 
 Now generate the best possible poster for this user input:
 ${prompt}`,
-  max_output_tokens: 200,
+  max_output_tokens: 2000,
 });
 
     const caption = extractTextFromResponse(response as any);
