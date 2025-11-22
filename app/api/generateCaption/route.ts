@@ -196,7 +196,7 @@ Guidelines:
     const chatResp = await client.chat.completions.create({
       model: "gpt-4o-mini",
       messages: messages as any,
-      max_tokens: 200,
+      max_tokens: 320,
       temperature: 0.7,
     });
 
@@ -208,7 +208,7 @@ Guidelines:
           model: "gpt-4o-mini",
           instructions: systemInstruction,
           input: `User input: ${usedPrompt}\nReturn only the caption.`,
-          max_output_tokens: 200,
+          max_output_tokens: 320,
         });
         caption = extractTextFromAnyResponse(respAlt as any);
         if (!caption) {
