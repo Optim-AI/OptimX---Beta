@@ -123,6 +123,7 @@ export async function POST(req: Request) {
 • Do not generate a logo
 • Use a color palette and style that fits the business category and audience
 • Adapt visuals to the selected theme/tone (professional, festive, playful, dynamic, luxury, minimal, etc.)
+• It should not feel like AI generated
 
 The poster must look like a real ad — modern, polished and ready for marketing. 
 No clutter, no random shapes, no watermarks, no distorted text, no artifacts.
