@@ -103,10 +103,8 @@ export default function IntegrationsBetaPage(): React.ReactElement {
         throw insertErr;
       }
 
-      // Optional: briefly set step 2 (kept in case you later want to show it),
-      // but per your request, go straight to /dashboard.
+      // ✅ Save done – now show confirmation (do NOT auto-redirect)
       setStep(2);
-      router.push("/dashboard");
     } catch (e: any) {
       setError(e?.message ?? "Failed to submit. Please try again.");
     } finally {
@@ -130,7 +128,8 @@ export default function IntegrationsBetaPage(): React.ReactElement {
       <div
         className="absolute inset-0 -z-10"
         style={{
-          background: (colors as any)?.gradientMesh ??
+          background:
+            (colors as any)?.gradientMesh ??
             "radial-gradient(circle at 20% 10%, rgba(99,102,241,0.08), transparent 35%), radial-gradient(circle at 80% 90%, rgba(14,165,233,0.08), transparent 30%)",
           opacity: 0.9,
         }}
@@ -180,7 +179,10 @@ export default function IntegrationsBetaPage(): React.ReactElement {
             <h1 className="text-3xl md:text-4xl font-bold mb-2 text-slate-900">
               Account Integration (Beta Mode)
             </h1>
-            <p style={{ color: mutedForeground }} className="max-w-2xl text-sm md:text-base">
+            <p
+              style={{ color: mutedForeground }}
+              className="max-w-2xl text-sm md:text-base"
+            >
               We&apos;re rolling out integrations in phases to make sure everything
               works perfectly for your business. During beta, our team manually
               activates your connections to Facebook and Instagram for you.
@@ -189,8 +191,11 @@ export default function IntegrationsBetaPage(): React.ReactElement {
 
           {/* Friendly sub-header with their name */}
           <div className="text-lg font-medium text-slate-900">
-            Hello <span className="font-bold" style={{ color: primaryColor }}>{firstName}</span>, let&apos;s get you
-            ready for beta access.
+            Hello{" "}
+            <span className="font-bold" style={{ color: primaryColor }}>
+              {firstName}
+            </span>
+            , let&apos;s get you ready for beta access.
           </div>
 
           {/* Step 1: Form */}
@@ -204,7 +209,9 @@ export default function IntegrationsBetaPage(): React.ReactElement {
               }}
             >
               {loading ? (
-                <div className="text-sm text-slate-500">Loading your details…</div>
+                <div className="text-sm text-slate-500">
+                  Loading your details…
+                </div>
               ) : (
                 <>
                   <h2 className="text-xl font-semibold mb-4 text-slate-900">
@@ -294,7 +301,7 @@ export default function IntegrationsBetaPage(): React.ReactElement {
             </section>
           )}
 
-          {/* Step 2 kept in code (in case you later remove redirect) */}
+          {/* Step 2: Confirmation */}
           {step === 2 && (
             <section
               className="bg-white rounded-2xl shadow-lg p-8 border border-slate-100"

@@ -2,6 +2,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import { useRouter } from "next/router";
 
 import Sidebar from "../app/web/src/components/Sidebar";
@@ -15,7 +16,7 @@ import { apiFetch } from "../lib/apiFetch";
 // exact path you provided — do NOT change
 import colors from "../lib/colors";
 
-/* ---------- Platforms (UI names + backend authPaths) ---------- */
+/* ---------- platforms (ui names + backend authpaths) ---------- */
 type Platform = {
   id: string;
   name: string;
@@ -27,10 +28,10 @@ type Platform = {
 const PLATFORMS: Platform[] = [
   {
     id: "meta",
-    name: "Meta Ads",
-    icon: <Facebook className="w-10 h-10 text-[#0866FF]" />, // ✔ Meta icon
+    name: "meta ads",
+    icon: <Facebook className="w-10 h-10 text-[#0866FF]" />, // meta icon
     authPath: "/api/auth/instagram/start",
-    desc: "Facebook & Instagram ads",
+    desc: "facebook & instagram ads",
   },
 ];
 
@@ -46,6 +47,8 @@ const {
   gradientPrimary,
 } = (colors as any) || {};
 
+type BetaStatus = "need_to_approve" | "pending" | "completed";
+
 export default function IntegrationsPage() {
   const router = useRouter();
   const [statuses, setStatuses] = useState<Record<string, boolean>>({});
@@ -55,6 +58,9 @@ export default function IntegrationsPage() {
   const pollRef = useRef<number | null>(null);
   const crossOriginSeen = useRef<Record<string, boolean>>({});
 
+  // per-user beta status computed from integrationsbeta
+  const [betaStatus, setBetaStatus] = useState<BetaStatus>("need_to_approve");
+
   function isPopupClosed(popup: Window | null) {
     try {
       return !popup || popup.closed;
@@ -63,11 +69,11 @@ export default function IntegrationsPage() {
     }
   }
 
-  /* ---------- Fetch integration status (now user-specific) ---------- */
+  /* ---------- fetch integration status (user-specific) ---------- */
   const fetchStatuses = async () => {
     setLoading(true);
 
-    // 1) User-specific API (relies on current auth/session)
+    // 1) user-specific api (relies on current auth/session)
     try {
       const res = await apiFetch("/api/integrations/status");
       if (!res.ok) throw new Error();
@@ -83,10 +89,10 @@ export default function IntegrationsPage() {
       setLoading(false);
       return;
     } catch {
-      // fall through to localStorage
+      // fall through to localstorage
     }
 
-    // 2) LocalStorage fallback (per-browser, but still only values this user got from API earlier)
+    // 2) localstorage fallback (per-browser, only values this user got previously)
     try {
       const raw = localStorage.getItem(LS_KEY);
       if (raw) {
@@ -96,7 +102,7 @@ export default function IntegrationsPage() {
       }
     } catch {}
 
-    // 3) Default false per platform
+    // 3) default false per platform
     const initial: Record<string, boolean> = {};
     PLATFORMS.forEach((p) => (initial[p.id] = false));
     setStatuses(initial);
@@ -106,7 +112,7 @@ export default function IntegrationsPage() {
     setLoading(false);
   };
 
-  /* ---------- Popup + OAuth polling ---------- */
+  /* ---------- popup + oauth polling ---------- */
   const openPopup = (url: string, name = "oauth_popup") => {
     const w = 900,
       h = 700;
@@ -115,7 +121,11 @@ export default function IntegrationsPage() {
     const opts = `width=${w},height=${h},left=${left},top=${top},resizable=yes,scrollbars=yes,status=yes`;
     const absolute = new URL(url, window.location.origin).toString();
     const popup = window.open(absolute, name, opts);
-    if (popup) try { popup.focus(); } catch {}
+    if (popup) {
+      try {
+        popup.focus();
+      } catch {}
+    }
     return popup;
   };
 
@@ -198,7 +208,7 @@ export default function IntegrationsPage() {
       } catch {}
 
       if (Date.now() - start > timeoutMs) {
-        setMessage("Sign-in timed out");
+        setMessage("sign-in timed out");
         popupRef.current?.close?.();
         localStorage.removeItem("pending_connect");
         clearInterval(pollRef.current!);
@@ -209,7 +219,7 @@ export default function IntegrationsPage() {
     }, 1200);
   };
 
-  /* ---------- Supabase token ---------- */
+  /* ---------- supabase token ---------- */
   const getSupabaseAccessToken = async (): Promise<string | null> => {
     try {
       const { data } = await supabase.auth.getSession();
@@ -219,7 +229,7 @@ export default function IntegrationsPage() {
     }
   };
 
-  /* ---------- Connect ---------- */
+  /* ---------- connect ---------- */
   const handleConnect = async (platform: Platform) => {
     if (!platform.authPath) return;
 
@@ -238,12 +248,12 @@ export default function IntegrationsPage() {
       localStorage.setItem("pending_connect", platform.id);
       pollStatusFor(platform.id);
     } catch {
-      setMessage("Popup blocked — allow popups");
+      setMessage("popup blocked — allow popups");
       setTimeout(() => setMessage(null), 2500);
     }
   };
 
-  /* ---------- Disconnect ---------- */
+  /* ---------- disconnect ---------- */
   const handleDisconnect = async (platformId: string) => {
     try {
       await apiFetch("/api/integrations/disconnect", {
@@ -253,17 +263,69 @@ export default function IntegrationsPage() {
       });
 
       await fetchStatuses();
-      setMessage("Disconnected");
+      setMessage("disconnected");
       setTimeout(() => setMessage(null), 2000);
     } catch {
-      setMessage("Failed to disconnect");
+      setMessage("failed to disconnect");
       setTimeout(() => setMessage(null), 2000);
     }
   };
 
-  /* ---------- Effects ---------- */
+  /* ---------- initial load: user + beta status + statuses ---------- */
   useEffect(() => {
-    fetchStatuses();
+    let mounted = true;
+
+    (async () => {
+      try {
+        const { data } = await supabase.auth.getUser();
+        const user = data?.user ?? null;
+        if (!user) {
+          router.push("/auth/signin");
+          return;
+        }
+
+        // read latest beta row for this user
+        const { data: betaRow, error: betaErr } = await supabase
+          .from("integrationsbeta")
+          .select("status, instagram_username, facebook_username, created_at")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (!betaErr && betaRow) {
+          const rawStatus = (betaRow as any).status ?? "";
+          const s = String(rawStatus).toLowerCase();
+
+          const ig = (betaRow as any).instagram_username as string | null;
+          const fb = (betaRow as any).facebook_username as string | null;
+          const hasUsernames =
+            (ig && ig.trim().length > 0) || (fb && fb.trim().length > 0);
+
+          if (s === "completed") {
+            setBetaStatus("completed");
+          } else if (hasUsernames) {
+            // they have provided usernames -> treat as pending/verify
+            setBetaStatus("pending");
+          } else {
+            // no usernames input -> need_to_approve
+            setBetaStatus("need_to_approve");
+          }
+        } else {
+          // no row at all -> need_to_approve
+          setBetaStatus("need_to_approve");
+        }
+
+        if (!mounted) return;
+        await fetchStatuses();
+      } catch (e) {
+        console.warn("integrations init error", e);
+        if (mounted) {
+          setBetaStatus("need_to_approve");
+          await fetchStatuses();
+        }
+      }
+    })();
 
     const onMessage = (e: MessageEvent) => {
       try {
@@ -290,12 +352,13 @@ export default function IntegrationsPage() {
     window.addEventListener("message", onMessage);
 
     return () => {
+      mounted = false;
       window.removeEventListener("message", onMessage);
       if (pollRef.current) clearInterval(pollRef.current);
     };
-  }, []);
+  }, [router]);
 
-  /* ---------- UI ---------- */
+  /* ---------- ui ---------- */
   return (
     <div className="min-h-screen flex bg-slate-50">
       <Sidebar />
@@ -303,16 +366,16 @@ export default function IntegrationsPage() {
       <main className="flex-1 p-8">
         <div className="p-6 space-y-6">
           <div>
-            <h1 className="text-3xl font-bold mb-2">Integrations</h1>
+            <h1 className="text-3xl font-bold mb-2">integrations</h1>
             <p
               className={!mutedForeground ? "text-muted-foreground" : ""}
               style={mutedForeground ? { color: mutedForeground } : undefined}
             >
-              Connect your advertising platforms and tools
+              connect your advertising platforms and tools
             </p>
           </div>
 
-          {/* Grid */}
+          {/* grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {PLATFORMS.map((platform, i) => {
               const connected = !!statuses[platform.id];
@@ -325,12 +388,49 @@ export default function IntegrationsPage() {
                   ? { background: gradientPrimary, border: "none" }
                   : undefined;
 
+              // decide button label + behavior based on betaStatus + connected
+              let buttonLabel = "connect";
+              let buttonDisabled = false;
+              let buttonOnClick: () => void = () => {};
+              let buttonStyle: CSSProperties | undefined =
+                !connected ? connectBtnStyle : undefined;
+              let buttonVariant: "outline" | "default" = connected
+                ? "outline"
+                : "default";
+
+              if (connected) {
+                // already connected -> keep existing disconnect behavior
+                buttonLabel = "disconnect";
+                buttonOnClick = () => handleDisconnect(platform.id);
+              } else {
+                if (betaStatus === "need_to_approve") {
+                  // no usernames captured -> ask them to go fill beta form
+                  buttonLabel = "verify please";
+                  buttonOnClick = () => router.push("/integrationsbeta");
+                  buttonDisabled = false;
+                } else if (betaStatus === "pending") {
+                  // usernames present, waiting for manual completion
+                  buttonLabel = "verify";
+                  buttonOnClick = () => {};
+                  buttonDisabled = true;
+                  buttonStyle = undefined; // static
+                } else if (betaStatus === "completed") {
+                  // manual completion done -> allow normal connect flow
+                  buttonLabel = "connect";
+                  buttonOnClick = () => handleConnect(platform);
+                } else {
+                  // fallback
+                  buttonLabel = "verify please";
+                  buttonOnClick = () => router.push("/integrationsbeta");
+                }
+              }
+
               return (
                 <Card
                   key={i}
                   className="glass-card hover:shadow-2xl transition-all"
                   style={{
-                    boxShadow: "0 8px 32px rgba(0,0,0,0.22)", // ✔ deeper shadow you wanted
+                    boxShadow: "0 8px 32px rgba(0,0,0,0.22)",
                   }}
                 >
                   <CardContent className="pt-6">
@@ -369,16 +469,13 @@ export default function IntegrationsPage() {
                     </p>
 
                     <Button
-                      variant={connected ? "outline" : "default"}
+                      variant={buttonVariant}
                       className="w-full"
-                      style={!connected ? connectBtnStyle : undefined}
-                      onClick={() =>
-                        connected
-                          ? handleDisconnect(platform.id)
-                          : handleConnect(platform)
-                      }
+                      style={buttonStyle}
+                      disabled={buttonDisabled}
+                      onClick={buttonOnClick}
                     >
-                      {connected ? "Disconnect" : "Connect"}
+                      {buttonLabel}
                     </Button>
                   </CardContent>
                 </Card>
@@ -388,7 +485,7 @@ export default function IntegrationsPage() {
         </div>
 
         <div className="mt-4 text-sm text-slate-500">
-          {loading ? "Checking integration status..." : "Status synced."}
+          {loading ? "checking integration status..." : "status synced."}
           {message && (
             <div className="mt-2 text-sm text-green-700">{message}</div>
           )}
