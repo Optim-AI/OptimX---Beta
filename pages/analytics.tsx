@@ -23,7 +23,6 @@ import {
   XAxis,
   YAxis,
   CartesianGrid,
-  Tooltip,
   Legend,
   ReferenceLine,
 } from "recharts";
@@ -86,6 +85,7 @@ type Campaign = {
   platform?: string;
   conversions?: number;
   budget?: number | string;
+  _raw?: any;
 };
 
 const LS_KEY = "integrations_status_v1";
@@ -133,33 +133,6 @@ function normalizeRec(x: any): Recommendation {
   return { id, title, impact, reason: x.reason, actions, estimate, campaignId, resolved: false, confidence, effort };
 }
 
-/* -------------------- FIXED Tooltip -------------------- */
-
-const GenericTooltip = (props: any) => {
-  const { active, payload, label } = props;
-  if (!active || !payload || payload.length === 0) return null;
-
-  return (
-    <div className="p-2 bg-white rounded shadow text-xs border">
-      <div className="font-semibold">{label}</div>
-      {payload.map((p: any, i: number) => (
-        <div key={i} className="flex justify-between gap-2">
-          <div>{p.name}</div>
-          <div className="font-medium">
-            {typeof p.value === "number"
-              ? p.name.toLowerCase().includes("ctr")
-                ? `${Number(p.value).toFixed(2)}%`
-                : p.name.toLowerCase().includes("spend")
-                ? fmtMoneyINR(Number(p.value))
-                : Number(p.value).toLocaleString()
-              : p.value}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-};
-
 /* -------------------- component -------------------- */
 
 export default function Analytics(): JSX.Element {
@@ -204,10 +177,11 @@ export default function Analytics(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-
+  /* -------------------- campaigns (dashboard-style multi-column lookup) -------------------- */
   async function fetchCampaigns() {
     setCampaignsLoading(true);
     try {
+      // grab current user id
       const { data: sessionData } = await supabase.auth.getSession();
       const user = (sessionData as any)?.session?.user ?? null;
       if (!user || !user.id) {
@@ -217,36 +191,58 @@ export default function Analytics(): JSX.Element {
       }
       const uid = user.id;
 
-      const orFilter = `user_id.eq.${uid},owner.eq.${uid},created_by.eq.${uid},profile_id.eq.${uid}`;
+      // helper: query campaigns by column
+      async function queryByColumn(column: string) {
+        try {
+          const { data, error } = await supabase
+            .from("campaigns")
+            .select("*")
+            .eq(column, uid)
+            .order("created_at", { ascending: false })
+            .limit(200);
 
-      const { data, error } = await supabase
-        .from("campaigns")
-        .select("*")
-        .or(orFilter)
-        .order("created_at", { ascending: false });
-
-      if (error) {
-        console.error("Error fetching campaigns (user-scoped):", error);
-        setCampaigns([]);
-      } else {
-        const normalized = (data as any[]).map((c) => ({
-          id: c.id ?? (c.name || Math.random()).toString(),
-          name: c.name ?? "Untitled",
-          campaign_type: c.campaign_type ?? c.type ?? null,
-          image_url: c.image_url ?? null,
-          is_published: !!c.is_published,
-          created_at: c.created_at ?? undefined,
-          spend: c.spend_inr ?? c.spend ?? undefined,
-          roas: c.roas ?? undefined,
-          ctr: c.ctr ?? undefined,
-          impressions: c.impressions ?? undefined,
-          platform: c.platform ?? c.source ?? (c.campaign_type ?? "Meta"),
-          conversions: c.conversions ?? 0,
-          budget: c.budget_inr ?? c.budget ?? undefined,
-        })) as Campaign[];
-
-        setCampaigns(normalized.slice(0, 10));
+          if (error) {
+            console.debug(`campaigns query by ${column} error:`, (error as any).message || error);
+            return null;
+          }
+          return data as any[] | null;
+        } catch (err) {
+          console.debug(`campaigns query by ${column} failed:`, err);
+          return null;
+        }
       }
+
+      const candidateColumns = ["user_id", "created_by", "owner", "profile_id", "author_id"];
+      let rows: any[] | null = null;
+      for (const col of candidateColumns) {
+        rows = await queryByColumn(col);
+        if (rows && rows.length > 0) break;
+      }
+
+      if (!rows || rows.length === 0) {
+        setCampaigns([]);
+        return;
+      }
+
+      const normalized = (rows || []).map((c) => ({
+        id: c.id ?? (c.name || Math.random()).toString(),
+        name: c.name ?? "Untitled",
+        campaign_type: c.campaign_type ?? c.type ?? null,
+        image_url: c.image_url ?? c.image_url_public ?? c.preview_url ?? null,
+        is_published: !!c.is_published,
+        created_at: c.created_at ?? undefined,
+        spend: c.spend_inr ?? c.spend ?? undefined,
+        roas: c.roas ?? undefined,
+        ctr: c.ctr ?? undefined,
+        impressions: c.impressions ?? undefined,
+        platform: c.platform ?? c.source ?? (c.campaign_type ?? "Meta"),
+        conversions: c.conversions ?? 0,
+        budget: c.budget_inr ?? c.budget ?? undefined,
+        _raw: c,
+      })) as Campaign[];
+
+      // match dashboard behaviour: only show top 5
+      setCampaigns(normalized.slice(0, 5));
     } catch (err) {
       console.error("fetchCampaigns unexpected error:", err);
       setCampaigns([]);
@@ -713,6 +709,19 @@ export default function Analytics(): JSX.Element {
 
   const metaConnected = isMetaConnectedLocal();
 
+  // ---- NEW: compute "all metrics empty" condition (strict) ----
+  const currentMetrics = metaSummary?.meta?.current ?? null;
+  const allMetricsEmpty = Boolean(
+    currentMetrics &&
+      safeNum((currentMetrics as any).total_reach) === 0 &&
+      safeNum((currentMetrics as any).avg_ctr) === 0 &&
+      safeNum((currentMetrics as any).total_spend) === 0 &&
+      ((currentMetrics as any).budget_estimate_daily == null || safeNum((currentMetrics as any).budget_estimate_daily) === 0) &&
+      safeNum((currentMetrics as any).conversions) === 0 &&
+      ((currentMetrics as any).roas == null)
+  );
+  const noDataInSelectedRange = metaConnected && !loadingMeta && series.length === 0 && allMetricsEmpty;
+
   return (
     <div className="min-h-screen flex bg-slate-50">
       <Sidebar />
@@ -741,10 +750,10 @@ export default function Analytics(): JSX.Element {
               Refresh
             </button>
 
-            <Button variant="outline" size="sm">
+            {/* <Button variant="outline" size="sm">
               <Share2 className="w-4 h-4 mr-2" />
               Export
-            </Button>
+            </Button> */}
 
             <Button onClick={askRecommendations} size="sm">
               {recLoading ? "Thinking…" : "Get Recommendations"}
@@ -815,20 +824,29 @@ export default function Analytics(): JSX.Element {
               <div>Loading Meta metrics…</div>
             ) : (
               // Always show overview — if metrics empty we set zeros in state
-              <div className="grid grid-cols-6 gap-4">
-                {overallMetrics.map((m, i) => (
-                  <div key={i} className="p-4 bg-gray-50 rounded">
-                    <div className="text-sm text-slate-500">{m.label}</div>
-                    <div className="text-xl font-bold text-slate-800">{m.value}</div>
-                    <div
-                      className={`text-xs mt-1 ${
-                        m.trend === "up" ? "text-green-600" : "text-red-600"
-                      }`}
-                    >
-                      {m.change}
+              <div>
+                <div className="grid grid-cols-6 gap-4">
+                  {overallMetrics.map((m, i) => (
+                    <div key={i} className="p-4 bg-gray-50 rounded">
+                      <div className="text-sm text-slate-500">{m.label}</div>
+                      <div className="text-xl font-bold text-slate-800">{m.value}</div>
+                      <div
+                        className={`text-xs mt-1 ${
+                          m.trend === "up" ? "text-green-600" : "text-red-600"
+                        }`}
+                      >
+                        {m.change}
+                      </div>
                     </div>
+                  ))}
+                </div>
+
+                {/* NEW: show global no-data message under Overview when all metrics empty */}
+                {noDataInSelectedRange && (
+                  <div className="text-center text-sm text-red-600 mt-3">
+                    No data in the selected time range.
                   </div>
-                ))}
+                )}
               </div>
             )}
           </div>
@@ -848,215 +866,218 @@ export default function Analytics(): JSX.Element {
               </div>
             </div>
           ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Impressions */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <BarChart3 className="w-5 h-5" /> Impressions — {dateRangeLabel}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center gap-4 mb-3">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className="w-3 h-3 rounded-full"
-                        style={{ background: "hsl(210 100% 56%)" }}
-                      />
-                      Impressions
-                    </div>
-                  </div>
-
-                  <div className="h-[260px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={series}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="date" hide />
-                        <YAxis />
-                        <Tooltip content={<GenericTooltip />} />
-                        <Legend />
-                        <Line
-                          type="monotone"
-                          dataKey="impressions"
-                          name="Impressions"
-                          stroke="hsl(210 100% 56%)"
-                          strokeWidth={2}
-                          dot={{ r: 3 }}
+            <div>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Impressions */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <BarChart3 className="w-5 h-5" /> Impressions — {dateRangeLabel}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex items-center gap-4 mb-3">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="w-3 h-3 rounded-full"
+                          style={{ background: "hsl(210 100% 56%)" }}
                         />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Clicks */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Clicks — {dateRangeLabel}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center gap-4 mb-3">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className="w-3 h-3 rounded-full"
-                        style={{ background: "hsl(200 80% 45%)" }}
-                      />
-                      Clicks
+                        Impressions
+                      </div>
                     </div>
-                  </div>
 
-                  <div className="h-[260px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={series}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="date" hide />
-                        <YAxis />
-                        <Tooltip content={<GenericTooltip />} />
-                        <Area
-                          type="monotone"
-                          dataKey="clicks"
-                          name="Clicks"
-                          stroke="hsl(200 80% 45%)"
-                          fill="rgba(30,130,230,0.12)"
-                          strokeWidth={2}
+                    <div className="h-[260px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={series}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="date" hide />
+                          <YAxis />
+                          <Legend />
+                          <Line
+                            type="monotone"
+                            dataKey="impressions"
+                            name="Impressions"
+                            stroke="hsl(210 100% 56%)"
+                            strokeWidth={2}
+                            dot={{ r: 3 }}
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Clicks */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Clicks — {dateRangeLabel}</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex items-center gap-4 mb-3">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="w-3 h-3 rounded-full"
+                          style={{ background: "hsl(200 80% 45%)" }}
                         />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Spend */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Spend — {dateRangeLabel}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center gap-4 mb-3">
-                    <div className="flex items-center gap-2">
-                      <span className="w-3 h-3 rounded-full" style={{ background: "#3FA7FF" }} />
-                      Spend
+                        Clicks
+                      </div>
                     </div>
-                  </div>
 
-                  <div className="h-[260px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={series}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="date" hide />
-                        <YAxis />
-                        <Tooltip content={<GenericTooltip />} />
-                        <Bar dataKey="spend" name="Spend (INR)" fill="#3FA7FF" />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* CTR */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>CTR (%) — {dateRangeLabel}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center gap-4 mb-3">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className="w-3 h-3 rounded-full"
-                        style={{ background: "hsl(210 80% 50%)" }}
-                      />
-                      CTR
+                    <div className="h-[260px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={series}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="date" hide />
+                          <YAxis />
+                          <Area
+                            type="monotone"
+                            dataKey="clicks"
+                            name="Clicks"
+                            stroke="hsl(200 80% 45%)"
+                            fill="rgba(30,130,230,0.12)"
+                            strokeWidth={2}
+                          />
+                        </AreaChart>
+                      </ResponsiveContainer>
                     </div>
-                  </div>
+                  </CardContent>
+                </Card>
 
-                  <div className="h-[260px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={series}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="date" hide />
-                        <YAxis
-                          domain={[0, "dataMax + 1"]}
-                          tickFormatter={(v) => `${v}%`}
+                {/* Spend */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Spend — {dateRangeLabel}</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex items-center gap-4 mb-3">
+                      <div className="flex items-center gap-2">
+                        <span className="w-3 h-3 rounded-full" style={{ background: "#3FA7FF" }} />
+                        Spend
+                      </div>
+                    </div>
+
+                    <div className="h-[260px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={series}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="date" hide />
+                          <YAxis />
+                          <Bar dataKey="spend" name="Spend (INR)" fill="#3FA7FF" />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* CTR */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>CTR (%) — {dateRangeLabel}</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex items-center gap-4 mb-3">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="w-3 h-3 rounded-full"
+                          style={{ background: "hsl(210 80% 50%)" }}
                         />
-                        <Tooltip content={<GenericTooltip />} />
-                        <Line
-                          type="monotone"
-                          dataKey="ctr"
-                          name="CTR (%)"
-                          stroke="hsl(210 80% 50%)"
-                          strokeWidth={2}
-                          dot={{ r: 3 }}
-                        />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Conversions */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Conversions — {dateRangeLabel}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center gap-4 mb-3">
-                    <div className="flex items-center gap-2">
-                      <span className="w-3 h-3 rounded-full" style={{ background: "#16A34A" }} />
-                      Conversions
+                        CTR
+                      </div>
                     </div>
-                  </div>
 
-                  <div className="h-[260px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={series}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="date" hide />
-                        <YAxis />
-                        <Tooltip content={<GenericTooltip />} />
-                        <Bar dataKey="conversions" name="Conversions" fill="#16A34A" />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* ROAS */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>ROAS — {dateRangeLabel}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center gap-4 mb-3">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className="w-3 h-3 rounded-full"
-                        style={{ background: "rgba(99,102,241,1)" }}
-                      />
-                      ROAS
+                    <div className="h-[260px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={series}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="date" hide />
+                          <YAxis
+                            domain={[0, "dataMax + 1"]}
+                            tickFormatter={(v) => `${v}%`}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="ctr"
+                            name="CTR (%)"
+                            stroke="hsl(210 80% 50%)"
+                            strokeWidth={2}
+                            dot={{ r: 3 }}
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
                     </div>
-                  </div>
+                  </CardContent>
+                </Card>
 
-                  <div className="h-[260px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={series}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="date" hide />
-                        <YAxis />
-                        <Tooltip content={<GenericTooltip />} />
-                        <Area
-                          type="monotone"
-                          dataKey="roas"
-                          name="ROAS"
-                          stroke="rgba(99,102,241,1)"
-                          fill="rgba(99,102,241,0.12)"
-                          strokeWidth={2}
+                {/* Conversions */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Conversions — {dateRangeLabel}</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex items-center gap-4 mb-3">
+                      <div className="flex items-center gap-2">
+                        <span className="w-3 h-3 rounded-full" style={{ background: "#16A34A" }} />
+                        Conversions
+                      </div>
+                    </div>
+
+                    <div className="h-[260px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={series}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="date" hide />
+                          <YAxis />
+                          <Bar dataKey="conversions" name="Conversions" fill="#16A34A" />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* ROAS */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>ROAS — {dateRangeLabel}</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex items-center gap-4 mb-3">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="w-3 h-3 rounded-full"
+                          style={{ background: "rgba(99,102,241,1)" }}
                         />
-                        <ReferenceLine y={1} stroke="rgba(0,0,0,0.08)" />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  </div>
-                </CardContent>
-              </Card>
+                        ROAS
+                      </div>
+                    </div>
+
+                    <div className="h-[260px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={series}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="date" hide />
+                          <YAxis />
+                          <Area
+                            type="monotone"
+                            dataKey="roas"
+                            name="ROAS"
+                            stroke="rgba(99,102,241,1)"
+                            fill="rgba(99,102,241,0.12)"
+                            strokeWidth={2}
+                          />
+                          <ReferenceLine y={1} stroke="rgba(0,0,0,0.08)" />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* NEW: show small alert when all metrics empty and series is empty */}
+              {noDataInSelectedRange && (
+                <div className="text-center text-sm text-red-600 mt-2">
+                  No data in the selected time range.
+                </div>
+              )}
             </div>
           )}
 
@@ -1190,3 +1211,19 @@ export default function Analytics(): JSX.Element {
     </div>
   );
 }
+
+/* -------------------- small helpers outside component -------------------- */
+function fmtMoney(n: number | null | undefined) {
+  if (n == null) return "—";
+  try {
+    return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", minimumFractionDigits: 0 }).format(Number(n));
+  } catch {
+    return `₹${Number(n).toFixed(0)}`;
+  }
+}
+// function pctDisplay(n: number | null | undefined) {
+//   if (n == null) return "—";
+//   const r = Math.round((n as number) * 10) / 10;
+//   const sign = r > 0 ? "+" : "";
+//   return `${sign}${r}%`;
+// }

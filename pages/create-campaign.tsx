@@ -422,7 +422,6 @@ async function addReferenceImagesToProfile(urls: string[]) {
       .single();
     const existing: string[] = (profile as any)?.ref_images || [];
     const merged = Array.from(new Set([...existing, ...urls]));
-    // <-- FIX: removed invalid `returning` option
     await supabase.from("profiles").upsert({ id: user.id, ref_images: merged });
     return merged;
   } catch (e) {
@@ -442,7 +441,6 @@ async function removeReferenceImageFromProfile(url: string) {
       .single();
     const existing: string[] = (profile as any)?.ref_images || [];
     const next = existing.filter((x: string) => x !== url);
-    // <-- FIX: removed invalid `returning` option
     await supabase.from("profiles").upsert({ id: user.id, ref_images: next });
     return next;
   } catch (e) {
@@ -456,10 +454,9 @@ const CampaignCreate: React.FC = () => {
   const router = useRouter();
 
   const [credits, setCredits] = useState<number>(10);
+  // deduct ONE credit after successful generation (fallback if backend doesn't send remaining)
   const useCredit = () => {
-    if (credits <= 0) return false;
-    setCredits((c) => c - 1);
-    return true;
+    setCredits((c) => (c > 0 ? c - 1 : 0));
   };
 
   const [chats, setChats] = useState<Chat[]>([]);
@@ -546,13 +543,11 @@ const CampaignCreate: React.FC = () => {
     logoDataUrl: null,
   });
 
-  const [pendingGeneratedImage, setPendingGeneratedImage] = useState<
-    string | null
-  >(null);
-
   // portal host reference for sidebar
   const [sidebarHost, setSidebarHost] = useState<HTMLElement | null>(null);
   const [sidebarRight, setSidebarRight] = useState<number>(0);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const sidebarResizeObserverRef = useRef<any>(null);
 
   // store previous sidebar styles so we can restore
   const sidebarPrevStylesRef = useRef<{
@@ -696,7 +691,7 @@ const CampaignCreate: React.FC = () => {
           }
         }
 
-        // fetch recent generated images
+        // fetch recent generated images (for internal use, we no longer show gallery UI)
         try {
           const urls = await fetchRecentGeneratedImages(20);
           if (urls && urls.length) setGeneratedImages(urls);
@@ -771,14 +766,41 @@ const CampaignCreate: React.FC = () => {
       if (prev.zIndex !== undefined) host.style.zIndex = prev.zIndex;
     };
 
+    const detectCollapsed = (host: HTMLElement) => {
+      const rect = host.getBoundingClientRect();
+      const width = rect.width || rect.right || 0;
+      const ariaExpanded = host.getAttribute("aria-expanded");
+      const dataCollapsed = host.getAttribute("data-collapsed");
+      const collapsedByAttr =
+        ariaExpanded === "false" || dataCollapsed === "true";
+      const collapsedByWidth = width > 0 && width < 120;
+      setSidebarRight(width);
+      setSidebarCollapsed(collapsedByAttr || collapsedByWidth);
+    };
+
+    const hostFound = (host: HTMLElement) => {
+      applyHostStyles(host);
+      setSidebarHost(host);
+      detectCollapsed(host);
+
+      // Observe sidebar size so collapse/un-collapse hides/shows chat list
+      if (typeof ResizeObserver !== "undefined") {
+        const ro = new ResizeObserver((entries) => {
+          for (const entry of entries) {
+            const el = entry.target as HTMLElement;
+            detectCollapsed(el);
+          }
+        });
+        ro.observe(host);
+        sidebarResizeObserverRef.current = ro;
+      }
+    };
+
     const interval = setInterval(() => {
       tries++;
       const host = findHost();
       if (host) {
-        applyHostStyles(host);
-        setSidebarHost(host);
-        const rect = host.getBoundingClientRect();
-        setSidebarRight(rect.right || rect.width || 0);
+        hostFound(host);
         clearInterval(interval);
       } else if (tries > 60) {
         // stop after ~6s
@@ -789,19 +811,15 @@ const CampaignCreate: React.FC = () => {
     // also attempt once immediately
     const immediate = findHost();
     if (immediate) {
-      applyHostStyles(immediate);
-      setSidebarHost(immediate);
-      const rect = immediate.getBoundingClientRect();
-      setSidebarRight(rect.right || rect.width || 0);
+      hostFound(immediate);
       clearInterval(interval);
     }
 
-    // update on resize
+    // update on window resize
     const onResize = () => {
       const host = findHost();
       if (host) {
-        const rect = host.getBoundingClientRect();
-        setSidebarRight(rect.right || rect.width || 0);
+        detectCollapsed(host);
       } else {
         setSidebarRight(0);
       }
@@ -811,6 +829,10 @@ const CampaignCreate: React.FC = () => {
     return () => {
       clearInterval(interval);
       window.removeEventListener("resize", onResize);
+      if (sidebarResizeObserverRef.current) {
+        sidebarResizeObserverRef.current.disconnect();
+        sidebarResizeObserverRef.current = null;
+      }
       // restore host styles on unmount
       if (sidebarHost) restoreHostStyles(sidebarHost);
     };
@@ -891,8 +913,7 @@ const CampaignCreate: React.FC = () => {
     setQuickSettings((q) => ({ ...q, logoEnabled: !!logoPublicUrl }));
   }, [logoPublicUrl]);
 
-  /* Apply glow class to the aside (sidebar) element when logoGlowing toggles.
-     We store previous styles and restore them on cleanup/when turning glow off. */
+  /* Apply glow class to the aside (sidebar) element when logoGlowing toggles. */
   useEffect(() => {
     const host = sidebarHost;
     if (!host) return;
@@ -1043,7 +1064,6 @@ const CampaignCreate: React.FC = () => {
           setLogoGlowing(true);
         }
         // save logo_path in profile (use path)
-        // <-- FIX: removed invalid `returning` option
         await supabase
           .from("profiles")
           .upsert({
@@ -1070,10 +1090,7 @@ const CampaignCreate: React.FC = () => {
     try {
       const user = await getCurrentUser();
       if (user) {
-        // <-- FIX: removed invalid `returning` option
-        await supabase
-          .from("profiles")
-          .upsert({ id: user.id, logo_path: null });
+        await supabase.from("profiles").upsert({ id: user.id, logo_path: null });
       }
     } catch (e) {
       console.warn("failed to remove logo_path", e);
@@ -1120,7 +1137,6 @@ const CampaignCreate: React.FC = () => {
 
       await addReferenceImagesToProfile(toAdd);
       toast.success("Reference images saved to profile");
-      // refresh uploadedPreviews from profile or keep what we have (we'll keep)
     } catch (e) {
       console.error("handleSaveReferenceImages error", e);
       toast.error("Saving reference images failed");
@@ -1198,9 +1214,6 @@ const CampaignCreate: React.FC = () => {
       });
       return;
     }
-
-    const ok = useCredit();
-    if (!ok) return;
 
     const userMessage = {
       role: "user",
@@ -1308,26 +1321,31 @@ const CampaignCreate: React.FC = () => {
         console.warn("auto upload failed", e);
       }
 
-      const assistantMessage = {
-        role: "assistant",
-        content: `Generated preview${
-          adFormData.brandName ? ` for ${adFormData.brandName}` : ""
-        }. Verify and proceed to publish.`,
-        imageUrl: imageUrl,
-      };
-      const after = [...newMessages, assistantMessage];
-      updateCurrentChatMessages(after);
-
+      // update credits: trust backend if provided, else deduct 1 locally
       try {
         if (
           json.creditsRemaining !== undefined &&
           json.creditsRemaining !== null
         ) {
           setCredits(Number(json.creditsRemaining));
+        } else {
+          useCredit();
         }
-      } catch (e) {}
+      } catch (e) {
+        console.warn("credits update failed", e);
+      }
 
-      setPendingGeneratedImage(imageUrl);
+      const assistantMessage = {
+        role: "assistant",
+        content: `Generated preview${
+          adFormData.brandName ? ` for ${adFormData.brandName}` : ""
+        }. Verify and proceed to publish.`,
+        imageUrl: imageUrl,
+        sourcePrompt: userMessage.content,
+      };
+      const after = [...newMessages, assistantMessage];
+      updateCurrentChatMessages(after);
+
       setIsGenerating(false);
       toast.success("Image ready — verify before publishing");
 
@@ -1339,29 +1357,6 @@ const CampaignCreate: React.FC = () => {
     }
   };
 
-  const handleProceedToPublish = async () => {
-    if (!pendingGeneratedImage) {
-      toast.error("No generated image to proceed with");
-      return;
-    }
-    setGeneratedImages((prev) => {
-      const next = [
-        pendingGeneratedImage!,
-        ...prev.filter((p) => p !== pendingGeneratedImage),
-      ];
-      return next;
-    });
-    const confirmMsg = {
-      role: "assistant",
-      content: "User proceeded to publish with this creative.",
-      imageUrl: pendingGeneratedImage,
-    };
-    const newMsgs = [...messages, confirmMsg];
-    updateCurrentChatMessages(newMsgs);
-
-    setPendingGeneratedImage(null);
-    setShowPublishPanel(true);
-  };
   /* -------------------- Caption & Publish flows -------------------- */
   const generateCaption = async (
     promptText: string,
@@ -1536,6 +1531,15 @@ const CampaignCreate: React.FC = () => {
         }
       }
 
+      // Add status message into chat
+      const statusMessage = {
+        role: "assistant",
+        content: "Post posted successfully.",
+        imageUrl: image_url,
+      };
+      const newMsgs = [...messages, statusMessage];
+      updateCurrentChatMessages(newMsgs);
+
       // Success: show the requested message then redirect
       toast.success(
         "Post has been successfully posted and you are redirected to dashboard."
@@ -1697,6 +1701,15 @@ const CampaignCreate: React.FC = () => {
           console.error("facebook/ads returned error:", json);
           toast.error("Facebook Ads creation failed. See console for details.");
         } else {
+          // Add status message into chat
+          const statusMessage = {
+            role: "assistant",
+            content: "Ad campaign posted successfully.",
+            imageUrl: creativeImageUrl || creativeImageDataUrl || undefined,
+          };
+          const newMsgs = [...messages, statusMessage];
+          updateCurrentChatMessages(newMsgs);
+
           // On success, show the requested message and redirect
           toast.success("Ad has been posted. You are redirected to dashboard.");
           setShowPublishPanel(false);
@@ -1808,8 +1821,8 @@ const CampaignCreate: React.FC = () => {
         onLogoClick={() => toast("Logo clicked")}
       />
 
-      {/* Render portal into Sidebar element (if found) */}
-      {sidebarHost && createPortal(sidebarChatPortal, sidebarHost)}
+      {/* Render portal into Sidebar element (if found and NOT collapsed) */}
+      {sidebarHost && !sidebarCollapsed && createPortal(sidebarChatPortal, sidebarHost)}
 
       {/* Main content area — shifted right to avoid sidebar overlay */}
       <div
@@ -1827,8 +1840,6 @@ const CampaignCreate: React.FC = () => {
         </div>
 
         <main className="max-w-6xl mx-auto p-6 pb-56">
-          {" "}
-          {/* increased bottom padding */}
           {/* If no messages show welcome */}
           {messages.length === 0 ? (
             <div className="flex items-center justify-center py-24">
@@ -1875,18 +1886,21 @@ const CampaignCreate: React.FC = () => {
                           className="w-full rounded-lg border"
                           style={{ borderColor: colors.border }}
                         />
-                        <div className="mt-2 flex gap-2">
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {/* Publish: use this image and open publish panel */}
                           <Button
                             size="sm"
                             variant="outline"
                             onClick={() => {
-                              navigator.clipboard?.writeText(m.imageUrl || "");
-                              toast.success("Image URL copied");
+                              setGeneratedImages(m.imageUrl);
+                              setShowPublishPanel(true);
                             }}
                           >
-                            <Copy className="w-3 h-3 mr-2" /> Copy URL
+                            <Sparkles className="w-3 h-3 mr-2" /> Publish
                           </Button>
-                          <Button
+
+                          {/* Download this image */}
+                          {/* <Button
                             size="sm"
                             variant="outline"
                             onClick={() => {
@@ -1899,13 +1913,40 @@ const CampaignCreate: React.FC = () => {
                             }}
                           >
                             <Download className="w-3 h-3 mr-2" /> Download
+                          </Button> */}
+
+                          {/* Regenerate: put the original prompt back into textarea */}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              const sourcePrompt =
+                                (m as any).sourcePrompt ||
+                                [...messages]
+                                  .slice(0, idx)
+                                  .reverse()
+                                  .find((mm) => mm.role === "user")?.content ||
+                                "";
+                              if (!sourcePrompt) {
+                                toast.error(
+                                  "No original prompt found for this image."
+                                );
+                                return;
+                              }
+                              setInputText(sourcePrompt);
+                              resizeTextarea();
+                            }}
+                          >
+                            Regenerate
                           </Button>
+
+                          {/* Delete message */}
                           <Button
                             size="sm"
                             variant="outline"
                             onClick={() => {
                               const filtered = messages.filter(
-                                (_, i) => i !== idx
+                                (_: any, i: number) => i !== idx
                               );
                               updateCurrentChatMessages(filtered);
                               toast.success("Deleted message");
@@ -1940,95 +1981,6 @@ const CampaignCreate: React.FC = () => {
                   </Card>
                 </div>
               )}
-            </div>
-          )}
-          {/* Pending preview */}
-          {pendingGeneratedImage && (
-            <div className="mb-6">
-              <Card className="p-4 optim-deep-shadow">
-                <div className="flex flex-col md:flex-row gap-4">
-                  <div className="flex-1">
-                    <img
-                      src={pendingGeneratedImage}
-                      alt="preview"
-                      className="w-full rounded-lg object-contain"
-                    />
-                  </div>
-                  <div className="w-full md:w-80">
-                    <h4 className="font-semibold">Preview ready</h4>
-                    <p
-                      className="text-sm mt-2"
-                      style={{ color: colors.mutedForeground }}
-                    >
-                      Verify the generated image here. If it looks good, click
-                      Proceed to Publish. Otherwise, Regenerate or Dismiss.
-                    </p>
-                    <div className="mt-4 flex gap-2">
-                      <Button
-                        onClick={() => {
-                          setPendingGeneratedImage(null);
-                          toast("Preview dismissed");
-                        }}
-                        variant="outline"
-                      >
-                        Dismiss
-                      </Button>
-                      <Button
-                        style={{
-                          background: colors.gradientPrimary,
-                          color: colors.primaryForeground,
-                        }}
-                        onClick={handleProceedToPublish}
-                        className="hover:scale-105 transition-transform"
-                      >
-                        Proceed to Publish
-                      </Button>
-                      <Button
-                        variant="outline"
-                        onClick={() => {
-                          setPendingGeneratedImage(null);
-                          startGenerate();
-                        }}
-                      >
-                        Regenerate
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </Card>
-            </div>
-          )}
-          {/* Generated gallery */}
-          {generatedImages.length > 0 && (
-            <div className="mb-6">
-              <h3 className="font-semibold mb-3">Generated Images</h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                {generatedImages.map((g, idx) => (
-                  <div
-                    key={idx}
-                    className="relative group rounded overflow-hidden shadow-sm"
-                  >
-                    <img
-                      src={g}
-                      alt={`generated-${idx}`}
-                      className="w-full h-40 object-cover"
-                    />
-                    <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() =>
-                          setGeneratedImages((prev) =>
-                            prev.filter((_, i) => i !== idx)
-                          )
-                        }
-                      >
-                        <X className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
             </div>
           )}
         </main>
@@ -2092,27 +2044,38 @@ const CampaignCreate: React.FC = () => {
                   <div className="absolute bottom-full mb-2 right-0 bg-white border p-2 rounded shadow-lg z-40 w-44">
                     <div className="text-xs font-semibold mb-2">Pick theme</div>
                     <div className="flex flex-col gap-2">
-                      {["professional", "playful", "Realisitc, festive","minimal", "dynamic", "luxury", "elegant", "trendy", "bold-offer", "launch",  "testimonial", "Retro"].map(
-                        (t) => (
-                          <button
-                            key={t}
-                            onClick={() => {
-                              setQuickSettings((q) => ({
-                                ...q,
-                                tone: t,
-                                themeEnabled: true,
-                              }));
-                              setShowThemeOptions(false);
-                              toast.success(`Theme: ${t}`);
-                            }}
-                            className={`text-left px-2 py-1 rounded ${
-                              quickSettings.tone === t ? "bg-primary/10" : ""
-                            }`}
-                          >
-                            {t}
-                          </button>
-                        )
-                      )}
+                      {[
+                        "professional",
+                        "playful",
+                        "Realisitc, festive",
+                        "minimal",
+                        "dynamic",
+                        "luxury",
+                        "elegant",
+                        "trendy",
+                        "bold-offer",
+                        "launch",
+                        "testimonial",
+                        "Retro",
+                      ].map((t) => (
+                        <button
+                          key={t}
+                          onClick={() => {
+                            setQuickSettings((q) => ({
+                              ...q,
+                              tone: t,
+                              themeEnabled: true,
+                            }));
+                            setShowThemeOptions(false);
+                            toast.success(`Theme: ${t}`);
+                          }}
+                          className={`text-left px-2 py-1 rounded ${
+                            quickSettings.tone === t ? "bg-primary/10" : ""
+                          }`}
+                        >
+                          {t}
+                        </button>
+                      ))}
                     </div>
                   </div>
                 )}
@@ -2407,23 +2370,21 @@ const CampaignCreate: React.FC = () => {
                             <Button
                               size="sm"
                               onClick={async () => {
-                                const user = await getCurrentUser();
-                                if (!user) {
-                                  toast.error("Sign in to save logo");
-                                  return;
-                                }
-                                if (!logoFile) {
-                                  toast.error("No logo selected");
-                                  return;
-                                }
                                 try {
-                                  // save under user-uploads/{user.id}/logo/{filename} to match onboarding
+                                  const user = await getCurrentUser();
+                                  if (!user) {
+                                    toast.error("Sign in to save logo");
+                                    return;
+                                  }
+                                  if (!logoFile) {
+                                    toast.error("No logo selected");
+                                    return;
+                                  }
                                   const { path, publicUrl } =
                                     await uploadFileToUserUploads(
                                       logoFile,
                                       "logo"
                                     );
-                                  // <-- FIX: removed invalid `returning` option
                                   await supabase
                                     .from("profiles")
                                     .upsert({ id: user.id, logo_path: path });
@@ -3031,4 +2992,4 @@ const CampaignCreate: React.FC = () => {
   );
 };
 
-export default dynamic(()=> Promise.resolve(CampaignCreate), { ssr: false });
+export default dynamic(() => Promise.resolve(CampaignCreate), { ssr: false });

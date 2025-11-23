@@ -1,4 +1,3 @@
-// pages/integrationsbeta.tsx
 "use client";
 
 import React, { useEffect, useState } from "react";
@@ -14,6 +13,7 @@ type BetaInsertPayload = {
   facebook_username: string | null;
   email: string | null;
   mobile_number: string | null;
+  business_page_id?: string | null;
 };
 
 export default function IntegrationsBetaPage(): React.ReactElement {
@@ -29,6 +29,7 @@ export default function IntegrationsBetaPage(): React.ReactElement {
   const [facebookUsername, setFacebookUsername] = useState("");
   const [email, setEmail] = useState("");
   const [mobileNumber, setMobileNumber] = useState("");
+  const [businessPageId, setBusinessPageId] = useState("");
 
   const [step, setStep] = useState<1 | 2>(1);
   const [submitting, setSubmitting] = useState(false);
@@ -92,6 +93,7 @@ export default function IntegrationsBetaPage(): React.ReactElement {
         facebook_username: facebookUsername || null,
         email: email || userEmail || null,
         mobile_number: mobileNumber || null,
+        business_page_id: businessPageId || null,
       };
 
       const { error: insertErr } = await supabase
@@ -112,17 +114,21 @@ export default function IntegrationsBetaPage(): React.ReactElement {
     }
   };
 
+  // Form validation: all fields mandatory per your request
+  const isFormValid =
+    String(instagramUsername).trim().length > 0 &&
+    String(facebookUsername).trim().length > 0 &&
+    String(email).trim().length > 0 &&
+    String(mobileNumber).trim().length > 0 &&
+    String(businessPageId).trim().length > 0;
+
   return (
     <div className="min-h-screen flex relative overflow-hidden">
       {/* Background layers (same theme vibe) */}
       <div
         className="absolute inset-0 -z-20"
         style={{
-          backgroundImage: `linear-gradient(135deg, ${
-            (colors as any)?.background ?? "#eff6ff"
-          } 0%, ${(colors as any)?.primary ?? "hsl(213 90% 56%)"}1f 45%, ${
-            (colors as any)?.background ?? "#ffffff"
-          } 100%)`,
+          backgroundImage: `linear-gradient(135deg, ${(colors as any)?.background ?? "#eff6ff"} 0%, ${(colors as any)?.primary ?? "hsl(213 90% 56%)"}1f 45%, ${(colors as any)?.background ?? "#ffffff"} 100%)`,
         }}
       />
       <div
@@ -171,6 +177,22 @@ export default function IntegrationsBetaPage(): React.ReactElement {
                 <span>Optim</span>
                 <span style={{ color: primaryColor }}>X</span>
               </div>
+            </div>
+
+            {/* Skip text (go to dashboard) */}
+            <div>
+              <button
+                type="button"
+                onClick={() => router.push("/dashboard")}
+                className="text-sm underline-offset-2 hover:underline"
+                style={{
+                  color: mutedForeground,
+                  background: "transparent",
+                  border: "none",
+                }}
+              >
+                Skip
+              </button>
             </div>
           </header>
 
@@ -250,6 +272,18 @@ export default function IntegrationsBetaPage(): React.ReactElement {
 
                     <label className="block">
                       <div className="text-sm font-medium mb-1 text-slate-800">
+                        Business Page ID
+                      </div>
+                      <input
+                        value={businessPageId}
+                        onChange={(e) => setBusinessPageId(e.target.value)}
+                        placeholder="123456789012345"
+                        className="w-full rounded-lg border border-slate-200 p-3 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 bg-white/80"
+                      />
+                    </label>
+
+                    <label className="block">
+                      <div className="text-sm font-medium mb-1 text-slate-800">
                         Email
                       </div>
                       <input
@@ -283,17 +317,34 @@ export default function IntegrationsBetaPage(): React.ReactElement {
                         anything else.
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={handleSubmit}
-                        disabled={submitting || loading || !userId}
-                        className="px-5 py-3 rounded-lg text-white text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed transition-transform shadow-md"
-                        style={{
-                          backgroundColor: primaryColor,
-                        }}
-                      >
-                        {submitting ? "Submitting…" : "Verify & Activate"}
-                      </button>
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={handleSubmit}
+                          disabled={
+                            submitting || loading || !userId || !isFormValid
+                          }
+                          className="px-5 py-3 rounded-lg text-white text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed transition-transform shadow-md"
+                          style={{
+                            backgroundColor: primaryColor,
+                          }}
+                        >
+                          {submitting ? "Submitting…" : "Verify & Activate"}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => router.push("/dashboard")}
+                          className="text-sm underline-offset-2 hover:underline"
+                          style={{
+                            color: mutedForeground,
+                            background: "transparent",
+                            border: "none",
+                          }}
+                        >
+                          Skip
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </>
@@ -334,6 +385,10 @@ export default function IntegrationsBetaPage(): React.ReactElement {
                   {facebookUsername || "—"}
                 </div>
                 <div>
+                  <span className="font-medium">Business Page ID:</span>{" "}
+                  {businessPageId || "—"}
+                </div>
+                <div>
                   <span className="font-medium">Email:</span>{" "}
                   {email || userEmail || "—"}
                 </div>
@@ -362,6 +417,7 @@ export default function IntegrationsBetaPage(): React.ReactElement {
                     setInstagramUsername("");
                     setFacebookUsername("");
                     setMobileNumber("");
+                    setBusinessPageId("");
                   }}
                   className="px-4 py-2 rounded-lg text-sm font-medium border border-slate-300 bg-white/80 hover:bg-slate-50"
                 >

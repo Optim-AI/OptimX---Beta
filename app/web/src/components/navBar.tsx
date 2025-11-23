@@ -12,53 +12,127 @@ export default function NavBar() {
 
   useEffect(() => {
     let channel: any;
+    let intervalId: any;
+    let currentUserId: string | null = null;
+    let cancelled = false;
 
-    const fetchData = async () => {
-      const { data: userData } = await supabase.auth.getUser();
-      const user = userData?.user;
+    const fetchCredits = async (userId: string) => {
+      try {
+        const { data, error } = await supabase
+          .from("user_credits")
+          .select("credits")
+          .eq("id", userId)
+          .single();
 
-      if (!user) {
-        setUsername("Guest");
-        setCredits(0);
-        setLoading(false);
-        return;
+        if (error) {
+          console.warn("fetchCredits error", error);
+          return;
+        }
+
+        if (!cancelled && typeof data?.credits === "number") {
+          setCredits(data.credits);
+        }
+      } catch (e) {
+        console.warn("fetchCredits failed", e);
       }
-
-      setUsername(user.user_metadata?.full_name || user.email || "User");
-
-      const { data } = await supabase
-        .from("user_credits")
-        .select("credits")
-        .eq("id", user.id)
-        .single();
-
-      if (data?.credits !== undefined) setCredits(data.credits);
-
-      // Realtime credit update listener
-      channel = supabase
-        .channel("credits_updates")
-        .on(
-          "postgres_changes",
-          {
-            event: "UPDATE",
-            schema: "public",
-            table: "user_credits",
-            filter: `id=eq.${user.id}`,
-          },
-          (payload: any) => {
-            const newCredits = payload.new?.credits;
-            if (typeof newCredits === "number") setCredits(newCredits);
-          }
-        )
-        .subscribe();
-
-      setLoading(false);
     };
 
-    fetchData();
+    const init = async () => {
+      try {
+        const { data: userData, error: userError } = await supabase.auth.getUser();
+        if (userError) {
+          console.warn("auth.getUser error", userError);
+        }
 
+        const user = userData?.user;
+
+        if (!user) {
+          if (!cancelled) {
+            setUsername("Guest");
+            setCredits(0);
+            setLoading(false);
+          }
+          return;
+        }
+
+        currentUserId = user.id;
+
+        if (!cancelled) {
+          setUsername(user.user_metadata?.full_name || user.email || "User");
+        }
+
+        // Initial credits fetch
+        await fetchCredits(user.id);
+
+        // Realtime credit update listener
+        channel = supabase
+          .channel("credits_updates")
+          .on(
+            "postgres_changes",
+            {
+              event: "UPDATE",
+              schema: "public",
+              table: "user_credits",
+              filter: `id=eq.${user.id}`,
+            },
+            (payload: any) => {
+              const newCredits = payload.new?.credits;
+              if (!cancelled && typeof newCredits === "number") {
+                setCredits(newCredits);
+              }
+            }
+          )
+          .subscribe((status) => {
+            if (status === "SUBSCRIBED") {
+              // Realtime is ready
+            }
+          });
+
+        // Polling fallback: in case realtime is not firing for any reason
+        intervalId = setInterval(() => {
+          if (currentUserId) {
+            fetchCredits(currentUserId);
+          }
+        }, 5000); // every 5 seconds
+
+        // Refetch when window gets focus (tab switch back)
+        const handleFocus = () => {
+          if (currentUserId) {
+            fetchCredits(currentUserId);
+          }
+        };
+        window.addEventListener("focus", handleFocus);
+
+        if (!cancelled) {
+          setLoading(false);
+        }
+
+        // Cleanup
+        return () => {
+          cancelled = true;
+          if (channel) supabase.removeChannel(channel);
+          if (intervalId) clearInterval(intervalId);
+          window.removeEventListener("focus", handleFocus);
+        };
+      } catch (e: any) {
+        console.error("NavBar init error", e);
+        if (!cancelled) {
+          toast.error("Failed to load user info");
+          setLoading(false);
+        }
+      }
+    };
+
+    // run
+    const cleanupPromise = init();
+
+    // outer cleanup
     return () => {
-      if (channel) supabase.removeChannel(channel);
+      (async () => {
+        cancelled = true;
+        if (channel) supabase.removeChannel(channel);
+        if (intervalId) clearInterval(intervalId);
+      })();
     };
   }, []);
 
