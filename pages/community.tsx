@@ -159,9 +159,6 @@ const Community: React.FC = () => {
                   <br /> Join our Discord for real-time help and product announcements.
                 </p>
                 <div className="mt-3 flex gap-3">
-                  <Button size="sm" variant="outline" asChild>
-                    <a href={handles.discord} target="_blank" rel="noreferrer">Join Discord</a>
-                  </Button>
                   <Button size="sm" style={{ background: colors.gradientPrimary, color: colors.primaryForeground }}>
                     <a href="/support" className="flex items-center gap-2">Contact Support</a>
                   </Button>
