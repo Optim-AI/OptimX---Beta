@@ -633,7 +633,7 @@ export default function DashboardPage(): JSX.Element {
           </div>
 
           <div className="flex items-center gap-4">
-            <Link href="/campaigns/create" legacyBehavior>
+            <Link href="/create-campaign" legacyBehavior>
               <a>
                 <Button size="lg" className="!px-5 !py-3" style={primaryColor ? { background: gradientPrimary ?? primaryColor, color: "#fff" } : undefined}>
                   <Plus className="w-5 h-5 mr-2" /> New Campaign
