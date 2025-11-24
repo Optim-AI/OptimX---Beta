@@ -6,6 +6,7 @@ import {
   Facebook,
   Linkedin,
   MessageCircle,
+  Bell
 } from "lucide-react";
 import { Button } from "../app/web/src/components/ui/button";
 import colors from "../lib/colors";
