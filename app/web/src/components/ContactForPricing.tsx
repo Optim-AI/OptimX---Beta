@@ -72,7 +72,7 @@ export default function ContactForPricing() {
                     className="text-2xl font-bold mb-4"
                     style={{ color: colors.foreground }}
                   >
-                    Simple, Transparent Pricing
+                    Invest in growth, not subscriptions
                   </h3>
                   <p className="mb-6" style={{ color: colors.mutedForeground }}>
                     Get in touch with us to learn about our pricing plans and
