@@ -108,14 +108,7 @@ const Community: React.FC = () => {
 
             <div className="mt-6 social-grid">
               {/* Primary social buttons */}
-              <a href={handles.twitter} target="_blank" rel="noreferrer" className="flex items-center gap-3 p-4 rounded-lg border" style={{ borderColor: withAlpha(colors.border, 0.6), background: colors.card }}>
-                <Twitter className="h-6 w-6" style={{ color: colors.primary }} />
-                <div>
-                  <div style={{ color: colors.foreground, fontWeight: 700 }}>Twitter / X</div>
-                  <div style={{ color: colors.mutedForeground, fontSize: 13 }}>@optimxapp</div>
-                </div>
-              </a>
-
+        
               <a href={handles.instagram} target="_blank" rel="noreferrer" className="flex items-center gap-3 p-4 rounded-lg border" style={{ borderColor: withAlpha(colors.border, 0.6), background: colors.card }}>
                 <Instagram className="h-6 w-6" style={{ color: colors.primary }} />
                 <div>
@@ -140,60 +133,11 @@ const Community: React.FC = () => {
                 </div>
               </a>
 
-              <a href={handles.youtube} target="_blank" rel="noreferrer" className="flex items-center gap-3 p-4 rounded-lg border" style={{ borderColor: withAlpha(colors.border, 0.6), background: colors.card }}>
-                <Youtube className="h-6 w-6" style={{ color: colors.primary }} />
-                <div>
-                  <div style={{ color: colors.foreground, fontWeight: 700 }}>YouTube</div>
-                  <div style={{ color: colors.mutedForeground, fontSize: 13 }}>@optimx</div>
-                </div>
-              </a>
-
-              <a href={handles.github} target="_blank" rel="noreferrer" className="flex items-center gap-3 p-4 rounded-lg border" style={{ borderColor: withAlpha(colors.border, 0.6), background: colors.card }}>
-                <Github className="h-6 w-6" style={{ color: colors.primary }} />
-                <div>
-                  <div style={{ color: colors.foreground, fontWeight: 700 }}>GitHub</div>
-                  <div style={{ color: colors.mutedForeground, fontSize: 13 }}>Open-source & integrations</div>
-                </div>
-              </a>
-
-              {/* Extended handles */}
-              <a href={handles.tiktok} target="_blank" rel="noreferrer" className="flex items-center gap-3 p-4 rounded-lg border" style={{ borderColor: withAlpha(colors.border, 0.6), background: colors.card }}>
-                <Hash className="h-6 w-6" style={{ color: colors.primary }} />
-                <div>
-                  <div style={{ color: colors.foreground, fontWeight: 700 }}>TikTok</div>
-                  <div style={{ color: colors.mutedForeground, fontSize: 13 }}>@optimx</div>
-                </div>
-              </a>
-
-              <a href={handles.threads} target="_blank" rel="noreferrer" className="flex items-center gap-3 p-4 rounded-lg border" style={{ borderColor: withAlpha(colors.border, 0.6), background: colors.card }}>
-                <Globe className="h-6 w-6" style={{ color: colors.primary }} />
-                <div>
-                  <div style={{ color: colors.foreground, fontWeight: 700 }}>Threads</div>
-                  <div style={{ color: colors.mutedForeground, fontSize: 13 }}>@optimx</div>
-                </div>
-              </a>
-
-              <a href={handles.telegram} target="_blank" rel="noreferrer" className="flex items-center gap-3 p-4 rounded-lg border" style={{ borderColor: withAlpha(colors.border, 0.6), background: colors.card }}>
-                <MessageCircle className="h-6 w-6" style={{ color: colors.primary }} />
-                <div>
-                  <div style={{ color: colors.foreground, fontWeight: 700 }}>Telegram</div>
-                  <div style={{ color: colors.mutedForeground, fontSize: 13 }}>t.me/optimx</div>
-                </div>
-              </a>
-
               <a href={handles.whatsapp} target="_blank" rel="noreferrer" className="flex items-center gap-3 p-4 rounded-lg border" style={{ borderColor: withAlpha(colors.border, 0.6), background: colors.card }}>
                 <Bell className="h-6 w-6" style={{ color: colors.primary }} />
                 <div>
                   <div style={{ color: colors.foreground, fontWeight: 700 }}>WhatsApp</div>
                   <div style={{ color: colors.mutedForeground, fontSize: 13 }}>Message our support</div>
-                </div>
-              </a>
-
-              <a href={handles.reddit} target="_blank" rel="noreferrer" className="flex items-center gap-3 p-4 rounded-lg border col-span-full" style={{ borderColor: withAlpha(colors.border, 0.6), background: colors.card }}>
-                <Globe className="h-6 w-6" style={{ color: colors.primary }} />
-                <div>
-                  <div style={{ color: colors.foreground, fontWeight: 700 }}>Reddit</div>
-                  <div style={{ color: colors.mutedForeground, fontSize: 13 }}>r/optimx — community discussions</div>
                 </div>
               </a>
 
