@@ -252,9 +252,9 @@ const Hero: React.FC = () => {
               {/* removed the smaller inline font-size so both lines match */}
               <span
                 className="block mb-2 reveal-left"
-                style={{ animationDelay: "0.18s", color: colors.foreground }}
+                style={{ animationDelay: "0.15s", color: colors.foreground }}
               >
-                Marketing Made
+               Do marketing like the big brands
               </span>
 
               <span
@@ -268,7 +268,7 @@ const Hero: React.FC = () => {
                   color: "transparent",
                 }}
               >
-                Simple & Powerful
+                without the big budget or team.
               </span>
             </h1>
 
@@ -277,7 +277,7 @@ const Hero: React.FC = () => {
               className="text-lg md:text-xl mb-8 max-w-2xl mx-auto lg:mx-0 leading-relaxed"
               style={{ color: colors.mutedForeground }}
             >
-              Launch campaigns across Google, Meta, Instagram & WhatsApp in
+              Launch campaigns across Google, Meta(Facebook), Instagram & WhatsApp in
               minutes.{" "}
               <span style={{ fontWeight: 600, color: colors.foreground }}>
                 No agencies. No complexity.
