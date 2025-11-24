@@ -23,17 +23,17 @@ const FAQ: React.FC = () => {
     {
       question: 'Do I need a marketing background?',
       answer:
-        "Nope. OptimX handles copy, design, targeting, SEO, and insights for you. Our AI is trained on best practices from thousands of successful campaigns, so you get expert-level marketing without the expertise."
+        "No. OptimX handles copy, design, targeting, SEO, and insights for you. Our AI is trained on best practices from thousands of successful campaigns, so you get expert-level marketing without the expertise."
     },
     {
       question: 'Which platforms are supported?',
       answer:
-        'Google, Meta (Facebook), Instagram, WhatsApp, LinkedIn, and more coming soon. We integrate with all major advertising platforms and social media channels to give you maximum reach.'
+        'Google, Meta (Facebook), Instagram, Whatsapp business, LinkedIn. We integrate with all major advertising platforms and social media channels to give you maximum results.'
     },
     {
-      question: 'Can I track organic results too?',
+      question: 'Can I track organic results too?'
       answer:
-        'Yes, SEO and content performance are fully integrated. Track your website rankings, organic traffic, content engagement, and see how your paid and organic efforts work together.'
+        'Yes, you can track your website rankings, organic traffic, content engagement, and see how your paid and organic efforts work together.'
     },
     {
       question: 'Can I hire freelancers or influencers?',
@@ -48,17 +48,17 @@ const FAQ: React.FC = () => {
     {
       question: 'What if I want to cancel?',
       answer:
-        "You can cancel anytime with no penalties. We believe in earning your business every month. If you cancel, you'll keep access to your account data and can restart whenever you want."
+        "You can cancel anytime. If you cancel, you'll keep access to your account data and can restart whenever you want."
     },
     {
       question: 'How much should I budget for ads?',
       answer:
-        "Start with whatever you're comfortable with. OptimX works with budgets as low as $10/day. Our AI helps optimize your spend to get the best results, regardless of budget size."
+        "Start with whatever you're comfortable with. OptimX works with budgets as low as ₹100/day. Our AI helps optimize your spend to get the best results, regardless of budget size."
     },
     {
       question: 'Is my data secure?',
       answer:
-        "Absolutely. We use enterprise-grade security, encrypt all data in transit and at rest, and never share your information with third parties. We're SOC 2 compliant and follow industry best practices."
+        "Absolutely. We use enterprise grade security, encrypt all data in transit and at rest, and never share your information with third parties. We're SOC 2 compliant and follow industry best practices."
     }
   ];
 
