@@ -21,12 +21,12 @@ const FAQ: React.FC = () => {
 
   const faqs: FAQItem[] = [
     {
-      question: 'Do I need a marketing background?',
+      question: 'Do I need a marketing background?'
       answer:
         "No. OptimX handles copy, design, targeting, SEO, and insights for you. Our AI is trained on best practices from thousands of successful campaigns, so you get expert-level marketing without the expertise."
     },
     {
-      question: 'Which platforms are supported?',
+      question: 'Which platforms are supported?'
       answer:
         'Google, Meta (Facebook), Instagram, Whatsapp business, LinkedIn. We integrate with all major advertising platforms and social media channels to give you maximum results.'
     },
@@ -41,26 +41,41 @@ const FAQ: React.FC = () => {
         "Yes, directly through OptimX's marketplace. Find vetted designers, copywriters, videographers, and local influencers who understand your industry and can help scale your campaigns."
     },
     {
-      question: 'How does AI targeting work?',
+      question: 'How does AI targeting work?'
       answer:
         'Our AI analyzes your business, competitors, and successful campaigns in your industry to identify the most promising audiences. It continuously optimizes based on performance data to improve results over time.'
     },
     {
-      question: 'What if I want to cancel?',
+      question: 'What if I want to cancel?'
       answer:
         "You can cancel anytime. If you cancel, you'll keep access to your account data and can restart whenever you want."
     },
     {
-      question: 'How much should I budget for ads?',
+      question: 'How much should I budget for ads?'
       answer:
         "Start with whatever you're comfortable with. OptimX works with budgets as low as ₹100/day. Our AI helps optimize your spend to get the best results, regardless of budget size."
     },
     {
-      question: 'Is my data secure?',
+      question: 'Is my data secure?'
       answer:
         "Absolutely. We use enterprise grade security, encrypt all data in transit and at rest, and never share your information with third parties. We're SOC 2 compliant and follow industry best practices."
-    }
-  ];
+    },
+    {
+      question: 'Do I need marketing experience to use OptimX?'
+      answer:
+        "No. OptimX does the heavy lifting. It writes ads, builds audiences, launches campaigns, and generates reports automatically. If you can run a phone, you can run OptimX." 
+    },
+    { 
+      question: 'What makes OptimX different from Meta Ads / Google Ads / Canva / Buffer?'
+      answer:
+       "Those are tools. OptimX is the entire growth system — ads + content + posting + SEO + analytics + brand voice + influencers — under one roof."
+    },
+    { 
+      questions: 'I’ve tried ads before and lost money. What makes this different?'
+      answer:
+      "OptimX makes sure your money goes to what actually works. It warns you when a campaign is underperforming and suggests fixes so you don’t waste your budget."
+    },
+    ];
 
   return (
     <section
