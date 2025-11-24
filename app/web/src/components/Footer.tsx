@@ -25,13 +25,10 @@ const Footer: React.FC = () => {
     Company: [
       { name: 'About', href: '/About', type: 'route' },
       { name: 'Careers', href: '/Careers', type: 'route' },
-      { name: 'Blog', href: '/blogs', type: 'route' },
-      { name: 'Press', href: '/press', type: 'route' },
     ],
     Resources: [
       { name: 'Help Center', href: '/help-center', type: 'route' },
       { name: 'Tutorials', href: '/tutorials', type: 'route' },
-      { name: 'API Docs', href: '/api-Docs', type: 'route' },
       { name: 'Community', href: '/community', type: 'route' },
     ],
     Legal: [
@@ -54,7 +51,6 @@ const Footer: React.FC = () => {
     Company: [
       { name: 'About', href: '/about', type: 'route' },
       { name: 'Careers', href: '/careers', type: 'route' },
-      { name: 'Blog', href: '/blog', type: 'route' },
       { name: 'Contact', href: '/Contact', type: 'route' },
     ],
   };
@@ -109,7 +105,7 @@ const Footer: React.FC = () => {
     {
       name: 'Facebook',
       icon: Facebook,
-      href: 'https://www.facebook.com/profile.php?id=61571446107024',
+      href: 'https://www.facebook.com/share/1BNxZDcfRe/?mibextid=wwXIfr',
     },
     {
       name: 'Instagram',
@@ -121,7 +117,6 @@ const Footer: React.FC = () => {
       icon: Linkedin,
       href: 'https://www.linkedin.com/company/optim01/?viewAsMember=true',
     },
-    { name: 'Twitter', icon: Twitter, href: '#' },
   ];
 
   return (
