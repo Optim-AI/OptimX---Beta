@@ -27,16 +27,16 @@ const Features: React.FC = () => {
   const { elementRef: cardsRef, isVisible: cardsVisible } = useScrollAnimation({ threshold: 0.05 });
 
   const features: Feature[] = [
-    { icon: Wand2, title: 'AI Ad Design & Copywriting', description: 'Skip the agency. Get ads designed and written instantly.' },
-    { icon: Target, title: 'Smart Targeting', description: 'Reach the right customers on Google, Meta, Instagram & WhatsApp.' },
-    { icon: Zap, title: 'One-Click Campaign Launch', description: 'Publish everywhere from a single dashboard.' },
+    { icon: Wand2, title: 'AI Ad Studio', description: 'Create scroll-stopping ads with instant copy and designs — no agency needed.' },
+    { icon: Target, title: 'Laser-Targeted Campaigns', description: 'Reach the right customers across Meta(Facebook), Google, Instagram & WhatsApp with precision.' },
+    { icon: Zap, title: 'One-Click Campaign Launch', description: 'Publish everywhere in one click from a single dashboard. No hopping tabs.' },
     { icon: BarChart3, title: 'Analytics & Insights', description: 'Track results, optimize spend, and grow smarter.' },
     { icon: Search, title: 'SEO & Content Engine', description: 'Optimize your website, blog, and landing pages for Google without a content team.' },
-    { icon: Palette, title: 'AI Brand Guide', description: 'Define your brand tone, voice, and messaging in minutes.' },
-    { icon: Star, title: 'Reputation & Social Listening', description: 'Monitor reviews, mentions, and respond with AI-assisted suggestions.' },
+    { icon: Palette, title: 'AI Brand Voice & Messaging', description: 'Lock in your brand tone, slogans, and messaging in minutes — keep everything consistent everywhere.' },
+    { icon: Star, title: 'Reputation & Review Intelligence', description: 'Monitor reviews and mentions online with AI-guided replies and escalation alerts.' },
     { icon: Users, title: 'Influencer & Freelancer Marketplace', description: 'Hire designers, writers, or local influencers directly from OptimX.' },
-    { icon: Calendar, title: 'Multi-Channel Posting', description: 'Schedule posts across Meta, Instagram, LinkedIn, WhatsApp, and more from one place.' },
-    { icon: TrendingUp, title: 'Campaign History & Insights', description: 'See past campaigns, AI-generated reports, and recommendations for improvement.' }
+    { icon: Calendar, title: 'Multi-Channel Posting', description: 'Schedule and auto-publish posts on Meta(Facebook), Instagram, LinkedIn, WhatsApp and more.' },
+    { icon: TrendingUp, title: 'Insights & Growth Analytics', description: 'View real-time ROI, performance breakdowns, and AI recommendations on what to improve next.' }
   ];
 
   return (
