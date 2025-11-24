@@ -256,7 +256,7 @@ const Footer: React.FC = () => {
             © {new Date().getFullYear()} OptimX. All rights reserved.
           </div>
           <div style={{ color: colors.mutedForeground, fontSize: 14 }}>
-            Made with ❤️ for small & Medium businesses everywhere
+            Made with ❤️ for small & medium businesses everywhere
           </div>
         </div>
       </div>
