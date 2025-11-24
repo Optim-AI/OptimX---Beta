@@ -1,18 +1,11 @@
 "use client";
 
 import React, { useRef, useEffect } from "react";
-import { Sparkles, 
-  Twitter,
+import { 
   Instagram,
   Facebook,
   Linkedin,
-  Youtube,
-  Github,
-  Globe,
   MessageCircle,
-  Slack,
-  Bell,
-  Hash,
 } from "lucide-react";
 import { Button } from "../app/web/src/components/ui/button";
 import colors from "../lib/colors";
@@ -37,21 +30,10 @@ const Community: React.FC = () => {
 
   // Company social links (update to real handles as needed)
   const handles = {
-    twitter: "https://twitter.com/optimxapp",
-    instagram: "https://instagram.com/optimx.app",
-    facebook: "https://facebook.com/optimx.app",
-    linkedin: "https://www.linkedin.com/company/optimx",
-    youtube: "https://www.youtube.com/@optimx",
-    github: "https://github.com/optimx",
-    tiktok: "https://www.tiktok.com/@optimx",
-    threads: "https://www.threads.net/@optimx",
-    telegram: "https://t.me/optimx",
-    whatsapp: "https://wa.me/919000000000", // replace with real number
-    reddit: "https://www.reddit.com/r/optimx",
-    pinterest: "https://www.pinterest.com/optimx",
-    mastodon: "https://mastodon.social/@optimx",
-    medium: "https://medium.com/@optimx",
-    discord: "https://discord.gg/optimx",
+    instagram: "https://www.instagram.com/optimx.ai?igsh=MW4wcjN6NXByMmFqbg==",
+    facebook: "https://www.facebook.com/share/1BNxZDcfRe/?mibextid=wwXIfr",
+    linkedin: "https://www.linkedin.com/company/optimx-app",
+    whatsapp: "https://wa.me/919003815101",
   } as const;
 
   return (
