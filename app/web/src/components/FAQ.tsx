@@ -36,7 +36,7 @@ const FAQ: React.FC = () => {
         'Yes, you can track your website rankings, organic traffic, content engagement, and see how your paid and organic efforts work together.'
     },
     {
-      question: 'Can I hire freelancers or influencers?',
+      question: 'Can I hire freelancers or influencers?'
       answer:
         "Yes, directly through OptimX's marketplace. Find vetted designers, copywriters, videographers, and local influencers who understand your industry and can help scale your campaigns."
     },
@@ -99,7 +99,7 @@ const FAQ: React.FC = () => {
             className="text-xl"
             style={{ color: colors.mutedForeground }}
           >
-            Got questions? We've got answers. If you can't find what you're looking for, reach out to our team.
+            Got questions? We've got answers. If you can't find what you're looking for, reach out to our team at info@optimx.appp.
           </p>
         </div>
 
