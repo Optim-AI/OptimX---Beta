@@ -6,7 +6,7 @@ export interface AspectRatioProps
 }
 
 const AspectRatio = React.forwardRef<HTMLDivElement, AspectRatioProps>(
-  ({ ratio = 16 / 9, style, children, ...props }, ref) => {
+  ({ ratio = 16 / 9, style, className, children, ...props }, ref) => {
     return (
       <div
         ref={ref}
@@ -19,9 +19,11 @@ const AspectRatio = React.forwardRef<HTMLDivElement, AspectRatioProps>(
         {...props}
       >
         <div
+          className={className}
           style={{
             position: "absolute",
             inset: 0,
+            overflow: "hidden",
           }}
         >
           {children}
