@@ -59,29 +59,34 @@ const FinalCTA: React.FC = () => {
             </span>
           </div>
 
-          <h2 className="text-4xl md:text-5xl lg:text-6xl font-bold mb-6 leading-tight" style={{ color: colors.foreground }}>
-            Run campaigns like the{' '}
-            <span
-              className="gradient-text"
-              style={{
-                backgroundImage: colors.gradientHero,
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                backgroundClip: 'text',
-                color: 'transparent',
-              }}
-            >
-              big brands
-            </span>{' '}
-            — <br className="hidden md:block" />
-            without the big budget or team.
-          </h2>
+         <h2
+  className="text-4xl md:text-5xl lg:text-6xl font-bold mb-6 leading-tight"
+  style={{ color: colors.foreground }}
+>
+  Launch better campaigns in minutes. Not with a big team
+  <br className="hidden md:block" />
+  <span
+    className="gradient-text"
+    style={{
+      backgroundImage: colors.gradientHero,
+      WebkitBackgroundClip: 'text',
+      WebkitTextFillColor: 'transparent',
+      backgroundClip: 'text',
+      color: 'transparent',
+    }}
+  >
+    but with OptimX.
+  </span>
+</h2>
 
-          <p className="text-xl mb-10 max-w-3xl mx-auto leading-relaxed" style={{ color: colors.mutedForeground }}>
-            Join thousands of businesses already using OptimX to grow faster, spend smarter,
-            and achieve better results than ever before.
-          </p>
-
+<p
+  className="text-xl mb-10 max-w-3xl mx-auto leading-relaxed"
+  style={{ color: colors.mutedForeground }}
+>
+  Join thousands of businesses already using OptimX to grow faster, spend smarter,
+  and achieve better results than ever before.
+</p>
+          
           <div
             className={`flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-6 transition-all duration-700 ${
               ctaVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10'
