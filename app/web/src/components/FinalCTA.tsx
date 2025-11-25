@@ -66,7 +66,7 @@ const FinalCTA: React.FC = () => {
             className="text-3xl md:text-5xl lg:text-6xl font-bold mb-6 leading-tight"
             style={{ color: colors.foreground }}
           >
-            Launch better campaigns in minutes. Not with a big team
+            Launch better campaigns in minutes, not with a big team.
             <br className="hidden md:block" />
             <span
               className="gradient-text"
@@ -78,7 +78,7 @@ const FinalCTA: React.FC = () => {
                 color: 'transparent',
               }}
             >
-              but with OptimX.
+              But with OptimX.
             </span>
           </h2>
 
@@ -87,7 +87,7 @@ const FinalCTA: React.FC = () => {
             className="text-xl mb-10 max-w-3xl mx-auto leading-relaxed"
             style={{ color: colors.mutedForeground }}
           >
-            Be part of the OptimX circle — a growing group of business owners helping each other win.
+            Join the fastest growing community of small & medium businesses winning big with smarter marketing.
           </p>
 
           {/* CTA button */}
