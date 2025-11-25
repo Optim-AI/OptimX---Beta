@@ -5,35 +5,37 @@ import { Button } from './ui/button';
 import { ArrowRight, Sparkles } from 'lucide-react';
 import { useScrollAnimation } from '../hooks/use-scroll-animation';
 import colors from '../../../../lib/colors';
+import { useRouter } from 'next/navigation';
 
 const FinalCTA: React.FC = () => {
   const { elementRef: ctaRef, isVisible: ctaVisible } = useScrollAnimation({ threshold: 0.2 });
+  const router = useRouter();
 
   return (
     <section className="py-20 relative overflow-hidden">
-      {/* Modern mesh background effects (color tokens only; animations untouched) */}
+      {/* Background stuff */}
       <div
         className="absolute inset-0 mesh-gradient opacity-50"
         style={{
           background: colors.gradientMesh,
           opacity: 0.5,
         }}
-      ></div>
+      />
 
       <div
         className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 rounded-full blur-3xl animation-float"
         style={{
           backgroundColor: `${colors.primary} / 0.2`,
         }}
-      ></div>
+      />
 
       <div
         className="absolute top-1/4 right-1/4 w-64 h-64 rounded-full blur-3xl animation-float"
         style={{
-          backgroundColor: "hsl(213 100% 62% / 0.2)",
+          backgroundColor: 'hsl(213 100% 62% / 0.2)',
           animationDelay: '2s',
         }}
-      ></div>
+      />
 
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
         <div
@@ -42,14 +44,14 @@ const FinalCTA: React.FC = () => {
             ctaVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10'
           }`}
         >
+          {/* Pill */}
           <div
             className={`inline-flex items-center space-x-2 mb-6 px-4 py-2 backdrop-blur-sm rounded-full border transition-all duration-700 ${
               ctaVisible ? 'opacity-100 scale-100' : 'opacity-0 scale-90'
             }`}
             style={{
-              // token-based accent background & subtle border (keeps animation classes intact)
-              backgroundColor: "hsl(213 90% 96% / 0.5)",
-              borderColor: "hsl(213 100% 50% / 0.2)",
+              backgroundColor: 'hsl(213 90% 96% / 0.5)',
+              borderColor: 'hsl(213 100% 50% / 0.2)',
               transitionDelay: ctaVisible ? '200ms' : '0ms',
             }}
           >
@@ -59,34 +61,36 @@ const FinalCTA: React.FC = () => {
             </span>
           </div>
 
-         <h2
-  className="text-2xl md:text-5xl lg:text-4xl font-bold mb-6 leading-tight"
-  style={{ color: colors.foreground }}
->
-  Launch better campaigns in minutes. Not with a big team
-  <br className="hidden md:block" />
-  <span
-    className="gradient-text"
-    style={{
-      backgroundImage: colors.gradientHero,
-      WebkitBackgroundClip: 'text',
-      WebkitTextFillColor: 'transparent',
-      backgroundClip: 'text',
-      color: 'transparent',
-    }}
-  >
-    but with OptimX.
-  </span>
-</h2>
+          {/* Heading */}
+          <h2
+            className="text-3xl md:text-5xl lg:text-6xl font-bold mb-6 leading-tight"
+            style={{ color: colors.foreground }}
+          >
+            Launch better campaigns in minutes. Not with a big team
+            <br className="hidden md:block" />
+            <span
+              className="gradient-text"
+              style={{
+                backgroundImage: colors.gradientHero,
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                backgroundClip: 'text',
+                color: 'transparent',
+              }}
+            >
+              but with OptimX.
+            </span>
+          </h2>
 
-<p
-  className="text-xl mb-10 max-w-3xl mx-auto leading-relaxed"
-  style={{ color: colors.mutedForeground }}
->
-  Join thousands of businesses already using OptimX to grow faster, spend smarter,
-  and achieve better results than ever before.
-</p>
-          
+          {/* Subtext */}
+          <p
+            className="text-xl mb-10 max-w-3xl mx-auto leading-relaxed"
+            style={{ color: colors.mutedForeground }}
+          >
+            Be part of the OptimX circle — a growing group of business owners helping each other win.
+          </p>
+
+          {/* CTA button */}
           <div
             className={`flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-6 transition-all duration-700 ${
               ctaVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10'
@@ -102,21 +106,14 @@ const FinalCTA: React.FC = () => {
                 color: colors.primaryForeground,
                 boxShadow: colors.shadowGlow,
               }}
+              onClick={() => router.push('https://www.optimx.app/auth/signin')}
             >
               Get Started Free
               <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
             </Button>
-
-            <Button
-              variant="outline"
-              size="lg"
-              className="px-8 py-4 text-lg hover-lift"
-              asChild
-              >
-                <a href="/#features">Schedule a demo</a>
-            </Button>
           </div>
 
+          {/* Tiny reassurance */}
           <div
             className={`mt-8 text-sm transition-all duration-700 ${
               ctaVisible ? 'opacity-100' : 'opacity-0'
