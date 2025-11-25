@@ -7,6 +7,7 @@ import { supabase } from "../lib/supabaseClient";
 import { initFirebaseApp } from "../lib/firebaseClient";
 import { useRouter } from "next/router";
 import type { JSX } from "react";
+import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "../app/web/src/components/ui/card";
 import { Button } from "../app/web/src/components/ui/button";
 import { Input } from "../app/web/src/components/ui/input";
@@ -93,11 +94,7 @@ const HEARD_FROM_OPTIONS = [
   "Other"
 ];
 
-// Use your color tokens if available
 import colors from "../lib/colors";
-const { primary, mutedForeground } = (colors as any) || {};
-const primaryColor = typeof primary === "string" ? primary : undefined;
-const mutedFg = typeof mutedForeground === "string" ? mutedForeground : undefined;
 
 export default function SettingsPage(): JSX.Element {
   const router = useRouter();
@@ -105,8 +102,17 @@ export default function SettingsPage(): JSX.Element {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  // keep only two sections: profile & business
-  const [tab, setTab] = useState<"profile" | "business">("profile");
+  // Tabs include the existing profile & business plus new policy pages
+  const [tab, setTab] = useState<
+    | "profile"
+    | "business"
+    | "terms"
+    | "privacy"
+    | "refunds"
+    | "cookies"
+    | "data_handling"
+    | "ai_disclosure"
+  >("profile");
 
   // profile state (editable)
   const [profile, setProfile] = useState<ProfilePayload | null>(null);
@@ -114,9 +120,6 @@ export default function SettingsPage(): JSX.Element {
   // Removed mobile inputs from UI; keep flags for compatibility
   const [phoneVerified, setPhoneVerified] = useState(false);
   const [businessVerified, setBusinessVerified] = useState(false);
-
-  const [error, setError] = useState<string | null>(null);
-  const [infoMessage, setInfoMessage] = useState<string | null>(null);
 
   // Onboarding-like fields local copies for business tab
   const [businessName, setBusinessName] = useState("");
@@ -173,12 +176,14 @@ export default function SettingsPage(): JSX.Element {
           try {
             initFirebaseApp();
           } catch (e) {
+            // ignore init errors quietly
             console.warn("Firebase init error", e);
           }
         }
-      } catch (e: any) {
+      } catch (e) {
+        // silent behavior per request: redirect to signin if anything critical
         console.error("fetch profile error", e);
-        setError(String(e?.message || e));
+        router.push("/auth/signin");
       } finally {
         setLoading(false);
       }
@@ -186,47 +191,37 @@ export default function SettingsPage(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // --- helper: getPublicUrlSafe (kept for compatibility though not used for logo here) ---
-  async function getPublicUrlSafe(path: string | null | undefined) {
-    if (!path) return null;
-    try {
-      const res: any = await supabase.storage.from("user-uploads").getPublicUrl(path);
-      if (res?.data?.publicUrl) return res.data.publicUrl;
-      if (res?.publicURL) return res.publicURL;
-      const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
-      if (base) {
-        return `${base.replace(/\/$/, "")}/storage/v1/object/public/user-uploads/${encodeURIComponent(path)}`;
-      }
-      return null;
-    } catch (e) {
-      console.warn("getPublicUrlSafe error", e);
-      return null;
-    }
-  }
-
-  // Save profile & business fields (no logo/ref uploads because removed)
+  // Silent save: errors are logged only
   async function saveProfileAndAi() {
     if (!profile) return;
     setSaving(true);
-    setError(null);
-    setInfoMessage(null);
 
     try {
-      // if email changed vs auth, update auth email
-      const currentAuth = await supabase.auth.getUser();
-      const authEmail = currentAuth?.data?.user?.email || null;
-      if (profile.email && profile.email !== authEmail) {
-        const res = await supabase.auth.updateUser({ email: profile.email });
-        if (res.error) throw res.error;
-        setInfoMessage("Auth email updated; verification may be required.");
+      // check session quietly
+      const sessResp: any = await supabase.auth.getSession();
+      const session = sessResp?.data?.session ?? null;
+      const authUser = sessResp?.data?.user ?? null;
+
+      if (!session || !authUser) {
+        // redirect silently if no session
+        router.push("/auth/signin");
+        return;
       }
 
-      // Build payload: prefer local business fields from onboarding section
+      const authEmail = authUser?.email || null;
+      if (profile.email && profile.email !== authEmail) {
+        const { error: updateErr } = await supabase.auth.updateUser({ email: profile.email });
+        if (updateErr) {
+          console.error("updateUser error", updateErr);
+          router.push("/auth/signin");
+          return;
+        }
+      }
+
       const payload: any = {
         id: profile.id,
         full_name: profile.full_name || null,
         email: profile.email || null,
-        // keep phone fields untouched since UI removed phone inputs
         phone: profile.phone ?? null,
         phone_verified: profile.phone_verified ?? null,
         business_name: businessName || profile.business_name || null,
@@ -239,7 +234,6 @@ export default function SettingsPage(): JSX.Element {
         color_primary: profile.color_primary || "#0ea5e9",
         color_secondary: profile.color_secondary || "#0b74ff",
         font: profile.font || FONT_LIST[0],
-        // preserve existing logo_path / ref_images values (do not modify)
         logo_path: profile.logo_path ?? null,
         ref_images: Array.isArray(profile.ref_images) && profile.ref_images.length ? profile.ref_images : null,
         tagline: tagline || profile.tagline || null,
@@ -248,33 +242,39 @@ export default function SettingsPage(): JSX.Element {
       };
 
       const { error: upErr } = await supabase.from("profiles").upsert(payload, { onConflict: "id" });
-      if (upErr) throw upErr;
-
-      // refresh local profile
-      const { data: refreshed, error: refErr } = await supabase.from("profiles").select("*").eq("id", profile.id).single();
-      if (!refErr && refreshed) {
-        setProfile(refreshed as ProfilePayload);
+      if (upErr) {
+        console.error("profiles upsert error", upErr);
+      } else {
+        // refresh profile silently
+        const { data: refreshed, error: refErr } = await supabase.from("profiles").select("*").eq("id", profile.id).single();
+        if (!refErr && refreshed) {
+          setProfile(refreshed as ProfilePayload);
+        }
       }
-
-      setInfoMessage("Saved to Supabase.");
-    } catch (err: any) {
+    } catch (err) {
       console.error("saveProfileAndAi error", err);
-      setError(err?.message || String(err));
     } finally {
       setSaving(false);
     }
   }
 
-  // Keep firebase recaptcha container in DOM (behavior preserved)
-  useEffect(() => {
-    if (typeof window !== "undefined") {
+  // Sign out: simple confirm + signOut + redirect. Silent UX (no messages)
+  async function handleSignOut() {
+    try {
+      const ok = window.confirm("Are you sure you want to sign out?");
+      if (!ok) return;
       try {
-        initFirebaseApp();
+        await supabase.auth.signOut();
       } catch (e) {
-        // ignore
+        // ignore signOut errors, proceed to redirect
+        console.error("signOut error (ignored)", e);
       }
+      router.push("/auth/signin");
+    } catch (e) {
+      console.error("signout flow error", e);
+      router.push("/auth/signin");
     }
-  }, []);
+  }
 
   if (loading) return <div className="p-8">Loading profile…</div>;
 
@@ -283,21 +283,41 @@ export default function SettingsPage(): JSX.Element {
       <Sidebar />
 
       <main className="flex-1 p-8">
-        <div className="max-w-5xl mx-auto">
+        <div className="max-w-6xl mx-auto">
           <h2 className="text-2xl font-bold text-slate-800 mb-6">Settings</h2>
 
-          {/* Tabs — simplified to two: Profile & Business */}
-          <Tabs defaultValue={tab} onValueChange={(v) => setTab(v as "profile" | "business")}>
-            <TabsList className="flex gap-4 mb-6 bg-transparent p-1 rounded-lg">
+          <Tabs defaultValue={tab} onValueChange={(v) => setTab(v as any)}>
+            <TabsList className="flex gap-2 mb-6 bg-transparent p-1 rounded-lg overflow-x-auto">
               <TabsTrigger value="profile" className={`px-4 py-2 ${tab === "profile" ? "bg-white shadow-xl rounded-lg" : "text-slate-600"}`}>
                 Profile
               </TabsTrigger>
               <TabsTrigger value="business" className={`px-4 py-2 ${tab === "business" ? "bg-white shadow-xl rounded-lg" : "text-slate-600"}`}>
                 Business
               </TabsTrigger>
+
+              {/* New legal/policy tabs added alongside existing ones */}
+              <TabsTrigger value="terms" className={`px-4 py-2 ${tab === "terms" ? "bg-white shadow-xl rounded-lg" : "text-slate-600"}`}>
+                Terms &amp; Conditions
+              </TabsTrigger>
+              <TabsTrigger value="privacy" className={`px-4 py-2 ${tab === "privacy" ? "bg-white shadow-xl rounded-lg" : "text-slate-600"}`}>
+                Privacy Policy
+              </TabsTrigger>
+              <TabsTrigger value="refunds" className={`px-4 py-2 ${tab === "refunds" ? "bg-white shadow-xl rounded-lg" : "text-slate-600"}`}>
+                Refunds
+              </TabsTrigger>
+              <TabsTrigger value="cookies" className={`px-4 py-2 ${tab === "cookies" ? "bg-white shadow-xl rounded-lg" : "text-slate-600"}`}>
+                Cookie Policy
+              </TabsTrigger>
+              <TabsTrigger value="data_handling" className={`px-4 py-2 ${tab === "data_handling" ? "bg-white shadow-xl rounded-lg" : "text-slate-600"}`}>
+                Data &amp; Security
+              </TabsTrigger>
+              <TabsTrigger value="ai_disclosure" className={`px-4 py-2 ${tab === "ai_disclosure" ? "bg-white shadow-xl rounded-lg" : "text-slate-600"}`}>
+                AI Use
+              </TabsTrigger>
             </TabsList>
 
-            <div style={{ boxShadow: "0 40px 80px rgba(2,6,23,0.12)" }}>
+            <div style={{ boxShadow: "0 40px 80px rgba(2,6,23,0.08)" }}>
+              {/* Profile (unchanged) */}
               <TabsContent value="profile" className="p-6 bg-white rounded-xl">
                 <Card className="!shadow-none border-0">
                   <CardHeader>
@@ -332,9 +352,12 @@ export default function SettingsPage(): JSX.Element {
                         </div>
 
                         <div>
-                          <div className="mt-4">
+                          <div className="mt-4 flex items-center gap-2">
                             <Button onClick={saveProfileAndAi} disabled={saving}>
                               {saving ? "Saving…" : "Save changes"}
+                            </Button>
+                            <Button variant="destructive" onClick={handleSignOut}>
+                              Sign out
                             </Button>
                           </div>
                         </div>
@@ -344,6 +367,7 @@ export default function SettingsPage(): JSX.Element {
                 </Card>
               </TabsContent>
 
+              {/* Business (unchanged) */}
               <TabsContent value="business" className="p-6 bg-white rounded-xl">
                 <Card className="!shadow-none border-0">
                   <CardHeader>
@@ -441,8 +465,10 @@ export default function SettingsPage(): JSX.Element {
                         <Button onClick={saveProfileAndAi} disabled={saving}>
                           {saving ? "Saving…" : "Save business"}
                         </Button>
-
-                        <Button onClick={() => router.push("/integrationsnew")} variant="ghost">
+                        <Button variant="destructive" onClick={handleSignOut}>
+                          Sign out
+                        </Button>
+                        <Button onClick={() => router.push("/integrationsbeta")} variant="ghost">
                           Continue to Integrations
                         </Button>
                       </div>
@@ -450,16 +476,113 @@ export default function SettingsPage(): JSX.Element {
                   </CardContent>
                 </Card>
               </TabsContent>
+
+              {/* New Tabs — each shows a compact card with a direct link to the full page (assumes the pages exist at these routes) */}
+
+              <TabsContent value="terms" className="p-6 bg-white rounded-xl">
+                <Card className="!shadow-none border-0">
+                  <CardHeader><CardTitle>Terms &amp; Conditions</CardTitle></CardHeader>
+                  <CardContent>
+                    <p className="text-sm text-slate-700 mb-4">
+                      The platform Terms &amp; Conditions. Click below to view the full terms.
+                    </p>
+                    <div className="flex items-center gap-3">
+                      <Link href="/terms-and-conditions">
+                        <Button>Open Terms &amp; Conditions</Button>
+                      </Link>
+                      <Button variant="ghost" onClick={() => setTab("privacy")}>Open Privacy</Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="privacy" className="p-6 bg-white rounded-xl">
+                <Card className="!shadow-none border-0">
+                  <CardHeader><CardTitle>Privacy Policy</CardTitle></CardHeader>
+                  <CardContent>
+                    <p className="text-sm text-slate-700 mb-4">
+                      Read how we collect, use, and secure your data.
+                    </p>
+                    <div className="flex items-center gap-3">
+                      <Link href="/privacy-policy">
+                        <Button>Open Privacy Policy</Button>
+                      </Link>
+                      <Button variant="ghost" onClick={() => setTab("terms")}>Open Terms</Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="refunds" className="p-6 bg-white rounded-xl">
+                <Card className="!shadow-none border-0">
+                  <CardHeader><CardTitle>Refund &amp; Cancellation</CardTitle></CardHeader>
+                  <CardContent>
+                    <p className="text-sm text-slate-700 mb-4">
+                      Refund and cancellation policy for credits and subscriptions.
+                    </p>
+                    <div className="flex items-center gap-3">
+                      <Link href="/refund-cancellation">
+                        <Button>Open Refund &amp; Cancellation</Button>
+                      </Link>
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="cookies" className="p-6 bg-white rounded-xl">
+                <Card className="!shadow-none border-0">
+                  <CardHeader><CardTitle>Cookie Policy</CardTitle></CardHeader>
+                  <CardContent>
+                    <p className="text-sm text-slate-700 mb-4">
+                      Details about cookies, trackers and how to manage them.
+                    </p>
+                    <div className="flex items-center gap-3">
+                      <Link href="/cookie-policy">
+                        <Button>Open Cookie Policy</Button>
+                      </Link>
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="data_handling" className="p-6 bg-white rounded-xl">
+                <Card className="!shadow-none border-0">
+                  <CardHeader><CardTitle>Data Handling &amp; Security</CardTitle></CardHeader>
+                  <CardContent>
+                    <p className="text-sm text-slate-700 mb-4">
+                      Operational controls, token handling, retention and security standards.
+                    </p>
+                    <div className="flex items-center gap-3">
+                      <Link href="/data-handling-security">
+                        <Button>Open Data Handling &amp; Security</Button>
+                      </Link>
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="ai_disclosure" className="p-6 bg-white rounded-xl">
+                <Card className="!shadow-none border-0">
+                  <CardHeader><CardTitle>AI Use &amp; Disclosure</CardTitle></CardHeader>
+                  <CardContent>
+                    <p className="text-sm text-slate-700 mb-4">
+                      How OptimX uses AI, what we send to providers, and opt-in training details.
+                    </p>
+                    <div className="flex items-center gap-3">
+                      <Link href="/ai-use-disclosure">
+                        <Button>Open AI Use Disclosure</Button>
+                      </Link>
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
             </div>
           </Tabs>
 
-          {/* recaptcha container (invisible) - preserved for behavior parity */}
+          {/* keep recaptcha container in DOM (invisible) */}
           <div className="sr-only">
             <div ref={recaptchaContainerRef} id="recaptcha-container" />
           </div>
-
-          {infoMessage && <div className="mt-4 text-sm text-green-600">{infoMessage}</div>}
-          {error && <div className="mt-4 text-sm text-red-600">{error}</div>}
         </div>
       </main>
     </div>

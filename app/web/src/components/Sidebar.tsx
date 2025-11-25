@@ -31,7 +31,7 @@ const NAV_ITEMS: NavItem[] = [
   // { href: '/insights', label: 'AI Insights', Icon: Cpu },
   { href: '/analytics', label: 'Analytics', Icon: BarChart3 },
   { href: '/library', label: 'Campaign Library', Icon: BookOpen },
-  // { href: '/publish', label: 'Publishing', Icon: UploadCloud },
+  { href: '/image-library', label: 'Image Library', Icon: UploadCloud },
   { href: '/integrations', label: 'Integrations', Icon: Link2 },
   { href: '/notifications', label: 'Notifications', Icon: Bell },
   { href: '/settings', label: 'Settings', Icon: Settings },
