@@ -292,7 +292,7 @@ const Hero: React.FC = () => {
                 </span>
 
                 <span
-                  className="reveal-left text-center"
+                  className="reveal-left text-left"
                   style={{
                     animationDelay: "0.38s",
                     backgroundImage: colors.gradientHero,
