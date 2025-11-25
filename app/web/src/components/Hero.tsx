@@ -173,6 +173,22 @@ const Hero: React.FC = () => {
         .gradient-text {
           display: inline-block;
         }
+
+        /* radiant animated glow behind headline */
+        .hero-radiance {
+          pointer-events: none;
+          animation: heroGlow 6s ease-in-out infinite alternate;
+        }
+        @keyframes heroGlow {
+          0% {
+            transform: translateY(-6px) scale(0.98);
+            opacity: 0.55;
+          }
+          100% {
+            transform: translateY(6px) scale(1.04);
+            opacity: 0.95;
+          }
+        }
       `}</style>
 
       {/* Background Layers */}
@@ -247,30 +263,50 @@ const Hero: React.FC = () => {
               </span>
             </div>
 
-            {/* Headline: both lines inherit same H1 sizing so they match */}
-            <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold mb-6 leading-[1.02]">
-              {/* removed the smaller inline font-size so both lines match */}
-              <span
-                className="block mb-2 reveal-left"
-                style={{ animationDelay: "0.15s", color: colors.foreground }}
-              >
-               Do marketing like the big brands
-              </span>
-
-              <span
-                className="gradient-text block reveal-left"
+            {/* Headline + radiant animated graphics */}
+            <div className="relative inline-block text-center lg:text-left mb-6">
+              {/* Radiant glow behind the text */}
+              <div
+                className="absolute -inset-x-10 -inset-y-6 blur-3xl hero-radiance"
                 style={{
-                  animationDelay: "0.36s",
-                  backgroundImage: colors.gradientHero,
-                  WebkitBackgroundClip: "text" as any,
-                  WebkitTextFillColor: "transparent",
-                  backgroundClip: "text",
-                  color: "transparent",
+                  backgroundImage: `radial-gradient(circle at 20% 0%, ${withAlpha(
+                    colors.primaryGlow ?? colors.primary,
+                    0.55
+                  )} 0, transparent 55%), radial-gradient(circle at 80% 100%, ${withAlpha(
+                    colors.primary,
+                    0.45
+                  )} 0, transparent 60%)`,
+                  zIndex: 0,
                 }}
-              >
-                without the big budget or team.
-              </span>
-            </h1>
+              />
+
+              <h1 className="relative z-10 text-4xl md:text-6xl lg:text-5xl font-bold leading-[1.02] text-center lg:text-left">
+                <span
+                  className="reveal-left"
+                  style={{
+                    animationDelay: "0.18s",
+                    color: colors.foreground,
+                  }}
+                >
+                  Do marketing like the big brands{" "}
+                </span>
+
+                <span
+                  className="reveal-left text-center"
+                  style={{
+                    animationDelay: "0.38s",
+                    backgroundImage: colors.gradientHero,
+                    WebkitBackgroundClip: "text",
+                    WebkitTextFillColor: "transparent",
+                    backgroundClip: "text",
+                    color: "transparent",
+                    display: "block",
+                  }}
+                >
+                  without the big budget or team.
+                </span>
+              </h1>
+            </div>
 
             {/* Subheadline */}
             <p
