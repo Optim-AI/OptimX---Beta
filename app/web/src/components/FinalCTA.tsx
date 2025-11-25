@@ -60,7 +60,7 @@ const FinalCTA: React.FC = () => {
           </div>
 
          <h2
-  className="text-4xl md:text-5xl lg:text-6xl font-bold mb-6 leading-tight"
+  className="text-2xl md:text-5xl lg:text-4xl font-bold mb-6 leading-tight"
   style={{ color: colors.foreground }}
 >
   Launch better campaigns in minutes. Not with a big team
