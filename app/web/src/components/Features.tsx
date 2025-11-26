@@ -48,8 +48,8 @@ const Features: React.FC = () => {
             titleVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10'
           }`}
         >
-          <h2 className="text-4xl md:text-5xl font-bold mb-6" style={{ color: colors.foreground }}>
-            Everything your{' '}
+          <h2 className="text-4xl md:text-5xl font-bold mb-4" style={{ color: colors.foreground }}>
+            All your{' '}
             <span
               className="gradient-text"
               style={{
@@ -60,7 +60,7 @@ const Features: React.FC = () => {
                 color: 'transparent',
               }}
             >
-              marketing team
+              marketing needs
             </span>{' '}
             — <br className="hidden md:block" />
             in one platform
