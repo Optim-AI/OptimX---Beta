@@ -250,7 +250,6 @@ const HelpCenter: React.FC = () => {
                   <h4 style={{ color: colors.foreground, fontWeight: 700 }}>Contact</h4>
                   <div className="text-sm" style={{ color: colors.mutedForeground }}>
                     Email: <strong>info@optimx.app</strong>
-                    <br />Address: Thiruvanmiyur, Chennai, India
                   </div>
                 </div>
 
