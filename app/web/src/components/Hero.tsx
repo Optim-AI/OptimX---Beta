@@ -280,7 +280,7 @@ const Hero: React.FC = () => {
                 }}
               />
 
-              <h1 className="relative z-10 text-5xl md:text-6xl lg:text-5xl font-bold leading-[1.08] text-center lg:text-left">
+              <h1 className="relative z-10 text-5xl md:text-6xl lg:text-5xl font-bold leading-[1.10] text-center lg:text-left">
                 <span
                   className="reveal-left"
                   style={{
