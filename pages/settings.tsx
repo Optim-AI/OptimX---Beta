@@ -465,9 +465,6 @@ export default function SettingsPage(): JSX.Element {
                         <Button onClick={saveProfileAndAi} disabled={saving}>
                           {saving ? "Saving…" : "Save business"}
                         </Button>
-                        <Button variant="destructive" onClick={handleSignOut}>
-                          Sign out
-                        </Button>
                         <Button onClick={() => router.push("/integrationsbeta")} variant="ghost">
                           Continue to Integrations
                         </Button>
@@ -477,114 +474,97 @@ export default function SettingsPage(): JSX.Element {
                 </Card>
               </TabsContent>
 
-              {/* New Tabs — each shows a compact card with a direct link to the full page (assumes the pages exist at these routes) */}
+              {/* Security & Policy – CTA style section */}
+<section className="mt-10">
+  <Card className="bg-white rounded-xl shadow-sm border border-slate-200">
+    <CardHeader>
+      <CardTitle>Security &amp; Policy</CardTitle>
+      <p className="text-sm text-slate-600 mt-1">
+        All the important legal, security, and data-handling details in one place.
+      </p>
+    </CardHeader>
 
-              <TabsContent value="terms" className="p-6 bg-white rounded-xl">
-                <Card className="!shadow-none border-0">
-                  <CardHeader><CardTitle>Terms &amp; Conditions</CardTitle></CardHeader>
-                  <CardContent>
-                    <p className="text-sm text-slate-700 mb-4">
-                      The platform Terms &amp; Conditions. Click below to view the full terms.
-                    </p>
-                    <div className="flex items-center gap-3">
-                      <Link href="/terms-and-conditions">
-                        <Button>Open Terms &amp; Conditions</Button>
-                      </Link>
-                      <Button variant="ghost" onClick={() => setTab("privacy")}>Open Privacy</Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-
-              <TabsContent value="privacy" className="p-6 bg-white rounded-xl">
-                <Card className="!shadow-none border-0">
-                  <CardHeader><CardTitle>Privacy Policy</CardTitle></CardHeader>
-                  <CardContent>
-                    <p className="text-sm text-slate-700 mb-4">
-                      Read how we collect, use, and secure your data.
-                    </p>
-                    <div className="flex items-center gap-3">
-                      <Link href="/privacy-policy">
-                        <Button>Open Privacy Policy</Button>
-                      </Link>
-                      <Button variant="ghost" onClick={() => setTab("terms")}>Open Terms</Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-
-              <TabsContent value="refunds" className="p-6 bg-white rounded-xl">
-                <Card className="!shadow-none border-0">
-                  <CardHeader><CardTitle>Refund &amp; Cancellation</CardTitle></CardHeader>
-                  <CardContent>
-                    <p className="text-sm text-slate-700 mb-4">
-                      Refund and cancellation policy for credits and subscriptions.
-                    </p>
-                    <div className="flex items-center gap-3">
-                      <Link href="/refund-cancellation">
-                        <Button>Open Refund &amp; Cancellation</Button>
-                      </Link>
-                    </div>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-
-              <TabsContent value="cookies" className="p-6 bg-white rounded-xl">
-                <Card className="!shadow-none border-0">
-                  <CardHeader><CardTitle>Cookie Policy</CardTitle></CardHeader>
-                  <CardContent>
-                    <p className="text-sm text-slate-700 mb-4">
-                      Details about cookies, trackers and how to manage them.
-                    </p>
-                    <div className="flex items-center gap-3">
-                      <Link href="/cookie-policy">
-                        <Button>Open Cookie Policy</Button>
-                      </Link>
-                    </div>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-
-              <TabsContent value="data_handling" className="p-6 bg-white rounded-xl">
-                <Card className="!shadow-none border-0">
-                  <CardHeader><CardTitle>Data Handling &amp; Security</CardTitle></CardHeader>
-                  <CardContent>
-                    <p className="text-sm text-slate-700 mb-4">
-                      Operational controls, token handling, retention and security standards.
-                    </p>
-                    <div className="flex items-center gap-3">
-                      <Link href="/data-handling-security">
-                        <Button>Open Data Handling &amp; Security</Button>
-                      </Link>
-                    </div>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-
-              <TabsContent value="ai_disclosure" className="p-6 bg-white rounded-xl">
-                <Card className="!shadow-none border-0">
-                  <CardHeader><CardTitle>AI Use &amp; Disclosure</CardTitle></CardHeader>
-                  <CardContent>
-                    <p className="text-sm text-slate-700 mb-4">
-                      How OptimX uses AI, what we send to providers, and opt-in training details.
-                    </p>
-                    <div className="flex items-center gap-3">
-                      <Link href="/ai-use-disclosure">
-                        <Button>Open AI Use Disclosure</Button>
-                      </Link>
-                    </div>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-            </div>
-          </Tabs>
-
-          {/* keep recaptcha container in DOM (invisible) */}
-          <div className="sr-only">
-            <div ref={recaptchaContainerRef} id="recaptcha-container" />
+    <CardContent>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Link href="/terms-and-conditions" className="group">
+          <div className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3 hover:border-slate-400 hover:bg-slate-50 transition">
+            <span className="text-sm font-medium text-slate-800">
+              Terms &amp; Conditions
+            </span>
+            <span className="text-xs text-slate-500 group-hover:text-slate-800">
+              View
+            </span>
           </div>
-        </div>
-      </main>
-    </div>
-  );
-}
+        </Link>
+
+        <Link href="/privacy-policy" className="group">
+          <div className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3 hover:border-slate-400 hover:bg-slate-50 transition">
+            <span className="text-sm font-medium text-slate-800">
+              Privacy Policy
+            </span>
+            <span className="text-xs text-slate-500 group-hover:text-slate-800">
+              View
+            </span>
+          </div>
+        </Link>
+
+        <Link href="/refund-cancellation" className="group">
+          <div className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3 hover:border-slate-50 transition">
+            <span className="text-sm font-medium text-slate-800">
+              Refund Policy
+            </span>
+            <span className="text-xs text-slate-500 group-hover:text-slate-800">
+              View
+            </span>
+          </div>
+        </Link>
+
+        <Link href="/cookie-policy" className="group">
+          <div className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3 hover:border-slate-400 hover:bg-slate-50 transition">
+            <span className="text-sm font-medium text-slate-800">
+              Cookie Policy
+            </span>
+            <span className="text-xs text-slate-500 group-hover:text-slate-800">
+              View
+            </span>
+          </div>
+        </Link>
+
+        <Link href="/data-handling-security" className="group">
+          <div className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3 hover:border-slate-400 hover:bg-slate-50 transition">
+            <span className="text-sm font-medium text-slate-800">
+              Data Handling &amp; Security
+            </span>
+            <span className="text-xs text-slate-500 group-hover:text-slate-800">
+              View
+            </span>
+          </div>
+        </Link>
+
+        <Link href="/ai-use-disclosure" className="group">
+          <div className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3 hover:border-slate-400 hover:bg-slate-50 transition">
+            <span className="text-sm font-medium text-slate-800">
+              AI Use Disclosure
+            </span>
+            <span className="text-xs text-slate-500 group-hover:text-slate-800">
+              View
+            </span>
+          </div>
+        </Link>
+      </div>
+
+      <div className="mt-6 border-t pt-4">
+        <p className="text-xs text-slate-500 leading-relaxed">
+          To remove your data or permanently delete your account, email{" "}
+          <a
+            href="mailto:info@optimx.app?subject=Delete%20Account&body=delete%20-%20%5Byour%20reason%20here%5D"
+            className="font-medium text-slate-800 underline"
+          >
+            info@optimx.app
+          </a>{" "}
+          with the subject <span className="font-semibold">"delete"</span> and a brief reason.
+        </p>
+      </div>
+    </CardContent>
+  </Card>
+</section>
