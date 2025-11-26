@@ -569,15 +569,15 @@ export default function SettingsPage(): JSX.Element {
             </Card>
           </section>
 
-          {/* keep recaptcha container in DOM (invisible) */}
-          <div className="sr-only">
-            <div ref={recaptchaContainerRef} id="recaptcha-container" />
-          </div>
-        </div>
-      </main>
-    </div>
-  );
+{/* keep recaptcha container in DOM (invisible) */}
+<div className="sr-only">
+  <div ref={recaptchaContainerRef} id="recaptcha-container" />
+</div>
+
+      </div> {/* closes the page content wrapper */}
+    </main>
+  </div> {/* closes the layout page container */}
+);
 }
 
 export default SettingsPage;
-
