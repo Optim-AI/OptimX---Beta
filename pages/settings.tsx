@@ -279,306 +279,140 @@ export default function SettingsPage(): JSX.Element {
   if (loading) return <div className="p-8">Loading profile…</div>;
 
   return (
-    <div className="min-h-screen flex bg-slate-50">
-      <Sidebar />
+  <div className="min-h-screen flex bg-slate-50">
+    <Sidebar />
 
-      <main className="flex-1 p-8">
-        <div className="max-w-6xl mx-auto">
-          <h2 className="text-2xl font-bold text-slate-800 mb-6">Settings</h2>
+    <main className="flex-1 p-8">
+      <div className="max-w-6xl mx-auto">
+        <h2 className="text-2xl font-bold text-slate-800 mb-6">Settings</h2>
 
-          <Tabs defaultValue={tab} onValueChange={(v) => setTab(v as any)}>
-            <TabsList className="flex gap-2 mb-6 bg-transparent p-1 rounded-lg overflow-x-auto">
-              <TabsTrigger value="profile" className={`px-4 py-2 ${tab === "profile" ? "bg-white shadow-xl rounded-lg" : "text-slate-600"}`}>
-                Profile
-              </TabsTrigger>
-              <TabsTrigger value="business" className={`px-4 py-2 ${tab === "business" ? "bg-white shadow-xl rounded-lg" : "text-slate-600"}`}>
-                Business
-              </TabsTrigger>
+        <Tabs defaultValue={tab} onValueChange={(v) => setTab(v as any)}>
+          <TabsList className="flex gap-2 mb-6 bg-transparent p-1 rounded-lg overflow-x-auto">
+            <TabsTrigger value="profile" className={`px-4 py-2 ${tab === "profile" ? "bg-white shadow-xl rounded-lg" : "text-slate-600"}`}>Profile</TabsTrigger>
+            <TabsTrigger value="business" className={`px-4 py-2 ${tab === "business" ? "bg-white shadow-xl rounded-lg" : "text-slate-600"}`}>Business</TabsTrigger>
+            <TabsTrigger value="terms" className={`px-4 py-2 ${tab === "terms" ? "bg-white shadow-xl rounded-lg" : "text-slate-600"}`}>Terms &amp; Conditions</TabsTrigger>
+            <TabsTrigger value="privacy" className={`px-4 py-2 ${tab === "privacy" ? "bg-white shadow-xl rounded-lg" : "text-slate-600"}`}>Privacy Policy</TabsTrigger>
+            <TabsTrigger value="refunds" className={`px-4 py-2 ${tab === "refunds" ? "bg-white shadow-xl rounded-lg" : "text-slate-600"}`}>Refunds</TabsTrigger>
+            <TabsTrigger value="cookies" className={`px-4 py-2 ${tab === "cookies" ? "bg-white shadow-xl rounded-lg" : "text-slate-600"}`}>Cookie Policy</TabsTrigger>
+            <TabsTrigger value="data_handling" className={`px-4 py-2 ${tab === "data_handling" ? "bg-white shadow-xl rounded-lg" : "text-slate-600"}`}>Data &amp; Security</TabsTrigger>
+            <TabsTrigger value="ai_disclosure" className={`px-4 py-2 ${tab === "ai_disclosure" ? "bg-white shadow-xl rounded-lg" : "text-slate-600"}`}>AI Use</TabsTrigger>
+          </TabsList>
 
-              {/* New legal/policy tabs added alongside existing ones */}
-              <TabsTrigger value="terms" className={`px-4 py-2 ${tab === "terms" ? "bg-white shadow-xl rounded-lg" : "text-slate-600"}`}>
-                Terms &amp; Conditions
-              </TabsTrigger>
-              <TabsTrigger value="privacy" className={`px-4 py-2 ${tab === "privacy" ? "bg-white shadow-xl rounded-lg" : "text-slate-600"}`}>
-                Privacy Policy
-              </TabsTrigger>
-              <TabsTrigger value="refunds" className={`px-4 py-2 ${tab === "refunds" ? "bg-white shadow-xl rounded-lg" : "text-slate-600"}`}>
-                Refunds
-              </TabsTrigger>
-              <TabsTrigger value="cookies" className={`px-4 py-2 ${tab === "cookies" ? "bg-white shadow-xl rounded-lg" : "text-slate-600"}`}>
-                Cookie Policy
-              </TabsTrigger>
-              <TabsTrigger value="data_handling" className={`px-4 py-2 ${tab === "data_handling" ? "bg-white shadow-xl rounded-lg" : "text-slate-600"}`}>
-                Data &amp; Security
-              </TabsTrigger>
-              <TabsTrigger value="ai_disclosure" className={`px-4 py-2 ${tab === "ai_disclosure" ? "bg-white shadow-xl rounded-lg" : "text-slate-600"}`}>
-                AI Use
-              </TabsTrigger>
-            </TabsList>
-
-            <div style={{ boxShadow: "0 40px 80px rgba(2,6,23,0.08)" }}>
-              {/* Profile (unchanged) */}
-              <TabsContent value="profile" className="p-6 bg-white rounded-xl">
-                <Card className="!shadow-none border-0">
-                  <CardHeader>
-                    <CardTitle>Personal</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <form className="space-y-4" onSubmit={async (e) => { e.preventDefault(); await saveProfileAndAi(); }}>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <Label htmlFor="full_name">Full name</Label>
-                          <Input
-                            id="full_name"
-                            value={profile?.full_name ?? ""}
-                            onChange={(e) => setProfile({ ...(profile as ProfilePayload), full_name: e.target.value })}
-                            className="mt-1"
-                          />
-                        </div>
-
-                        <div>
-                          <Label htmlFor="email">Email</Label>
-                          <div className="flex items-center gap-2">
-                            <Input
-                              id="email"
-                              type="email"
-                              value={profile?.email ?? ""}
-                              onChange={(e) => setProfile({ ...(profile as ProfilePayload), email: e.target.value })}
-                              className="mt-1"
-                            />
-                            {profile?.email ? <div className="text-sm text-slate-600">✉️</div> : null}
-                          </div>
-                          <div className="text-xs text-slate-500 mt-1">Updating email updates your Supabase auth email (verification may be required).</div>
-                        </div>
-
-                        <div>
-                          <div className="mt-4 flex items-center gap-2">
-                            <Button onClick={saveProfileAndAi} disabled={saving}>
-                              {saving ? "Saving…" : "Save changes"}
-                            </Button>
-                            <Button variant="destructive" onClick={handleSignOut}>
-                              Sign out
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    </form>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-
-              {/* Business (unchanged) */}
-              <TabsContent value="business" className="p-6 bg-white rounded-xl">
-                <Card className="!shadow-none border-0">
-                  <CardHeader>
-                    <CardTitle>Business</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <form className="space-y-6" onSubmit={async (e) => { e.preventDefault(); await saveProfileAndAi(); }}>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <Label htmlFor="business_name">Business Name</Label>
-                          <Input
-                            id="business_name"
-                            value={businessName}
-                            onChange={(e) => setBusinessName(e.target.value)}
-                            className="mt-1"
-                          />
-                        </div>
-
-                        <div>
-                          <Label htmlFor="location">Location</Label>
-                          <Input
-                            id="location"
-                            value={location}
-                            onChange={(e) => setLocation(e.target.value)}
-                            className="mt-1"
-                          />
-                        </div>
-
-                        <div className="md:col-span-2">
-                          <Label htmlFor="tagline">Tagline</Label>
-                          <Input
-                            id="tagline"
-                            value={tagline}
-                            onChange={(e) => setTagline(e.target.value)}
-                            className="mt-1"
-                          />
-                        </div>
-
-                        <div>
-                          <Label>Business type</Label>
-                          <div className="mt-2 grid grid-cols-1 gap-2">
-                            <select value={businessType ?? ""} onChange={(e) => setBusinessType(e.target.value)} className="p-2 border rounded w-full">
-                              {BUSINESS_TYPES.map((b) => <option key={b} value={b}>{b}</option>)}
-                            </select>
-                          </div>
-                        </div>
-
-                        <div>
-                          <Label>Business size</Label>
-                          <div className="mt-2">
-                            <select value={businessSize ?? ""} onChange={(e) => setBusinessSize(e.target.value)} className="p-2 border rounded w-full">
-                              {BUSINESS_SIZES.map((s) => <option key={s} value={s}>{s}</option>)}
-                            </select>
-                          </div>
-                        </div>
-
-                        <div className="md:col-span-2">
-                          <Label>Core use cases</Label>
-                          <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                            {USE_CASE_OPTIONS.map((opt) => (
-                              <button
-                                key={opt}
-                                type="button"
-                                onClick={() =>
-                                  setUseCase((prev) =>
-                                    prev.includes(opt) ? prev.filter((p) => p !== opt) : [...prev, opt]
-                                  )
-                                }
-                                className={`text-left p-3 rounded ${useCase.includes(opt) ? "border-2 border-black bg-slate-50" : "border border-slate-200"}`}
-                              >
-                                {opt}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-
-                        <div>
-                          <Label>How did you hear about us?</Label>
-                          <div className="mt-2">
-                            <select value={heardFrom ?? ""} onChange={(e) => setHeardFrom(e.target.value)} className="p-2 border rounded w-full">
-                              {HEARD_FROM_OPTIONS.map((h) => <option key={h} value={h}>{h}</option>)}
-                            </select>
-                          </div>
-                        </div>
-
-                        {heardFrom === "Other" && (
-                          <div>
-                            <Label>Heard from (other)</Label>
-                            <Input value={heardFromOther} onChange={(e) => setHeardFromOther(e.target.value)} className="mt-1" />
-                          </div>
-                        )}
+          {/* --- Tabs Content wrapper --- */}
+          <div style={{ boxShadow: "0 40px 80px rgba(2,6,23,0.08)" }}>
+            <TabsContent value="profile" className="p-6 bg-white rounded-xl">
+              <Card className="!shadow-none border-0">
+                <CardHeader><CardTitle>Personal</CardTitle></CardHeader>
+                <CardContent>
+                  <form className="space-y-4" onSubmit={async (e) => { e.preventDefault(); await saveProfileAndAi(); }}>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <Label htmlFor="full_name">Full name</Label>
+                        <Input id="full_name" value={profile?.full_name ?? ""} onChange={(e) => setProfile({ ...(profile as ProfilePayload), full_name: e.target.value })} className="mt-1" />
                       </div>
 
-                      <div className="pt-4 flex items-center gap-3">
-                        <Button onClick={saveProfileAndAi} disabled={saving}>
-                          {saving ? "Saving…" : "Save business"}
-                        </Button>
-                        <Button onClick={() => router.push("/integrationsbeta")} variant="ghost">
-                          Continue to Integrations
-                        </Button>
+                      <div>
+                        <Label htmlFor="email">Email</Label>
+                        <div className="flex items-center gap-2">
+                          <Input id="email" type="email" value={profile?.email ?? ""} onChange={(e) => setProfile({ ...(profile as ProfilePayload), email: e.target.value })} className="mt-1" />
+                          {profile?.email ? <div className="text-sm text-slate-600">✉️</div> : null}
+                        </div>
+                        <div className="text-xs text-slate-500 mt-1">Updating email updates your Supabase auth email.</div>
                       </div>
-                    </form>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-            </Tabs>
-            
-          {/* Security & Policy – CTA style section */}
-          <section className="mt-10">
-            <Card className="bg-white rounded-xl shadow-sm border border-slate-200">
-              <CardHeader>
-                <CardTitle>Security &amp; Policy</CardTitle>
-                <p className="text-sm text-slate-600 mt-1">
-                  All the important legal, security, and data-handling details in one place.
+
+                      <div>
+                        <div className="mt-4 flex items-center gap-2">
+                          <Button onClick={saveProfileAndAi} disabled={saving}>{saving ? "Saving…" : "Save changes"}</Button>
+                          <Button variant="destructive" onClick={handleSignOut}>Sign out</Button>
+                        </div>
+                      </div>
+                    </div>
+                  </form>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="business" className="p-6 bg-white rounded-xl">
+              <Card className="!shadow-none border-0">
+                <CardHeader><CardTitle>Business</CardTitle></CardHeader>
+                <CardContent>
+                  <form className="space-y-6" onSubmit={async (e) => { e.preventDefault(); await saveProfileAndAi(); }}>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <Label htmlFor="business_name">Business Name</Label>
+                        <Input id="business_name" value={businessName} onChange={(e) => setBusinessName(e.target.value)} className="mt-1" />
+                      </div>
+
+                      <div>
+                        <Label htmlFor="location">Location</Label>
+                        <Input id="location" value={location} onChange={(e) => setLocation(e.target.value)} className="mt-1" />
+                      </div>
+
+                      <div className="md:col-span-2">
+                        <Label htmlFor="tagline">Tagline</Label>
+                        <Input id="tagline" value={tagline} onChange={(e) => setTagline(e.target.value)} className="mt-1" />
+                      </div>
+
+                      <div>
+                        <Label>Business type</Label>
+                        <select value={businessType ?? ""} onChange={(e) => setBusinessType(e.target.value)} className="p-2 border rounded w-full mt-1">
+                          {BUSINESS_TYPES.map((b) => <option key={b} value={b}>{b}</option>)}
+                        </select>
+                      </div>
+
+                      <div>
+                        <Label>Business size</Label>
+                        <select value={businessSize ?? ""} onChange={(e) => setBusinessSize(e.target.value)} className="p-2 border rounded w-full mt-1">
+                          {BUSINESS_SIZES.map((s) => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="pt-4 flex items-center gap-3">
+                      <Button onClick={saveProfileAndAi} disabled={saving}>{saving ? "Saving…" : "Save business"}</Button>
+                      <Button variant="ghost" onClick={() => router.push("/integrationsbeta")}>Continue to Integrations</Button>
+                    </div>
+                  </form>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </div>  {/* closes box-shadow content wrapper */}
+        </Tabs>  {/*  ← finally closes Tabs */}
+
+        {/* -------- Security & Policy Section -------- */}
+        <section className="mt-10">
+          <Card className="bg-white rounded-xl shadow-sm border border-slate-200">
+            <CardHeader>
+              <CardTitle>Security &amp; Policy</CardTitle>
+              <p className="text-sm text-slate-600 mt-1">All the important legal, security, and data-handling details in one place.</p>
+            </CardHeader>
+
+            <CardContent>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Link href="/terms-and-conditions" className="group"><div className="policy-link">Terms &amp; Conditions<span>View</span></div></Link>
+                <Link href="/privacy-policy" className="group"><div className="policy-link">Privacy Policy<span>View</span></div></Link>
+                <Link href="/refund-cancellation" className="group"><div className="policy-link">Refund Policy<span>View</span></div></Link>
+                <Link href="/cookie-policy" className="group"><div className="policy-link">Cookie Policy<span>View</span></div></Link>
+                <Link href="/data-handling-security" className="group"><div className="policy-link">Data Handling &amp; Security<span>View</span></div></Link>
+                <Link href="/ai-use-disclosure" className="group"><div className="policy-link">AI Use Disclosure<span>View</span></div></Link>
+              </div>
+
+              <div className="mt-6 border-t pt-4">
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  To remove your data or permanently delete your account, email{" "}
+                  <a href="mailto:info@optimx.app?subject=Delete%20Account&body=delete%20-%20[reason]" className="font-medium text-slate-800 underline">info@optimx.app</a>{" "}
+                  with the subject <span className="font-semibold">"delete"</span> and a brief reason.
                 </p>
-              </CardHeader>
+              </div>
+            </CardContent>
+          </Card>
+        </section>
 
-              <CardContent>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <Link href="/terms-and-conditions" className="group">
-                    <div className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3 hover:border-slate-400 hover:bg-slate-50 transition">
-                      <span className="text-sm font-medium text-slate-800">
-                        Terms &amp; Conditions
-                      </span>
-                      <span className="text-xs text-slate-500 group-hover:text-slate-800">
-                        View
-                      </span>
-                    </div>
-                  </Link>
-
-                  <Link href="/privacy-policy" className="group">
-                    <div className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3 hover:border-slate-400 hover:bg-slate-50 transition">
-                      <span className="text-sm font-medium text-slate-800">
-                        Privacy Policy
-                      </span>
-                      <span className="text-xs text-slate-500 group-hover:text-slate-800">
-                        View
-                      </span>
-                    </div>
-                  </Link>
-
-                  <Link href="/refund-cancellation" className="group">
-                    <div className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3 hover:border-slate-400 hover:bg-slate-50 transition">
-                      <span className="text-sm font-medium text-slate-800">
-                        Refund Policy
-                      </span>
-                      <span className="text-xs text-slate-500 group-hover:text-slate-800">
-                        View
-                      </span>
-                    </div>
-                  </Link>
-
-                  <Link href="/cookie-policy" className="group">
-                    <div className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3 hover:border-slate-400 hover:bg-slate-50 transition">
-                      <span className="text-sm font-medium text-slate-800">
-                        Cookie Policy
-                      </span>
-                      <span className="text-xs text-slate-500 group-hover:text-slate-800">
-                        View
-                      </span>
-                    </div>
-                  </Link>
-
-                  <Link href="/data-handling-security" className="group">
-                    <div className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3 hover:border-slate-400 hover:bg-slate-50 transition">
-                      <span className="text-sm font-medium text-slate-800">
-                        Data Handling &amp; Security
-                      </span>
-                      <span className="text-xs text-slate-500 group-hover:text-slate-800">
-                        View
-                      </span>
-                    </div>
-                  </Link>
-
-                  <Link href="/ai-use-disclosure" className="group">
-                    <div className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3 hover:border-slate-400 hover:bg-slate-50 transition">
-                      <span className="text-sm font-medium text-slate-800">
-                        AI Use Disclosure
-                      </span>
-                      <span className="text-xs text-slate-500 group-hover:text-slate-800">
-                        View
-                      </span>
-                    </div>
-                  </Link>
-                </div>
-
-                <div className="mt-6 border-t pt-4">
-                  <p className="text-xs text-slate-500 leading-relaxed">
-                    To remove your data or permanently delete your account, email{" "}
-                    <a
-                      href="mailto:info@optimx.app?subject=Delete%20Account&body=delete%20-%20%5Byour%20reason%20here%5D"
-                      className="font-medium text-slate-800 underline"
-                    >
-                      info@optimx.app
-                    </a>{" "}
-                    with the subject <span className="font-semibold">"delete"</span> and a brief reason.
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          </section>
-
-{/* keep recaptcha container in DOM (invisible) */}
-<div className="sr-only">
-  <div ref={recaptchaContainerRef} id="recaptcha-container" />
-</div>
-
-      </div> {/* closes the page content wrapper */}
+        {/* recaptcha container */}
+        <div className="sr-only">
+          <div ref={recaptchaContainerRef} id="recaptcha-container" />
+        </div>
+      </div>
     </main>
-  </div> {/* closes the layout page container */}
+  </div>
 );
-}
-
-export default SettingsPage;
