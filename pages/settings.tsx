@@ -473,7 +473,8 @@ export default function SettingsPage(): JSX.Element {
                   </CardContent>
                 </Card>
               </TabsContent>
-
+            </Tabs>
+            
           {/* Security & Policy – CTA style section */}
           <section className="mt-10">
             <Card className="bg-white rounded-xl shadow-sm border border-slate-200">
