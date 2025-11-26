@@ -88,9 +88,10 @@ const Sidebar: React.FC<SidebarProps> = ({ logoUrl, onLogoClick }) => {
           {/* Title (single OptimAI) */}
           {!collapsed && (
             <div>
-              <h1 className="text-lg font-semibold" style={{ color: sidebarFg }}>
-                OptimAI
-              </h1>
+              <span className="text-xl font-bold" style={{ lineHeight: 1 }}>
+                            <span style={{ color: colors.foreground }}>Optim</span>
+                            <span style={{ color: colors.primary }}>X</span>
+                          </span>
               <p style={{ color: sidebarFg, opacity: 0.85, fontSize: 12 }}>Campaign Manager</p>
             </div>
           )}
