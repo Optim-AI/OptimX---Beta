@@ -474,97 +474,110 @@ export default function SettingsPage(): JSX.Element {
                 </Card>
               </TabsContent>
 
-              {/* Security & Policy – CTA style section */}
-<section className="mt-10">
-  <Card className="bg-white rounded-xl shadow-sm border border-slate-200">
-    <CardHeader>
-      <CardTitle>Security &amp; Policy</CardTitle>
-      <p className="text-sm text-slate-600 mt-1">
-        All the important legal, security, and data-handling details in one place.
-      </p>
-    </CardHeader>
+          {/* Security & Policy – CTA style section */}
+          <section className="mt-10">
+            <Card className="bg-white rounded-xl shadow-sm border border-slate-200">
+              <CardHeader>
+                <CardTitle>Security &amp; Policy</CardTitle>
+                <p className="text-sm text-slate-600 mt-1">
+                  All the important legal, security, and data-handling details in one place.
+                </p>
+              </CardHeader>
 
-    <CardContent>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Link href="/terms-and-conditions" className="group">
-          <div className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3 hover:border-slate-400 hover:bg-slate-50 transition">
-            <span className="text-sm font-medium text-slate-800">
-              Terms &amp; Conditions
-            </span>
-            <span className="text-xs text-slate-500 group-hover:text-slate-800">
-              View
-            </span>
+              <CardContent>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Link href="/terms-and-conditions" className="group">
+                    <div className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3 hover:border-slate-400 hover:bg-slate-50 transition">
+                      <span className="text-sm font-medium text-slate-800">
+                        Terms &amp; Conditions
+                      </span>
+                      <span className="text-xs text-slate-500 group-hover:text-slate-800">
+                        View
+                      </span>
+                    </div>
+                  </Link>
+
+                  <Link href="/privacy-policy" className="group">
+                    <div className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3 hover:border-slate-400 hover:bg-slate-50 transition">
+                      <span className="text-sm font-medium text-slate-800">
+                        Privacy Policy
+                      </span>
+                      <span className="text-xs text-slate-500 group-hover:text-slate-800">
+                        View
+                      </span>
+                    </div>
+                  </Link>
+
+                  <Link href="/refund-cancellation" className="group">
+                    <div className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3 hover:border-slate-400 hover:bg-slate-50 transition">
+                      <span className="text-sm font-medium text-slate-800">
+                        Refund Policy
+                      </span>
+                      <span className="text-xs text-slate-500 group-hover:text-slate-800">
+                        View
+                      </span>
+                    </div>
+                  </Link>
+
+                  <Link href="/cookie-policy" className="group">
+                    <div className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3 hover:border-slate-400 hover:bg-slate-50 transition">
+                      <span className="text-sm font-medium text-slate-800">
+                        Cookie Policy
+                      </span>
+                      <span className="text-xs text-slate-500 group-hover:text-slate-800">
+                        View
+                      </span>
+                    </div>
+                  </Link>
+
+                  <Link href="/data-handling-security" className="group">
+                    <div className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3 hover:border-slate-400 hover:bg-slate-50 transition">
+                      <span className="text-sm font-medium text-slate-800">
+                        Data Handling &amp; Security
+                      </span>
+                      <span className="text-xs text-slate-500 group-hover:text-slate-800">
+                        View
+                      </span>
+                    </div>
+                  </Link>
+
+                  <Link href="/ai-use-disclosure" className="group">
+                    <div className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3 hover:border-slate-400 hover:bg-slate-50 transition">
+                      <span className="text-sm font-medium text-slate-800">
+                        AI Use Disclosure
+                      </span>
+                      <span className="text-xs text-slate-500 group-hover:text-slate-800">
+                        View
+                      </span>
+                    </div>
+                  </Link>
+                </div>
+
+                <div className="mt-6 border-t pt-4">
+                  <p className="text-xs text-slate-500 leading-relaxed">
+                    To remove your data or permanently delete your account, email{" "}
+                    <a
+                      href="mailto:info@optimx.app?subject=Delete%20Account&body=delete%20-%20%5Byour%20reason%20here%5D"
+                      className="font-medium text-slate-800 underline"
+                    >
+                      info@optimx.app
+                    </a>{" "}
+                    with the subject <span className="font-semibold">"delete"</span> and a brief reason.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          </section>
+
+          {/* keep recaptcha container in DOM (invisible) */}
+          <div className="sr-only">
+            <div ref={recaptchaContainerRef} id="recaptcha-container" />
           </div>
-        </Link>
+        </div>
+      </main>
+    </div>
+  );
+}
 
-        <Link href="/privacy-policy" className="group">
-          <div className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3 hover:border-slate-400 hover:bg-slate-50 transition">
-            <span className="text-sm font-medium text-slate-800">
-              Privacy Policy
-            </span>
-            <span className="text-xs text-slate-500 group-hover:text-slate-800">
-              View
-            </span>
-          </div>
-        </Link>
+export default SettingsPage;
 
-        <Link href="/refund-cancellation" className="group">
-          <div className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3 hover:border-slate-50 transition">
-            <span className="text-sm font-medium text-slate-800">
-              Refund Policy
-            </span>
-            <span className="text-xs text-slate-500 group-hover:text-slate-800">
-              View
-            </span>
-          </div>
-        </Link>
-
-        <Link href="/cookie-policy" className="group">
-          <div className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3 hover:border-slate-400 hover:bg-slate-50 transition">
-            <span className="text-sm font-medium text-slate-800">
-              Cookie Policy
-            </span>
-            <span className="text-xs text-slate-500 group-hover:text-slate-800">
-              View
-            </span>
-          </div>
-        </Link>
-
-        <Link href="/data-handling-security" className="group">
-          <div className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3 hover:border-slate-400 hover:bg-slate-50 transition">
-            <span className="text-sm font-medium text-slate-800">
-              Data Handling &amp; Security
-            </span>
-            <span className="text-xs text-slate-500 group-hover:text-slate-800">
-              View
-            </span>
-          </div>
-        </Link>
-
-        <Link href="/ai-use-disclosure" className="group">
-          <div className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3 hover:border-slate-400 hover:bg-slate-50 transition">
-            <span className="text-sm font-medium text-slate-800">
-              AI Use Disclosure
-            </span>
-            <span className="text-xs text-slate-500 group-hover:text-slate-800">
-              View
-            </span>
-          </div>
-        </Link>
-      </div>
-
-      <div className="mt-6 border-t pt-4">
-        <p className="text-xs text-slate-500 leading-relaxed">
-          To remove your data or permanently delete your account, email{" "}
-          <a
-            href="mailto:info@optimx.app?subject=Delete%20Account&body=delete%20-%20%5Byour%20reason%20here%5D"
-            className="font-medium text-slate-800 underline"
-          >
-            info@optimx.app
-          </a>{" "}
-          with the subject <span className="font-semibold">"delete"</span> and a brief reason.
-        </p>
-      </div>
-    </CardContent>
-  </Card>
-</section>
