@@ -8,11 +8,21 @@ import { initFirebaseApp } from "../lib/firebaseClient";
 import { useRouter } from "next/router";
 import type { JSX } from "react";
 import Link from "next/link";
-import { Card, CardContent, CardHeader, CardTitle } from "../app/web/src/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "../app/web/src/components/ui/card";
 import { Button } from "../app/web/src/components/ui/button";
 import { Input } from "../app/web/src/components/ui/input";
 import { Label } from "../app/web/src/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../app/web/src/components/ui/tabs";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "../app/web/src/components/ui/tabs";
 
 type ProfilePayload = {
   id: string;
@@ -37,9 +47,16 @@ type ProfilePayload = {
   heard_from_other?: string | null;
 };
 
-const FONT_LIST = ["Inter", "Roboto", "Poppins", "Montserrat", "Lato", "Open Sans", "Source Sans Pro"];
+const FONT_LIST = [
+  "Inter",
+  "Roboto",
+  "Poppins",
+  "Montserrat",
+  "Lato",
+  "Open Sans",
+  "Source Sans Pro",
+];
 
-// Onboarding-derived constants
 const BUSINESS_TYPES = [
   "Food & Beverage (Restaurant, Cafes)",
   "Fashion & Apparel",
@@ -59,7 +76,7 @@ const BUSINESS_TYPES = [
   "Professional Services (Agencies, Consultants, Freelancers)",
   "Non-Profit",
   "Agriculture & Farming",
-  "Other"
+  "Other",
 ];
 
 const BUSINESS_SIZES = [
@@ -67,7 +84,7 @@ const BUSINESS_SIZES = [
   "Small (1-10)",
   "Medium (11-50)",
   "Large (51-200)",
-  "Enterprise (200+)"
+  "Enterprise (200+)",
 ];
 
 const USE_CASE_OPTIONS = [
@@ -80,7 +97,7 @@ const USE_CASE_OPTIONS = [
   "Launch New Products / Offers",
   "Analyze Marketing Performance",
   "Automate Campaigns with AI",
-  "Other"
+  "Other",
 ];
 
 const HEARD_FROM_OPTIONS = [
@@ -91,7 +108,7 @@ const HEARD_FROM_OPTIONS = [
   "Email",
   "Event / Conference",
   "Partner",
-  "Other"
+  "Other",
 ];
 
 import colors from "../lib/colors";
@@ -102,33 +119,30 @@ export default function SettingsPage(): JSX.Element {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  // Tabs include the existing profile & business plus new policy pages
-  const [tab, setTab] = useState<
-    | "profile"
-    | "business"
-    | "terms"
-    | "privacy"
-    | "refunds"
-    | "cookies"
-    | "data_handling"
-    | "ai_disclosure"
-  >("profile");
 
-  // profile state (editable)
+  // Only three tabs now: profile, business, security
+  const [tab, setTab] = useState<"profile" | "business" | "security">(
+    "profile"
+  );
+
   const [profile, setProfile] = useState<ProfilePayload | null>(null);
 
-  // Removed mobile inputs from UI; keep flags for compatibility
   const [phoneVerified, setPhoneVerified] = useState(false);
   const [businessVerified, setBusinessVerified] = useState(false);
 
-  // Onboarding-like fields local copies for business tab
   const [businessName, setBusinessName] = useState("");
   const [location, setLocation] = useState("");
   const [tagline, setTagline] = useState("");
-  const [businessType, setBusinessType] = useState<string | null>(BUSINESS_TYPES[0]);
-  const [businessSize, setBusinessSize] = useState<string | null>(BUSINESS_SIZES[0]);
+  const [businessType, setBusinessType] = useState<string | null>(
+    BUSINESS_TYPES[0]
+  );
+  const [businessSize, setBusinessSize] = useState<string | null>(
+    BUSINESS_SIZES[0]
+  );
   const [useCase, setUseCase] = useState<string[]>([]);
-  const [heardFrom, setHeardFrom] = useState<string | null>(HEARD_FROM_OPTIONS[0]);
+  const [heardFrom, setHeardFrom] = useState<string | null>(
+    HEARD_FROM_OPTIONS[0]
+  );
   const [heardFromOther, setHeardFromOther] = useState<string>("");
 
   useEffect(() => {
@@ -150,7 +164,6 @@ export default function SettingsPage(): JSX.Element {
         if (!error && data) {
           setProfile(data as ProfilePayload);
 
-          // hydrate onboarding fields
           setBusinessName(data.business_name ?? "");
           setLocation(data.location ?? "");
           setTagline(data.tagline ?? "");
@@ -163,7 +176,6 @@ export default function SettingsPage(): JSX.Element {
           setPhoneVerified(Boolean((data as any).phone_verified));
           setBusinessVerified(Boolean((data as any).business_mobile_verified));
         } else {
-          // fallback profile skeleton
           setProfile({
             id: user.id,
             full_name: user.user_metadata?.full_name || null,
@@ -171,17 +183,14 @@ export default function SettingsPage(): JSX.Element {
           });
         }
 
-        // init firebase client in browser (kept)
         if (typeof window !== "undefined") {
           try {
             initFirebaseApp();
           } catch (e) {
-            // ignore init errors quietly
             console.warn("Firebase init error", e);
           }
         }
       } catch (e) {
-        // silent behavior per request: redirect to signin if anything critical
         console.error("fetch profile error", e);
         router.push("/auth/signin");
       } finally {
@@ -191,26 +200,25 @@ export default function SettingsPage(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Silent save: errors are logged only
   async function saveProfileAndAi() {
     if (!profile) return;
     setSaving(true);
 
     try {
-      // check session quietly
       const sessResp: any = await supabase.auth.getSession();
       const session = sessResp?.data?.session ?? null;
       const authUser = sessResp?.data?.user ?? null;
 
       if (!session || !authUser) {
-        // redirect silently if no session
         router.push("/auth/signin");
         return;
       }
 
       const authEmail = authUser?.email || null;
       if (profile.email && profile.email !== authEmail) {
-        const { error: updateErr } = await supabase.auth.updateUser({ email: profile.email });
+        const { error: updateErr } = await supabase.auth.updateUser({
+          email: profile.email,
+        });
         if (updateErr) {
           console.error("updateUser error", updateErr);
           router.push("/auth/signin");
@@ -230,29 +238,34 @@ export default function SettingsPage(): JSX.Element {
         location: location || profile.location || null,
         business_type: businessType || profile.business_type || null,
         business_size: businessSize || profile.business_size || null,
-        use_case: (useCase && useCase.length)
-          ? useCase
-          : (Array.isArray(profile.use_case) ? profile.use_case : null),
+        use_case:
+          useCase && useCase.length
+            ? useCase
+            : Array.isArray(profile.use_case)
+            ? profile.use_case
+            : null,
         color_primary: profile.color_primary || "#0ea5e9",
         color_secondary: profile.color_secondary || "#0b74ff",
         font: profile.font || FONT_LIST[0],
         logo_path: profile.logo_path ?? null,
-        ref_images: Array.isArray(profile.ref_images) && profile.ref_images.length
-          ? profile.ref_images
-          : null,
+        ref_images:
+          Array.isArray(profile.ref_images) && profile.ref_images.length
+            ? profile.ref_images
+            : null,
         tagline: tagline || profile.tagline || null,
         heard_from: heardFrom || profile.heard_from || null,
         heard_from_other:
           heardFrom === "Other"
-            ? (heardFromOther || profile.heard_from_other || null)
+            ? heardFromOther || profile.heard_from_other || null
             : profile.heard_from_other || null,
       };
 
-      const { error: upErr } = await supabase.from("profiles").upsert(payload, { onConflict: "id" });
+      const { error: upErr } = await supabase
+        .from("profiles")
+        .upsert(payload, { onConflict: "id" });
       if (upErr) {
         console.error("profiles upsert error", upErr);
       } else {
-        // refresh profile silently
         const { data: refreshed, error: refErr } = await supabase
           .from("profiles")
           .select("*")
@@ -269,7 +282,6 @@ export default function SettingsPage(): JSX.Element {
     }
   }
 
-  // Sign out: simple confirm + signOut + redirect. Silent UX (no messages)
   async function handleSignOut() {
     try {
       const ok = window.confirm("Are you sure you want to sign out?");
@@ -277,7 +289,6 @@ export default function SettingsPage(): JSX.Element {
       try {
         await supabase.auth.signOut();
       } catch (e) {
-        // ignore signOut errors, proceed to redirect
         console.error("signOut error (ignored)", e);
       }
       router.push("/auth/signin");
@@ -301,55 +312,39 @@ export default function SettingsPage(): JSX.Element {
             <TabsList className="flex gap-2 mb-6 bg-transparent p-1 rounded-lg overflow-x-auto">
               <TabsTrigger
                 value="profile"
-                className={`px-4 py-2 ${tab === "profile" ? "bg-white shadow-xl rounded-lg" : "text-slate-600"}`}
+                className={`px-4 py-2 ${
+                  tab === "profile"
+                    ? "bg-white shadow-xl rounded-lg"
+                    : "text-slate-600"
+                }`}
               >
                 Profile
               </TabsTrigger>
+
               <TabsTrigger
                 value="business"
-                className={`px-4 py-2 ${tab === "business" ? "bg-white shadow-xl rounded-lg" : "text-slate-600"}`}
+                className={`px-4 py-2 ${
+                  tab === "business"
+                    ? "bg-white shadow-xl rounded-lg"
+                    : "text-slate-600"
+                }`}
               >
                 Business
               </TabsTrigger>
+
               <TabsTrigger
-                value="terms"
-                className={`px-4 py-2 ${tab === "terms" ? "bg-white shadow-xl rounded-lg" : "text-slate-600"}`}
+                value="security"
+                className={`px-4 py-2 ${
+                  tab === "security"
+                    ? "bg-white shadow-xl rounded-lg"
+                    : "text-slate-600"
+                }`}
               >
-                Terms &amp; Conditions
-              </TabsTrigger>
-              <TabsTrigger
-                value="privacy"
-                className={`px-4 py-2 ${tab === "privacy" ? "bg-white shadow-xl rounded-lg" : "text-slate-600"}`}
-              >
-                Privacy Policy
-              </TabsTrigger>
-              <TabsTrigger
-                value="refunds"
-                className={`px-4 py-2 ${tab === "refunds" ? "bg-white shadow-xl rounded-lg" : "text-slate-600"}`}
-              >
-                Refunds
-              </TabsTrigger>
-              <TabsTrigger
-                value="cookies"
-                className={`px-4 py-2 ${tab === "cookies" ? "bg-white shadow-xl rounded-lg" : "text-slate-600"}`}
-              >
-                Cookie Policy
-              </TabsTrigger>
-              <TabsTrigger
-                value="data_handling"
-                className={`px-4 py-2 ${tab === "data_handling" ? "bg-white shadow-xl rounded-lg" : "text-slate-600"}`}
-              >
-                Data &amp; Security
-              </TabsTrigger>
-              <TabsTrigger
-                value="ai_disclosure"
-                className={`px-4 py-2 ${tab === "ai_disclosure" ? "bg-white shadow-xl rounded-lg" : "text-slate-600"}`}
-              >
-                AI Use
+                Security &amp; Policy
               </TabsTrigger>
             </TabsList>
 
-            {/* --- Tabs Content wrapper --- */}
+            {/* Tabs content wrapper */}
             <div style={{ boxShadow: "0 40px 80px rgba(2,6,23,0.08)" }}>
               <TabsContent value="profile" className="p-6 bg-white rounded-xl">
                 <Card className="!shadow-none border-0">
@@ -371,7 +366,10 @@ export default function SettingsPage(): JSX.Element {
                             id="full_name"
                             value={profile?.full_name ?? ""}
                             onChange={(e) =>
-                              setProfile({ ...(profile as ProfilePayload), full_name: e.target.value })
+                              setProfile({
+                                ...(profile as ProfilePayload),
+                                full_name: e.target.value,
+                              })
                             }
                             className="mt-1"
                           />
@@ -385,7 +383,10 @@ export default function SettingsPage(): JSX.Element {
                               type="email"
                               value={profile?.email ?? ""}
                               onChange={(e) =>
-                                setProfile({ ...(profile as ProfilePayload), email: e.target.value })
+                                setProfile({
+                                  ...(profile as ProfilePayload),
+                                  email: e.target.value,
+                                })
                               }
                               className="mt-1"
                             />
@@ -504,105 +505,111 @@ export default function SettingsPage(): JSX.Element {
                   </CardContent>
                 </Card>
               </TabsContent>
+
+              <TabsContent
+                value="security"
+                className="p-6 bg-white rounded-xl"
+              >
+                {/* Security & Policy as its own top-level tab */}
+                <Card className="bg-white rounded-xl shadow-sm border border-slate-200">
+                  <CardHeader>
+                    <CardTitle>Security &amp; Policy</CardTitle>
+                    <p className="text-sm text-slate-600 mt-1">
+                      All the important legal, security, and data-handling
+                      details in one place.
+                    </p>
+                  </CardHeader>
+
+                  <CardContent>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <Link href="/terms-and-conditions" className="group">
+                        <div className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3 hover:border-slate-400 hover:bg-slate-50 transition">
+                          <span className="text-sm font-medium text-slate-800">
+                            Terms &amp; Conditions
+                          </span>
+                          <span className="text-xs text-slate-500 group-hover:text-slate-800">
+                            View
+                          </span>
+                        </div>
+                      </Link>
+
+                      <Link href="/privacy-policy" className="group">
+                        <div className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3 hover:border-slate-400 hover:bg-slate-50 transition">
+                          <span className="text-sm font-medium text-slate-800">
+                            Privacy Policy
+                          </span>
+                          <span className="text-xs text-slate-500 group-hover:text-slate-800">
+                            View
+                          </span>
+                        </div>
+                      </Link>
+
+                      <Link href="/refund-cancellation" className="group">
+                        <div className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3 hover:border-slate-400 hover:bg-slate-50 transition">
+                          <span className="text-sm font-medium text-slate-800">
+                            Refund Policy
+                          </span>
+                          <span className="text-xs text-slate-500 group-hover:text-slate-800">
+                            View
+                          </span>
+                        </div>
+                      </Link>
+
+                      <Link href="/cookie-policy" className="group">
+                        <div className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3 hover:border-slate-400 hover:bg-slate-50 transition">
+                          <span className="text-sm font-medium text-slate-800">
+                            Cookie Policy
+                          </span>
+                          <span className="text-xs text-slate-500 group-hover:text-slate-800">
+                            View
+                          </span>
+                        </div>
+                      </Link>
+
+                      <Link href="/data-handling-security" className="group">
+                        <div className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3 hover:border-slate-400 hover:bg-slate-50 transition">
+                          <span className="text-sm font-medium text-slate-800">
+                            Data Handling &amp; Security
+                          </span>
+                          <span className="text-xs text-slate-500 group-hover:text-slate-800">
+                            View
+                          </span>
+                        </div>
+                      </Link>
+
+                      <Link href="/ai-use-disclosure" className="group">
+                        <div className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3 hover:border-slate-400 hover:bg-slate-50 transition">
+                          <span className="text-sm font-medium text-slate-800">
+                            AI Use Disclosure
+                          </span>
+                          <span className="text-xs text-slate-500 group-hover:text-slate-800">
+                            View
+                          </span>
+                        </div>
+                      </Link>
+                    </div>
+
+                    <div className="mt-6 border-t pt-4">
+                      <p className="text-xs text-slate-500 leading-relaxed">
+                        To remove your data or permanently delete your account,
+                        email{" "}
+                        <a
+                          href="mailto:info@optimx.app?subject=Delete%20Account&body=delete%20-%20[reason]"
+                          className="font-medium text-slate-800 underline"
+                        >
+                          info@optimx.app
+                        </a>{" "}
+                        with the subject <span className="font-semibold">"delete"</span>{" "}
+                        and a brief reason.
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
             </div>
           </Tabs>
 
-          {/* -------- Security & Policy Section -------- */}
-          <section className="mt-10">
-            <Card className="bg-white rounded-xl shadow-sm border border-slate-200">
-              <CardHeader>
-                <CardTitle>Security &amp; Policy</CardTitle>
-                <p className="text-sm text-slate-600 mt-1">
-                  All the important legal, security, and data-handling details in one place.
-                </p>
-              </CardHeader>
-
-              <CardContent>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <Link href="/terms-and-conditions" className="group">
-                    <div className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3 hover:border-slate-400 hover:bg-slate-50 transition">
-                      <span className="text-sm font-medium text-slate-800">
-                        Terms &amp; Conditions
-                      </span>
-                      <span className="text-xs text-slate-500 group-hover:text-slate-800">
-                        View
-                      </span>
-                    </div>
-                  </Link>
-
-                  <Link href="/privacy-policy" className="group">
-                    <div className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3 hover:border-slate-400 hover:bg-slate-50 transition">
-                      <span className="text-sm font-medium text-slate-800">
-                        Privacy Policy
-                      </span>
-                      <span className="text-xs text-slate-500 group-hover:text-slate-800">
-                        View
-                      </span>
-                    </div>
-                  </Link>
-
-                  <Link href="/refund-cancellation" className="group">
-                    <div className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3 hover:border-slate-400 hover:bg-slate-50 transition">
-                      <span className="text-sm font-medium text-slate-800">
-                        Refund Policy
-                      </span>
-                      <span className="text-xs text-slate-500 group-hover:text-slate-800">
-                        View
-                      </span>
-                    </div>
-                  </Link>
-
-                  <Link href="/cookie-policy" className="group">
-                    <div className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3 hover:border-slate-400 hover:bg-slate-50 transition">
-                      <span className="text-sm font-medium text-slate-800">
-                        Cookie Policy
-                      </span>
-                      <span className="text-xs text-slate-500 group-hover:text-slate-800">
-                        View
-                      </span>
-                    </div>
-                  </Link>
-
-                  <Link href="/data-handling-security" className="group">
-                    <div className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3 hover:border-slate-400 hover:bg-slate-50 transition">
-                      <span className="text-sm font-medium text-slate-800">
-                        Data Handling &amp; Security
-                      </span>
-                      <span className="text-xs text-slate-500 group-hover:text-slate-800">
-                        View
-                      </span>
-                    </div>
-                  </Link>
-
-                  <Link href="/ai-use-disclosure" className="group">
-                    <div className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3 hover:border-slate-400 hover:bg-slate-50 transition">
-                      <span className="text-sm font-medium text-slate-800">
-                        AI Use Disclosure
-                      </span>
-                      <span className="text-xs text-slate-500 group-hover:text-slate-800">
-                        View
-                      </span>
-                    </div>
-                  </Link>
-                </div>
-
-                <div className="mt-6 border-t pt-4">
-                  <p className="text-xs text-slate-500 leading-relaxed">
-                    To remove your data or permanently delete your account, email{" "}
-                    <a
-                      href="mailto:info@optimx.app?subject=Delete%20Account&body=delete%20-%20[reason]"
-                      className="font-medium text-slate-800 underline"
-                    >
-                      info@optimx.app
-                    </a>{" "}
-                    with the subject <span className="font-semibold">"delete"</span> and a brief reason.
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          </section>
-
-          {/* recaptcha container */}
+          {/* recaptcha container (kept) */}
           <div className="sr-only">
             <div ref={recaptchaContainerRef} id="recaptcha-container" />
           </div>
