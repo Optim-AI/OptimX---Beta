@@ -1,10 +1,4 @@
-// "use client";
-
-// pages/create-campaign.tsx
-// Supabase-only persistence: chats in user_chats, generated images in campaign-assets + user_generated_image.
-// Logo & reference images are uploaded to the same path style as onboardingInfo:
-//   user-uploads/{USER_ID}/{optional-folder}/{filename}
-
+"use client";
 import React, { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { createPortal } from "react-dom";
@@ -383,11 +377,6 @@ async function deleteChatOnServer(chatId: string) {
 }
 
 /* -------------------- Profile upload helpers (user-uploads) -------------------- */
-/**
- * Upload to user-uploads bucket while ensuring the path begins with userId as the first path segment.
- * folderPrefix is appended AFTER the userId (so final path looks like: `${userId}/${folderPrefix? + '/' : ''}${safe}`)
- * This matches onboardingInfo behavior.
- */
 async function uploadFileToUserUploads(file: File, folderPrefix = "") {
   const user = await getCurrentUser();
   if (!user) throw new Error("Not authenticated");
@@ -454,7 +443,6 @@ const CampaignCreate: React.FC = () => {
   const router = useRouter();
 
   const [credits, setCredits] = useState<number>(10);
-  // deduct ONE credit after successful generation (fallback if backend doesn't send remaining)
   const useCredit = () => {
     setCredits((c) => (c > 0 ? c - 1 : 0));
   };
@@ -482,6 +470,8 @@ const CampaignCreate: React.FC = () => {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
+  // NEW: quick upload input (next to Enhance)
+  const quickUploadInputRef = useRef<HTMLInputElement>(null);
 
   const [quickSettings, setQuickSettings] = useState({
     logoEnabled: false,
@@ -548,6 +538,7 @@ const CampaignCreate: React.FC = () => {
   const [sidebarRight, setSidebarRight] = useState<number>(0);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const sidebarResizeObserverRef = useRef<any>(null);
+  const sidebarHostRef = useRef<HTMLElement | null>(null);
 
   // store previous sidebar styles so we can restore
   const sidebarPrevStylesRef = useRef<{
@@ -780,6 +771,7 @@ const CampaignCreate: React.FC = () => {
 
     const hostFound = (host: HTMLElement) => {
       applyHostStyles(host);
+      sidebarHostRef.current = host;
       setSidebarHost(host);
       detectCollapsed(host);
 
@@ -834,7 +826,7 @@ const CampaignCreate: React.FC = () => {
         sidebarResizeObserverRef.current = null;
       }
       // restore host styles on unmount
-      if (sidebarHost) restoreHostStyles(sidebarHost);
+      if (sidebarHostRef.current) restoreHostStyles(sidebarHostRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -1064,13 +1056,11 @@ const CampaignCreate: React.FC = () => {
           setLogoGlowing(true);
         }
         // save logo_path in profile (use path)
-        await supabase
-          .from("profiles")
-          .upsert({
-            id: user.id,
-            logo_path: path,
-            tagline: adFormData.tagline || null,
-          });
+        await supabase.from("profiles").upsert({
+          id: user.id,
+          logo_path: path,
+          tagline: adFormData.tagline || null,
+        });
         toast.success("Logo uploaded and saved to profile");
       } catch (uploadErr) {
         console.warn("logo upload error", uploadErr);
@@ -1090,7 +1080,9 @@ const CampaignCreate: React.FC = () => {
     try {
       const user = await getCurrentUser();
       if (user) {
-        await supabase.from("profiles").upsert({ id: user.id, logo_path: null });
+        await supabase
+          .from("profiles")
+          .upsert({ id: user.id, logo_path: null });
       }
     } catch (e) {
       console.warn("failed to remove logo_path", e);
@@ -1151,6 +1143,101 @@ const CampaignCreate: React.FC = () => {
     } catch (e) {
       console.warn("handleRemoveReferenceImage failed", e);
       toast.error("Remove failed");
+    }
+  };
+
+  /* -------------------- QUICK UPLOAD (NEW) -------------------- */
+
+  // Called when quickUpload input changes (single file expected).
+  const handleQuickUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    try {
+      const files = Array.from(e.target.files || []);
+      if (!files.length) return;
+      const file = files[0];
+      const user = await getCurrentUser();
+      if (!user) {
+        toast.error("Sign in to upload image");
+        return;
+      }
+
+      toast.loading("Uploading image…");
+
+      // upload directly to campaign-assets
+      const safeName = `${user.id}_${Date.now()}_${file.name.replace(/\s+/g, "_")}`;
+      const path = `campaigns/${user.id}/${safeName}`;
+      const { error: uploadError } = await supabase.storage
+        .from("campaign-assets")
+        .upload(path, file, { cacheControl: "3600", upsert: true });
+      let publicUrl = "";
+      if (uploadError) {
+        console.warn("quick upload failed, attempting user-uploads fallback", uploadError);
+        // fallback: upload to user-uploads then copy/record
+        try {
+          const { path: uuPath, publicUrl: uuUrl } = await uploadFileToUserUploads(file, "");
+          // try to re-use uuUrl
+          publicUrl = uuUrl || "";
+        } catch (fu) {
+          console.warn("fallback upload also failed", fu);
+        }
+      } else {
+        const { data: publicData } = supabase.storage
+          .from("campaign-assets")
+          .getPublicUrl(path);
+        publicUrl = (publicData as any)?.publicUrl ?? "";
+      }
+
+      // if we still have no publicUrl, create object URL for immediate preview (but still record original form)
+      if (!publicUrl) {
+        try {
+          const tmpUrl = URL.createObjectURL(file);
+          publicUrl = tmpUrl;
+        } catch (uerr) {
+          console.warn("createObjectURL failed", uerr);
+        }
+      }
+
+      // insert into user_generated_image (record)
+      try {
+        const payload = {
+          user_id: user.id,
+          image_url: publicUrl,
+          image_path: publicUrl.includes("/campaign-assets/") ? path : null,
+          source: "uploaded",
+          metadata: { quick_upload: true },
+        };
+        const { data: insertData, error: insertErr } = await supabase
+          .from("user_generated_image")
+          .insert([payload])
+          .select()
+          .single();
+        if (insertErr) {
+          console.warn("record user_generated_image failed", insertErr);
+        }
+      } catch (recErr) {
+        console.warn("recording quick upload failed", recErr);
+      }
+
+      // Add the uploaded image into generatedImages and chat as assistant image-only message (no "posted successfully" text)
+      setGeneratedImages((prev) => [publicUrl, ...prev.filter(Boolean)]);
+
+      const assistantMessage = {
+        role: "assistant",
+        content: "", // intentionally empty — keep only prompt & image visible
+        imageUrl: publicUrl,
+        sourcePrompt: inputText || null,
+      };
+      const after = [...messages, assistantMessage];
+      updateCurrentChatMessages(after);
+
+      toast.success("Image uploaded and ready");
+    } catch (err) {
+      console.error("handleQuickUpload error", err);
+      toast.error("Quick upload failed");
+    } finally {
+      // clear the quick upload input so same file can be selected again
+      if (quickUploadInputRef.current) {
+        quickUploadInputRef.current.value = "";
+      }
     }
   };
 
@@ -1358,6 +1445,20 @@ const CampaignCreate: React.FC = () => {
   };
 
   /* -------------------- Caption & Publish flows -------------------- */
+
+  // new UI state: publish/ad loading + status messages (no redirect)
+  const [publishLoading, setPublishLoading] = useState(false);
+  const [publishStatus, setPublishStatus] = useState<{
+    text: string;
+    type: "success" | "error" | null;
+  } | null>(null);
+
+  const [adLoading, setAdLoading] = useState(false);
+  const [adStatus, setAdStatus] = useState<{
+    text: string;
+    type: "success" | "error" | null;
+  } | null>(null);
+
   const generateCaption = async (
     promptText: string,
     setResult: (text: string) => void
@@ -1399,30 +1500,29 @@ const CampaignCreate: React.FC = () => {
 
   const handlePublishPost = async () => {
     try {
+      setPublishStatus(null);
       if (generatedImages.length === 0) {
-        toast.error(
-          "No generated image to publish. Generate and proceed first."
-        );
+        setPublishStatus({ text: "No generated image to publish.", type: "error" });
         return;
       }
 
       if (!postFormData.platforms || postFormData.platforms.length === 0) {
-        // set inline platform error for the UI
         setPlatformError(
           "Please choose at least one platform (Instagram / Facebook)."
         );
+        setPublishStatus({ text: "Select at least one platform.", type: "error" });
         return;
       }
 
-      // clear any previous platform error
       setPlatformError(null);
 
       const user = await getCurrentUser();
       if (!user) {
-        toast.error("You must be signed in to publish a post.");
-        router.push("/auth/signin");
+        setPublishStatus({ text: "Sign in to publish posts.", type: "error" });
         return;
       }
+
+      setPublishLoading(true);
 
       let finalName = (postFormData.postName || "").trim();
       if (!finalName) {
@@ -1434,26 +1534,25 @@ const CampaignCreate: React.FC = () => {
       let image_url = imageToPublish;
       let image_path = "";
 
-      if (imageToPublish.startsWith("data:")) {
-        const blob = dataURLtoBlob(imageToPublish);
-        const safeName = (finalName || "post")
-          .replace(/[^a-z0-9_\-]/gi, "_")
-          .toLowerCase();
-        const filename = `${user.id}_${Date.now()}_${safeName}.png`;
-        const path = `campaigns/${user.id}/${filename}`;
-        const { error: uploadError } = await supabase.storage
-          .from("campaign-assets")
-          .upload(path, blob, { cacheControl: "3600", upsert: false });
-        if (uploadError) throw uploadError;
-        const { data: publicData } = supabase.storage
-          .from("campaign-assets")
-          .getPublicUrl(path);
-        image_url = (publicData as any)?.publicUrl ?? imageToPublish;
-        image_path = path;
-        try {
-          await supabase
-            .from("user_generated_image")
-            .insert([
+      try {
+        if (imageToPublish.startsWith("data:")) {
+          const blob = dataURLtoBlob(imageToPublish);
+          const safeName = (finalName || "post")
+            .replace(/[^a-z0-9_\-]/gi, "_")
+            .toLowerCase();
+          const filename = `${user.id}_${Date.now()}_${safeName}.png`;
+          const path = `campaigns/${user.id}/${filename}`;
+          const { error: uploadError } = await supabase.storage
+            .from("campaign-assets")
+            .upload(path, blob, { cacheControl: "3600", upsert: false });
+          if (uploadError) throw uploadError;
+          const { data: publicData } = supabase.storage
+            .from("campaign-assets")
+            .getPublicUrl(path);
+          image_url = (publicData as any)?.publicUrl ?? imageToPublish;
+          image_path = path;
+          try {
+            await supabase.from("user_generated_image").insert([
               {
                 user_id: user.id,
                 image_url: image_url,
@@ -1461,94 +1560,118 @@ const CampaignCreate: React.FC = () => {
                 source: "generated",
               },
             ]);
-        } catch (e) {
-          console.warn("failed to insert generated image record", e);
+          } catch (e) {
+            console.warn("failed to insert generated image record", e);
+          }
+        } else if (imageToPublish.startsWith("http")) {
+          image_url = imageToPublish;
+          image_path = "";
         }
-      } else if (imageToPublish.startsWith("http")) {
-        image_url = imageToPublish;
-        image_path = "";
-      }
 
-      const payload = {
-        user_id: user.id,
-        name: finalName,
-        audience: null,
-        campaign_type: "post",
-        brand_voice: postFormData.tone || null,
-        content_types: [postFormData.postType || "image"],
-        vision: postFormData.prompt || null,
-        output: {
-          caption: postFormData.generatedCaption || null,
-        },
-        image_url: [image_url],
-        image_path: [image_path],
-        is_published: true,
-      };
+        const payload = {
+          user_id: user.id,
+          name: finalName,
+          audience: null,
+          campaign_type: "post",
+          brand_voice: postFormData.tone || null,
+          content_types: [postFormData.postType || "image"],
+          vision: postFormData.prompt || null,
+          output: {
+            caption: postFormData.generatedCaption || null,
+          },
+          image_url: [image_url],
+          image_path: [image_path],
+          is_published: true,
+        };
 
-      const { data: inserted, error: insertError } = await supabase
-        .from("campaigns")
-        .insert([payload])
-        .select();
-      if (insertError) throw insertError;
+        const { data: inserted, error: insertError } = await supabase
+          .from("campaigns")
+          .insert([payload])
+          .select();
+        if (insertError) throw insertError;
 
-      // Try to post to Instagram (if selected)
-      if (postFormData.platforms.includes("Instagram")) {
-        try {
-          await fetch("/api/auth/instagram/post", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              image_url,
-              caption:
-                postFormData.generatedCaption || postFormData.postName || "",
-              alsoPostToFacebook: postFormData.platforms.includes("Facebook"),
-            }),
-          });
-        } catch (e) {
-          console.error("Instagram post failed", e);
-          // continue — we've saved the campaign regardless
+        // Try to post to Instagram (if selected)
+        if (postFormData.platforms.includes("Instagram")) {
+          try {
+            const resp = await fetch("/api/auth/instagram/post", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                image_url,
+                caption:
+                  postFormData.generatedCaption || postFormData.postName || "",
+                alsoPostToFacebook: postFormData.platforms.includes("Facebook"),
+              }),
+            });
+            if (!resp.ok) {
+              const j = await resp.json().catch(() => null);
+              throw new Error((j && j.error) || `Instagram post failed`);
+            }
+          } catch (e: any) {
+            console.error("Instagram post failed", e);
+            // show simplified error below button
+            setPublishStatus({
+              text:
+                (e && (e.message || String(e))) ||
+                "Instagram post failed. Try again.",
+              type: "error",
+            });
+            setPublishLoading(false);
+            return;
+          }
         }
-      }
 
-      // If user opted only Facebook (and not Instagram) or also requested FB separately, call FB endpoint
-      if (
-        postFormData.platforms.includes("Facebook") &&
-        !postFormData.platforms.includes("Instagram")
-      ) {
-        try {
-          await fetch("/api/auth/facebook/post", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              image_url,
-              caption:
-                postFormData.generatedCaption || postFormData.postName || "",
-            }),
-          });
-        } catch (e) {
-          console.error("Facebook post failed", e);
-          // continue
+        // If user opted only Facebook (and not Instagram) or also requested FB separately, call FB endpoint
+        if (
+          postFormData.platforms.includes("Facebook") &&
+          !postFormData.platforms.includes("Instagram")
+        ) {
+          try {
+            const resp = await fetch("/api/auth/facebook/post", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                image_url,
+                caption:
+                  postFormData.generatedCaption || postFormData.postName || "",
+              }),
+            });
+            if (!resp.ok) {
+              const j = await resp.json().catch(() => null);
+              throw new Error((j && j.error) || `Facebook post failed`);
+            }
+          } catch (e: any) {
+            console.error("Facebook post failed", e);
+            setPublishStatus({
+              text:
+                (e && (e.message || String(e))) ||
+                "Facebook post failed. Try again.",
+              type: "error",
+            });
+            setPublishLoading(false);
+            return;
+          }
         }
+
+        // NOTE: intentionally DO NOT insert "Post posted successfully" into the chat.
+        // Chat should only show prompts and images. We display publishStatus in the publish panel instead.
+        setPublishStatus({ text: "Post posted successfully.", type: "success" });
+      } catch (e: any) {
+        console.error("handlePublishPost inner error", e);
+        setPublishStatus({
+          text: (e && (e.message || String(e))) || "Publish failed.",
+          type: "error",
+        });
+      } finally {
+        setPublishLoading(false);
       }
-
-      // Add status message into chat
-      const statusMessage = {
-        role: "assistant",
-        content: "Post posted successfully.",
-        imageUrl: image_url,
-      };
-      const newMsgs = [...messages, statusMessage];
-      updateCurrentChatMessages(newMsgs);
-
-      // Success: show the requested message then redirect
-      toast.success(
-        "Post has been successfully posted and you are redirected to dashboard."
-      );
-      setShowPublishPanel(false);
-      router.push("/dashboard");
     } catch (e: any) {
       console.error("handlePublishPost error", e);
-      toast.error("Publish failed: " + (e?.message || String(e)));
+      setPublishLoading(false);
+      setPublishStatus({
+        text: (e && (e.message || String(e))) || "Publish failed.",
+        type: "error",
+      });
     }
   };
 
@@ -1556,21 +1679,24 @@ const CampaignCreate: React.FC = () => {
 
   const handleLaunchAd = async () => {
     try {
+      setAdStatus(null);
+
       if (!adFormData.campaignName || !adFormData.campaignName.trim()) {
-        toast.error("Campaign name required");
+        setAdStatus({ text: "Campaign name required", type: "error" });
         return;
       }
       if (generatedImages.length === 0) {
-        toast.error("No creative available — generate an image first");
+        setAdStatus({ text: "No creative available — generate an image first", type: "error" });
         return;
       }
 
       const user = await getCurrentUser();
       if (!user) {
-        toast.error("You must be signed in to run ads.");
-        router.push("/auth/signin");
+        setAdStatus({ text: "You must be signed in to run ads.", type: "error" });
         return;
       }
+
+      setAdLoading(true);
 
       const mapObjectiveToMeta = (obj: string | undefined | null) => {
         const o = (obj || "").toString().trim().toUpperCase();
@@ -1602,8 +1728,8 @@ const CampaignCreate: React.FC = () => {
       let creativeImageUrl = "";
       let creativeImageDataUrl: string | undefined = undefined;
 
-      if (imageToUse.startsWith("data:")) {
-        try {
+      try {
+        if (imageToUse.startsWith("data:")) {
           const blob = dataURLtoBlob(imageToUse);
           const safeName = (adFormData.campaignName || "ad")
             .replace(/[^a-z0-9_\-]/gi, "_")
@@ -1619,12 +1745,12 @@ const CampaignCreate: React.FC = () => {
             .getPublicUrl(path);
           creativeImageUrl = (publicData as any)?.publicUrl ?? "";
           if (!creativeImageUrl) creativeImageDataUrl = imageToUse;
-        } catch (e) {
-          console.error("upload creative to supabase failed", e);
-          creativeImageDataUrl = imageToUse;
+        } else if (imageToUse.startsWith("http")) {
+          creativeImageUrl = imageToUse;
         }
-      } else if (imageToUse.startsWith("http")) {
-        creativeImageUrl = imageToUse;
+      } catch (e) {
+        console.error("upload creative to supabase failed", e);
+        creativeImageDataUrl = imageToUse;
       }
 
       const payloadDb = {
@@ -1640,11 +1766,18 @@ const CampaignCreate: React.FC = () => {
         is_published: true,
       };
 
-      const { data: inserted, error } = await supabase
-        .from("campaigns")
-        .insert([payloadDb])
-        .select();
-      if (error) throw error;
+      try {
+        const { data: inserted, error } = await supabase
+          .from("campaigns")
+          .insert([payloadDb])
+          .select();
+        if (error) throw error;
+      } catch (e) {
+        console.error("save campaign record failed", e);
+        setAdStatus({ text: "Saving campaign failed. Try again.", type: "error" });
+        setAdLoading(false);
+        return;
+      }
 
       const mappedObjective = mapObjectiveToMeta(adFormData.objective);
 
@@ -1680,10 +1813,10 @@ const CampaignCreate: React.FC = () => {
 
       try {
         const token =
-          (await supabase.auth.getSession()).data?.session?.access_token ??
-          null;
+          (await supabase.auth.getSession()).data?.session?.access_token ?? null;
         if (!token) {
-          toast.error("You must be signed in to run ads.");
+          setAdStatus({ text: "Sign in to run ads.", type: "error" });
+          setAdLoading(false);
           return;
         }
 
@@ -1696,32 +1829,29 @@ const CampaignCreate: React.FC = () => {
           body: JSON.stringify(adPayload),
         });
 
-        const json = await resp.json();
+        const json = await resp.json().catch(() => null);
         if (!resp.ok) {
           console.error("facebook/ads returned error:", json);
-          toast.error("Facebook Ads creation failed. See console for details.");
+          setAdStatus({ text: (json && (json.error || json.message)) || "Facebook Ads creation failed.", type: "error" });
+          setAdLoading(false);
+          return;
         } else {
-          // Add status message into chat
-          const statusMessage = {
-            role: "assistant",
-            content: "Ad campaign posted successfully.",
-            imageUrl: creativeImageUrl || creativeImageDataUrl || undefined,
-          };
-          const newMsgs = [...messages, statusMessage];
-          updateCurrentChatMessages(newMsgs);
-
-          // On success, show the requested message and redirect
-          toast.success("Ad has been posted. You are redirected to dashboard.");
-          setShowPublishPanel(false);
-          router.push("/dashboard");
+          // NOTE: intentionally DO NOT insert "Ad campaign posted successfully" into chat.
+          // Use the adStatus / publish panel to communicate success.
+          setAdStatus({ text: "Ad campaign posted successfully.", type: "success" });
+          setAdLoading(false);
+          return;
         }
-      } catch (e) {
+      } catch (e: any) {
         console.error("facebook/ads call failed", e);
-        toast.error("Facebook Ads creation failed (see console).");
+        setAdStatus({ text: (e && (e.message || String(e))) || "Facebook Ads creation failed.", type: "error" });
+        setAdLoading(false);
+        return;
       }
     } catch (e: any) {
       console.error("handleLaunchAd error", e);
-      toast.error("Launch failed: " + (e?.message || String(e)));
+      setAdStatus({ text: (e && (e.message || String(e))) || "Launch failed.", type: "error" });
+      setAdLoading(false);
     }
   };
 
@@ -1813,6 +1943,19 @@ const CampaignCreate: React.FC = () => {
 
   const ASPECT_OPTIONS = ["1:1", "4:5", "9:16"]; // removed 16:9 per request
 
+  // simple spinner for buttons
+  const Spinner = () => (
+    <svg
+      className="animate-spin"
+      style={{ width: 14, height: 14 }}
+      viewBox="0 0 24 24"
+      fill="none"
+    >
+      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeOpacity="0.15" />
+      <path d="M22 12a10 10 0 0 0-10-10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+    </svg>
+  );
+
   return (
     <div className="min-h-screen flex bg-slate-50">
       {/* Left: canonical Sidebar (we portal chats into it) */}
@@ -1865,9 +2008,7 @@ const CampaignCreate: React.FC = () => {
               {messages.map((m, idx) => (
                 <div
                   key={idx}
-                  className={`flex ${
-                    m.role === "user" ? "justify-end" : "justify-start"
-                  }`}
+                  className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
                 >
                   <Card
                     className="max-w-2xl p-5 optim-deep-shadow"
@@ -1877,7 +2018,8 @@ const CampaignCreate: React.FC = () => {
                       border: `1px solid ${colors.border}`,
                     }}
                   >
-                    <p style={{ color: colors.cardForeground }}>{m.content}</p>
+                    {/* Only show content text if present - user wanted prompts and images only */}
+                    {m.content && <p style={{ color: colors.cardForeground }}>{m.content}</p>}
                     {m.imageUrl && (
                       <div className="mt-3">
                         <img
@@ -1892,29 +2034,13 @@ const CampaignCreate: React.FC = () => {
                             size="sm"
                             variant="outline"
                             onClick={() => {
-                              setGeneratedImages(m.imageUrl);
+                              // ensure generatedImages is an array
+                              setGeneratedImages((prev) => [m.imageUrl, ...prev.filter(Boolean)]);
                               setShowPublishPanel(true);
                             }}
                           >
                             <Sparkles className="w-3 h-3 mr-2" /> Publish
                           </Button>
-
-                          {/* Download this image */}
-                          {/* <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              const a = document.createElement("a");
-                              a.href = m.imageUrl!;
-                              a.download = `creative_${Date.now()}.png`;
-                              document.body.appendChild(a);
-                              a.click();
-                              a.remove();
-                            }}
-                          >
-                            <Download className="w-3 h-3 mr-2" /> Download
-                          </Button> */}
-
                           {/* Regenerate: put the original prompt back into textarea */}
                           <Button
                             size="sm"
@@ -1928,9 +2054,7 @@ const CampaignCreate: React.FC = () => {
                                   .find((mm) => mm.role === "user")?.content ||
                                 "";
                               if (!sourcePrompt) {
-                                toast.error(
-                                  "No original prompt found for this image."
-                                );
+                                toast.error("No original prompt found for this image.");
                                 return;
                               }
                               setInputText(sourcePrompt);
@@ -1940,14 +2064,12 @@ const CampaignCreate: React.FC = () => {
                             Regenerate
                           </Button>
 
-                          {/* Delete message */}
+                          {/* Delete message (for uploaded/generated images) */}
                           <Button
                             size="sm"
                             variant="outline"
                             onClick={() => {
-                              const filtered = messages.filter(
-                                (_: any, i: number) => i !== idx
-                              );
+                              const filtered = messages.filter((_: any, i: number) => i !== idx);
                               updateCurrentChatMessages(filtered);
                               toast.success("Deleted message");
                             }}
@@ -1985,7 +2107,6 @@ const CampaignCreate: React.FC = () => {
           )}
         </main>
 
-        {/* Bottom fixed input - avoid overlap by using measured sidebarRight */}
         <div
           className="fixed bottom-0 right-0"
           style={{
@@ -1998,127 +2119,126 @@ const CampaignCreate: React.FC = () => {
         >
           <div className="max-w-6xl mx-auto px-6 py-4 space-y-4">
             <div className="flex flex-wrap gap-2 items-center">
-              {/* Logo button - if logoPublicUrl exists it acts like selected and cannot be toggled off; clicking opens logo picker */}
-              <Button
-                size="sm"
-                variant={quickSettings.logoEnabled ? "default" : "outline"}
-                onClick={() => {
-                  if (logoPublicUrl) {
-                    // don't allow unselect; open logo picker to replace
-                    logoInputRef.current?.click();
-                    return;
-                  }
-                  // no logo: toggle selection
-                  setQuickSettings((q) => ({
-                    ...q,
-                    logoEnabled: !q.logoEnabled,
-                  }));
-                }}
-                className={
-                  quickSettings.logoEnabled ? "optim-selected-glow" : ""
-                }
-                title={
-                  logoPublicUrl
-                    ? "Logo applied — click to replace"
-                    : "Toggle logo usage"
-                }
-              >
-                <ImageIcon className="w-3 h-3 mr-2" />
-                Logo
-              </Button>
+              {/* Removed the lone "Logo" toggle button as requested */}
 
-              {/* Theme button with drop-up */}
-              <div className="relative">
-                <Button
-                  size="sm"
-                  variant={quickSettings.themeEnabled ? "default" : "outline"}
-                  onClick={() => setShowThemeOptions((s) => !s)}
-                  className={
-                    quickSettings.themeEnabled ? "optim-selected-glow" : ""
-                  }
-                >
-                  <Palette className="w-3 h-3 mr-2" />
-                  {quickSettings.themeEnabled ? quickSettings.tone : "Theme"}
-                </Button>
-                {showThemeOptions && (
-                  <div className="absolute bottom-full mb-2 right-0 bg-white border p-2 rounded shadow-lg z-40 w-44">
-                    <div className="text-xs font-semibold mb-2">Pick theme</div>
-                    <div className="flex flex-col gap-2">
-                      {[
-                        "professional",
-                        "playful",
-                        "Realisitc, festive",
-                        "minimal",
-                        "dynamic",
-                        "luxury",
-                        "elegant",
-                        "trendy",
-                        "bold-offer",
-                        "launch",
-                        "testimonial",
-                        "Retro",
-                      ].map((t) => (
-                        <button
-                          key={t}
-                          onClick={() => {
-                            setQuickSettings((q) => ({
-                              ...q,
-                              tone: t,
-                              themeEnabled: true,
-                            }));
-                            setShowThemeOptions(false);
-                            toast.success(`Theme: ${t}`);
-                          }}
-                          className={`text-left px-2 py-1 rounded ${
-                            quickSettings.tone === t ? "bg-primary/10" : ""
-                          }`}
-                        >
-                          {t}
-                        </button>
-                      ))}
+              {/* Theme, Aspect, Enhance grouped (all same UI look & behavior) */}
+              <div className="flex items-center gap-2">
+                {/* Theme button with drop-up */}
+                <div className="relative">
+                  <Button
+                    size="sm"
+                    variant={quickSettings.themeEnabled ? "default" : "outline"}
+                    onClick={() => setShowThemeOptions((s) => !s)}
+                    className={quickSettings.themeEnabled ? "optim-selected-glow" : ""}
+                  >
+                    <Palette className="w-3 h-3 mr-2" />
+                    {quickSettings.themeEnabled ? quickSettings.tone : "Theme"}
+                  </Button>
+                  {showThemeOptions && (
+                    <div className="absolute bottom-full mb-2 right-0 bg-white border p-2 rounded shadow-lg z-40 w-44">
+                      <div className="text-xs font-semibold mb-2">Pick theme</div>
+                      <div className="flex flex-col gap-2">
+                        {[
+                          "professional",
+                          "playful",
+                          "Realisitc, festive",
+                          "minimal",
+                          "dynamic",
+                          "luxury",
+                          "elegant",
+                          "trendy",
+                          "bold-offer",
+                          "launch",
+                          "testimonial",
+                          "Retro",
+                        ].map((t) => (
+                          <button
+                            key={t}
+                            onClick={() => {
+                              setQuickSettings((q) => ({
+                                ...q,
+                                tone: t,
+                                themeEnabled: true,
+                              }));
+                              setShowThemeOptions(false);
+                              toast.success(`Theme: ${t}`);
+                            }}
+                            className={`text-left px-2 py-1 rounded ${quickSettings.tone === t ? "bg-primary/10" : ""}`}
+                          >
+                            {t}
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                )}
-              </div>
+                  )}
+                </div>
 
-              {/* Aspect ratio button with drop-up (only 1:1, 4:5, 9:16) */}
-              <div className="relative">
-                <Button
-                  size="sm"
-                  variant={aspectChosen ? "default" : "outline"}
-                  onClick={() => setShowAspectOptions((s) => !s)}
-                  className={aspectChosen ? "optim-selected-glow" : ""}
-                >
-                  <LayoutTemplate className="w-3 h-3 mr-2" />
-                  Aspect — {quickSettings.aspectRatio}
-                </Button>
-                {showAspectOptions && (
-                  <div className="absolute bottom-full mb-2 right-0 bg-white border p-2 rounded shadow-lg z-40 w-40">
-                    <div className="text-xs font-semibold mb-2">
-                      Aspect ratio
+                {/* Aspect ratio button with drop-up (only 1:1, 4:5, 9:16) */}
+                <div className="relative">
+                  <Button
+                    size="sm"
+                    variant={aspectChosen ? "default" : "outline"}
+                    onClick={() => setShowAspectOptions((s) => !s)}
+                    className={aspectChosen ? "optim-selected-glow" : ""}
+                  >
+                    <LayoutTemplate className="w-3 h-3 mr-2" />
+                    Aspect — {quickSettings.aspectRatio}
+                  </Button>
+                  {showAspectOptions && (
+                    <div className="absolute bottom-full mb-2 right-0 bg-white border p-2 rounded shadow-lg z-40 w-40">
+                      <div className="text-xs font-semibold mb-2">Aspect ratio</div>
+                      <div className="flex flex-col gap-2">
+                        {ASPECT_OPTIONS.map((r) => (
+                          <button
+                            key={r}
+                            onClick={() => {
+                              setQuickSettings((q) => ({ ...q, aspectRatio: r }));
+                              setShowAspectOptions(false);
+                              setAspectChosen(true); // mark aspect as chosen (button becomes selected)
+                              toast.success(`Aspect: ${r}`);
+                            }}
+                            className={`text-left px-2 py-1 rounded hover:bg-slate-50 ${quickSettings.aspectRatio === r ? "font-medium optim-selected-glow" : ""}`}
+                          >
+                            {r}
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                    <div className="flex flex-col gap-2">
-                      {ASPECT_OPTIONS.map((r) => (
-                        <button
-                          key={r}
-                          onClick={() => {
-                            setQuickSettings((q) => ({ ...q, aspectRatio: r }));
-                            setShowAspectOptions(false);
-                            setAspectChosen(true); // mark aspect as chosen (button becomes selected)
-                            toast.success(`Aspect: ${r}`);
-                          }}
-                          className={`text-left px-2 py-1 rounded hover:bg-slate-50 ${
-                            quickSettings.aspectRatio === r
-                              ? "font-medium optim-selected-glow"
-                              : ""
-                          }`}
-                        >
-                          {r}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                  )}
+                </div>
+
+                {/* Enhance button moved here so all three (Theme, Aspect, Enhance) are together */}
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={async () => {
+                      const enhanced = await enhancePrompt(inputText || adFormData.description || "");
+                      if (enhanced) setInputText(enhanced);
+                    }}
+                  >
+                    <Sparkles className="w-3 h-3 mr-2" />
+                    Enhance
+                  </Button>
+
+                  {/* NEW: Quick Upload button next to Enhance */}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    ref={quickUploadInputRef}
+                    onChange={handleQuickUpload}
+                    style={{ display: "none" }}
+                  />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => quickUploadInputRef.current?.click()}
+                    title="Upload your own image"
+                  >
+                    <Upload className="w-3 h-3 mr-2" />
+                    Upload
+                  </Button>
+                </div>
               </div>
 
               {quickSettings.audience && (
@@ -2129,7 +2249,7 @@ const CampaignCreate: React.FC = () => {
               )}
             </div>
 
-            {/* Input bar */}
+            {/* Input bar */} 
             <div className="relative">
               <div
                 className="flex items-end gap-3 p-2 rounded-3xl"
@@ -2178,25 +2298,11 @@ const CampaignCreate: React.FC = () => {
 
                 <div className="flex items-center gap-2">
                   <MicRecorder
-                    onText={(chunk) =>
-                      setInputText((p) => (p ? p + " " + chunk : chunk))
-                    }
+                    onText={(chunk) => setInputText((p) => (p ? p + " " + chunk : chunk))}
                     lang="ta-IN"
                     small
                   />
-                  <Button
-                    size="icon"
-                    variant="outline"
-                    onClick={async () => {
-                      const enhanced = await enhancePrompt(
-                        inputText || adFormData.description || ""
-                      );
-                      if (enhanced) setInputText(enhanced);
-                    }}
-                    title="Enhance prompt"
-                  >
-                    <Sparkles className="w-5 h-5" />
-                  </Button>
+                  {/* Enhance button removed from here (moved to the Theme/Aspect group) */}
                   <Button
                     size="icon"
                     onClick={startGenerate}
@@ -2218,20 +2324,14 @@ const CampaignCreate: React.FC = () => {
                 <Card className="mt-3 p-4 optim-deep-shadow">
                   <div className="flex items-center justify-between mb-3">
                     <div className="font-semibold">Upload & Brand Settings</div>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => setShowUploadPanel(false)}
-                    >
+                    <Button size="sm" variant="ghost" onClick={() => setShowUploadPanel(false)}>
                       <X className="w-4 h-4" />
                     </Button>
                   </div>
                   <Separator />
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
                     <div>
-                      <Label className="text-xs mb-2 block">
-                        Product / Reference Images (max 3)
-                      </Label>
+                      <Label className="text-xs mb-2 block">Product / Reference Images (max 3)</Label>
                       <div className="flex gap-2 items-center">
                         <div className="flex gap-2">
                           {uploadedPreviews.map((src, index) => (
@@ -2246,6 +2346,7 @@ const CampaignCreate: React.FC = () => {
                                 onClick={() => handleRemoveImage(index)}
                                 className="absolute -top-2 -right-2 w-5 h-5 bg-destructive text-white rounded-full text-xs opacity-0 group-hover:opacity-100 transition-opacity"
                                 style={{ background: colors.destructive }}
+                                title="Remove"
                               >
                                 ×
                               </button>
@@ -2273,17 +2374,7 @@ const CampaignCreate: React.FC = () => {
                         <Button size="sm" onClick={handleSaveReferenceImages}>
                           Save Reference Images to Profile
                         </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            setUploadedImages([]);
-                            setUploadedPreviews([]);
-                            toast.success("Cleared previews");
-                          }}
-                        >
-                          Clear
-                        </Button>
+                        {/* Removed the "Clear" button per request — user prefers hover-cancel only */}
                       </div>
                     </div>
 
@@ -2292,30 +2383,35 @@ const CampaignCreate: React.FC = () => {
                       <div className="flex items-center gap-3">
                         <div
                           onClick={() => logoInputRef.current?.click()}
-                          className={`w-20 h-20 rounded-lg hover:border-primary transition-colors flex items-center justify-center cursor-pointer ${
-                            logoGlowing ? "optim-logo-card-glow" : ""
-                          } optim-logo-card-professional`}
+                          className={`w-20 h-20 rounded-lg hover:border-primary transition-colors flex items-center justify-center cursor-pointer ${logoGlowing ? "optim-logo-card-glow" : ""} optim-logo-card-professional`}
                           style={{
                             borderColor: colors.border,
+                            position: "relative",
                           }}
-                          title={
-                            logoPublicUrl
-                              ? "Logo saved — click to change"
-                              : "Upload or apply logo"
-                          }
+                          title={logoPublicUrl ? "Logo saved — click to change" : "Upload or apply logo"}
                         >
+                          {/* add hover red cancel button on logo (same UI as reference images) */}
+                          {(logoPreview || logoPublicUrl) && (
+                            <button
+                              onClick={(ev) => {
+                                ev.stopPropagation();
+                                handleRemoveLogo();
+                              }}
+                              className="absolute -top-2 -right-2 w-5 h-5 bg-destructive text-white rounded-full text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                              style={{
+                                background: colors.destructive,
+                                zIndex: 10,
+                              }}
+                              title="Remove logo"
+                            >
+                              ×
+                            </button>
+                          )}
+
                           {logoPreview ? (
-                            <img
-                              src={logoPreview}
-                              alt="Logo"
-                              className={`w-full h-full rounded-lg object-cover`}
-                            />
+                            <img src={logoPreview} alt="Logo" className={`w-full h-full rounded-lg object-cover`} />
                           ) : logoPublicUrl ? (
-                            <img
-                              src={logoPublicUrl}
-                              alt="logo"
-                              className={`w-full h-full rounded-lg object-cover`}
-                            />
+                            <img src={logoPublicUrl} alt="logo" className={`w-full h-full rounded-lg object-cover`} />
                           ) : (
                             <Upload className="w-5 h-5 text-muted-foreground" />
                           )}
@@ -2328,14 +2424,8 @@ const CampaignCreate: React.FC = () => {
                             id="brandName"
                             value={adFormData.brandName}
                             onChange={(e) => {
-                              setAdFormData((p: any) => ({
-                                ...p,
-                                brandName: e.target.value,
-                              }));
-                              setPostFormData((p: any) => ({
-                                ...p,
-                                brandName: e.target.value,
-                              }));
+                              setAdFormData((p: any) => ({ ...p, brandName: e.target.value }));
+                              setPostFormData((p: any) => ({ ...p, brandName: e.target.value }));
                             }}
                             className="mt-1 h-9 text-sm"
                             placeholder="Brand name"
@@ -2347,26 +2437,14 @@ const CampaignCreate: React.FC = () => {
                             id="tagline"
                             value={adFormData.tagline}
                             onChange={(e) => {
-                              setAdFormData((p: any) => ({
-                                ...p,
-                                tagline: e.target.value,
-                              }));
-                              setPostFormData((p: any) => ({
-                                ...p,
-                                tagline: e.target.value,
-                              }));
+                              setAdFormData((p: any) => ({ ...p, tagline: e.target.value }));
+                              setPostFormData((p: any) => ({ ...p, tagline: e.target.value }));
                             }}
                             className="mt-1 h-9 text-sm"
                             placeholder="Tagline"
                           />
                           <div className="mt-2 flex gap-2">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={handleRemoveLogo}
-                            >
-                              Remove Logo
-                            </Button>
+                            {/* Removed separate Remove Logo button — hover-cancel now used */}
                             <Button
                               size="sm"
                               onClick={async () => {
@@ -2380,34 +2458,19 @@ const CampaignCreate: React.FC = () => {
                                     toast.error("No logo selected");
                                     return;
                                   }
-                                  const { path, publicUrl } =
-                                    await uploadFileToUserUploads(
-                                      logoFile,
-                                      "logo"
-                                    );
-                                  await supabase
-                                    .from("profiles")
-                                    .upsert({ id: user.id, logo_path: path });
+                                  const { path, publicUrl } = await uploadFileToUserUploads(logoFile, "logo");
+                                  await supabase.from("profiles").upsert({ id: user.id, logo_path: path });
                                   if (publicUrl) {
                                     setLogoPublicUrl(publicUrl);
                                     setLogoGlowing(true);
-                                    setAdFormData((p: any) => ({
-                                      ...p,
-                                      logoPublicUrl: publicUrl,
-                                    }));
-                                    setPostFormData((p: any) => ({
-                                      ...p,
-                                      logoPublicUrl: publicUrl,
-                                    }));
+                                    setAdFormData((p: any) => ({ ...p, logoPublicUrl: publicUrl }));
+                                    setPostFormData((p: any) => ({ ...p, logoPublicUrl: publicUrl }));
                                   } else {
                                     setLogoGlowing(true);
                                   }
                                   toast.success("Logo saved to profile");
                                 } catch (e) {
-                                  console.error(
-                                    "save logo to profile failed",
-                                    e
-                                  );
+                                  console.error("save logo to profile failed", e);
                                   toast.error("Save logo failed");
                                 }
                               }}
@@ -2427,8 +2490,6 @@ const CampaignCreate: React.FC = () => {
 
         {/* Publish panel (same flows) */}
         {showPublishPanel && (
-          /* IMPORTANT: set higher zIndex so this panel always appears above the bottom fixed input (which is zIndex:60).
-             Also make modal content scrollable and reserve bottom space so the fixed input doesn't cover controls. */
           <div
             className="fixed inset-0"
             style={{
@@ -2448,31 +2509,17 @@ const CampaignCreate: React.FC = () => {
             >
               <Card className="p-6 optim-deep-shadow">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-semibold">
-                    Publish Your Campaign
-                  </h3>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => setShowPublishPanel(false)}
-                  >
+                  <h3 className="text-lg font-semibold">Publish Your Campaign</h3>
+                  <Button size="sm" variant="ghost" onClick={() => setShowPublishPanel(false)}>
                     <X className="w-4 h-4" />
                   </Button>
                 </div>
                 <Separator className="my-3" />
                 <div className="flex gap-2 mb-3">
-                  <Button
-                    variant={publishMode === "post" ? "default" : "outline"}
-                    onClick={() => setPublishMode("post")}
-                    className="flex-1"
-                  >
+                  <Button variant={publishMode === "post" ? "default" : "outline"} onClick={() => setPublishMode("post")} className="flex-1">
                     <Sparkles className="w-4 h-4 mr-2" /> Post Publishing
                   </Button>
-                  <Button
-                    variant={publishMode === "ad" ? "default" : "outline"}
-                    onClick={() => setPublishMode("ad")}
-                    className="flex-1"
-                  >
+                  <Button variant={publishMode === "ad" ? "default" : "outline"} onClick={() => setPublishMode("ad")} className="flex-1">
                     <ImageIcon className="w-4 h-4 mr-2" /> Ad Publishing
                   </Button>
                 </div>
@@ -2487,10 +2534,7 @@ const CampaignCreate: React.FC = () => {
                         id="postName"
                         value={postFormData.postName}
                         onChange={(e) =>
-                          setPostFormData((p: any) => ({
-                            ...p,
-                            postName: e.target.value,
-                          }))
+                          setPostFormData((p: any) => ({ ...p, postName: e.target.value }))
                         }
                         placeholder="Post title (optional)"
                         className="mt-2"
@@ -2502,19 +2546,12 @@ const CampaignCreate: React.FC = () => {
                         Caption
                       </Label>
                       {/* platform error text */}
-                      {platformError && (
-                        <div className="text-sm text-red-600 mb-2">
-                          {platformError}
-                        </div>
-                      )}
+                      {platformError && <div className="text-sm text-red-600 mb-2">{platformError}</div>}
                       <Textarea
                         id="caption"
                         value={postFormData.generatedCaption}
                         onChange={(e) =>
-                          setPostFormData((p: any) => ({
-                            ...p,
-                            generatedCaption: e.target.value,
-                          }))
+                          setPostFormData((p: any) => ({ ...p, generatedCaption: e.target.value }))
                         }
                         placeholder="Add your post caption..."
                         className="mt-2 min-h-[80px]"
@@ -2522,20 +2559,13 @@ const CampaignCreate: React.FC = () => {
                       <div className="mt-2 flex gap-2">
                         <Button
                           onClick={() => {
-                            // Use what's currently in the caption textarea first; fall back to prompt or postName
                             const seed =
-                              (postFormData.generatedCaption &&
-                                String(postFormData.generatedCaption).trim()) ||
-                              (postFormData.prompt &&
-                                String(postFormData.prompt).trim()) ||
-                              (postFormData.postName &&
-                                String(postFormData.postName).trim()) ||
+                              (postFormData.generatedCaption && String(postFormData.generatedCaption).trim()) ||
+                              (postFormData.prompt && String(postFormData.prompt).trim()) ||
+                              (postFormData.postName && String(postFormData.postName).trim()) ||
                               "Write a caption";
                             generateCaption(seed, (text) =>
-                              setPostFormData((p: any) => ({
-                                ...p,
-                                generatedCaption: text,
-                              }))
+                              setPostFormData((p: any) => ({ ...p, generatedCaption: text }))
                             );
                           }}
                           variant="outline"
@@ -2545,33 +2575,18 @@ const CampaignCreate: React.FC = () => {
 
                         <Button
                           onClick={() => {
-                            // Prefer caption text as seed; if not present, prefer hashtags field, then prompt/postName
                             const seed =
-                              (postFormData.generatedCaption &&
-                                String(postFormData.generatedCaption).trim()) ||
-                              (postFormData.hashtags &&
-                                String(postFormData.hashtags).trim()) ||
-                              (postFormData.prompt &&
-                                String(postFormData.prompt).trim()) ||
-                              (postFormData.postName &&
-                                String(postFormData.postName).trim()) ||
+                              (postFormData.generatedCaption && String(postFormData.generatedCaption).trim()) ||
+                              (postFormData.hashtags && String(postFormData.hashtags).trim()) ||
+                              (postFormData.prompt && String(postFormData.prompt).trim()) ||
+                              (postFormData.postName && String(postFormData.postName).trim()) ||
                               "Generate hashtags";
-                            generateCaption(
-                              `Generate hashtags for: ${seed}`,
-                              (text) => {
-                                const matches = (text || "").match(/#[\w-]+/g);
-                                if (matches && matches.length)
-                                  setPostFormData((p: any) => ({
-                                    ...p,
-                                    hashtags: matches.join(" "),
-                                  }));
-                                else
-                                  setPostFormData((p: any) => ({
-                                    ...p,
-                                    hashtags: text,
-                                  }));
-                              }
-                            );
+                            generateCaption(`Generate hashtags for: ${seed}`, (text) => {
+                              const matches = (text || "").match(/#[\w-]+/g);
+                              if (matches && matches.length)
+                                setPostFormData((p: any) => ({ ...p, hashtags: matches.join(" ") }));
+                              else setPostFormData((p: any) => ({ ...p, hashtags: text }));
+                            });
                           }}
                           variant="outline"
                         >
@@ -2582,23 +2597,14 @@ const CampaignCreate: React.FC = () => {
                           <label className="inline-flex items-center gap-2">
                             <input
                               type="checkbox"
-                              checked={postFormData.platforms.includes(
-                                "Instagram"
-                              )}
+                              checked={postFormData.platforms.includes("Instagram")}
                               onChange={(e) => {
                                 const checked = e.target.checked;
                                 setPostFormData((p: any) => ({
                                   ...p,
                                   platforms: checked
-                                    ? Array.from(
-                                        new Set([
-                                          ...(p.platforms || []),
-                                          "Instagram",
-                                        ])
-                                      )
-                                    : (p.platforms || []).filter(
-                                        (x: any) => x !== "Instagram"
-                                      ),
+                                    ? Array.from(new Set([...(p.platforms || []), "Instagram"]))
+                                    : (p.platforms || []).filter((x: any) => x !== "Instagram"),
                                 }));
                                 if (checked) setPlatformError(null);
                               }}
@@ -2608,23 +2614,14 @@ const CampaignCreate: React.FC = () => {
                           <label className="inline-flex items-center gap-2">
                             <input
                               type="checkbox"
-                              checked={postFormData.platforms.includes(
-                                "Facebook"
-                              )}
+                              checked={postFormData.platforms.includes("Facebook")}
                               onChange={(e) => {
                                 const checked = e.target.checked;
                                 setPostFormData((p: any) => ({
                                   ...p,
                                   platforms: checked
-                                    ? Array.from(
-                                        new Set([
-                                          ...(p.platforms || []),
-                                          "Facebook",
-                                        ])
-                                      )
-                                    : (p.platforms || []).filter(
-                                        (x: any) => x !== "Facebook"
-                                      ),
+                                    ? Array.from(new Set([...(p.platforms || []), "Facebook"]))
+                                    : (p.platforms || []).filter((x: any) => x !== "Facebook"),
                                 }));
                                 if (checked) setPlatformError(null);
                               }}
@@ -2642,12 +2639,7 @@ const CampaignCreate: React.FC = () => {
                       <Input
                         id="hashtags"
                         value={postFormData.hashtags}
-                        onChange={(e) =>
-                          setPostFormData((p: any) => ({
-                            ...p,
-                            hashtags: e.target.value,
-                          }))
-                        }
+                        onChange={(e) => setPostFormData((p: any) => ({ ...p, hashtags: e.target.value }))}
                         placeholder="#marketing #socialmedia"
                         className="mt-2"
                       />
@@ -2655,27 +2647,33 @@ const CampaignCreate: React.FC = () => {
 
                     <div className="flex gap-2">
                       <Button
-                        className="flex-1 hover:scale-105 transition-transform"
+                        className="flex-1 hover:scale-105 transition-transform flex items-center justify-center gap-2"
                         style={{
                           background: colors.gradientPrimary,
                           color: colors.primaryForeground,
                         }}
                         onClick={() => handlePublishPost()}
+                        disabled={publishLoading}
                       >
-                        Publish Now
+                        {publishLoading ? (
+                          <>
+                            <Spinner /> <span>Publishing…</span>
+                          </>
+                        ) : (
+                          <span>Publish Now</span>
+                        )}
                       </Button>
-                      <Button
-                        variant="outline"
-                        className="flex-1"
-                        onClick={() =>
-                          toast(
-                            "Schedule feature not implemented in this sample"
-                          )
-                        }
-                      >
+                      <Button variant="outline" className="flex-1" onClick={() => toast("Schedule feature not implemented in this sample")}>
                         Schedule
                       </Button>
                     </div>
+
+                    {/* status message area (post) */}
+                    {publishStatus && (
+                      <div className={`mt-2 text-sm ${publishStatus.type === "success" ? "text-green-600" : "text-red-600"}`}>
+                        {publishStatus.text}
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -2688,12 +2686,7 @@ const CampaignCreate: React.FC = () => {
                         <Input
                           id="campaignName"
                           value={adFormData.campaignName}
-                          onChange={(e) =>
-                            setAdFormData((p: any) => ({
-                              ...p,
-                              campaignName: e.target.value,
-                            }))
-                          }
+                          onChange={(e) => setAdFormData((p: any) => ({ ...p, campaignName: e.target.value }))}
                           placeholder="My Campaign"
                           className="mt-2"
                         />
@@ -2705,12 +2698,7 @@ const CampaignCreate: React.FC = () => {
                         <Input
                           id="adSetName"
                           value={adFormData.adSetName}
-                          onChange={(e) =>
-                            setAdFormData((p: any) => ({
-                              ...p,
-                              adSetName: e.target.value,
-                            }))
-                          }
+                          onChange={(e) => setAdFormData((p: any) => ({ ...p, adSetName: e.target.value }))}
                           placeholder="Ad Set Name (optional)"
                           className="mt-2"
                         />
@@ -2719,22 +2707,10 @@ const CampaignCreate: React.FC = () => {
                         <Label htmlFor="objective" className="text-sm">
                           Objective
                         </Label>
-                        <select
-                          id="objective"
-                          value={adFormData.objective}
-                          onChange={(e) =>
-                            setAdFormData((p: any) => ({
-                              ...p,
-                              objective: e.target.value,
-                            }))
-                          }
-                          className="mt-2 w-full h-9 rounded border px-2"
-                        >
+                        <select id="objective" value={adFormData.objective} onChange={(e) => setAdFormData((p: any) => ({ ...p, objective: e.target.value }))} className="mt-2 w-full h-9 rounded border px-2">
                           <option value="LINK_CLICKS">Link Clicks</option>
                           <option value="CONVERSIONS">Conversions</option>
-                          <option value="BRAND_AWARENESS">
-                            Brand Awareness
-                          </option>
+                          <option value="BRAND_AWARENESS">Brand Awareness</option>
                           <option value="REACH">Reach</option>
                         </select>
                       </div>
@@ -2745,12 +2721,7 @@ const CampaignCreate: React.FC = () => {
                         <Input
                           id="primaryCTA"
                           value={adFormData.primaryCTA}
-                          onChange={(e) =>
-                            setAdFormData((p: any) => ({
-                              ...p,
-                              primaryCTA: e.target.value,
-                            }))
-                          }
+                          onChange={(e) => setAdFormData((p: any) => ({ ...p, primaryCTA: e.target.value }))}
                           placeholder="LEARN_MORE"
                           className="mt-2"
                         />
@@ -2765,13 +2736,8 @@ const CampaignCreate: React.FC = () => {
                         <Input
                           id="destinationLink"
                           value={adFormData.destinationLink}
-                          onChange={(e) =>
-                            setAdFormData((p: any) => ({
-                              ...p,
-                              destinationLink: e.target.value,
-                            }))
-                          }
-                          placeholder="https://example.com"
+                          onChange={(e) => setAdFormData((p: any) => ({ ...p, destinationLink: e.target.value }))}
+                                                    placeholder="https://example.com"
                           className="mt-2"
                         />
                       </div>
@@ -2779,17 +2745,7 @@ const CampaignCreate: React.FC = () => {
                         <Label htmlFor="delivery" className="text-sm">
                           Delivery Type
                         </Label>
-                        <select
-                          id="delivery"
-                          value={adFormData.delivery}
-                          onChange={(e) =>
-                            setAdFormData((p: any) => ({
-                              ...p,
-                              delivery: e.target.value,
-                            }))
-                          }
-                          className="mt-2 w-full h-9 rounded border px-2"
-                        >
+                        <select id="delivery" value={adFormData.delivery} onChange={(e) => setAdFormData((p: any) => ({ ...p, delivery: e.target.value }))} className="mt-2 w-full h-9 rounded border px-2">
                           <option value="">Default</option>
                           <option value="standard">Standard</option>
                           <option value="expedited">Expedited</option>
@@ -2806,12 +2762,7 @@ const CampaignCreate: React.FC = () => {
                           id="budget"
                           type="number"
                           value={adFormData.budget}
-                          onChange={(e) =>
-                            setAdFormData((p: any) => ({
-                              ...p,
-                              budget: Number(e.target.value),
-                            }))
-                          }
+                          onChange={(e) => setAdFormData((p: any) => ({ ...p, budget: Number(e.target.value) }))}
                           placeholder="5000"
                           className="mt-2"
                         />
@@ -2824,12 +2775,7 @@ const CampaignCreate: React.FC = () => {
                           id="duration"
                           type="number"
                           value={adFormData.duration || 7}
-                          onChange={(e) =>
-                            setAdFormData((p: any) => ({
-                              ...p,
-                              duration: Number(e.target.value),
-                            }))
-                          }
+                          onChange={(e) => setAdFormData((p: any) => ({ ...p, duration: Number(e.target.value) }))}
                           placeholder="7"
                           className="mt-2"
                         />
@@ -2843,12 +2789,7 @@ const CampaignCreate: React.FC = () => {
                       <Input
                         id="targeting"
                         value={adFormData.interests}
-                        onChange={(e) =>
-                          setAdFormData((p: any) => ({
-                            ...p,
-                            interests: e.target.value,
-                          }))
-                        }
+                        onChange={(e) => setAdFormData((p: any) => ({ ...p, interests: e.target.value }))}
                         placeholder="e.g., Fashion, Fitness"
                         className="mt-2"
                       />
@@ -2857,23 +2798,14 @@ const CampaignCreate: React.FC = () => {
                           <label className="inline-flex items-center gap-2">
                             <input
                               type="checkbox"
-                              checked={adFormData.platforms.includes(
-                                "Instagram"
-                              )}
+                              checked={adFormData.platforms.includes("Instagram")}
                               onChange={(e) => {
                                 const checked = e.target.checked;
                                 setAdFormData((p: any) => ({
                                   ...p,
                                   platforms: checked
-                                    ? Array.from(
-                                        new Set([
-                                          ...(p.platforms || []),
-                                          "Instagram",
-                                        ])
-                                      )
-                                    : (p.platforms || []).filter(
-                                        (x: any) => x !== "Instagram"
-                                      ),
+                                    ? Array.from(new Set([...(p.platforms || []), "Instagram"]))
+                                    : (p.platforms || []).filter((x: any) => x !== "Instagram"),
                                 }));
                               }}
                             />
@@ -2882,23 +2814,14 @@ const CampaignCreate: React.FC = () => {
                           <label className="inline-flex items-center gap-2">
                             <input
                               type="checkbox"
-                              checked={adFormData.platforms.includes(
-                                "Facebook"
-                              )}
+                              checked={adFormData.platforms.includes("Facebook")}
                               onChange={(e) => {
                                 const checked = e.target.checked;
                                 setAdFormData((p: any) => ({
                                   ...p,
                                   platforms: checked
-                                    ? Array.from(
-                                        new Set([
-                                          ...(p.platforms || []),
-                                          "Facebook",
-                                        ])
-                                      )
-                                    : (p.platforms || []).filter(
-                                        (x: any) => x !== "Facebook"
-                                      ),
+                                    ? Array.from(new Set([...(p.platforms || []), "Facebook"]))
+                                    : (p.platforms || []).filter((x: any) => x !== "Facebook"),
                                 }));
                               }}
                             />
@@ -2910,12 +2833,7 @@ const CampaignCreate: React.FC = () => {
                             <input
                               type="checkbox"
                               checked={!!adFormData.autoOptimize}
-                              onChange={(e) =>
-                                setAdFormData((p: any) => ({
-                                  ...p,
-                                  autoOptimize: e.target.checked,
-                                }))
-                              }
+                              onChange={(e) => setAdFormData((p: any) => ({ ...p, autoOptimize: e.target.checked }))}
                             />
                             Auto optimize
                           </label>
@@ -2923,12 +2841,7 @@ const CampaignCreate: React.FC = () => {
                             <input
                               type="checkbox"
                               checked={!!adFormData.autoTarget}
-                              onChange={(e) =>
-                                setAdFormData((p: any) => ({
-                                  ...p,
-                                  autoTarget: e.target.checked,
-                                }))
-                              }
+                              onChange={(e) => setAdFormData((p: any) => ({ ...p, autoTarget: e.target.checked }))}
                             />
                             Auto target
                           </label>
@@ -2938,14 +2851,21 @@ const CampaignCreate: React.FC = () => {
 
                     <div className="flex gap-2">
                       <Button
-                        className="flex-1 hover:scale-105 transition-transform"
+                        className="flex-1 hover:scale-105 transition-transform flex items-center justify-center gap-2"
                         style={{
                           background: colors.gradientPrimary,
                           color: colors.primaryForeground,
                         }}
                         onClick={() => handleLaunchAd()}
+                        disabled={adLoading}
                       >
-                        Launch Ad Campaign
+                        {adLoading ? (
+                          <>
+                            <Spinner /> <span>Running ad…</span>
+                          </>
+                        ) : (
+                          <span>Launch Ad Campaign</span>
+                        )}
                       </Button>
                       <Button
                         variant="outline"
@@ -2981,15 +2901,20 @@ const CampaignCreate: React.FC = () => {
                         Save Draft
                       </Button>
                     </div>
+
+                    {/* status message area (ad) */}
+                    {adStatus && <div className={`mt-2 text-sm ${adStatus.type === "success" ? "text-green-600" : "text-red-600"}`}>{adStatus.text}</div>}
                   </div>
                 )}
               </Card>
             </div>
           </div>
         )}
+
       </div>
     </div>
   );
 };
 
 export default dynamic(() => Promise.resolve(CampaignCreate), { ssr: false });
+
