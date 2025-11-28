@@ -180,9 +180,7 @@ function buildPromptFromInputs(body: any) {
   "Never add any additional watermarks, extra symbols, brand marks, or signatures.",
   "The logo placement should always support the focal point of the creative. It should be visible but never overpower the message or dominate the visual hierarchy."
 );
-
-    );
-
+  
     if (placement) {
       const placementInstruction = placementToPrompt(placement);
       if (placementInstruction) parts.push(placementInstruction);
