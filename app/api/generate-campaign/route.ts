@@ -124,9 +124,9 @@ function buildPromptFromInputs(body: any) {
   // Mode
   if (body.mode === "post") {
     parts.push(
-  "Think like a creative director and a performance marketer at the same time. Design a social media creative that’s aesthetically captivating like an everyday post, but strategically built to convert like a top-performing ad."
+      "Think like a creative director and a performance marketer at the same time. Design a social media creative that’s aesthetically captivating like an everyday post, but strategically built to convert like a top-performing ad."
     );
-     }
+  }
 
   // Campaign info
   if (body.campaignName) parts.push(`Campaign name: ${body.campaignName}`);
@@ -150,44 +150,38 @@ function buildPromptFromInputs(body: any) {
   if (body.startDate || body.endDate)
     parts.push(`Schedule: ${body.startDate || "start"} → ${body.endDate || "end"}`);
 
-  // Reference images as inspiration
+  // Reference images
   const refUrls: string[] =
     Array.isArray(body.refUrls) ? body.refUrls : body.aiCustomization?.refUrls ?? [];
   if (refUrls && refUrls.length) {
     parts.push(
       `Reference images (use as style/layout inspiration — color, composition, mood): ${refUrls
         .slice(0, 8)
-        .join(
-          ", "
-        )}. Do not copy copyrighted elements verbatim.`
+        .join(", ")}. Do not copy copyrighted elements verbatim.`
     );
   }
 
-  // Logo usage
-  const hasLogo: boolean = !!body.logoProvided;
-  const placement: LogoPlacement | undefined = body.logoPlacement as
-    | LogoPlacement
-    | undefined;
+  // Logo guidance
+  const placement: LogoPlacement | undefined = body.logoPlacement as LogoPlacement | undefined;
 
- parts.push(
-  "Use the uploaded image only as the brand logo. First extract the logo cleanly by removing any background, borders, or surrounding design.",
-  "Do not place the entire uploaded picture inside the creative. Use only the isolated logo graphic.",
-  "Resize and position the logo the way a professional designer would — balanced, tasteful, and context-aware. Do not stretch or distort it.",
-  "Place the logo in a location that complements the layout. If the creative includes a product in the scene, apply the logo naturally to the product surface when it makes visual sense. Make it look printed or embedded, not floating.",
-  "Match lighting, shadows, and perspective so the logo feels realistically part of the scene.",
-  "If the layout does not include a product surface for application, place the logo neatly within the composition, maintaining premium brand aesthetics.",
-  "Never generate or modify the logo. Do not create a new version. Do not add filters or effects to it.",
-  "Never add any additional watermarks, extra symbols, brand marks, or signatures.",
-  "The logo placement should always support the focal point of the creative. It should be visible but never overpower the message or dominate the visual hierarchy."
-);
-  
-    if (placement) {
-      const placementInstruction = placementToPrompt(placement);
-      if (placementInstruction) parts.push(placementInstruction);
-    }
+  parts.push(
+    "Use the uploaded image only as the brand logo. First extract the logo cleanly by removing any background, borders, or surrounding design.",
+    "Do not place the entire uploaded picture inside the creative. Use only the isolated logo graphic.",
+    "Resize and position the logo the way a professional designer would — balanced, tasteful, and context-aware. Do not stretch or distort it.",
+    "Place the logo in a location that complements the layout. If the creative includes a product in the scene, apply the logo naturally to the product surface when it makes visual sense. Make it look printed or embedded, not floating.",
+    "Match lighting, shadows, and perspective so the logo feels realistically part of the scene.",
+    "If the layout does not include a product surface for application, place the logo neatly within the composition, maintaining premium brand aesthetics.",
+    "Never generate or modify the logo. Do not create a new version. Do not add filters or effects to it.",
+    "Never add any watermarks, symbols, brand marks, or signatures.",
+    "The logo placement should always support the focal point of the creative. It should be visible but never dominate."
+  );
+
+  if (placement) {
+    const placementInstruction = placementToPrompt(placement);
+    if (placementInstruction) parts.push(placementInstruction);
   }
 
-  // Size / aspect
+  // Size / Aspect
   const width = body.target?.width || 1080;
   const height = body.target?.height || 1080;
   const aspectLabel = body.aspectLabel || `${width}x${height}`;
