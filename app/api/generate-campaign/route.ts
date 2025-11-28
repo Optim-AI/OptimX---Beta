@@ -123,10 +123,10 @@ function buildPromptFromInputs(body: any) {
 
   // Mode
   if (body.mode === "post") {
-    parts.push("Create a social media post visual and short caption.");
-  } else {
-    parts.push("Create a high impact ad visual suitable for feed and story placements.");
-  }
+    parts.push(
+  "Think like a creative director and a performance marketer at the same time. Design a social media creative that’s aesthetically captivating like an everyday post, but strategically built to convert like a top-performing ad."
+    );
+     }
 
   // Campaign info
   if (body.campaignName) parts.push(`Campaign name: ${body.campaignName}`);
@@ -169,12 +169,18 @@ function buildPromptFromInputs(body: any) {
     | LogoPlacement
     | undefined;
 
-  if (hasLogo) {
-    parts.push(
-      "Use the uploaded image as the exact brand logo. Do not redesign or invent a new logo.",
-      "Integrate the logo directly into the scene so it looks naturally part of the image.",
-      "Match the lighting, perspective, and texture so the logo feels printed or applied on the surface, not floating.",
-      "Do not add any extra watermarks, signatures, or additional logos."
+ parts.push(
+  "Use the uploaded image only as the brand logo. First extract the logo cleanly by removing any background, borders, or surrounding design.",
+  "Do not place the entire uploaded picture inside the creative. Use only the isolated logo graphic.",
+  "Resize and position the logo the way a professional designer would — balanced, tasteful, and context-aware. Do not stretch or distort it.",
+  "Place the logo in a location that complements the layout. If the creative includes a product in the scene, apply the logo naturally to the product surface when it makes visual sense. Make it look printed or embedded, not floating.",
+  "Match lighting, shadows, and perspective so the logo feels realistically part of the scene.",
+  "If the layout does not include a product surface for application, place the logo neatly within the composition, maintaining premium brand aesthetics.",
+  "Never generate or modify the logo. Do not create a new version. Do not add filters or effects to it.",
+  "Never add any additional watermarks, extra symbols, brand marks, or signatures.",
+  "The logo placement should always support the focal point of the creative. It should be visible but never overpower the message or dominate the visual hierarchy."
+);
+
     );
 
     if (placement) {
