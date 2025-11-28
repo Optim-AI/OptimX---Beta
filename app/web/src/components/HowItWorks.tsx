@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { Link as LinkIcon, MessageSquare, Rocket } from 'lucide-react';
+
 import { useScrollAnimation } from '../hooks/use-scroll-animation';
 import colors from '../../../../lib/colors';
 
@@ -20,23 +21,23 @@ const HowItWorks: React.FC = () => {
     {
       number: '1',
       icon: LinkIcon,
-      title: 'Connect your business accounts and integrations',
+      title: 'Connect your channels',
       description:
-        "Link your Google, Meta, Instagram, WhatsApp, and website accounts in minutes. Our secure setup ensures your data stays protected while giving OptimX the access it needs to work its magic."
+        'Link your Google, Meta, Instagram, WhatsApp, and website once. OptimX securely pulls in your data and keeps everything in sync.'
     },
     {
       number: '2',
       icon: MessageSquare,
-      title: 'Describe your campaign goal',
+      title: 'Tell OptimX your goal',
       description:
-        "Simply tell OptimX what you want to achieve. Our AI helps craft compelling ads, eye-catching creatives, and comprehensive SEO strategy tailored to your business goals and target audience."
+        "Describe what you want in simple words — like 'get more walk-ins' or 'sell 50 more products'. OptimX turns it into a clear campaign plan."
     },
     {
       number: '3',
       icon: Rocket,
-      title: 'Let OptimX design, launch & track everything',
+      title: 'We launch, learn, and optimise',
       description:
-        "Sit back as OptimX handles the heavy lifting. From paid ads to organic growth, content creation to performance tracking, everything runs on autopilot while you focus on your business."
+        'OptimX creates, launches, and tracks your ads and content across channels, then doubles down on what works so you get better results over time.'
     }
   ];
 
@@ -45,8 +46,7 @@ const HowItWorks: React.FC = () => {
       id="how-it-works"
       className="py-24 overflow-hidden"
       style={{
-        // replace bg-muted/30
-        backgroundColor: "hsl(220 13% 95% / 0.3)",
+        backgroundColor: 'hsl(220 13% 95% / 0.3)',
       }}
     >
       <div className="container mx-auto px-4 sm:px-6 lg:px-8">
@@ -74,8 +74,12 @@ const HowItWorks: React.FC = () => {
               3 simple steps
             </span>
           </h2>
-          <p className="text-lg md:text-xl leading-relaxed" style={{ color: colors.mutedForeground }}>
-            From setup to success, we've made it incredibly simple to start growing your business online.
+
+          <p
+            className="text-lg md:text-xl leading-relaxed"
+            style={{ color: colors.mutedForeground }}
+          >
+            Connect your channels, set a goal, and let OptimX handle the rest.
           </p>
         </div>
 
@@ -85,7 +89,7 @@ const HowItWorks: React.FC = () => {
             <div
               className="absolute inset-0 rounded-full"
               style={{
-                background: `linear-gradient(90deg, "hsl(213 100% 50% / 0.2)" 0%, ${colors.primary} 50%, "hsl(213 100% 50% / 0.2)" 100%)`,
+                background: `linear-gradient(90deg, hsl(213 100% 50% / 0.2) 0%, ${colors.primary} 50%, hsl(213 100% 50% / 0.2) 100%)`,
               }}
             />
             <div
@@ -99,6 +103,7 @@ const HowItWorks: React.FC = () => {
           <div ref={stepsRef} className="grid lg:grid-cols-3 gap-8 lg:gap-12 relative">
             {steps.map((step, index) => {
               const Icon = step.icon;
+
               return (
                 <div
                   key={index}
@@ -106,13 +111,12 @@ const HowItWorks: React.FC = () => {
                     stepsVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10'
                   }`}
                   style={{
-                    transitionDelay: stepsVisible ? `${index * 200}ms` : '0ms'
+                    transitionDelay: stepsVisible ? `${index * 200}ms` : '0ms',
                   }}
                 >
                   <div className="relative z-10 h-full">
                     <div
                       className="rounded-2xl p-8 transition-all duration-300"
-                      // replace card-gradient, shadow-elegant, hover-lift/hover-glow visuals with token-backed styles
                       style={{
                         background: colors.gradientCard,
                         color: colors.cardForeground,
@@ -123,15 +127,23 @@ const HowItWorks: React.FC = () => {
                       <div className="relative mb-8">
                         <div
                           className="absolute inset-0 rounded-2xl blur-xl animation-float"
-                          style={{ backgroundColor: "hsl(213 100% 50% / 0.2)" }}
+                          style={{ backgroundColor: 'hsl(213 100% 50% / 0.2)' }}
                         />
                         <div
                           className="relative flex items-center justify-center w-20 h-20 rounded-2xl shadow-glow mx-auto"
                           style={{
-                            background: `linear-gradient(135deg, ${colors.primary} 0%, ${colors.primaryHover ?? colors.primary} 100%)`,
+                            background: `linear-gradient(135deg, ${colors.primary} 0%, ${
+                              colors.primaryHover ?? colors.primary
+                            } 100%)`,
                           }}
                         >
-                          <Icon style={{ color: colors.primaryForeground, width: 40, height: 40 }} />
+                          <Icon
+                            style={{
+                              color: colors.primaryForeground,
+                              width: 40,
+                              height: 40,
+                            }}
+                          />
                         </div>
 
                         <div
@@ -147,24 +159,33 @@ const HowItWorks: React.FC = () => {
                       </div>
 
                       <div className="flex-1 flex flex-col text-center">
-                        <h3 className="text-xl font-semibold mb-4 leading-snug" style={{ color: colors.foreground }}>
+                        <h3
+                          className="text-xl font-semibold mb-4 leading-snug"
+                          style={{ color: colors.foreground }}
+                        >
                           {step.title}
                         </h3>
-                        <p className="leading-relaxed text-base" style={{ color: colors.mutedForeground }}>
+                        <p
+                          className="leading-relaxed text-base"
+                          style={{ color: colors.mutedForeground }}
+                        >
                           {step.description}
                         </p>
                       </div>
 
                       <div className="mt-8 pt-6" style={{ borderTop: `1px solid ${colors.border}` }}>
                         <div className="flex items-center justify-between text-sm">
-                          <span className="font-medium" style={{ color: colors.mutedForeground }}>
+                          <span
+                            className="font-medium"
+                            style={{ color: colors.mutedForeground }}
+                          >
                             Step {step.number}
                           </span>
                           <div className="flex gap-1">
                             {steps.map((_, i) => (
                               <div
                                 key={i}
-                                className={`h-1.5 rounded-full transition-all duration-300`}
+                                className="h-1.5 rounded-full transition-all duration-300"
                                 style={{
                                   width: i <= index ? 32 : 16,
                                   backgroundColor: i <= index ? colors.primary : colors.muted,
