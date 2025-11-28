@@ -135,7 +135,6 @@ Rules:
 The final result must be a single, polished, highly descriptive poster prompt ready for image generation. 
 
 Now convert this user request into the enhanced poster prompt:
-"${userProvidedText}"
 ${prompt}`,
   max_output_tokens: 2000,
 });
