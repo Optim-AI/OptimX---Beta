@@ -92,7 +92,7 @@ const Sidebar: React.FC<SidebarProps> = ({ logoUrl, onLogoClick }) => {
                             <span style={{ color: colors.foreground }}>Optim</span>
                             <span style={{ color: colors.primary }}>X</span>
                           </span>
-              <p style={{ color: sidebarFg, opacity: 0.85, fontSize: 12 }}>Campaign Manager</p>
+              <p style={{ color: sidebarFg, opacity: 0.85, fontSize: 12 }}></p>
             </div>
           )}
         </div>
