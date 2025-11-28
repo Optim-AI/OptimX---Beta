@@ -116,21 +116,26 @@ export async function POST(req: Request) {
     const response = await client.responses.create({
   model: "gpt-4o-mini",
   instructions: systemInstruction,
-  input: `Design a high-impact advertising poster for the given product or service.
+  input: `You are a senior brand designer and performance marketer. Your job is to transform short or messy user inputs into a complete high-impact poster generation prompt.
 
-• Prioritize a clean layout with 1 strong focal point
-• Large readable headline + short supporting text
-• Do not generate a logo
-• Use a color palette and style that fits the business category and audience
-• Adapt visuals to the selected theme/tone (professional, festive, playful, dynamic, luxury, minimal, etc.)
-• It should not feel like AI generated
+Rewrite the user input into a visually detailed, polished, cinematic poster prompt that an AI image generator can use to produce a real marketing creative. Invent tasteful missing details to give the poster a premium, commercial look — but always stay true to the business category and message implied by the user.
 
-The poster must look like a real ad — modern, polished and ready for marketing. 
-No clutter, no random shapes, no watermarks, no distorted text, no artifacts.
-Use the aspect ratio chosen by the user.
+The poster should look like an organic social media visual that performs like an ad: emotionally engaging, premium aesthetics, and action-driven layout.
 
+Rules:
+• 1 strong focal subject or product in the center or dominance in the composition
+• Clean structured layout, modern typography, clear hierarchy
+• Large headline + precise short supporting line when helpful
+• Use imagery, mood, and colors that match the brand category and target audience
+• Do not generate a logo — but design space for where the logo would be placed
+• No watermark, no extra symbols, no distorted text, no random deco shapes
+• No “AI style” artifacts
+• Output only the final enhanced poster prompt, nothing else
 
-Now generate the best possible poster for this user input:
+The final result must be a single, polished, highly descriptive poster prompt ready for image generation. 
+
+Now convert this user request into the enhanced poster prompt:
+"${userProvidedText}"
 ${prompt}`,
   max_output_tokens: 2000,
 });
