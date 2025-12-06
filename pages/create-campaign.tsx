@@ -919,6 +919,71 @@ const CampaignCreate: React.FC = () => {
     };
   }, [logoGlowing, sidebarHost]);
 
+  /* -------------------- NEW: Mirror NavBar credits (ADDED) --------------------
+     Read user_credits (same source NavBar uses) and subscribe to realtime updates.
+     We only add this small effect so the page knows the same credits NavBar shows.
+     When credits <= 0 we show the acknowledgement screen (below).
+  */
+  useEffect(() => {
+    let channel: any = null;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const user = await getCurrentUser();
+        if (!user) return;
+
+        // initial fetch of user_credits
+        try {
+          const { data, error } = await supabase
+            .from("user_credits")
+            .select("credits")
+            .eq("id", user.id)
+            .single();
+          if (!error && !cancelled && typeof data?.credits === "number") {
+            setCredits(Number(data.credits));
+          }
+        } catch (e) {
+          console.warn("initial user_credits fetch failed", e);
+        }
+
+        // subscribe to realtime updates for this user's credits
+        channel = supabase
+          .channel(`credits_page_${user.id}`)
+          .on(
+            "postgres_changes",
+            {
+              event: "UPDATE",
+              schema: "public",
+              table: "user_credits",
+              filter: `id=eq.${user.id}`,
+            },
+            (payload: any) => {
+              try {
+                const newCredits = payload.new?.credits;
+                if (typeof newCredits === "number") {
+                  setCredits(newCredits);
+                }
+              } catch (e) {
+                console.warn("credits payload handling error", e);
+              }
+            }
+          )
+          .subscribe((status) => {
+            // no-op
+          });
+      } catch (e) {
+        console.warn("credits subscription setup failed", e);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (channel) supabase.removeChannel(channel);
+    };
+  }, []);
+  /* -------------------- END ADDED -------------------- */
+
   /* -------------------- Chat CRUD -------------------- */
 
   const createNewChat = async (title = "New Chat") => {
@@ -1956,6 +2021,16 @@ const CampaignCreate: React.FC = () => {
     </svg>
   );
 
+  // Show acknowledgement when credits are 0 or less
+  const hasGeneratedImage =
+  generatedImages.length > 0 ||
+  messages.some((m) => m.imageUrl);
+
+const showAcknowledgement =
+  !isGenerating && credits <= 0 && !hasGeneratedImage;
+
+  // const showAcknowledgement = typeof credits === "number" && credits <= 0;
+
   return (
     <div className="min-h-screen flex bg-slate-50">
       {/* Left: canonical Sidebar (we portal chats into it) */}
@@ -1982,939 +2057,967 @@ const CampaignCreate: React.FC = () => {
           <NavBar />
         </div>
 
-        <main className="max-w-6xl mx-auto p-6 pb-56">
-          {/* If no messages show welcome */}
-          {messages.length === 0 ? (
-            <div className="flex items-center justify-center py-24">
-              <div className="text-center">
-                <div
-                  className="mx-auto w-28 h-28 rounded-full flex items-center justify-center"
-                  style={{ background: colors.gradientHero }}
+        {/* -------------------- ACKNOWLEDGEMENT SCREEN (only when credits <= 0) -------------------- */}
+        {showAcknowledgement ? (
+          <main className="max-w-3xl mx-auto p-6" style={{ minHeight: "60vh" }}>
+            <Card className="p-8 text-center optim-deep-shadow">
+              <div style={{ fontSize: 72, lineHeight: 1 }} className="mb-4">😬</div>
+              <h2 className="text-3xl font-bold mb-3">Oops! You ran out of credits</h2>
+              <p className="text-sm mb-6" style={{ color: colors.mutedForeground }}>
+                It looks like your credits have reached zero. To continue creating campaigns and generating images, please purchase credits.
+                <br />
+                For help, email us at <a href="mailto:info@optimx.app" className="underline">info@optimx.app</a>
+              </p>
+              <div className="flex justify-center gap-3">
+                <Button
+                  onClick={() => router.push("/dashboard")}
+                  style={{ background: colors.gradientPrimary, color: colors.primaryForeground }}
                 >
-                  <Sparkles className="w-12 h-12 text-white" />
-                </div>
-                <h2 className="text-4xl font-bold mt-6">Hello, {firstName}</h2>
-                <p
-                  className="text-lg mt-3"
-                  style={{ color: colors.mutedForeground }}
-                >
-                  Describe your campaign idea or upload product images to get
-                  started with AI-powered creation
-                </p>
+                  Go to Dashboard
+                </Button>
+                <Button variant="outline" onClick={() => router.push("/pricing")}>
+                  View Pricing
+                </Button>
               </div>
-            </div>
-          ) : (
-            <div className="space-y-6 mb-8">
-              {messages.map((m, idx) => (
-                <div
-                  key={idx}
-                  className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
-                >
-                  <Card
-                    className="max-w-2xl p-5 optim-deep-shadow"
-                    style={{
-                      background:
-                        m.role === "user" ? `${colors.primary}0c` : colors.card,
-                      border: `1px solid ${colors.border}`,
-                    }}
-                  >
-                    {/* Only show content text if present - user wanted prompts and images only */}
-                    {m.content && <p style={{ color: colors.cardForeground }}>{m.content}</p>}
-                    {m.imageUrl && (
-                      <div className="mt-3">
-                        <img
-                          src={m.imageUrl}
-                          alt="generated"
-                          className="w-full rounded-lg border"
-                          style={{ borderColor: colors.border }}
-                        />
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          {/* Publish: use this image and open publish panel */}
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              // ensure generatedImages is an array
-                              setGeneratedImages((prev) => [m.imageUrl, ...prev.filter(Boolean)]);
-                              setShowPublishPanel(true);
-                            }}
-                          >
-                            <Sparkles className="w-3 h-3 mr-2" /> Publish
-                          </Button>
-                          {/* Regenerate: put the original prompt back into textarea */}
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              const sourcePrompt =
-                                (m as any).sourcePrompt ||
-                                [...messages]
-                                  .slice(0, idx)
-                                  .reverse()
-                                  .find((mm) => mm.role === "user")?.content ||
-                                "";
-                              if (!sourcePrompt) {
-                                toast.error("No original prompt found for this image.");
-                                return;
-                              }
-                              setInputText(sourcePrompt);
-                              resizeTextarea();
-                            }}
-                          >
-                            Regenerate
-                          </Button>
-
-                          {/* Delete message (for uploaded/generated images) */}
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              const filtered = messages.filter((_: any, i: number) => i !== idx);
-                              updateCurrentChatMessages(filtered);
-                              toast.success("Deleted message");
-                            }}
-                          >
-                            <X className="w-3 h-3 mr-2" /> Delete
-                          </Button>
-                        </div>
-                      </div>
-                    )}
-                  </Card>
+            </Card>
+          </main>
+        ) : (
+          /* Original page content (unchanged) */
+          <>
+            <main className="max-w-6xl mx-auto p-6 pb-56">
+              {/* If no messages show welcome */}
+              {messages.length === 0 ? (
+                <div className="flex items-center justify-center py-24">
+                  <div className="text-center">
+                    <div
+                      className="mx-auto w-28 h-28 rounded-full flex items-center justify-center"
+                      style={{ background: colors.gradientHero }}
+                    >
+                      <Sparkles className="w-12 h-12 text-white" />
+                    </div>
+                    <h2 className="text-4xl font-bold mt-6">Hello, {firstName}</h2>
+                    <p
+                      className="text-lg mt-3"
+                      style={{ color: colors.mutedForeground }}
+                    >
+                      Describe your campaign idea or upload product images to get
+                      started with AI-powered creation
+                    </p>
+                  </div>
                 </div>
-              ))}
-              {isGenerating && (
-                <div className="flex justify-start">
-                  <Card
-                    className="p-4 optim-deep-shadow"
+              ) : (
+                <div className="space-y-6 mb-8">
+                  {messages.map((m, idx) => (
+                    <div
+                      key={idx}
+                      className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
+                    >
+                      <Card
+                        className="max-w-2xl p-5 optim-deep-shadow"
+                        style={{
+                          background:
+                            m.role === "user" ? `${colors.primary}0c` : colors.card,
+                          border: `1px solid ${colors.border}`,
+                        }}
+                      >
+                        {/* Only show content text if present - user wanted prompts and images only */}
+                        {m.content && <p style={{ color: colors.cardForeground }}>{m.content}</p>}
+                        {m.imageUrl && (
+                          <div className="mt-3">
+                            <img
+                              src={m.imageUrl}
+                              alt="generated"
+                              className="w-full rounded-lg border"
+                              style={{ borderColor: colors.border }}
+                            />
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              {/* Publish: use this image and open publish panel */}
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  // ensure generatedImages is an array
+                                  setGeneratedImages((prev) => [m.imageUrl, ...prev.filter(Boolean)]);
+                                  setShowPublishPanel(true);
+                                }}
+                              >
+                                <Sparkles className="w-3 h-3 mr-2" /> Publish
+                              </Button>
+
+                              {/* Regenerate: put the original prompt back into textarea */}
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  const sourcePrompt =
+                                    (m as any).sourcePrompt ||
+                                    [...messages]
+                                      .slice(0, idx)
+                                      .reverse()
+                                      .find((mm) => mm.role === "user")?.content ||
+                                    "";
+                                  if (!sourcePrompt) {
+                                    toast.error("No original prompt found for this image.");
+                                    return;
+                                  }
+                                  setInputText(sourcePrompt);
+                                  resizeTextarea();
+                                }}
+                              >
+                                Regenerate
+                              </Button>
+
+                              {/* Delete message (for uploaded/generated images) */}
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  const filtered = messages.filter((_: any, i: number) => i !== idx);
+                                  updateCurrentChatMessages(filtered);
+                                  toast.success("Deleted message");
+                                }}
+                              >
+                                <X className="w-3 h-3 mr-2" /> Delete
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+                      </Card>
+                    </div>
+                  ))}
+                  {isGenerating && (
+                    <div className="flex justify-start">
+                      <Card
+                        className="p-4 optim-deep-shadow"
+                        style={{
+                          background: colors.card,
+                          border: `1px solid ${colors.border}`,
+                        }}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div
+                            className="w-3 h-3 rounded-full animate-pulse"
+                            style={{ background: colors.primary }}
+                          />
+                          <div style={{ color: colors.mutedForeground }}>
+                            Generating your campaign...
+                          </div>
+                        </div>
+                      </Card>
+                    </div>
+                  )}
+                </div>
+              )}
+            </main>
+
+            <div
+              className="fixed bottom-0 right-0"
+              style={{
+                left: sidebarRight > 0 ? sidebarRight : 0,
+                width: sidebarRight > 0 ? `calc(100% - ${sidebarRight}px)` : "100%",
+                background: `${colors.background}`,
+                borderTop: `1px solid ${colors.border}`,
+                zIndex: 60, // keep bottom input z-index at 60; publish modal will be above it
+              }}
+            >
+              <div className="max-w-6xl mx-auto px-6 py-4 space-y-4">
+                <div className="flex flex-wrap gap-2 items-center">
+                  {/* Removed the lone "Logo" toggle button as requested */}
+
+                  {/* Theme, Aspect, Enhance grouped (all same UI look & behavior) */}
+                  <div className="flex items-center gap-2">
+                    {/* Theme button with drop-up */}
+                    <div className="relative">
+                      <Button
+                        size="sm"
+                        variant={quickSettings.themeEnabled ? "default" : "outline"}
+                        onClick={() => setShowThemeOptions((s) => !s)}
+                        className={quickSettings.themeEnabled ? "optim-selected-glow" : ""}
+                      >
+                        <Palette className="w-3 h-3 mr-2" />
+                        {quickSettings.themeEnabled ? quickSettings.tone : "Theme"}
+                      </Button>
+                      {showThemeOptions && (
+                        <div className="absolute bottom-full mb-2 right-0 bg-white border p-2 rounded shadow-lg z-40 w-44">
+                          <div className="text-xs font-semibold mb-2">Pick theme</div>
+                          <div className="flex flex-col gap-2">
+                            {[
+                              "professional",
+                              "playful",
+                              "Realisitc, festive",
+                              "minimal",
+                              "dynamic",
+                              "luxury",
+                              "elegant",
+                              "trendy",
+                              "bold-offer",
+                              "launch",
+                              "testimonial",
+                              "Retro",
+                            ].map((t) => (
+                              <button
+                                key={t}
+                                onClick={() => {
+                                  setQuickSettings((q) => ({
+                                    ...q,
+                                    tone: t,
+                                    themeEnabled: true,
+                                  }));
+                                  setShowThemeOptions(false);
+                                  toast.success(`Theme: ${t}`);
+                                }}
+                                className={`text-left px-2 py-1 rounded ${quickSettings.tone === t ? "bg-primary/10" : ""}`}
+                              >
+                                {t}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Aspect ratio button with drop-up (only 1:1, 4:5, 9:16) */}
+                    <div className="relative">
+                      <Button
+                        size="sm"
+                        variant={aspectChosen ? "default" : "outline"}
+                        onClick={() => setShowAspectOptions((s) => !s)}
+                        className={aspectChosen ? "optim-selected-glow" : ""}
+                      >
+                        <LayoutTemplate className="w-3 h-3 mr-2" />
+                        Aspect — {quickSettings.aspectRatio}
+                      </Button>
+                      {showAspectOptions && (
+                        <div className="absolute bottom-full mb-2 right-0 bg-white border p-2 rounded shadow-lg z-40 w-40">
+                          <div className="text-xs font-semibold mb-2">Aspect ratio</div>
+                          <div className="flex flex-col gap-2">
+                            {ASPECT_OPTIONS.map((r) => (
+                              <button
+                                key={r}
+                                onClick={() => {
+                                  setQuickSettings((q) => ({ ...q, aspectRatio: r }));
+                                  setShowAspectOptions(false);
+                                  setAspectChosen(true); // mark aspect as chosen (button becomes selected)
+                                  toast.success(`Aspect: ${r}`);
+                                }}
+                                className={`text-left px-2 py-1 rounded hover:bg-slate-50 ${quickSettings.aspectRatio === r ? "font-medium optim-selected-glow" : ""}`}
+                              >
+                                {r}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Enhance button moved here so all three (Theme, Aspect, Enhance) are together */}
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={async () => {
+                          const enhanced = await enhancePrompt(inputText || adFormData.description || "");
+                          if (enhanced) setInputText(enhanced);
+                        }}
+                      >
+                        <Sparkles className="w-3 h-3 mr-2" />
+                        Enhance
+                      </Button>
+
+                      {/* NEW: Quick Upload button next to Enhance */}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        ref={quickUploadInputRef}
+                        onChange={handleQuickUpload}
+                        style={{ display: "none" }}
+                      />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => quickUploadInputRef.current?.click()}
+                        title="Upload your own image"
+                      >
+                        <Upload className="w-3 h-3 mr-2" />
+                        Upload
+                      </Button>
+                    </div>
+                  </div>
+
+                  {quickSettings.audience && (
+                    <Badge variant="secondary" className="px-3 py-1.5">
+                      <Users className="w-3 h-3 mr-1" />
+                      {quickSettings.audience}
+                    </Badge>
+                  )}
+                </div>
+
+                {/* Input bar */} 
+                <div className="relative">
+                  <div
+                    className="flex items-end gap-3 p-2 rounded-3xl"
                     style={{
                       background: colors.card,
-                      border: `1px solid ${colors.border}`,
+                      border: `2px solid ${colors.border}`,
                     }}
                   >
-                    <div className="flex items-center gap-3">
-                      <div
-                        className="w-3 h-3 rounded-full animate-pulse"
-                        style={{ background: colors.primary }}
-                      />
-                      <div style={{ color: colors.mutedForeground }}>
-                        Generating your campaign...
-                      </div>
-                    </div>
-                  </Card>
-                </div>
-              )}
-            </div>
-          )}
-        </main>
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      onChange={handleFileUpload}
+                      accept="image/*"
+                      multiple
+                      className="hidden"
+                    />
+                    <input
+                      type="file"
+                      ref={logoInputRef}
+                      onChange={handleLogoUpload}
+                      accept="image/*"
+                      className="hidden"
+                    />
 
-        <div
-          className="fixed bottom-0 right-0"
-          style={{
-            left: sidebarRight > 0 ? sidebarRight : 0,
-            width: sidebarRight > 0 ? `calc(100% - ${sidebarRight}px)` : "100%",
-            background: `${colors.background}`,
-            borderTop: `1px solid ${colors.border}`,
-            zIndex: 60, // keep bottom input z-index at 60; publish modal will be above it
-          }}
-        >
-          <div className="max-w-6xl mx-auto px-6 py-4 space-y-4">
-            <div className="flex flex-wrap gap-2 items-center">
-              {/* Removed the lone "Logo" toggle button as requested */}
-
-              {/* Theme, Aspect, Enhance grouped (all same UI look & behavior) */}
-              <div className="flex items-center gap-2">
-                {/* Theme button with drop-up */}
-                <div className="relative">
-                  <Button
-                    size="sm"
-                    variant={quickSettings.themeEnabled ? "default" : "outline"}
-                    onClick={() => setShowThemeOptions((s) => !s)}
-                    className={quickSettings.themeEnabled ? "optim-selected-glow" : ""}
-                  >
-                    <Palette className="w-3 h-3 mr-2" />
-                    {quickSettings.themeEnabled ? quickSettings.tone : "Theme"}
-                  </Button>
-                  {showThemeOptions && (
-                    <div className="absolute bottom-full mb-2 right-0 bg-white border p-2 rounded shadow-lg z-40 w-44">
-                      <div className="text-xs font-semibold mb-2">Pick theme</div>
-                      <div className="flex flex-col gap-2">
-                        {[
-                          "professional",
-                          "playful",
-                          "Realisitc, festive",
-                          "minimal",
-                          "dynamic",
-                          "luxury",
-                          "elegant",
-                          "trendy",
-                          "bold-offer",
-                          "launch",
-                          "testimonial",
-                          "Retro",
-                        ].map((t) => (
-                          <button
-                            key={t}
-                            onClick={() => {
-                              setQuickSettings((q) => ({
-                                ...q,
-                                tone: t,
-                                themeEnabled: true,
-                              }));
-                              setShowThemeOptions(false);
-                              toast.success(`Theme: ${t}`);
-                            }}
-                            className={`text-left px-2 py-1 rounded ${quickSettings.tone === t ? "bg-primary/10" : ""}`}
-                          >
-                            {t}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Aspect ratio button with drop-up (only 1:1, 4:5, 9:16) */}
-                <div className="relative">
-                  <Button
-                    size="sm"
-                    variant={aspectChosen ? "default" : "outline"}
-                    onClick={() => setShowAspectOptions((s) => !s)}
-                    className={aspectChosen ? "optim-selected-glow" : ""}
-                  >
-                    <LayoutTemplate className="w-3 h-3 mr-2" />
-                    Aspect — {quickSettings.aspectRatio}
-                  </Button>
-                  {showAspectOptions && (
-                    <div className="absolute bottom-full mb-2 right-0 bg-white border p-2 rounded shadow-lg z-40 w-40">
-                      <div className="text-xs font-semibold mb-2">Aspect ratio</div>
-                      <div className="flex flex-col gap-2">
-                        {ASPECT_OPTIONS.map((r) => (
-                          <button
-                            key={r}
-                            onClick={() => {
-                              setQuickSettings((q) => ({ ...q, aspectRatio: r }));
-                              setShowAspectOptions(false);
-                              setAspectChosen(true); // mark aspect as chosen (button becomes selected)
-                              toast.success(`Aspect: ${r}`);
-                            }}
-                            className={`text-left px-2 py-1 rounded hover:bg-slate-50 ${quickSettings.aspectRatio === r ? "font-medium optim-selected-glow" : ""}`}
-                          >
-                            {r}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Enhance button moved here so all three (Theme, Aspect, Enhance) are together */}
-                <div className="flex items-center gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={async () => {
-                      const enhanced = await enhancePrompt(inputText || adFormData.description || "");
-                      if (enhanced) setInputText(enhanced);
-                    }}
-                  >
-                    <Sparkles className="w-3 h-3 mr-2" />
-                    Enhance
-                  </Button>
-
-                  {/* NEW: Quick Upload button next to Enhance */}
-                  <input
-                    type="file"
-                    accept="image/*"
-                    ref={quickUploadInputRef}
-                    onChange={handleQuickUpload}
-                    style={{ display: "none" }}
-                  />
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => quickUploadInputRef.current?.click()}
-                    title="Upload your own image"
-                  >
-                    <Upload className="w-3 h-3 mr-2" />
-                    Upload
-                  </Button>
-                </div>
-              </div>
-
-              {quickSettings.audience && (
-                <Badge variant="secondary" className="px-3 py-1.5">
-                  <Users className="w-3 h-3 mr-1" />
-                  {quickSettings.audience}
-                </Badge>
-              )}
-            </div>
-
-            {/* Input bar */} 
-            <div className="relative">
-              <div
-                className="flex items-end gap-3 p-2 rounded-3xl"
-                style={{
-                  background: colors.card,
-                  border: `2px solid ${colors.border}`,
-                }}
-              >
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  onChange={handleFileUpload}
-                  accept="image/*"
-                  multiple
-                  className="hidden"
-                />
-                <input
-                  type="file"
-                  ref={logoInputRef}
-                  onChange={handleLogoUpload}
-                  accept="image/*"
-                  className="hidden"
-                />
-
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  onClick={() => setShowUploadPanel((s) => !s)}
-                  className="rounded-full"
-                >
-                  <Plus className="w-5 h-5" />
-                </Button>
-
-                <Textarea
-                  ref={textareaRef}
-                  value={inputText}
-                  onChange={(e) => {
-                    setInputText(e.target.value);
-                    resizeTextarea();
-                  }}
-                  onKeyDown={handleKeyPress}
-                  placeholder="Describe your campaign idea or upload product images to get started…"
-                  className="flex-1 min-h-[52px] max-h-[220px] bg-transparent border-0 resize-none text-base"
-                  disabled={isGenerating || credits <= 0}
-                />
-
-                <div className="flex items-center gap-2">
-                  <MicRecorder
-                    onText={(chunk) => setInputText((p) => (p ? p + " " + chunk : chunk))}
-                    lang="ta-IN"
-                    small
-                  />
-                  {/* Enhance button removed from here (moved to the Theme/Aspect group) */}
-                  <Button
-                    size="icon"
-                    onClick={startGenerate}
-                    disabled={
-                      isGenerating ||
-                      credits <= 0 ||
-                      (!inputText.trim() && uploadedImages.length === 0)
-                    }
-                    className="rounded-full"
-                    style={{ background: colors.gradientPrimary }}
-                  >
-                    <Send className="w-5 h-5 text-white" />
-                  </Button>
-                </div>
-              </div>
-
-              {/* Upload panel */}
-              {showUploadPanel && (
-                <Card className="mt-3 p-4 optim-deep-shadow">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="font-semibold">Upload & Brand Settings</div>
-                    <Button size="sm" variant="ghost" onClick={() => setShowUploadPanel(false)}>
-                      <X className="w-4 h-4" />
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => setShowUploadPanel((s) => !s)}
+                      className="rounded-full"
+                    >
+                      <Plus className="w-5 h-5" />
                     </Button>
-                  </div>
-                  <Separator />
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
-                    <div>
-                      <Label className="text-xs mb-2 block">Product / Reference Images (max 3)</Label>
-                      <div className="flex gap-2 items-center">
-                        <div className="flex gap-2">
-                          {uploadedPreviews.map((src, index) => (
-                            <div key={index} className="relative group">
-                              <img
-                                src={src}
-                                alt={`Upload ${index + 1}`}
-                                className="w-16 h-16 rounded-lg object-cover border"
-                                style={{ borderColor: colors.border }}
-                              />
-                              <button
-                                onClick={() => handleRemoveImage(index)}
-                                className="absolute -top-2 -right-2 w-5 h-5 bg-destructive text-white rounded-full text-xs opacity-0 group-hover:opacity-100 transition-opacity"
-                                style={{ background: colors.destructive }}
-                                title="Remove"
-                              >
-                                ×
-                              </button>
-                              <button
-                                onClick={() => handleRemoveReferenceImage(src)}
-                                className="absolute -bottom-2 left-0 text-xs bg-white px-1 rounded opacity-80"
-                              >
-                                Remove from profile
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                        {uploadedPreviews.length < 3 && (
-                          <button
-                            onClick={() => fileInputRef.current?.click()}
-                            className="w-16 h-16 rounded-lg border-2 border-dashed hover:border-primary transition-colors flex items-center justify-center"
-                            style={{ borderColor: colors.border }}
-                          >
-                            <Plus className="w-5 h-5 text-muted-foreground" />
-                          </button>
-                        )}
-                      </div>
 
-                      <div className="mt-3 flex gap-2">
-                        <Button size="sm" onClick={handleSaveReferenceImages}>
-                          Save Reference Images to Profile
-                        </Button>
-                        {/* Removed the "Clear" button per request — user prefers hover-cancel only */}
-                      </div>
+                    <Textarea
+                      ref={textareaRef}
+                      value={inputText}
+                      onChange={(e) => {
+                        setInputText(e.target.value);
+                        resizeTextarea();
+                      }}
+                      onKeyDown={handleKeyPress}
+                      placeholder="Describe your campaign idea or upload product images to get started…"
+                      className="flex-1 min-h-[52px] max-h-[220px] bg-transparent border-0 resize-none text-base"
+                      disabled={isGenerating || credits <= 0}
+                    />
+
+                    <div className="flex items-center gap-2">
+                      <MicRecorder
+                        onText={(chunk) => setInputText((p) => (p ? p + " " + chunk : chunk))}
+                        lang="ta-IN"
+                        small
+                      />
+                      {/* Enhance button removed from here (moved to the Theme/Aspect group) */}
+                      <Button
+                        size="icon"
+                        onClick={startGenerate}
+                        disabled={
+                          isGenerating ||
+                          credits <= 0 ||
+                          (!inputText.trim() && uploadedImages.length === 0)
+                        }
+                        className="rounded-full"
+                        style={{ background: colors.gradientPrimary }}
+                      >
+                        <Send className="w-5 h-5 text-white" />
+                      </Button>
                     </div>
+                  </div>
 
-                    <div>
-                      <Label className="text-xs mb-2 block">Brand Logo</Label>
-                      <div className="flex items-center gap-3">
-                        <div
-                          onClick={() => logoInputRef.current?.click()}
-                          className={`w-20 h-20 rounded-lg hover:border-primary transition-colors flex items-center justify-center cursor-pointer ${logoGlowing ? "optim-logo-card-glow" : ""} optim-logo-card-professional`}
-                          style={{
-                            borderColor: colors.border,
-                            position: "relative",
-                          }}
-                          title={logoPublicUrl ? "Logo saved — click to change" : "Upload or apply logo"}
-                        >
-                          {/* add hover red cancel button on logo (same UI as reference images) */}
-                          {(logoPreview || logoPublicUrl) && (
-                            <button
-                              onClick={(ev) => {
-                                ev.stopPropagation();
-                                handleRemoveLogo();
-                              }}
-                              className="absolute -top-2 -right-2 w-5 h-5 bg-destructive text-white rounded-full text-xs opacity-0 group-hover:opacity-100 transition-opacity"
-                              style={{
-                                background: colors.destructive,
-                                zIndex: 10,
-                              }}
-                              title="Remove logo"
-                            >
-                              ×
-                            </button>
-                          )}
+                  {/* Upload panel */}
+                  {showUploadPanel && (
+                    <Card className="mt-3 p-4 optim-deep-shadow">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="font-semibold">Upload & Brand Settings</div>
+                        <Button size="sm" variant="ghost" onClick={() => setShowUploadPanel(false)}>
+                          <X className="w-4 h-4" />
+                        </Button>
+                      </div>
+                      <Separator />
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
+                        <div>
+                          <Label className="text-xs mb-2 block">Product / Reference Images (max 3)</Label>
+                          <div className="flex gap-2 items-center">
+                            <div className="flex gap-2">
+                              {uploadedPreviews.map((src, index) => (
+                                <div key={index} className="relative group">
+                                  <img
+                                    src={src}
+                                    alt={`Upload ${index + 1}`}
+                                    className="w-16 h-16 rounded-lg object-cover border"
+                                    style={{ borderColor: colors.border }}
+                                  />
+                                  <button
+                                    onClick={() => handleRemoveImage(index)}
+                                    className="absolute -top-2 -right-2 w-5 h-5 bg-destructive text-white rounded-full text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                                    style={{ background: colors.destructive }}
+                                    title="Remove"
+                                  >
+                                    ×
+                                  </button>
+                                  <button
+                                    onClick={() => handleRemoveReferenceImage(src)}
+                                    className="absolute -bottom-2 left-0 text-xs bg-white px-1 rounded opacity-80"
+                                  >
+                                    Remove from profile
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                            {uploadedPreviews.length < 3 && (
+                              <button
+                                onClick={() => fileInputRef.current?.click()}
+                                className="w-16 h-16 rounded-lg border-2 border-dashed hover:border-primary transition-colors flex items-center justify-center"
+                                style={{ borderColor: colors.border }}
+                              >
+                                <Plus className="w-5 h-5 text-muted-foreground" />
+                              </button>
+                            )}
+                          </div>
 
-                          {logoPreview ? (
-                            <img src={logoPreview} alt="Logo" className={`w-full h-full rounded-lg object-cover`} />
-                          ) : logoPublicUrl ? (
-                            <img src={logoPublicUrl} alt="logo" className={`w-full h-full rounded-lg object-cover`} />
-                          ) : (
-                            <Upload className="w-5 h-5 text-muted-foreground" />
-                          )}
-                        </div>
-                        <div className="flex-1">
-                          <Label htmlFor="brandName" className="text-xs">
-                            Brand Name
-                          </Label>
-                          <Input
-                            id="brandName"
-                            value={adFormData.brandName}
-                            onChange={(e) => {
-                              setAdFormData((p: any) => ({ ...p, brandName: e.target.value }));
-                              setPostFormData((p: any) => ({ ...p, brandName: e.target.value }));
-                            }}
-                            className="mt-1 h-9 text-sm"
-                            placeholder="Brand name"
-                          />
-                          <Label htmlFor="tagline" className="text-xs mt-2">
-                            Tagline
-                          </Label>
-                          <Input
-                            id="tagline"
-                            value={adFormData.tagline}
-                            onChange={(e) => {
-                              setAdFormData((p: any) => ({ ...p, tagline: e.target.value }));
-                              setPostFormData((p: any) => ({ ...p, tagline: e.target.value }));
-                            }}
-                            className="mt-1 h-9 text-sm"
-                            placeholder="Tagline"
-                          />
-                          <div className="mt-2 flex gap-2">
-                            {/* Removed separate Remove Logo button — hover-cancel now used */}
-                            <Button
-                              size="sm"
-                              onClick={async () => {
-                                try {
-                                  const user = await getCurrentUser();
-                                  if (!user) {
-                                    toast.error("Sign in to save logo");
-                                    return;
-                                  }
-                                  if (!logoFile) {
-                                    toast.error("No logo selected");
-                                    return;
-                                  }
-                                  const { path, publicUrl } = await uploadFileToUserUploads(logoFile, "logo");
-                                  await supabase.from("profiles").upsert({ id: user.id, logo_path: path });
-                                  if (publicUrl) {
-                                    setLogoPublicUrl(publicUrl);
-                                    setLogoGlowing(true);
-                                    setAdFormData((p: any) => ({ ...p, logoPublicUrl: publicUrl }));
-                                    setPostFormData((p: any) => ({ ...p, logoPublicUrl: publicUrl }));
-                                  } else {
-                                    setLogoGlowing(true);
-                                  }
-                                  toast.success("Logo saved to profile");
-                                } catch (e) {
-                                  console.error("save logo to profile failed", e);
-                                  toast.error("Save logo failed");
-                                }
-                              }}
-                            >
-                              Apply Logo (save to profile)
+                          <div className="mt-3 flex gap-2">
+                            <Button size="sm" onClick={handleSaveReferenceImages}>
+                              Save Reference Images to Profile
                             </Button>
+                            {/* Removed the "Clear" button per request — user prefers hover-cancel only */}
+                          </div>
+                        </div>
+
+                        <div>
+                          <Label className="text-xs mb-2 block">Brand Logo</Label>
+                          <div className="flex items-center gap-3">
+                            <div
+                              onClick={() => logoInputRef.current?.click()}
+                              className={`w-20 h-20 rounded-lg hover:border-primary transition-colors flex items-center justify-center cursor-pointer ${logoGlowing ? "optim-logo-card-glow" : ""} optim-logo-card-professional`}
+                              style={{
+                                borderColor: colors.border,
+                                position: "relative",
+                              }}
+                              title={logoPublicUrl ? "Logo saved — click to change" : "Upload or apply logo"}
+                            >
+                              {/* add hover red cancel button on logo (same UI as reference images) */}
+                              {(logoPreview || logoPublicUrl) && (
+                                <button
+                                  onClick={(ev) => {
+                                    ev.stopPropagation();
+                                    handleRemoveLogo();
+                                  }}
+                                  className="absolute -top-2 -right-2 w-5 h-5 bg-destructive text-white rounded-full text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                                  style={{
+                                    background: colors.destructive,
+                                    zIndex: 10,
+                                  }}
+                                  title="Remove logo"
+                                >
+                                  ×
+                                </button>
+                              )}
+
+                              {logoPreview ? (
+                                <img src={logoPreview} alt="Logo" className={`w-full h-full rounded-lg object-cover`} />
+                              ) : logoPublicUrl ? (
+                                <img src={logoPublicUrl} alt="logo" className={`w-full h-full rounded-lg object-cover`} />
+                              ) : (
+                                <Upload className="w-5 h-5 text-muted-foreground" />
+                              )}
+                            </div>
+                            <div className="flex-1">
+                              <Label htmlFor="brandName" className="text-xs">
+                                Brand Name
+                              </Label>
+                              <Input
+                                id="brandName"
+                                value={adFormData.brandName}
+                                onChange={(e) => {
+                                  setAdFormData((p: any) => ({ ...p, brandName: e.target.value }));
+                                  setPostFormData((p: any) => ({ ...p, brandName: e.target.value }));
+                                }}
+                                className="mt-1 h-9 text-sm"
+                                placeholder="Brand name"
+                              />
+                              <Label htmlFor="tagline" className="text-xs mt-2">
+                                Tagline
+                              </Label>
+                              <Input
+                                id="tagline"
+                                value={adFormData.tagline}
+                                onChange={(e) => {
+                                  setAdFormData((p: any) => ({ ...p, tagline: e.target.value }));
+                                  setPostFormData((p: any) => ({ ...p, tagline: e.target.value }));
+                                }}
+                                className="mt-1 h-9 text-sm"
+                                placeholder="Tagline"
+                              />
+                              <div className="mt-2 flex gap-2">
+                                {/* Removed separate Remove Logo button — hover-cancel now used */}
+                                <Button
+                                  size="sm"
+                                  onClick={async () => {
+                                    try {
+                                      const user = await getCurrentUser();
+                                      if (!user) {
+                                        toast.error("Sign in to save logo");
+                                        return;
+                                      }
+                                      if (!logoFile) {
+                                        toast.error("No logo selected");
+                                        return;
+                                      }
+                                      const { path, publicUrl } = await uploadFileToUserUploads(logoFile, "logo");
+                                      await supabase.from("profiles").upsert({ id: user.id, logo_path: path });
+                                      if (publicUrl) {
+                                        setLogoPublicUrl(publicUrl);
+                                        setLogoGlowing(true);
+                                        setAdFormData((p: any) => ({ ...p, logoPublicUrl: publicUrl }));
+                                        setPostFormData((p: any) => ({ ...p, logoPublicUrl: publicUrl }));
+                                      } else {
+                                        setLogoGlowing(true);
+                                      }
+                                      toast.success("Logo saved to profile");
+                                    } catch (e) {
+                                      console.error("save logo to profile failed", e);
+                                      toast.error("Save logo failed");
+                                    }
+                                  }}
+                                >
+                                  Apply Logo (save to profile)
+                                </Button>
+                              </div>
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  </div>
-                </Card>
-              )}
+                    </Card>
+                  )}
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
 
-        {/* Publish panel (same flows) */}
-        {showPublishPanel && (
-          <div
-            className="fixed inset-0"
-            style={{
-              background: `${colors.background}cc`,
-              backdropFilter: "blur(6px)",
-              zIndex: 200, // much higher than bottom input
-            }}
-          >
-            <div
-              className="max-w-3xl mx-auto p-6"
-              style={{
-                marginTop: "auto",
-                marginBottom: 120, // reserve space above the bottom input
-                maxHeight: "calc(100vh - 120px)",
-                overflow: "auto", // make content scrollable if tall
-              }}
-            >
-              <Card className="p-6 optim-deep-shadow">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-semibold">Publish Your Campaign</h3>
-                  <Button size="sm" variant="ghost" onClick={() => setShowPublishPanel(false)}>
-                    <X className="w-4 h-4" />
-                  </Button>
-                </div>
-                <Separator className="my-3" />
-                <div className="flex gap-2 mb-3">
-                  <Button variant={publishMode === "post" ? "default" : "outline"} onClick={() => setPublishMode("post")} className="flex-1">
-                    <Sparkles className="w-4 h-4 mr-2" /> Post Publishing
-                  </Button>
-                  <Button variant={publishMode === "ad" ? "default" : "outline"} onClick={() => setPublishMode("ad")} className="flex-1">
-                    <ImageIcon className="w-4 h-4 mr-2" /> Ad Publishing
-                  </Button>
-                </div>
-
-                {publishMode === "post" ? (
-                  <div className="space-y-3">
-                    <div>
-                      <Label htmlFor="postName" className="text-sm">
-                        Post Name
-                      </Label>
-                      <Input
-                        id="postName"
-                        value={postFormData.postName}
-                        onChange={(e) =>
-                          setPostFormData((p: any) => ({ ...p, postName: e.target.value }))
-                        }
-                        placeholder="Post title (optional)"
-                        className="mt-2"
-                      />
+            {/* Publish panel (same flows) */}
+            {showPublishPanel && (
+              <div
+                className="fixed inset-0"
+                style={{
+                  background: `${colors.background}cc`,
+                  backdropFilter: "blur(6px)",
+                  zIndex: 200, // much higher than bottom input
+                }}
+              >
+                <div
+                  className="max-w-3xl mx-auto p-6"
+                  style={{
+                    marginTop: "auto",
+                    marginBottom: 120, // reserve space above the bottom input
+                    maxHeight: "calc(100vh - 120px)",
+                    overflow: "auto", // make content scrollable if tall
+                  }}
+                >
+                  <Card className="p-6 optim-deep-shadow">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-lg font-semibold">Publish Your Campaign</h3>
+                      <Button size="sm" variant="ghost" onClick={() => setShowPublishPanel(false)}>
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                    <Separator className="my-3" />
+                    <div className="flex gap-2 mb-3">
+                      <Button variant={publishMode === "post" ? "default" : "outline"} onClick={() => setPublishMode("post")} className="flex-1">
+                        <Sparkles className="w-4 h-4 mr-2" /> Post Publishing
+                      </Button>
+                      <Button variant={publishMode === "ad" ? "default" : "outline"} onClick={() => setPublishMode("ad")} className="flex-1">
+                        <ImageIcon className="w-4 h-4 mr-2" /> Ad Publishing
+                      </Button>
                     </div>
 
-                    <div>
-                      <Label htmlFor="caption" className="text-sm">
-                        Caption
-                      </Label>
-                      {/* platform error text */}
-                      {platformError && <div className="text-sm text-red-600 mb-2">{platformError}</div>}
-                      <Textarea
-                        id="caption"
-                        value={postFormData.generatedCaption}
-                        onChange={(e) =>
-                          setPostFormData((p: any) => ({ ...p, generatedCaption: e.target.value }))
-                        }
-                        placeholder="Add your post caption..."
-                        className="mt-2 min-h-[80px]"
-                      />
-                      <div className="mt-2 flex gap-2">
-                        <Button
-                          onClick={() => {
-                            const seed =
-                              (postFormData.generatedCaption && String(postFormData.generatedCaption).trim()) ||
-                              (postFormData.prompt && String(postFormData.prompt).trim()) ||
-                              (postFormData.postName && String(postFormData.postName).trim()) ||
-                              "Write a caption";
-                            generateCaption(seed, (text) =>
-                              setPostFormData((p: any) => ({ ...p, generatedCaption: text }))
-                            );
-                          }}
-                          variant="outline"
-                        >
-                          AI Caption
-                        </Button>
-
-                        <Button
-                          onClick={() => {
-                            const seed =
-                              (postFormData.generatedCaption && String(postFormData.generatedCaption).trim()) ||
-                              (postFormData.hashtags && String(postFormData.hashtags).trim()) ||
-                              (postFormData.prompt && String(postFormData.prompt).trim()) ||
-                              (postFormData.postName && String(postFormData.postName).trim()) ||
-                              "Generate hashtags";
-                            generateCaption(`Generate hashtags for: ${seed}`, (text) => {
-                              const matches = (text || "").match(/#[\w-]+/g);
-                              if (matches && matches.length)
-                                setPostFormData((p: any) => ({ ...p, hashtags: matches.join(" ") }));
-                              else setPostFormData((p: any) => ({ ...p, hashtags: text }));
-                            });
-                          }}
-                          variant="outline"
-                        >
-                          AI Hashtags
-                        </Button>
-
-                        <div className="ml-auto flex items-center gap-2">
-                          <label className="inline-flex items-center gap-2">
-                            <input
-                              type="checkbox"
-                              checked={postFormData.platforms.includes("Instagram")}
-                              onChange={(e) => {
-                                const checked = e.target.checked;
-                                setPostFormData((p: any) => ({
-                                  ...p,
-                                  platforms: checked
-                                    ? Array.from(new Set([...(p.platforms || []), "Instagram"]))
-                                    : (p.platforms || []).filter((x: any) => x !== "Instagram"),
-                                }));
-                                if (checked) setPlatformError(null);
-                              }}
-                            />
-                            Instagram
-                          </label>
-                          <label className="inline-flex items-center gap-2">
-                            <input
-                              type="checkbox"
-                              checked={postFormData.platforms.includes("Facebook")}
-                              onChange={(e) => {
-                                const checked = e.target.checked;
-                                setPostFormData((p: any) => ({
-                                  ...p,
-                                  platforms: checked
-                                    ? Array.from(new Set([...(p.platforms || []), "Facebook"]))
-                                    : (p.platforms || []).filter((x: any) => x !== "Facebook"),
-                                }));
-                                if (checked) setPlatformError(null);
-                              }}
-                            />
-                            Facebook
-                          </label>
+                    {publishMode === "post" ? (
+                      <div className="space-y-3">
+                        <div>
+                          <Label htmlFor="postName" className="text-sm">
+                            Post Name
+                          </Label>
+                          <Input
+                            id="postName"
+                            value={postFormData.postName}
+                            onChange={(e) =>
+                              setPostFormData((p: any) => ({ ...p, postName: e.target.value }))
+                            }
+                            placeholder="Post title (optional)"
+                            className="mt-2"
+                          />
                         </div>
-                      </div>
-                    </div>
 
-                    <div>
-                      <Label htmlFor="hashtags" className="text-sm">
-                        Hashtags
-                      </Label>
-                      <Input
-                        id="hashtags"
-                        value={postFormData.hashtags}
-                        onChange={(e) => setPostFormData((p: any) => ({ ...p, hashtags: e.target.value }))}
-                        placeholder="#marketing #socialmedia"
-                        className="mt-2"
-                      />
-                    </div>
+                        <div>
+                          <Label htmlFor="caption" className="text-sm">
+                            Caption
+                          </Label>
+                          {/* platform error text */}
+                          {platformError && <div className="text-sm text-red-600 mb-2">{platformError}</div>}
+                          <Textarea
+                            id="caption"
+                            value={postFormData.generatedCaption}
+                            onChange={(e) =>
+                              setPostFormData((p: any) => ({ ...p, generatedCaption: e.target.value }))
+                            }
+                            placeholder="Add your post caption..."
+                            className="mt-2 min-h-[80px]"
+                          />
+                          <div className="mt-2 flex gap-2">
+                            <Button
+                              onClick={() => {
+                                const seed =
+                                  (postFormData.generatedCaption && String(postFormData.generatedCaption).trim()) ||
+                                  (postFormData.prompt && String(postFormData.prompt).trim()) ||
+                                  (postFormData.postName && String(postFormData.postName).trim()) ||
+                                  "Write a caption";
+                                generateCaption(seed, (text) =>
+                                  setPostFormData((p: any) => ({ ...p, generatedCaption: text }))
+                                );
+                              }}
+                              variant="outline"
+                            >
+                              AI Caption
+                            </Button>
 
-                    <div className="flex gap-2">
-                      <Button
-                        className="flex-1 hover:scale-105 transition-transform flex items-center justify-center gap-2"
-                        style={{
-                          background: colors.gradientPrimary,
-                          color: colors.primaryForeground,
-                        }}
-                        onClick={() => handlePublishPost()}
-                        disabled={publishLoading}
-                      >
-                        {publishLoading ? (
-                          <>
-                            <Spinner /> <span>Publishing…</span>
-                          </>
-                        ) : (
-                          <span>Publish Now</span>
+                            <Button
+                              onClick={() => {
+                                const seed =
+                                  (postFormData.generatedCaption && String(postFormData.generatedCaption).trim()) ||
+                                  (postFormData.hashtags && String(postFormData.hashtags).trim()) ||
+                                  (postFormData.prompt && String(postFormData.prompt).trim()) ||
+                                  (postFormData.postName && String(postFormData.postName).trim()) ||
+                                  "Generate hashtags";
+                                generateCaption(`Generate hashtags for: ${seed}`, (text) => {
+                                  const matches = (text || "").match(/#[\w-]+/g);
+                                  if (matches && matches.length)
+                                    setPostFormData((p: any) => ({ ...p, hashtags: matches.join(" ") }));
+                                  else setPostFormData((p: any) => ({ ...p, hashtags: text }));
+                                });
+                              }}
+                              variant="outline"
+                            >
+                              AI Hashtags
+                            </Button>
+
+                            <div className="ml-auto flex items-center gap-2">
+                              <label className="inline-flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  checked={postFormData.platforms.includes("Instagram")}
+                                  onChange={(e) => {
+                                    const checked = e.target.checked;
+                                    setPostFormData((p: any) => ({
+                                      ...p,
+                                      platforms: checked
+                                        ? Array.from(new Set([...(p.platforms || []), "Instagram"]))
+                                        : (p.platforms || []).filter((x: any) => x !== "Instagram"),
+                                    }));
+                                    if (checked) setPlatformError(null);
+                                  }}
+                                />
+                                Instagram
+                              </label>
+                              <label className="inline-flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  checked={postFormData.platforms.includes("Facebook")}
+                                  onChange={(e) => {
+                                    const checked = e.target.checked;
+                                    setPostFormData((p: any) => ({
+                                      ...p,
+                                      platforms: checked
+                                        ? Array.from(new Set([...(p.platforms || []), "Facebook"]))
+                                        : (p.platforms || []).filter((x: any) => x !== "Facebook"),
+                                    }));
+                                    if (checked) setPlatformError(null);
+                                  }}
+                                />
+                                Facebook
+                              </label>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div>
+                          <Label htmlFor="hashtags" className="text-sm">
+                            Hashtags
+                          </Label>
+                          <Input
+                            id="hashtags"
+                            value={postFormData.hashtags}
+                            onChange={(e) => setPostFormData((p: any) => ({ ...p, hashtags: e.target.value }))}
+                            placeholder="#marketing #socialmedia"
+                            className="mt-2"
+                          />
+                        </div>
+
+                        <div className="flex gap-2">
+                          <Button
+                            className="flex-1 hover:scale-105 transition-transform flex items-center justify-center gap-2"
+                            style={{
+                              background: colors.gradientPrimary,
+                              color: colors.primaryForeground,
+                            }}
+                            onClick={() => handlePublishPost()}
+                            disabled={publishLoading}
+                          >
+                            {publishLoading ? (
+                              <>
+                                <Spinner /> <span>Publishing…</span>
+                              </>
+                            ) : (
+                              <span>Publish Now</span>
+                            )}
+                          </Button>
+                          <Button variant="outline" className="flex-1" onClick={() => toast("Schedule feature not implemented in this sample")}>
+                            Schedule
+                          </Button>
+                        </div>
+
+                        {/* status message area (post) */}
+                        {publishStatus && (
+                          <div className={`mt-2 text-sm ${publishStatus.type === "success" ? "text-green-600" : "text-red-600"}`}>
+                            {publishStatus.text}
+                          </div>
                         )}
-                      </Button>
-                      <Button variant="outline" className="flex-1" onClick={() => toast("Schedule feature not implemented in this sample")}>
-                        Schedule
-                      </Button>
-                    </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {/* AD inputs */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <div>
+                            <Label htmlFor="campaignName" className="text-sm">
+                              Campaign Name
+                            </Label>
+                            <Input
+                              id="campaignName"
+                              value={adFormData.campaignName}
+                              onChange={(e) => setAdFormData((p: any) => ({ ...p, campaignName: e.target.value }))}
+                              placeholder="My Campaign"
+                              className="mt-2"
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="adSetName" className="text-sm">
+                              Ad Set Name
+                            </Label>
+                            <Input
+                              id="adSetName"
+                              value={adFormData.adSetName}
+                              onChange={(e) => setAdFormData((p: any) => ({ ...p, adSetName: e.target.value }))}
+                              placeholder="Ad Set Name (optional)"
+                              className="mt-2"
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="objective" className="text-sm">
+                              Objective
+                            </Label>
+                            <select id="objective" value={adFormData.objective} onChange={(e) => setAdFormData((p: any) => ({ ...p, objective: e.target.value }))} className="mt-2 w-full h-9 rounded border px-2">
+                              <option value="LINK_CLICKS">Link Clicks</option>
+                              <option value="CONVERSIONS">Conversions</option>
+                              <option value="BRAND_AWARENESS">Brand Awareness</option>
+                              <option value="REACH">Reach</option>
+                            </select>
+                          </div>
+                          <div>
+                            <Label htmlFor="primaryCTA" className="text-sm">
+                              Primary CTA
+                            </Label>
+                            <Input
+                              id="primaryCTA"
+                              value={adFormData.primaryCTA}
+                              onChange={(e) => setAdFormData((p: any) => ({ ...p, primaryCTA: e.target.value }))}
+                              placeholder="LEARN_MORE"
+                              className="mt-2"
+                            />
+                          </div>
+                        </div>
 
-                    {/* status message area (post) */}
-                    {publishStatus && (
-                      <div className={`mt-2 text-sm ${publishStatus.type === "success" ? "text-green-600" : "text-red-600"}`}>
-                        {publishStatus.text}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <div>
+                            <Label htmlFor="destinationLink" className="text-sm">
+                              Destination URL
+                            </Label>
+                            <Input
+                              id="destinationLink"
+                              value={adFormData.destinationLink}
+                              onChange={(e) => setAdFormData((p: any) => ({ ...p, destinationLink: e.target.value }))}
+                                                      placeholder="https://example.com"
+                              className="mt-2"
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="delivery" className="text-sm">
+                              Delivery Type
+                            </Label>
+                            <select id="delivery" value={adFormData.delivery} onChange={(e) => setAdFormData((p: any) => ({ ...p, delivery: e.target.value }))} className="mt-2 w-full h-9 rounded border px-2">
+                              <option value="">Default</option>
+                              <option value="standard">Standard</option>
+                              <option value="expedited">Expedited</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <Label htmlFor="budget" className="text-sm">
+                              Budget
+                            </Label>
+                            <Input
+                              id="budget"
+                              type="number"
+                              value={adFormData.budget}
+                              onChange={(e) => setAdFormData((p: any) => ({ ...p, budget: Number(e.target.value) }))}
+                              placeholder="5000"
+                              className="mt-2"
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="duration" className="text-sm">
+                              Duration (days)
+                            </Label>
+                            <Input
+                              id="duration"
+                              type="number"
+                              value={adFormData.duration || 7}
+                              onChange={(e) => setAdFormData((p: any) => ({ ...p, duration: Number(e.target.value) }))}
+                              placeholder="7"
+                              className="mt-2"
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <Label htmlFor="targeting" className="text-sm">
+                            Audience Targeting (interests)
+                          </Label>
+                          <Input
+                            id="targeting"
+                            value={adFormData.interests}
+                            onChange={(e) => setAdFormData((p: any) => ({ ...p, interests: e.target.value }))}
+                            placeholder="e.g., Fashion, Fitness"
+                            className="mt-2"
+                          />
+                          <div className="mt-2 flex gap-2 items-center">
+                            <div className="flex items-center gap-2">
+                              <label className="inline-flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  checked={adFormData.platforms.includes("Instagram")}
+                                  onChange={(e) => {
+                                    const checked = e.target.checked;
+                                    setAdFormData((p: any) => ({
+                                      ...p,
+                                      platforms: checked
+                                        ? Array.from(new Set([...(p.platforms || []), "Instagram"]))
+                                        : (p.platforms || []).filter((x: any) => x !== "Instagram"),
+                                    }));
+                                  }}
+                                />
+                                Instagram
+                              </label>
+                              <label className="inline-flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  checked={adFormData.platforms.includes("Facebook")}
+                                  onChange={(e) => {
+                                    const checked = e.target.checked;
+                                    setAdFormData((p: any) => ({
+                                      ...p,
+                                      platforms: checked
+                                        ? Array.from(new Set([...(p.platforms || []), "Facebook"]))
+                                        : (p.platforms || []).filter((x: any) => x !== "Facebook"),
+                                    }));
+                                  }}
+                                />
+                                Facebook
+                              </label>
+                            </div>
+                            <div className="ml-auto flex items-center gap-2">
+                              <label className="inline-flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  checked={!!adFormData.autoOptimize}
+                                  onChange={(e) => setAdFormData((p: any) => ({ ...p, autoOptimize: e.target.checked }))}
+                                />
+                                Auto optimize
+                              </label>
+                              <label className="inline-flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  checked={!!adFormData.autoTarget}
+                                  onChange={(e) => setAdFormData((p: any) => ({ ...p, autoTarget: e.target.checked }))}
+                                />
+                                Auto target
+                              </label>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex gap-2">
+                          <Button
+                            className="flex-1 hover:scale-105 transition-transform flex items-center justify-center gap-2"
+                            style={{
+                              background: colors.gradientPrimary,
+                              color: colors.primaryForeground,
+                            }}
+                            onClick={() => handleLaunchAd()}
+                            disabled={adLoading}
+                          >
+                            {adLoading ? (
+                              <>
+                                <Spinner /> <span>Running ad…</span>
+                              </>
+                            ) : (
+                              <span>Launch Ad Campaign</span>
+                            )}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            className="flex-1"
+                            onClick={async () => {
+                              try {
+                                const token =
+                                  (await supabase.auth.getSession()).data?.session
+                                    ?.access_token ?? null;
+                                if (!token) {
+                                  toast.error("Sign in to save draft");
+                                  return;
+                                }
+                                await fetch("/api/campaigns/save-draft", {
+                                  method: "POST",
+                                  headers: {
+                                    "Content-Type": "application/json",
+                                    Authorization: `Bearer ${token}`,
+                                  },
+                                  body: JSON.stringify({
+                                    mode: "ad",
+                                    name: adFormData.campaignName,
+                                    inputs: adFormData,
+                                  }),
+                                });
+                                toast.success("Draft saved");
+                              } catch (e) {
+                                console.error("save-draft failed", e);
+                                toast.error("Save failed");
+                              }
+                            }}
+                          >
+                            Save Draft
+                          </Button>
+                        </div>
+
+                        {/* status message area (ad) */}
+                        {adStatus && <div className={`mt-2 text-sm ${adStatus.type === "success" ? "text-green-600" : "text-red-600"}`}>{adStatus.text}</div>}
                       </div>
                     )}
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {/* AD inputs */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <div>
-                        <Label htmlFor="campaignName" className="text-sm">
-                          Campaign Name
-                        </Label>
-                        <Input
-                          id="campaignName"
-                          value={adFormData.campaignName}
-                          onChange={(e) => setAdFormData((p: any) => ({ ...p, campaignName: e.target.value }))}
-                          placeholder="My Campaign"
-                          className="mt-2"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="adSetName" className="text-sm">
-                          Ad Set Name
-                        </Label>
-                        <Input
-                          id="adSetName"
-                          value={adFormData.adSetName}
-                          onChange={(e) => setAdFormData((p: any) => ({ ...p, adSetName: e.target.value }))}
-                          placeholder="Ad Set Name (optional)"
-                          className="mt-2"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="objective" className="text-sm">
-                          Objective
-                        </Label>
-                        <select id="objective" value={adFormData.objective} onChange={(e) => setAdFormData((p: any) => ({ ...p, objective: e.target.value }))} className="mt-2 w-full h-9 rounded border px-2">
-                          <option value="LINK_CLICKS">Link Clicks</option>
-                          <option value="CONVERSIONS">Conversions</option>
-                          <option value="BRAND_AWARENESS">Brand Awareness</option>
-                          <option value="REACH">Reach</option>
-                        </select>
-                      </div>
-                      <div>
-                        <Label htmlFor="primaryCTA" className="text-sm">
-                          Primary CTA
-                        </Label>
-                        <Input
-                          id="primaryCTA"
-                          value={adFormData.primaryCTA}
-                          onChange={(e) => setAdFormData((p: any) => ({ ...p, primaryCTA: e.target.value }))}
-                          placeholder="LEARN_MORE"
-                          className="mt-2"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <div>
-                        <Label htmlFor="destinationLink" className="text-sm">
-                          Destination URL
-                        </Label>
-                        <Input
-                          id="destinationLink"
-                          value={adFormData.destinationLink}
-                          onChange={(e) => setAdFormData((p: any) => ({ ...p, destinationLink: e.target.value }))}
-                                                    placeholder="https://example.com"
-                          className="mt-2"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="delivery" className="text-sm">
-                          Delivery Type
-                        </Label>
-                        <select id="delivery" value={adFormData.delivery} onChange={(e) => setAdFormData((p: any) => ({ ...p, delivery: e.target.value }))} className="mt-2 w-full h-9 rounded border px-2">
-                          <option value="">Default</option>
-                          <option value="standard">Standard</option>
-                          <option value="expedited">Expedited</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <Label htmlFor="budget" className="text-sm">
-                          Budget
-                        </Label>
-                        <Input
-                          id="budget"
-                          type="number"
-                          value={adFormData.budget}
-                          onChange={(e) => setAdFormData((p: any) => ({ ...p, budget: Number(e.target.value) }))}
-                          placeholder="5000"
-                          className="mt-2"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="duration" className="text-sm">
-                          Duration (days)
-                        </Label>
-                        <Input
-                          id="duration"
-                          type="number"
-                          value={adFormData.duration || 7}
-                          onChange={(e) => setAdFormData((p: any) => ({ ...p, duration: Number(e.target.value) }))}
-                          placeholder="7"
-                          className="mt-2"
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <Label htmlFor="targeting" className="text-sm">
-                        Audience Targeting (interests)
-                      </Label>
-                      <Input
-                        id="targeting"
-                        value={adFormData.interests}
-                        onChange={(e) => setAdFormData((p: any) => ({ ...p, interests: e.target.value }))}
-                        placeholder="e.g., Fashion, Fitness"
-                        className="mt-2"
-                      />
-                      <div className="mt-2 flex gap-2 items-center">
-                        <div className="flex items-center gap-2">
-                          <label className="inline-flex items-center gap-2">
-                            <input
-                              type="checkbox"
-                              checked={adFormData.platforms.includes("Instagram")}
-                              onChange={(e) => {
-                                const checked = e.target.checked;
-                                setAdFormData((p: any) => ({
-                                  ...p,
-                                  platforms: checked
-                                    ? Array.from(new Set([...(p.platforms || []), "Instagram"]))
-                                    : (p.platforms || []).filter((x: any) => x !== "Instagram"),
-                                }));
-                              }}
-                            />
-                            Instagram
-                          </label>
-                          <label className="inline-flex items-center gap-2">
-                            <input
-                              type="checkbox"
-                              checked={adFormData.platforms.includes("Facebook")}
-                              onChange={(e) => {
-                                const checked = e.target.checked;
-                                setAdFormData((p: any) => ({
-                                  ...p,
-                                  platforms: checked
-                                    ? Array.from(new Set([...(p.platforms || []), "Facebook"]))
-                                    : (p.platforms || []).filter((x: any) => x !== "Facebook"),
-                                }));
-                              }}
-                            />
-                            Facebook
-                          </label>
-                        </div>
-                        <div className="ml-auto flex items-center gap-2">
-                          <label className="inline-flex items-center gap-2">
-                            <input
-                              type="checkbox"
-                              checked={!!adFormData.autoOptimize}
-                              onChange={(e) => setAdFormData((p: any) => ({ ...p, autoOptimize: e.target.checked }))}
-                            />
-                            Auto optimize
-                          </label>
-                          <label className="inline-flex items-center gap-2">
-                            <input
-                              type="checkbox"
-                              checked={!!adFormData.autoTarget}
-                              onChange={(e) => setAdFormData((p: any) => ({ ...p, autoTarget: e.target.checked }))}
-                            />
-                            Auto target
-                          </label>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex gap-2">
-                      <Button
-                        className="flex-1 hover:scale-105 transition-transform flex items-center justify-center gap-2"
-                        style={{
-                          background: colors.gradientPrimary,
-                          color: colors.primaryForeground,
-                        }}
-                        onClick={() => handleLaunchAd()}
-                        disabled={adLoading}
-                      >
-                        {adLoading ? (
-                          <>
-                            <Spinner /> <span>Running ad…</span>
-                          </>
-                        ) : (
-                          <span>Launch Ad Campaign</span>
-                        )}
-                      </Button>
-                      <Button
-                        variant="outline"
-                        className="flex-1"
-                        onClick={async () => {
-                          try {
-                            const token =
-                              (await supabase.auth.getSession()).data?.session
-                                ?.access_token ?? null;
-                            if (!token) {
-                              toast.error("Sign in to save draft");
-                              return;
-                            }
-                            await fetch("/api/campaigns/save-draft", {
-                              method: "POST",
-                              headers: {
-                                "Content-Type": "application/json",
-                                Authorization: `Bearer ${token}`,
-                              },
-                              body: JSON.stringify({
-                                mode: "ad",
-                                name: adFormData.campaignName,
-                                inputs: adFormData,
-                              }),
-                            });
-                            toast.success("Draft saved");
-                          } catch (e) {
-                            console.error("save-draft failed", e);
-                            toast.error("Save failed");
-                          }
-                        }}
-                      >
-                        Save Draft
-                      </Button>
-                    </div>
-
-                    {/* status message area (ad) */}
-                    {adStatus && <div className={`mt-2 text-sm ${adStatus.type === "success" ? "text-green-600" : "text-red-600"}`}>{adStatus.text}</div>}
-                  </div>
-                )}
-              </Card>
-            </div>
-          </div>
+                  </Card>
+                </div>
+              </div>
+            
+                  )}</>
         )}
-
       </div>
     </div>
   );
 };
 
 export default dynamic(() => Promise.resolve(CampaignCreate), { ssr: false });
-
