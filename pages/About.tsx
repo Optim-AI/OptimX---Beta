@@ -220,7 +220,7 @@ export default function About() {
                 }}
               >
                 <h3 className="text-2xl font-normal" style={{ color: colors.foreground }}>
-                  Shaam Natheshwar
+                  Bharath Kumar Thulasidoss
                 </h3>
                 <p
                   className="text-sm uppercase tracking-wider"
@@ -229,7 +229,7 @@ export default function About() {
                   Technical Co-Founder
                 </p>
                 <p className="font-light leading-relaxed" style={{ color: colors.mutedForeground }}>
-                  With deep expertise in backend systems and scalable tech, I bring technical strength to the vision. Together, we're building OptimX to be both powerful and easy-to-use.
+                  I’m a full-stack engineer with deep specialization in backend engineering. At Uber, I worked on building and scaling distributed systems, and today I focus on designing scalable architectures and shipping dependable, real-world products.
                 </p>
               </div>
             </div>
