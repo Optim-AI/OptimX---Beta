@@ -1,10 +1,27 @@
 const { GoogleAdsApi } = require('google-ads-api');
 
+// Load Google Ads configuration from environment variables
+const client_id = process.env.GOOGLE_ADS_CLIENT_ID;
+const client_secret = process.env.GOOGLE_ADS_CLIENT_SECRET;
+const developer_token = process.env.GOOGLE_ADS_DEVELOPER_TOKEN;
+const refresh_token = process.env.GOOGLE_ADS_REFRESH_TOKEN;
+
+// Validate required environment variables
+if (!client_id || !client_secret || !developer_token || !refresh_token) {
+  throw new Error(
+    'Missing Google Ads API configuration. Please set the following environment variables:\n' +
+    '- GOOGLE_ADS_CLIENT_ID\n' +
+    '- GOOGLE_ADS_CLIENT_SECRET\n' +
+    '- GOOGLE_ADS_DEVELOPER_TOKEN\n' +
+    '- GOOGLE_ADS_REFRESH_TOKEN'
+  );
+}
+
 const client = new GoogleAdsApi({
-  client_id: '947565254141-5mispk8fus70rj42pp1srjof4774p9ve.apps.googleusercontent.com',
-  client_secret: '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',
-  developer_token: '5Oe5ETZKWYkNqoSYa-f_ww',
-  refresh_token: '1//04UzJXgZFHbk5CgYIARAAGAQSNwF-L9Ir74uTA_YimUgNmETbiB_2elosUjXQo-bkSed67UJSYzHa1O7ouxDaNn3D-OmO48TOJzE',
+  client_id,
+  client_secret,
+  developer_token,
+  refresh_token,
 });
 
 export default client;

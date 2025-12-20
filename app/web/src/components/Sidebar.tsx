@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import {
   Home,
   PlusCircle,
@@ -44,6 +44,7 @@ type SidebarProps = {
 
 const Sidebar: React.FC<SidebarProps> = ({ logoUrl, onLogoClick }) => {
   const router = useRouter();
+  const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
 
   // Blue-themed fallbacks (use tokens from your colors object if present)
@@ -55,6 +56,9 @@ const Sidebar: React.FC<SidebarProps> = ({ logoUrl, onLogoClick }) => {
   const sidebarAccent = (colors as any).sidebarAccentBlue ?? (colors as any).sidebarAccent ?? 'rgba(96,165,250,0.08)';
   const sidebarAccentFg = (colors as any).sidebarAccentForeground ?? '#dbeafe';
   const deepShadow = (colors as any).shadowDeep ?? (colors as any).shadowMedium ?? '0 12px 40px rgba(6,18,60,0.28)';
+
+  // Helper function to check if a route is active
+  const isActive = (href: string) => pathname === href;
 
   return (
     <aside
@@ -113,28 +117,37 @@ const Sidebar: React.FC<SidebarProps> = ({ logoUrl, onLogoClick }) => {
 
       {/* Navigation - no separators, blue hover accent */}
       <nav className="flex-1 px-2 py-3 space-y-1" aria-label="Primary">
-        {NAV_ITEMS.map((item) => (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={`group flex items-center gap-3 rounded-lg px-3 py-2 transition-colors duration-150 ${collapsed ? 'justify-center' : ''}`}
-            style={{
-              color: sidebarFg,
-              background: 'transparent',
-            }}
-            onMouseEnter={(e) => {
-              (e.currentTarget as HTMLElement).style.backgroundColor = sidebarAccent;
-              (e.currentTarget as HTMLElement).style.color = sidebarAccentFg;
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent';
-              (e.currentTarget as HTMLElement).style.color = sidebarFg;
-            }}
-          >
-            <item.Icon size={18} />
-            <span className={`truncate text-sm ${collapsed ? 'hidden' : 'block'}`}>{item.label}</span>
-          </Link>
-        ))}
+        {NAV_ITEMS.map((item) => {
+          const active = isActive(item.href);
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`group flex items-center gap-3 rounded-lg px-3 py-2 transition-colors duration-150 ${collapsed ? 'justify-center' : ''}`}
+              style={{
+                color: active ? sidebarPrimary : sidebarFg,
+                background: active ? sidebarAccent : 'transparent',
+                fontWeight: active ? 600 : 400,
+                borderLeft: active ? `3px solid ${sidebarPrimary}` : '3px solid transparent',
+              }}
+              onMouseEnter={(e) => {
+                if (!active) {
+                  (e.currentTarget as HTMLElement).style.backgroundColor = sidebarAccent;
+                  (e.currentTarget as HTMLElement).style.color = sidebarAccentFg;
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!active) {
+                  (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent';
+                  (e.currentTarget as HTMLElement).style.color = sidebarFg;
+                }
+              }}
+            >
+              <item.Icon size={18} />
+              <span className={`truncate text-sm ${collapsed ? 'hidden' : 'block'}`}>{item.label}</span>
+            </Link>
+          );
+        })}
       </nav>
 
       {/* Footer button - sticky bottom area, compact when collapsed */}

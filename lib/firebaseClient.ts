@@ -16,11 +16,27 @@ export function initFirebaseApp(): FirebaseApp {
 
   if (!_app) {
     if (!getApps().length) {
+      // Load Firebase config from environment variables
+      const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
+      const authDomain = process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN;
+      const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
+      const appId = process.env.NEXT_PUBLIC_FIREBASE_APP_ID;
+
+      if (!apiKey || !authDomain || !projectId || !appId) {
+        throw new Error(
+          'Missing Firebase configuration. Please check your environment variables:\n' +
+          '- NEXT_PUBLIC_FIREBASE_API_KEY\n' +
+          '- NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN\n' +
+          '- NEXT_PUBLIC_FIREBASE_PROJECT_ID\n' +
+          '- NEXT_PUBLIC_FIREBASE_APP_ID'
+        );
+      }
+
       initializeApp({
-        apiKey: 'AIzaSyCnNcfAf8meNIgHJMOJquG9lvZ5DixQTKw',
-        authDomain: 'optim-fc119.firebaseapp.com',
-        projectId: 'optim-fc119',
-        appId: '1:151840492197:web:c5df3f97b01a434ca41b4c',
+        apiKey,
+        authDomain,
+        projectId,
+        appId,
       });
     }
     _app = getApp();

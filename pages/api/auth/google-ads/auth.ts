@@ -2,8 +2,8 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { google } from "googleapis";
 
-const CLIENT_ID = "947565254141-5mispk8fus70rj42pp1srjof4774p9ve.apps.googleusercontent.com";
-const CLIENT_SECRET = "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";
+const CLIENT_ID = process.env.GOOGLE_ADS_CLIENT_ID;
+const CLIENT_SECRET = process.env.GOOGLE_ADS_CLIENT_SECRET;
 
 function computeOrigin(req: NextApiRequest) {
   const originHeader = (req.headers.origin as string | undefined) || "";
@@ -15,6 +15,12 @@ function computeOrigin(req: NextApiRequest) {
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (!CLIENT_ID || !CLIENT_SECRET) {
+    return res.status(500).json({
+      error: 'Missing Google Ads configuration. Please set GOOGLE_ADS_CLIENT_ID and GOOGLE_ADS_CLIENT_SECRET environment variables.'
+    });
+  }
+
   const origin = computeOrigin(req);
   const redirectUri = `${origin}/api/auth/google-ads/callback`;
 

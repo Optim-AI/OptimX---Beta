@@ -3,8 +3,8 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import * as cookie from "cookie";
 import { setStatus } from "../../../../lib/integrationStore";
 
-const CLIENT_ID = "947565254141-5mispk8fus70rj42pp1srjof4774p9ve.apps.googleusercontent.com";
-const CLIENT_SECRET = "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";
+const CLIENT_ID = process.env.GOOGLE_ADS_CLIENT_ID;
+const CLIENT_SECRET = process.env.GOOGLE_ADS_CLIENT_SECRET;
 
 // Fallback origin if we can't detect one (keep your ngrok here)
 const FALLBACK_ORIGIN = "https://67476f1a363d.ngrok-free.app";
@@ -37,6 +37,12 @@ function computeOrigin(req: NextApiRequest): string {
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
+    if (!CLIENT_ID || !CLIENT_SECRET) {
+      return res.status(500).send(
+        'Missing Google Ads configuration. Please set GOOGLE_ADS_CLIENT_ID and GOOGLE_ADS_CLIENT_SECRET environment variables.'
+      );
+    }
+
     const { code, error } = req.query;
     console.log("[google-ads callback] query:", req.query);
 
