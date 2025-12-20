@@ -15,6 +15,7 @@ import { apiFetch } from "../lib/apiFetch";
 
 // exact path you provided — do NOT change
 import colors from "../lib/colors";
+import { isIntegrationBetaMode } from "../lib/integrationMode";
 
 /* ---------- platforms (ui names + backend authpaths) ---------- */
 type Platform = {
@@ -30,7 +31,7 @@ const PLATFORMS: Platform[] = [
     id: "meta",
     name: "meta ads",
     icon: <Facebook className="w-10 h-10 text-[#0866FF]" />, // meta icon
-    authPath: "/api/auth/instagram/start",
+    authPath: "/api/meta/oauth/start",
     desc: "facebook & instagram ads",
   },
 ];
@@ -58,7 +59,10 @@ export default function IntegrationsPage() {
   const pollRef = useRef<number | null>(null);
   const crossOriginSeen = useRef<Record<string, boolean>>({});
 
-  // per-user beta status computed from integrationsbeta
+  // Check if beta mode is enabled from environment variable
+  const isBetaMode = isIntegrationBetaMode();
+
+  // per-user beta status computed from integrationsbeta (only used in beta mode)
   const [betaStatus, setBetaStatus] = useState<BetaStatus>("need_to_approve");
 
   function isPopupClosed(popup: Window | null) {
@@ -284,36 +288,39 @@ export default function IntegrationsPage() {
           return;
         }
 
-        // read latest beta row for this user
-        const { data: betaRow, error: betaErr } = await supabase
-          .from("integrationsbeta")
-          .select("status, instagram_username, facebook_username, created_at")
-          .eq("user_id", user.id)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
+        // Only check beta status if we're in beta mode
+        if (isBetaMode) {
+          // read latest beta row for this user
+          const { data: betaRow, error: betaErr } = await supabase
+            .from("integrationsbeta")
+            .select("status, instagram_username, facebook_username, created_at")
+            .eq("user_id", user.id)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
 
-        if (!betaErr && betaRow) {
-          const rawStatus = (betaRow as any).status ?? "";
-          const s = String(rawStatus).toLowerCase();
+          if (!betaErr && betaRow) {
+            const rawStatus = (betaRow as any).status ?? "";
+            const s = String(rawStatus).toLowerCase();
 
-          const ig = (betaRow as any).instagram_username as string | null;
-          const fb = (betaRow as any).facebook_username as string | null;
-          const hasUsernames =
-            (ig && ig.trim().length > 0) || (fb && fb.trim().length > 0);
+            const ig = (betaRow as any).instagram_username as string | null;
+            const fb = (betaRow as any).facebook_username as string | null;
+            const hasUsernames =
+              (ig && ig.trim().length > 0) || (fb && fb.trim().length > 0);
 
-          if (s === "completed") {
-            setBetaStatus("completed");
-          } else if (hasUsernames) {
-            // they have provided usernames -> treat as pending/verify
-            setBetaStatus("pending");
+            if (s === "completed") {
+              setBetaStatus("completed");
+            } else if (hasUsernames) {
+              // they have provided usernames -> treat as pending/verify
+              setBetaStatus("pending");
+            } else {
+              // no usernames input -> need_to_approve
+              setBetaStatus("need_to_approve");
+            }
           } else {
-            // no usernames input -> need_to_approve
+            // no row at all -> need_to_approve
             setBetaStatus("need_to_approve");
           }
-        } else {
-          // no row at all -> need_to_approve
-          setBetaStatus("need_to_approve");
         }
 
         if (!mounted) return;
@@ -356,7 +363,7 @@ export default function IntegrationsPage() {
       window.removeEventListener("message", onMessage);
       if (pollRef.current) clearInterval(pollRef.current);
     };
-  }, [router]);
+  }, [router, isBetaMode]);
 
   /* ---------- ui ---------- */
   return (
@@ -388,7 +395,7 @@ export default function IntegrationsPage() {
                   ? { background: gradientPrimary, border: "none" }
                   : undefined;
 
-              // decide button label + behavior based on betaStatus + connected
+              // decide button label + behavior based on mode (env var) + betaStatus + connected
               let buttonLabel = "connect";
               let buttonDisabled = false;
               let buttonOnClick: () => void = () => {};
@@ -403,25 +410,34 @@ export default function IntegrationsPage() {
                 buttonLabel = "disconnect";
                 buttonOnClick = () => handleDisconnect(platform.id);
               } else {
-                if (betaStatus === "need_to_approve") {
-                  // no usernames captured -> ask them to go fill beta form
-                  buttonLabel = "verify please";
-                  buttonOnClick = () => router.push("/integrationsbeta");
-                  buttonDisabled = false;
-                } else if (betaStatus === "pending") {
-                  // usernames present, waiting for manual completion
-                  buttonLabel = "verify";
-                  buttonOnClick = () => {};
-                  buttonDisabled = true;
-                  buttonStyle = undefined; // static
-                } else if (betaStatus === "completed") {
-                  // manual completion done -> allow normal connect flow
+                // Not connected - check which mode we're in
+                if (isBetaMode) {
+                  // BETA MODE: Use beta approval workflow
+                  if (betaStatus === "need_to_approve") {
+                    // no usernames captured -> ask them to go fill beta form
+                    buttonLabel = "verify please";
+                    buttonOnClick = () => router.push("/integrationsbeta");
+                    buttonDisabled = false;
+                  } else if (betaStatus === "pending") {
+                    // usernames present, waiting for manual completion
+                    buttonLabel = "verify";
+                    buttonOnClick = () => {};
+                    buttonDisabled = true;
+                    buttonStyle = undefined; // static
+                  } else if (betaStatus === "completed") {
+                    // manual completion done -> allow normal connect flow
+                    buttonLabel = "connect";
+                    buttonOnClick = () => handleConnect(platform);
+                  } else {
+                    // fallback
+                    buttonLabel = "verify please";
+                    buttonOnClick = () => router.push("/integrationsbeta");
+                  }
+                } else {
+                  // FULL OAUTH MODE: Direct connection, no beta workflow
                   buttonLabel = "connect";
                   buttonOnClick = () => handleConnect(platform);
-                } else {
-                  // fallback
-                  buttonLabel = "verify please";
-                  buttonOnClick = () => router.push("/integrationsbeta");
+                  buttonDisabled = false;
                 }
               }
 

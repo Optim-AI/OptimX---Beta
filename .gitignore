@@ -9,3 +9,6 @@ dist/
 .next
 .vercel
 .next/.env.local
+
+# Claude Code
+.claude/
