@@ -1,7 +1,7 @@
 # Meta (Facebook/Instagram) Permissions Guide for OptimX
 
 **Document Version:** 1.0
-**Last Updated:** December 21, 2024
+**Last Updated:** December 21, 2025
 **Product:** OptimX - AI-Powered Marketing Automation Platform
 
 ---
@@ -354,14 +354,14 @@ POST /{campaign-id} (Update campaign status/budget)
 ```
 
 **Current Status:**
-Currently, OptimX only uses `ads_read` for displaying ad insights. The `ads_management` permission is included in the OAuth request to prepare for future ad creation features planned for Q1 2025.
+Currently, OptimX only uses `ads_read` for displaying ad insights. The `ads_management` permission is included in the OAuth request to prepare for future ad creation features planned for Q1 2026.
 
 **Code References:**
 - `pages/api/meta/oauth/start.ts:46` (Requested in OAuth scope)
 - Future implementation planned in `lib/meta/ads.ts`
 
 **App Review Justification:**
-> "OptimX is building comprehensive ad campaign management features. While currently we only display ad insights (using ads_read), we are preparing to launch ad creation and management capabilities in Q1 2025. This will allow users to create and optimize Facebook/Instagram ad campaigns directly from OptimX, complementing our existing organic content publishing features. We request this permission now to enable seamless feature rollout without requiring users to re-authenticate."
+> "OptimX is building comprehensive ad campaign management features. While currently we only display ad insights (using ads_read), we are preparing to launch ad creation and management capabilities in Q1 2026. This will allow users to create and optimize Facebook/Instagram ad campaigns directly from OptimX, complementing our existing organic content publishing features. We request this permission now to enable seamless feature rollout without requiring users to re-authenticate."
 
 ---
 
@@ -587,7 +587,7 @@ For each advanced permission, provide:
 
 **Permission:** `ads_management`
 **Use Case:** Future feature for ad campaign creation and optimization
-**Justification:** Preparing for Q1 2025 feature launch that will allow users to create and manage ad campaigns from OptimX. Requesting now to avoid requiring users to re-authenticate later.
+**Justification:** Preparing for Q1 2026 feature launch that will allow users to create and manage ad campaigns from OptimX. Requesting now to avoid requiring users to re-authenticate later.
 
 **Permission:** `leads_retrieval`
 **Use Case:** Users access leads from their Facebook/Instagram lead ad campaigns
@@ -692,7 +692,7 @@ For App Review, create a dedicated test account:
 
 | Version | Date | Changes |
 |---------|------|---------|
-| 1.0 | 2024-12-21 | Initial documentation created |
+| 1.0 | 2025-12-21 | Initial documentation created |
 
 ---
 
@@ -700,9 +700,7 @@ For App Review, create a dedicated test account:
 
 For questions about Meta integration or App Review:
 
-- **Product Team:** product@optimx.com
-- **Technical Support:** dev@optimx.com
-- **Privacy Inquiries:** privacy@optimx.com
+- **Email: tech.optimx@gmail.com** 
 
 ---
 
