@@ -42,7 +42,7 @@
 // import colors from "C:/Users/jpsha/Documents/OPTIM - Copy/demo-repository/lib/colors";
 
 // // supabase client for browser usage (assumes you have this export)
-// import { supabase } from "../lib/supabaseClient";
+// import { supabase } from '@/auth/supabase/client';
 
 // /* -------------------- color tokens (fallback-safe) -------------------- */
 // const { primary, primary5 } = (colors as any) || {};

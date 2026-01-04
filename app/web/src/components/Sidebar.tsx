@@ -16,7 +16,7 @@ import {
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react';
-import colors from '../../../../lib/colors';
+import colors from '@/lib/ui/colors';
 
 type NavItem = {
   href: string;

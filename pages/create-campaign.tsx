@@ -28,8 +28,11 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "sonner";
-import colors from "../lib/colors";
-import { supabase } from "../lib/supabaseClient";
+import colors from '@/lib/ui/colors';
+import { supabase } from '@/auth/supabase/client';
+import { imagesClient, profileClient, chatClient } from '@/database/client-helpers';
+import { apiFetch } from '@/api/fetch';
+import { storageClient } from '@/lib/storage/client';
 
 /* -------------------- Mic Recorder -------------------- */
 type MicRecorderProps = {
@@ -184,15 +187,13 @@ async function uploadAndRecordGeneratedImage(
         .replace(/[^a-z0-9_\-]/gi, "_")
         .toLowerCase()}.png`;
       const path = `campaigns/${user.id}/${safeName}`;
-      const { error } = await supabase.storage
-        .from("campaign-assets")
-        .upload(path, blob, { cacheControl: "3600", upsert: true });
+      const { error } = await storageClient.upload("campaign-assets", path, blob, {
+        cacheControl: "3600",
+        upsert: true,
+      });
       if (!error) {
         uploadedPath = path;
-        const { data: publicData } = supabase.storage
-          .from("campaign-assets")
-          .getPublicUrl(path);
-        publicUrl = (publicData as any)?.publicUrl ?? publicUrl;
+        publicUrl = storageClient.getPublicUrl("campaign-assets", path);
       } else {
         console.warn("storage upload error (dataUrl)", error);
       }
@@ -207,15 +208,13 @@ async function uploadAndRecordGeneratedImage(
             .replace(/[^a-z0-9_\-]/gi, "_")
             .toLowerCase()}.${ext}`;
           const path = `campaigns/${user.id}/${safeName}`;
-          const { error } = await supabase.storage
-            .from("campaign-assets")
-            .upload(path, blob, { cacheControl: "3600", upsert: true });
+          const { error } = await storageClient.upload("campaign-assets", path, blob, {
+            cacheControl: "3600",
+            upsert: true,
+          });
           if (!error) {
             uploadedPath = path;
-            const { data: publicData } = supabase.storage
-              .from("campaign-assets")
-              .getPublicUrl(path);
-            publicUrl = (publicData as any)?.publicUrl ?? publicUrl;
+            publicUrl = storageClient.getPublicUrl("campaign-assets", path);
           } else {
             console.warn("storage upload error (fetch)", error);
           }
@@ -227,20 +226,13 @@ async function uploadAndRecordGeneratedImage(
 
     // insert row into user_generated_image
     try {
-      const payload = {
-        user_id: user.id,
-        image_url: publicUrl,
-        image_path: uploadedPath || null,
-        source: "generated",
-        metadata: {},
-      };
-      const { data, error } = await supabase
-        .from("user_generated_image")
-        .insert([payload])
-        .select()
-        .single();
-      if (error) {
-        console.warn("insert user_generated_image failed", error);
+      const result = await imagesClient.upload({
+        imageUrl: publicUrl,
+        imagePath: uploadedPath || undefined,
+      });
+      const data = result.success ? result.data : null;
+      if (!result.success) {
+        console.warn("insert user_generated_image failed", result.error);
       }
       return { publicUrl, path: uploadedPath, row: data };
     } catch (e) {
@@ -258,17 +250,12 @@ async function fetchRecentGeneratedImages(limit = 20) {
   try {
     const user = await getCurrentUser();
     if (!user) return [];
-    const { data, error } = await supabase
-      .from("user_generated_image")
-      .select("image_url, image_path, created_at")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false })
-      .limit(limit);
-    if (error) {
-      console.warn("fetchRecentGeneratedImages error", error);
+    const result = await imagesClient.list(limit);
+    if (!result.success) {
+      console.warn("fetchRecentGeneratedImages error", result.error);
       return [];
     }
-    return (data || []).map((r: any) => r.image_url).filter(Boolean);
+    return (result.data || []).map((r: any) => r.imageUrl).filter(Boolean);
   } catch (e) {
     console.warn("fetchRecentGeneratedImages failed", e);
     return [];
@@ -280,21 +267,17 @@ async function fetchChatsFromServer() {
   try {
     const user = await getCurrentUser();
     if (!user) return [];
-    const { data, error } = await supabase
-      .from("user_chats")
-      .select("id, title, messages, created_at, updated_at")
-      .eq("user_id", user.id)
-      .order("updated_at", { ascending: false });
-    if (error) {
-      console.warn("fetchChatsFromServer error", error);
+    const result = await chatClient.list();
+    if (!result.ok) {
+      console.warn("fetchChatsFromServer error", result.error);
       return [];
     }
-    const mapped: Chat[] = (data || []).map((r: any) => ({
+    const mapped: Chat[] = (result.chats || []).map((r: any) => ({
       id: r.id,
       title: r.title || "Chat",
       messages: Array.isArray(r.messages) ? r.messages : [],
-      createdAt: r.created_at ? new Date(r.created_at).getTime() : null,
-      updatedAt: r.updated_at ? new Date(r.updated_at).getTime() : null,
+      createdAt: r.createdAt ? new Date(r.createdAt).getTime() : null,
+      updatedAt: r.updatedAt ? new Date(r.updatedAt).getTime() : null,
     }));
     return mapped;
   } catch (e) {
@@ -306,25 +289,15 @@ async function fetchChatsFromServer() {
 async function createChatOnServer(title = "New Chat") {
   const user = await getCurrentUser();
   if (!user) throw new Error("Not authenticated");
-  const payload = {
-    user_id: user.id,
-    title: title || "New Chat",
-    messages: [],
-    consent_for_training: false,
-    client_version: "client-1",
-  };
-  const { data, error } = await supabase
-    .from("user_chats")
-    .insert([payload])
-    .select()
-    .single();
-  if (error) throw error;
+  const result = await chatClient.create(title);
+  if (!result.ok) throw new Error(result.error || "Failed to create chat");
+  const data = result.chat;
   return {
     id: data.id,
-    title: data.title || "New Chat",
+    title: data.title || title,
     messages: Array.isArray(data.messages) ? data.messages : [],
-    createdAt: data.created_at ? new Date(data.created_at).getTime() : null,
-    updatedAt: data.updated_at ? new Date(data.updated_at).getTime() : null,
+    createdAt: data.createdAt ? new Date(data.createdAt).getTime() : null,
+    updatedAt: data.updatedAt ? new Date(data.updatedAt).getTime() : null,
   } as Chat;
 }
 
@@ -334,11 +307,8 @@ async function updateChatMessagesOnServer(
 ) {
   try {
     if (!isProbablyUUID(chatId)) throw new Error("invalid chat id");
-    const { error } = await supabase
-      .from("user_chats")
-      .update({ messages: messagesPayload })
-      .eq("id", chatId);
-    if (error) throw error;
+    const result = await chatClient.updateMessages(chatId, messagesPayload);
+    if (!result.ok) throw new Error(result.error || "Update failed");
     return true;
   } catch (e) {
     console.warn("updateChatMessagesOnServer failed", e);
@@ -349,11 +319,8 @@ async function updateChatMessagesOnServer(
 async function renameChatOnServer(chatId: string, newTitle: string) {
   try {
     if (!isProbablyUUID(chatId)) throw new Error("invalid chat id");
-    const { error } = await supabase
-      .from("user_chats")
-      .update({ title: newTitle })
-      .eq("id", chatId);
-    if (error) throw error;
+    const result = await chatClient.rename(chatId, newTitle);
+    if (!result.ok) throw new Error(result.error || "Rename failed");
     return true;
   } catch (e) {
     console.warn("renameChatOnServer failed", e);
@@ -364,11 +331,8 @@ async function renameChatOnServer(chatId: string, newTitle: string) {
 async function deleteChatOnServer(chatId: string) {
   try {
     if (!isProbablyUUID(chatId)) throw new Error("invalid chat id");
-    const { error } = await supabase
-      .from("user_chats")
-      .delete()
-      .eq("id", chatId);
-    if (error) throw error;
+    const result = await chatClient.delete(chatId);
+    if (!result.ok) throw new Error(result.error || "Delete failed");
     return true;
   } catch (e) {
     console.warn("deleteChatOnServer failed", e);
@@ -387,15 +351,15 @@ async function uploadFileToUserUploads(file: File, folderPrefix = "") {
   const path = `${user.id}/${
     sanitizedPrefix ? sanitizedPrefix + "/" : ""
   }${safe}`;
-  const { error } = await supabase.storage
-    .from("user-uploads")
-    .upload(path, file, { cacheControl: "3600", upsert: true });
+  const { error } = await storageClient.upload("user-uploads", path, file, {
+    cacheControl: "3600",
+    upsert: true,
+  });
   if (error) {
     console.warn("uploadFileToUserUploads error", error);
     throw error;
   }
-  const { data } = supabase.storage.from("user-uploads").getPublicUrl(path);
-  const publicUrl = (data as any)?.publicUrl ?? null;
+  const publicUrl = storageClient.getPublicUrl("user-uploads", path);
   return { path, publicUrl };
 }
 
@@ -404,14 +368,11 @@ async function addReferenceImagesToProfile(urls: string[]) {
     const user = await getCurrentUser();
     if (!user) throw new Error("Not authenticated");
     // fetch existing ref_images
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("ref_images")
-      .eq("id", user.id)
-      .single();
+    const result = await profileClient.get();
+    const profile = result.success ? result.data : null;
     const existing: string[] = (profile as any)?.ref_images || [];
     const merged = Array.from(new Set([...existing, ...urls]));
-    await supabase.from("profiles").upsert({ id: user.id, ref_images: merged });
+    await profileClient.update({ ref_images: merged });
     return merged;
   } catch (e) {
     console.warn("addReferenceImagesToProfile failed", e);
@@ -423,14 +384,11 @@ async function removeReferenceImageFromProfile(url: string) {
   try {
     const user = await getCurrentUser();
     if (!user) throw new Error("Not authenticated");
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("ref_images")
-      .eq("id", user.id)
-      .single();
+    const result = await profileClient.get();
+    const profile = result.success ? result.data : null;
     const existing: string[] = (profile as any)?.ref_images || [];
     const next = existing.filter((x: string) => x !== url);
-    await supabase.from("profiles").upsert({ id: user.id, ref_images: next });
+    await profileClient.update({ ref_images: next });
     return next;
   } catch (e) {
     console.warn("removeReferenceImageFromProfile failed", e);
@@ -559,6 +517,16 @@ const CampaignCreate: React.FC = () => {
   // platform error state for publish panel
   const [platformError, setPlatformError] = useState<string | null>(null);
 
+  // Integration status state
+  const [integrationStatus, setIntegrationStatus] = useState<{
+    meta?: boolean | {
+      connected: boolean;
+      hasFacebook?: boolean;
+      hasInstagram?: boolean;
+    };
+    'google-ads'?: boolean;
+  }>({});
+
   // textarea autosize
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const resizeTextarea = () => {
@@ -586,12 +554,9 @@ const CampaignCreate: React.FC = () => {
 
         // profile
         try {
-          const { data: profile, error: pErr } = await supabase
-            .from("profiles")
-            .select("*")
-            .eq("id", user.id)
-            .single();
-          if (!pErr && profile) {
+          const result = await profileClient.get();
+          const profile = result.success ? result.data : null;
+          if (result.success && profile) {
             // set readable profile name for greeting
             const nameSource =
               (profile.full_name && String(profile.full_name).trim()) ||
@@ -613,10 +578,7 @@ const CampaignCreate: React.FC = () => {
             if (logoPath) {
               setLogoGlowing(true);
               try {
-                const { data: publicData } = supabase.storage
-                  .from("user-uploads")
-                  .getPublicUrl(logoPath);
-                const publicUrl = (publicData as any)?.publicUrl ?? null;
+                const publicUrl = storageClient.getPublicUrl("user-uploads", logoPath);
                 if (publicUrl) {
                   setLogoPublicUrl(publicUrl);
                   setAdFormData((p: any) => ({
@@ -984,6 +946,49 @@ const CampaignCreate: React.FC = () => {
   }, []);
   /* -------------------- END ADDED -------------------- */
 
+  /* -------------------- Fetch Integration Status -------------------- */
+  useEffect(() => {
+    (async () => {
+      try {
+        const user = await getCurrentUser();
+        if (!user) return;
+
+        const response = await fetch('/api/integrations/status');
+        if (response.ok) {
+          const data = await response.json();
+          setIntegrationStatus(data);
+        }
+      } catch (e) {
+        console.warn('Failed to fetch integration status', e);
+      }
+    })();
+  }, []);
+  /* -------------------- END Integration Status -------------------- */
+
+  // Helper functions to check integration status
+  const isMetaConnected = () => {
+    const meta = integrationStatus.meta;
+    if (!meta) return false;
+    if (typeof meta === 'boolean') return meta;
+    return meta.connected;
+  };
+
+  // Check specifically for Instagram connection (Meta with ig_user_id)
+  const isInstagramConnected = () => {
+    const meta = integrationStatus.meta;
+    if (!meta) return false;
+    if (typeof meta === 'boolean') return meta; // Legacy support
+    return meta.connected && meta.hasInstagram === true;
+  };
+
+  // Check specifically for Facebook connection (Meta with page_id)
+  const isFacebookConnected = () => {
+    const meta = integrationStatus.meta;
+    if (!meta) return false;
+    if (typeof meta === 'boolean') return meta; // Legacy support
+    return meta.connected && meta.hasFacebook === true;
+  };
+
   /* -------------------- Chat CRUD -------------------- */
 
   const createNewChat = async (title = "New Chat") => {
@@ -1121,8 +1126,7 @@ const CampaignCreate: React.FC = () => {
           setLogoGlowing(true);
         }
         // save logo_path in profile (use path)
-        await supabase.from("profiles").upsert({
-          id: user.id,
+        await profileClient.update({
           logo_path: path,
           tagline: adFormData.tagline || null,
         });
@@ -1145,9 +1149,7 @@ const CampaignCreate: React.FC = () => {
     try {
       const user = await getCurrentUser();
       if (user) {
-        await supabase
-          .from("profiles")
-          .upsert({ id: user.id, logo_path: null });
+        await profileClient.update({ logo_path: null });
       }
     } catch (e) {
       console.warn("failed to remove logo_path", e);
@@ -1230,9 +1232,10 @@ const CampaignCreate: React.FC = () => {
       // upload directly to campaign-assets
       const safeName = `${user.id}_${Date.now()}_${file.name.replace(/\s+/g, "_")}`;
       const path = `campaigns/${user.id}/${safeName}`;
-      const { error: uploadError } = await supabase.storage
-        .from("campaign-assets")
-        .upload(path, file, { cacheControl: "3600", upsert: true });
+      const { error: uploadError } = await storageClient.upload("campaign-assets", path, file, {
+        cacheControl: "3600",
+        upsert: true,
+      });
       let publicUrl = "";
       if (uploadError) {
         console.warn("quick upload failed, attempting user-uploads fallback", uploadError);
@@ -1245,10 +1248,7 @@ const CampaignCreate: React.FC = () => {
           console.warn("fallback upload also failed", fu);
         }
       } else {
-        const { data: publicData } = supabase.storage
-          .from("campaign-assets")
-          .getPublicUrl(path);
-        publicUrl = (publicData as any)?.publicUrl ?? "";
+        publicUrl = storageClient.getPublicUrl("campaign-assets", path);
       }
 
       // if we still have no publicUrl, create object URL for immediate preview (but still record original form)
@@ -1263,20 +1263,12 @@ const CampaignCreate: React.FC = () => {
 
       // insert into user_generated_image (record)
       try {
-        const payload = {
-          user_id: user.id,
-          image_url: publicUrl,
-          image_path: publicUrl.includes("/campaign-assets/") ? path : null,
-          source: "uploaded",
-          metadata: { quick_upload: true },
-        };
-        const { data: insertData, error: insertErr } = await supabase
-          .from("user_generated_image")
-          .insert([payload])
-          .select()
-          .single();
-        if (insertErr) {
-          console.warn("record user_generated_image failed", insertErr);
+        const result = await imagesClient.upload({
+          imageUrl: publicUrl,
+          imagePath: publicUrl.includes("/campaign-assets/") ? path : undefined,
+        });
+        if (!result.success) {
+          console.warn("record user_generated_image failed", result.error);
         }
       } catch (recErr) {
         console.warn("recording quick upload failed", recErr);
@@ -1607,24 +1599,21 @@ const CampaignCreate: React.FC = () => {
             .toLowerCase();
           const filename = `${user.id}_${Date.now()}_${safeName}.png`;
           const path = `campaigns/${user.id}/${filename}`;
-          const { error: uploadError } = await supabase.storage
-            .from("campaign-assets")
-            .upload(path, blob, { cacheControl: "3600", upsert: false });
+          const { error: uploadError } = await storageClient.upload("campaign-assets", path, blob, {
+            cacheControl: "3600",
+            upsert: false,
+          });
           if (uploadError) throw uploadError;
-          const { data: publicData } = supabase.storage
-            .from("campaign-assets")
-            .getPublicUrl(path);
-          image_url = (publicData as any)?.publicUrl ?? imageToPublish;
+          image_url = storageClient.getPublicUrl("campaign-assets", path);
           image_path = path;
           try {
-            await supabase.from("user_generated_image").insert([
-              {
-                user_id: user.id,
-                image_url: image_url,
-                image_path: image_path,
-                source: "generated",
-              },
-            ]);
+            const result = await imagesClient.upload({
+              imageUrl: image_url,
+              imagePath: image_path || undefined,
+            });
+            if (!result.success) {
+              console.warn("failed to insert generated image record", result.error);
+            }
           } catch (e) {
             console.warn("failed to insert generated image record", e);
           }
@@ -1633,7 +1622,11 @@ const CampaignCreate: React.FC = () => {
           image_path = "";
         }
 
+        // Generate UUID for the campaign
+        const campaignId = crypto.randomUUID();
+
         const payload = {
+          id: campaignId,
           user_id: user.id,
           name: finalName,
           audience: null,
@@ -1655,22 +1648,50 @@ const CampaignCreate: React.FC = () => {
           .select();
         if (insertError) throw insertError;
 
+        // Get auth token for API calls
+        const token = (await supabase.auth.getSession()).data?.session?.access_token ?? null;
+
         // Try to post to Instagram (if selected)
         if (postFormData.platforms.includes("Instagram")) {
           try {
-            const resp = await fetch("/api/auth/instagram/post", {
+            const resp = await fetch("/api/instagram/posts/create", {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers: {
+                "Content-Type": "application/json",
+                ...(token ? { Authorization: `Bearer ${token}` } : {}),
+              },
               body: JSON.stringify({
                 image_url,
                 caption:
                   postFormData.generatedCaption || postFormData.postName || "",
-                alsoPostToFacebook: postFormData.platforms.includes("Facebook"),
               }),
             });
             if (!resp.ok) {
               const j = await resp.json().catch(() => null);
               throw new Error((j && j.error) || `Instagram post failed`);
+            }
+
+            // If user also wants Facebook, post there too
+            if (postFormData.platforms.includes("Facebook")) {
+              try {
+                const fbResp = await fetch("/api/facebook/posts/create", {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                  },
+                  body: JSON.stringify({
+                    image_url,
+                    message:
+                      postFormData.generatedCaption || postFormData.postName || "",
+                  }),
+                });
+                if (!fbResp.ok) {
+                  console.warn("Facebook post failed after Instagram success");
+                }
+              } catch (fbErr) {
+                console.warn("Facebook post failed after Instagram success", fbErr);
+              }
             }
           } catch (e: any) {
             console.error("Instagram post failed", e);
@@ -1692,12 +1713,15 @@ const CampaignCreate: React.FC = () => {
           !postFormData.platforms.includes("Instagram")
         ) {
           try {
-            const resp = await fetch("/api/auth/facebook/post", {
+            const resp = await fetch("/api/facebook/posts/create", {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers: {
+                "Content-Type": "application/json",
+                ...(token ? { Authorization: `Bearer ${token}` } : {}),
+              },
               body: JSON.stringify({
                 image_url,
-                caption:
+                message:
                   postFormData.generatedCaption || postFormData.postName || "",
               }),
             });
@@ -2562,7 +2586,7 @@ const showAcknowledgement =
                                         return;
                                       }
                                       const { path, publicUrl } = await uploadFileToUserUploads(logoFile, "logo");
-                                      await supabase.from("profiles").upsert({ id: user.id, logo_path: path });
+                                      await profileClient.update({ logo_path: path });
                                       if (publicUrl) {
                                         setLogoPublicUrl(publicUrl);
                                         setLogoGlowing(true);
@@ -2697,29 +2721,32 @@ const showAcknowledgement =
                             </Button>
 
                             <div className="ml-auto flex items-center gap-2">
-                              <label className="inline-flex items-center gap-2">
-                                <input
-                                  type="checkbox"
-                                  checked={postFormData.platforms.includes("Instagram")}
-                                  onChange={(e) => {
-                                    const checked = e.target.checked;
-                                    setPostFormData((p: any) => ({
-                                      ...p,
-                                      platforms: checked
-                                        ? Array.from(new Set([...(p.platforms || []), "Instagram"]))
-                                        : (p.platforms || []).filter((x: any) => x !== "Instagram"),
-                                    }));
-                                    if (checked) setPlatformError(null);
-                                  }}
-                                />
-                                Instagram
-                              </label>
-                              <label className="inline-flex items-center gap-2">
-                                <input
-                                  type="checkbox"
-                                  checked={postFormData.platforms.includes("Facebook")}
-                                  onChange={(e) => {
-                                    const checked = e.target.checked;
+                              {isInstagramConnected() && (
+                                <label className="inline-flex items-center gap-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={postFormData.platforms.includes("Instagram")}
+                                    onChange={(e) => {
+                                      const checked = e.target.checked;
+                                      setPostFormData((p: any) => ({
+                                        ...p,
+                                        platforms: checked
+                                          ? Array.from(new Set([...(p.platforms || []), "Instagram"]))
+                                          : (p.platforms || []).filter((x: any) => x !== "Instagram"),
+                                      }));
+                                      if (checked) setPlatformError(null);
+                                    }}
+                                  />
+                                  Instagram
+                                </label>
+                              )}
+                              {isFacebookConnected() && (
+                                <label className="inline-flex items-center gap-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={postFormData.platforms.includes("Facebook")}
+                                    onChange={(e) => {
+                                      const checked = e.target.checked;
                                     setPostFormData((p: any) => ({
                                       ...p,
                                       platforms: checked
@@ -2731,6 +2758,12 @@ const showAcknowledgement =
                                 />
                                 Facebook
                               </label>
+                              )}
+                              {!isInstagramConnected() && !isFacebookConnected() && (
+                                <div className="text-sm text-muted-foreground">
+                                  No platforms connected. <a href="/integrations" className="text-primary hover:underline">Connect now</a>
+                                </div>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -2898,38 +2931,47 @@ const showAcknowledgement =
                           />
                           <div className="mt-2 flex gap-2 items-center">
                             <div className="flex items-center gap-2">
-                              <label className="inline-flex items-center gap-2">
-                                <input
-                                  type="checkbox"
-                                  checked={adFormData.platforms.includes("Instagram")}
-                                  onChange={(e) => {
-                                    const checked = e.target.checked;
-                                    setAdFormData((p: any) => ({
-                                      ...p,
-                                      platforms: checked
-                                        ? Array.from(new Set([...(p.platforms || []), "Instagram"]))
-                                        : (p.platforms || []).filter((x: any) => x !== "Instagram"),
-                                    }));
-                                  }}
-                                />
-                                Instagram
-                              </label>
-                              <label className="inline-flex items-center gap-2">
-                                <input
-                                  type="checkbox"
-                                  checked={adFormData.platforms.includes("Facebook")}
-                                  onChange={(e) => {
-                                    const checked = e.target.checked;
-                                    setAdFormData((p: any) => ({
-                                      ...p,
-                                      platforms: checked
-                                        ? Array.from(new Set([...(p.platforms || []), "Facebook"]))
-                                        : (p.platforms || []).filter((x: any) => x !== "Facebook"),
-                                    }));
-                                  }}
-                                />
-                                Facebook
-                              </label>
+                              {isInstagramConnected() && (
+                                <label className="inline-flex items-center gap-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={adFormData.platforms.includes("Instagram")}
+                                    onChange={(e) => {
+                                      const checked = e.target.checked;
+                                      setAdFormData((p: any) => ({
+                                        ...p,
+                                        platforms: checked
+                                          ? Array.from(new Set([...(p.platforms || []), "Instagram"]))
+                                          : (p.platforms || []).filter((x: any) => x !== "Instagram"),
+                                      }));
+                                    }}
+                                  />
+                                  Instagram
+                                </label>
+                              )}
+                              {isFacebookConnected() && (
+                                <label className="inline-flex items-center gap-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={adFormData.platforms.includes("Facebook")}
+                                    onChange={(e) => {
+                                      const checked = e.target.checked;
+                                      setAdFormData((p: any) => ({
+                                        ...p,
+                                        platforms: checked
+                                          ? Array.from(new Set([...(p.platforms || []), "Facebook"]))
+                                          : (p.platforms || []).filter((x: any) => x !== "Facebook"),
+                                      }));
+                                    }}
+                                  />
+                                  Facebook
+                                </label>
+                              )}
+                              {!isInstagramConnected() && !isFacebookConnected() && (
+                                <div className="text-sm text-muted-foreground">
+                                  No platforms connected. <a href="/integrations" className="text-primary hover:underline">Connect now</a>
+                                </div>
+                              )}
                             </div>
                             <div className="ml-auto flex items-center gap-2">
                               <label className="inline-flex items-center gap-2">

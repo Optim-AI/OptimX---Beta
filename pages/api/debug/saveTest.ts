@@ -1,6 +1,6 @@
 // pages/api/debug/saveTest.ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import { saveIntegration } from "../../../lib/integrationStore";
+import { saveIntegration } from '@/integrations/store';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const sample = {

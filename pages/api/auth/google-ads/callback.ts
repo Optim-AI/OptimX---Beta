@@ -1,7 +1,7 @@
 // pages/api/auth/google-ads/callback.ts
 import type { NextApiRequest, NextApiResponse } from "next";
 import * as cookie from "cookie";
-import { setStatus } from "../../../../lib/integrationStore";
+import { setStatus } from '@/integrations/store';
 
 const CLIENT_ID = process.env.GOOGLE_ADS_CLIENT_ID;
 const CLIENT_SECRET = process.env.GOOGLE_ADS_CLIENT_SECRET;

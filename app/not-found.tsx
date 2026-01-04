@@ -3,7 +3,7 @@
 import React, { useRef, useEffect } from "react";
 import { ArrowRight, Sparkles } from "lucide-react";
 import { Button } from "./web/src/components/ui/button"; // adjust import if your Button path differs
-import colors from "../lib/colors"; // adjust path if your colors file is elsewhere
+import colors from '@/lib/ui/colors'; // adjust path if your colors file is elsewhere
 
 function withAlpha(token: string, alpha: number) {
   const hslMatch = token.match(/hsl\(\s*([\d.]+)\s+([\d.]+)%\s+([\d.]+)%\s*\)/i);

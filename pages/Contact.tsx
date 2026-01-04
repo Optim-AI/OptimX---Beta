@@ -20,7 +20,7 @@ import { Mail } from "lucide-react";
 // react-helmet-async removed per your request
 
 // *** Import your color tokens exactly as requested (path unchanged) ***
-import colors from "../lib/colors";
+import colors from '@/lib/ui/colors';
 
 /** tiny helper to add slash-style alpha to simple hsl(...) tokens */
 const withAlpha = (token: string | undefined, alpha: number) => {

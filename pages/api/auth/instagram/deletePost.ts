@@ -1,7 +1,7 @@
 // pages/api/auth/instagram/deletePost.ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import { getUserIdFromRequest } from "../../../../lib/requestHelpers";
-import { readSavedIntegration } from "../../../../lib/integrationStore";
+import { getUserIdFromRequest } from '@/auth/request';
+import { readSavedIntegration } from '@/integrations/store';
 import crypto from "crypto";
 
 const VERSION = process.env.FACEBOOK_API_VERSION || "23.0";

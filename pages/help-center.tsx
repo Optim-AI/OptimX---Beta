@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import Link from 'next/link';
 import { Button } from "../app/web/src/components/ui/button";
-import colors from "../lib/colors";
+import colors from '@/lib/ui/colors';
 
 function withAlpha(token: string, alpha: number) {
   const hslMatch = token.match(/hsl\(\s*([\d.]+)\s+([\d.]+)%\s+([\d.]+)%\s*\)/i);

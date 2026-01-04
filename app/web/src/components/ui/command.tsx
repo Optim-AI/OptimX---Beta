@@ -7,7 +7,7 @@ import { Search } from "lucide-react";
 
 import { cn } from "../../../../../lib/utils";
 import { Dialog, DialogContent } from "./dialog";
-import colors from "../../../../../lib/colors";
+import colors from '@/lib/ui/colors';
 
 /**
  * Strategy:

@@ -1,8 +1,8 @@
 // pages/api/integrations/disconnect.ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import { getUserIdFromRequest } from "../../../lib/requestHelpers";
-import { supabaseAdmin } from "../../../lib/supabaseClient";
-import { PLATFORMS, setUserStatusForUser } from "../../../lib/integrationStore";
+import { getUserIdFromRequest } from '@/auth/request';
+import { IntegrationDAO } from '@/database';
+import { PLATFORMS, setUserStatusForUser } from '@/integrations/store';
 
 /**
  * POST { platform: string }
@@ -27,13 +27,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     // Delete integration rows for this user + provider only (user-scoped)
-    const { error: deleteError } = await supabaseAdmin
-      .from("integrations")
-      .delete()
-      .eq("user_id", userId)
-      .eq("provider", platform);
-
-    if (deleteError) {
+    try {
+      const integration = await IntegrationDAO.findByUserAndProvider(userId, platform);
+      if (integration) {
+        await IntegrationDAO.delete(integration.id);
+      }
+    } catch (deleteError: any) {
       console.error("integrations.disconnect db delete error:", deleteError);
       return res.status(500).json({ error: "db_error", details: deleteError.message });
     }

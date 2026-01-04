@@ -15,9 +15,9 @@
 //   Sparkles,
 // } from "lucide-react";
 
-// import colors from "../lib/colors";
+// import colors from '@/lib/ui/colors';
 // import { apiFetch } from "../lib/apiFetch";
-// import { supabase } from "../lib/supabaseClient";
+// import { supabase } from '@/auth/supabase/client';
 
 // /* --------------------------------------------------------------------------
 //    Helpers / color tokens (fall back gracefully if tokens missing)

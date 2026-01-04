@@ -8,14 +8,15 @@ import { useRouter } from "next/router";
 import Sidebar from "../app/web/src/components/Sidebar";
 import { Card, CardContent } from "../app/web/src/components/ui/card";
 import { Button } from "../app/web/src/components/ui/button";
-import { Check, X, Facebook } from "lucide-react";
+import { Badge } from "../app/web/src/components/ui/badge";
+import { Check, X, Facebook, AlertCircle, Clock } from "lucide-react";
 
-import { supabase } from "../lib/supabaseClient";
-import { apiFetch } from "../lib/apiFetch";
+import { supabase } from '@/auth/supabase/client';
+import { apiFetch } from '@/api/fetch';
 
 // exact path you provided — do NOT change
-import colors from "../lib/colors";
-import { isIntegrationBetaMode } from "../lib/integrationMode";
+import colors from '@/lib/ui/colors';
+import { isIntegrationBetaMode } from '@/integrations/mode';
 
 /* ---------- platforms (ui names + backend authpaths) ---------- */
 type Platform = {
@@ -50,9 +51,18 @@ const {
 
 type BetaStatus = "need_to_approve" | "pending" | "completed";
 
+type MetaStatus = {
+  connected: boolean;
+  healthStatus?: string;
+  healthMessage?: string;
+  needsReconnect?: boolean;
+  tokenExpiresAt?: string | null;
+  lastChecked?: string | null;
+};
+
 export default function IntegrationsPage() {
   const router = useRouter();
-  const [statuses, setStatuses] = useState<Record<string, boolean>>({});
+  const [statuses, setStatuses] = useState<Record<string, boolean | MetaStatus>>({});
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
   const popupRef = useRef<Window | null>(null);
@@ -83,8 +93,16 @@ export default function IntegrationsPage() {
       if (!res.ok) throw new Error();
       const data = await res.json();
 
-      const next: Record<string, boolean> = {};
-      PLATFORMS.forEach((p) => (next[p.id] = !!data[p.id]));
+      const next: Record<string, boolean | MetaStatus> = {};
+      PLATFORMS.forEach((p) => {
+        // For meta, we get detailed health info
+        if (p.id === 'meta' && data[p.id] && typeof data[p.id] === 'object') {
+          next[p.id] = data[p.id] as MetaStatus;
+        } else {
+          // For other platforms, just boolean
+          next[p.id] = !!data[p.id];
+        }
+      });
 
       setStatuses(next);
       try {
@@ -142,21 +160,33 @@ export default function IntegrationsPage() {
     pollRef.current = window.setInterval(async () => {
       try {
         if (isPopupClosed(popupRef.current)) {
-          if (crossOriginSeen.current[platformId]) {
-            setStatuses((s) => {
-              const next = { ...s, [platformId]: true };
-              try {
-                localStorage.setItem(LS_KEY, JSON.stringify(next));
-              } catch {}
-              return next;
-            });
-            localStorage.removeItem("pending_connect");
-            setMessage(`${platformId} connected`);
-            setTimeout(() => setMessage(null), 2000);
-          } else {
-            await fetchStatuses();
+          // Popup closed - verify via API if integration actually exists
+          // Don't just assume success because crossOriginSeen is true
+          try {
+            const res = await apiFetch("/api/integrations/status");
+            if (res.ok) {
+              const data = await res.json();
+              if (data[platformId]) {
+                // Integration confirmed via API
+                setStatuses((s) => {
+                  const next = { ...s, [platformId]: true };
+                  try {
+                    localStorage.setItem(LS_KEY, JSON.stringify(next));
+                  } catch {}
+                  return next;
+                });
+                setMessage(`${platformId} connected`);
+                setTimeout(() => setMessage(null), 2000);
+              } else {
+                // Popup closed but no integration found - likely error/cancelled/no-pages
+                console.log(`Popup closed but no ${platformId} integration found in database`);
+              }
+            }
+          } catch (apiErr) {
+            console.warn("Failed to verify integration status:", apiErr);
           }
 
+          localStorage.removeItem("pending_connect");
           clearInterval(pollRef.current!);
           pollRef.current = null;
           popupRef.current = null;
@@ -275,6 +305,37 @@ export default function IntegrationsPage() {
     }
   };
 
+  /* ---------- handle success redirect in popup ---------- */
+  useEffect(() => {
+    // If this page was opened as a popup and has ?connected=meta&status=success
+    // send a postMessage to parent window
+    if (window.opener && !window.opener.closed) {
+      const params = new URLSearchParams(window.location.search);
+      const connected = params.get("connected");
+      const status = params.get("status");
+
+      if (connected && status) {
+        try {
+          window.opener.postMessage(
+            {
+              type: "oauth_completed",
+              platform: connected,
+              status: status,
+              redirect: "/integrations",
+            },
+            "*"
+          );
+          // Close popup after sending message
+          setTimeout(() => {
+            window.close();
+          }, 1000);
+        } catch (e) {
+          console.warn("Failed to postMessage to parent:", e);
+        }
+      }
+    }
+  }, []);
+
   /* ---------- initial load: user + beta status + statuses ---------- */
   useEffect(() => {
     let mounted = true;
@@ -337,6 +398,47 @@ export default function IntegrationsPage() {
     const onMessage = (e: MessageEvent) => {
       try {
         const data = e.data;
+
+        // Handle new oauth_completed message with status
+        if (data?.type === "oauth_completed" && data.platform) {
+          const p = data.platform;
+          const status = data.status; // success, error, cancelled, no_pages
+
+          // Only mark as connected if status is "success"
+          if (status === "success") {
+            setStatuses((s) => {
+              const next = { ...s, [p]: true };
+              try {
+                localStorage.setItem(LS_KEY, JSON.stringify(next));
+              } catch {}
+              return next;
+            });
+            setMessage(`${p} connected`);
+            setTimeout(() => setMessage(null), 2000);
+          } else {
+            // For error, cancelled, or no_pages - don't mark as connected
+            console.log(`OAuth ${status} for ${p}, not marking as connected`);
+            if (status === "no_pages") {
+              setMessage("No Facebook Pages found");
+            } else if (status === "cancelled") {
+              setMessage("Connection cancelled");
+            } else {
+              setMessage("Connection failed");
+            }
+            setTimeout(() => setMessage(null), 3000);
+          }
+
+          popupRef.current?.close?.();
+          popupRef.current = null;
+          localStorage.removeItem("pending_connect");
+          if (pollRef.current) {
+            clearInterval(pollRef.current);
+            pollRef.current = null;
+          }
+          return;
+        }
+
+        // Legacy oauth_connected message (for backward compatibility)
         if (data?.type === "oauth_connected" && data.platform) {
           const p = data.platform;
           setStatuses((s) => {
@@ -385,7 +487,10 @@ export default function IntegrationsPage() {
           {/* grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {PLATFORMS.map((platform, i) => {
-              const connected = !!statuses[platform.id];
+              const statusValue = statuses[platform.id];
+              const isMetaWithHealth = platform.id === 'meta' && typeof statusValue === 'object';
+              const metaStatus = isMetaWithHealth ? statusValue as MetaStatus : null;
+              const connected = isMetaWithHealth ? metaStatus?.connected : !!statusValue;
 
               const statusBg = connected ? green100 : muted;
               const statusIconColor = connected ? green600 : mutedForeground;
@@ -483,6 +588,31 @@ export default function IntegrationsPage() {
                     >
                       {platform.desc}
                     </p>
+
+                    {/* Health status badge for Meta */}
+                    {isMetaWithHealth && metaStatus && (
+                      <div className="mb-3 space-y-2">
+                        {metaStatus.needsReconnect ? (
+                          <Badge variant="destructive" className="flex items-center gap-1">
+                            <AlertCircle className="w-3 h-3" />
+                            Reconnect Required
+                          </Badge>
+                        ) : metaStatus.healthStatus === 'expires_soon' ? (
+                          <Badge variant="outline" className="flex items-center gap-1 bg-yellow-50 border-yellow-300 text-yellow-700">
+                            <Clock className="w-3 h-3" />
+                            Token Expires Soon
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="flex items-center gap-1 bg-green-50 border-green-300 text-green-700">
+                            <Check className="w-3 h-3" />
+                            Healthy
+                          </Badge>
+                        )}
+                        {metaStatus.healthMessage && (
+                          <p className="text-xs text-slate-600">{metaStatus.healthMessage}</p>
+                        )}
+                      </div>
+                    )}
 
                     <Button
                       variant={buttonVariant}

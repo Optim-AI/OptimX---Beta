@@ -1,0 +1,164 @@
+import { pgTable, varchar, timestamp, text, integer, boolean, index, uniqueIndex, jsonb, foreignKey, uuid } from "drizzle-orm/pg-core"
+import { sql } from "drizzle-orm"
+
+export const integrationStatus = pgTable("integration_status", {
+	provider: text().primaryKey().notNull(),
+	isActive: boolean("is_active").default(false).notNull(),
+	updatedAt: timestamp("updated_at", { precision: 3, mode: 'string' }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+export const appSettings = pgTable("app_settings", {
+	id: text().primaryKey().notNull(),
+	key: text().notNull(),
+	value: jsonb().notNull(),
+	createdAt: timestamp("created_at", { precision: 3, mode: 'string' }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+	updatedAt: timestamp("updated_at", { precision: 3, mode: 'string' }).notNull(),
+}, (table) => [
+	index("app_settings_key_idx").using("btree", table.key.asc().nullsLast().op("text_ops")),
+	uniqueIndex("app_settings_key_key").using("btree", table.key.asc().nullsLast().op("text_ops")),
+]);
+
+// Note: public.users table removed - we use auth.users (Supabase Auth) directly
+// All user_id fields reference auth.users(id) which is managed by Supabase
+
+export const profiles = pgTable("profiles", {
+	id: text().primaryKey().notNull(),
+	userId: text("user_id").notNull(), // References auth.users(id)
+	data: jsonb(),
+	createdAt: timestamp("created_at", { precision: 3, mode: 'string' }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+	updatedAt: timestamp("updated_at", { precision: 3, mode: 'string' }).notNull(),
+}, (table) => [
+	uniqueIndex("profiles_user_id_key").using("btree", table.userId.asc().nullsLast().op("text_ops")),
+]);
+
+export const integrations = pgTable("integrations", {
+	id: text().primaryKey().notNull(),
+	userId: text("user_id").notNull(), // References auth.users(id)
+	provider: text().notNull(),
+	providerUserId: text("provider_user_id"),
+	adAccountId: text("ad_account_id"),
+	pageId: text("page_id"),
+	igUserId: text("ig_user_id"),
+	accessToken: text("access_token"),
+	refreshToken: text("refresh_token"),
+	tokenExpiresAt: timestamp("token_expires_at", { precision: 3, mode: 'string' }),
+	scopes: text(),
+	credentials: jsonb(),
+	pageName: text("page_name"),
+	pageCategory: text("page_category"),
+	allPages: jsonb("all_pages"),
+	raw: jsonb(),
+	metadata: jsonb(),
+	healthStatus: text("health_status").default("healthy"),
+	lastHealthCheck: timestamp("last_health_check", { precision: 3, mode: 'string' }),
+	healthErrorMessage: text("health_error_message"),
+	createdAt: timestamp("created_at", { precision: 3, mode: 'string' }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+	updatedAt: timestamp("updated_at", { precision: 3, mode: 'string' }).notNull(),
+}, (table) => [
+	index("integrations_ig_user_id_idx").using("btree", table.igUserId.asc().nullsLast().op("text_ops")),
+	index("integrations_page_id_idx").using("btree", table.pageId.asc().nullsLast().op("text_ops")),
+	index("integrations_provider_idx").using("btree", table.provider.asc().nullsLast().op("text_ops")),
+	index("integrations_user_id_idx").using("btree", table.userId.asc().nullsLast().op("text_ops")),
+	index("integrations_user_id_provider_idx").using("btree", table.userId.asc().nullsLast().op("text_ops"), table.provider.asc().nullsLast().op("text_ops")),
+	index("integrations_health_status_idx").using("btree", table.healthStatus.asc().nullsLast().op("text_ops")),
+	index("integrations_last_health_check_idx").using("btree", table.lastHealthCheck.asc().nullsLast().op("timestamp_ops")),
+]);
+
+export const oauthSessions = pgTable("oauth_sessions", {
+	id: text().primaryKey().notNull(),
+	userId: text("user_id").notNull(), // References auth.users(id)
+	provider: text().notNull(),
+	data: jsonb().notNull(),
+	expiresAt: timestamp("expires_at", { precision: 3, mode: 'string' }).notNull(),
+	createdAt: timestamp("created_at", { precision: 3, mode: 'string' }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+}, (table) => [
+	index("oauth_sessions_expires_at_idx").using("btree", table.expiresAt.asc().nullsLast().op("timestamp_ops")),
+	index("oauth_sessions_provider_idx").using("btree", table.provider.asc().nullsLast().op("text_ops")),
+	index("oauth_sessions_user_id_idx").using("btree", table.userId.asc().nullsLast().op("text_ops")),
+]);
+
+export const googleAdsTokens = pgTable("google_ads_tokens", {
+	userId: text("user_id").primaryKey().notNull(), // References auth.users(id)
+	refreshToken: text("refresh_token").notNull(),
+	accessToken: text("access_token"),
+	tokenExpiresAt: timestamp("token_expires_at", { precision: 3, mode: 'string' }),
+	scope: text(),
+	createdAt: timestamp("created_at", { precision: 3, mode: 'string' }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+	updatedAt: timestamp("updated_at", { precision: 3, mode: 'string' }).notNull(),
+});
+
+export const userCredits = pgTable("user_credits", {
+	id: text().primaryKey().notNull(),
+	userId: text("user_id").notNull(), // References auth.users(id)
+	credits: integer().default(0).notNull(),
+	createdAt: timestamp("created_at", { precision: 3, mode: 'string' }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+	updatedAt: timestamp("updated_at", { precision: 3, mode: 'string' }).notNull(),
+}, (table) => [
+	index("user_credits_user_id_idx").using("btree", table.userId.asc().nullsLast().op("text_ops")),
+	uniqueIndex("user_credits_user_id_key").using("btree", table.userId.asc().nullsLast().op("text_ops")),
+]);
+
+export const campaigns = pgTable("campaigns", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	userId: uuid("user_id").notNull(), // References auth.users(id)
+	name: text(),
+	audience: text(),
+	campaignType: text("campaign_type"),
+	brandVoice: text("brand_voice"),
+	contentTypes: text("content_types").array(),
+	vision: text(),
+	output: jsonb(),
+	imageUrl: text("image_url").array(),
+	imagePath: text("image_path").array(),
+	isPublished: boolean("is_published").default(false),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (table) => [
+	index("idx_campaigns_user_id").using("btree", table.userId.asc().nullsLast()),
+	index("idx_campaigns_created_at").using("btree", table.createdAt.asc().nullsLast()),
+]);
+
+export const recommendations = pgTable("recommendations", {
+	id: text().primaryKey().notNull(),
+	userId: text("user_id").notNull(), // References auth.users(id)
+	campaignId: text("campaign_id"),
+	type: text(),
+	title: text(),
+	description: text(),
+	data: jsonb(),
+	status: text().default('pending'),
+	createdAt: timestamp("created_at", { precision: 3, mode: 'string' }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+	updatedAt: timestamp("updated_at", { precision: 3, mode: 'string' }).notNull(),
+}, (table) => [
+	index("recommendations_campaign_id_idx").using("btree", table.campaignId.asc().nullsLast().op("text_ops")),
+	index("recommendations_status_idx").using("btree", table.status.asc().nullsLast().op("text_ops")),
+	index("recommendations_user_id_idx").using("btree", table.userId.asc().nullsLast().op("text_ops")),
+	foreignKey({
+			columns: [table.campaignId],
+			foreignColumns: [campaigns.id],
+			name: "recommendations_campaign_id_fkey"
+		}).onUpdate("cascade").onDelete("set null"),
+]);
+
+export const userChats = pgTable("user_chats", {
+	id: text().primaryKey().notNull(),
+	userId: text("user_id").notNull(), // References auth.users(id)
+	role: text().notNull(),
+	message: text().notNull(),
+	metadata: jsonb(),
+	createdAt: timestamp("created_at", { precision: 3, mode: 'string' }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+}, (table) => [
+	index("user_chats_created_at_idx").using("btree", table.createdAt.asc().nullsLast().op("timestamp_ops")),
+	index("user_chats_user_id_idx").using("btree", table.userId.asc().nullsLast().op("text_ops")),
+]);
+
+export const userGeneratedImage = pgTable("user_generated_image", {
+	id: text().primaryKey().notNull(),
+	userId: text("user_id").notNull(), // References auth.users(id)
+	imageUrl: text("image_url").notNull(),
+	imagePath: text("image_path"),
+	createdAt: timestamp("created_at", { precision: 3, mode: 'string' }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+}, (table) => [
+	index("user_generated_image_created_at_idx").using("btree", table.createdAt.asc().nullsLast().op("timestamp_ops")),
+	index("user_generated_image_user_id_idx").using("btree", table.userId.asc().nullsLast().op("text_ops")),
+]);

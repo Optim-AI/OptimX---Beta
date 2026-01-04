@@ -5,7 +5,7 @@ import { OTPInput, OTPInputContext } from "input-otp"
 import { Dot } from "lucide-react"
 
 import { cn } from "../../../../../lib/utils"
-import colors from "../../../../../lib/colors" // <-- use your color tokens
+import colors from '@/lib/ui/colors' // <-- use your color tokens
 
 const InputOTP = React.forwardRef<
   React.ElementRef<typeof OTPInput>,

@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import colors from '../../../../lib/colors';
+import colors from '@/lib/ui/colors';
 import { 
   Wand2, 
   Target, 

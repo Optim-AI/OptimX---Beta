@@ -1,8 +1,8 @@
 // pages/api/auth/instagram/callback.ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import { decodeState } from "../../../../lib/authHelpers";
-import { supabaseAdmin } from "../../../../lib/supabaseClient";
-import { saveIntegration, setStatus } from "../../../../lib/integrationStore";
+import { decodeState } from '@/auth/helpers';
+import { supabaseAdmin } from '@/auth/supabase/client';
+import { saveIntegration, setStatus } from '@/integrations/store';
 
 const VERSION = process.env.FACEBOOK_API_VERSION || "23.0";
 const DEBUG = process.env.DEBUG_CALLBACK === "true";

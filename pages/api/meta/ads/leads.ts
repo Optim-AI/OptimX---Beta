@@ -1,7 +1,7 @@
 // pages/api/meta/ads/leads.ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import { getMetaIntegration, requireAdsAccount } from "../../../../lib/meta/auth";
-import { getLeads, getLeadForms } from "../../../../lib/meta/ads";
+import { getMetaIntegration, requireAdsAccount } from '@/integrations/meta/auth';
+import { getLeads, getLeadForms } from '@/integrations/meta/ads';
 
 /**
  * Get Meta ad leads for authenticated user.

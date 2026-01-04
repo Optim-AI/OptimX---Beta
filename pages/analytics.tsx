@@ -4,8 +4,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import Sidebar from "../app/web/src/components/Sidebar";
-import { apiFetch } from "../lib/apiFetch";
-import { supabase } from "../lib/supabaseClient";
+import { apiFetch } from '@/api/fetch';
+import { supabase } from '@/auth/supabase/client';
 
 import { Card, CardContent, CardHeader, CardTitle } from "../app/web/src/components/ui/card";
 import { Button } from "../app/web/src/components/ui/button";

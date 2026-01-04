@@ -3,9 +3,10 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import Sidebar from "../app/web/src/components/Sidebar";
-import { supabase } from "../lib/supabaseClient";
-import { initFirebaseApp } from "../lib/firebaseClient";
+import { supabase } from '@/auth/supabase/client';
+import { initFirebaseApp } from '@/auth/firebase/client';
 import { useRouter } from "next/router";
+import { profileClient } from '@/database/client-helpers';
 import type { JSX } from "react";
 import Link from "next/link";
 import {
@@ -111,7 +112,7 @@ const HEARD_FROM_OPTIONS = [
   "Other",
 ];
 
-import colors from "../lib/colors";
+import colors from '@/lib/ui/colors';
 
 export default function SettingsPage(): JSX.Element {
   const router = useRouter();
@@ -155,13 +156,10 @@ export default function SettingsPage(): JSX.Element {
           return;
         }
 
-        const { data, error } = await supabase
-          .from("profiles")
-          .select("*")
-          .eq("id", user.id)
-          .single();
+        const result = await profileClient.get();
 
-        if (!error && data) {
+        if (result.success && result.data) {
+          const data = result.data;
           setProfile(data as ProfilePayload);
 
           setBusinessName(data.business_name ?? "");
@@ -260,20 +258,13 @@ export default function SettingsPage(): JSX.Element {
             : profile.heard_from_other || null,
       };
 
-      const { error: upErr } = await supabase
-        .from("profiles")
-        .upsert(payload, { onConflict: "id" });
-      if (upErr) {
-        console.error("profiles upsert error", upErr);
-      } else {
-        const { data: refreshed, error: refErr } = await supabase
-          .from("profiles")
-          .select("*")
-          .eq("id", profile.id)
-          .single();
-        if (!refErr && refreshed) {
-          setProfile(refreshed as ProfilePayload);
+      try {
+        const result = await profileClient.upsert(payload);
+        if (result.success && result.data) {
+          setProfile(result.data as ProfilePayload);
         }
+      } catch (upErr) {
+        console.error("profiles upsert error", upErr);
       }
     } catch (err) {
       console.error("saveProfileAndAi error", err);

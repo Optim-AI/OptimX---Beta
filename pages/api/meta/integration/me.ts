@@ -1,6 +1,6 @@
 // pages/api/meta/integration/me.ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import { getMetaIntegrationOptional } from "../../../../lib/meta/auth";
+import { getMetaIntegrationOptional } from '@/integrations/meta/auth';
 
 /**
  * Get authenticated user's Meta integration details.

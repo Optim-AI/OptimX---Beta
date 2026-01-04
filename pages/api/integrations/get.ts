@@ -1,8 +1,8 @@
 // pages/api/integrations/get.ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import { getUserIdFromRequest } from "../../../lib/requestHelpers";
-import { supabaseAdmin } from "../../../lib/supabaseClient";
-import { PLATFORMS } from "../../../lib/integrationStore";
+import { getUserIdFromRequest } from '@/auth/request';
+import { IntegrationDAO } from '@/database';
+import { PLATFORMS } from '@/integrations/store';
 
 /**
  * GET /api/integrations/get?provider=meta
@@ -45,18 +45,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ ok: false, error: "invalid_provider", details: `provider must be one of: ${PLATFORMS.join(", ")}` });
     }
 
-    const { data, error } = await supabaseAdmin
-      .from("integrations")
-      .select("*")
-      .eq("user_id", userId)
-      .eq("provider", provider)
-      .limit(1)
-      .maybeSingle();
-
-    if (error) {
-      console.error("integrations.get db error:", error);
-      return res.status(500).json({ ok: false, error: "db_error", details: error.message });
-    }
+    const data = await IntegrationDAO.findByUserAndProvider(userId, provider);
 
     if (!data) {
       return res.status(404).json({ ok: true, integration: null, note: "no_integration_for_user" });

@@ -9,8 +9,10 @@ import { Input } from "../app/web/src/components/ui/input";
 import { Label } from "../app/web/src/components/ui/label";
 import { Textarea } from "../app/web/src/components/ui/textarea";
 import { Separator } from "../app/web/src/components/ui/separator";
-import colors from "../lib/colors";
-import { supabase } from "../lib/supabaseClient";
+import colors from '@/lib/ui/colors';
+import { supabase } from '@/auth/supabase/client';
+import { profileClient, imagesClient } from '@/database/client-helpers';
+import { storageClient } from '@/lib/storage/client';
 import { toast } from "sonner";
 import { Sparkles, Image as ImageIcon } from "lucide-react";
 
@@ -129,11 +131,8 @@ export default function ImageLibraryPage(): JSX.Element {
 
         // fetch user profile for greeting
         try {
-          const { data: profile } = await supabase
-            .from("profiles")
-            .select("full_name")
-            .eq("id", user.id)
-            .single();
+          const result = await profileClient.get();
+          const profile = result.success ? result.data : null;
           const name =
             (profile as any)?.full_name ||
             (user.email ? user.email.split("@")[0] : null);
@@ -144,25 +143,20 @@ export default function ImageLibraryPage(): JSX.Element {
         }
 
         // fetch user images
-        const { data, error } = await supabase
-          .from("user_generated_image")
-          .select("id, image_url, created_at")
-          .eq("user_id", user.id)
-          .order("created_at", { ascending: false })
-          .limit(500);
+        const result = await imagesClient.list(500);
 
-        if (error) {
+        if (!result.success) {
           toast.error("Failed to fetch images");
           if (mounted) setImages([]);
         } else {
           const parsed: UserImage[] =
-            (data || [])
+            (result.data || [])
               .map((r: any) =>
-                r && r.image_url
+                r && r.imageUrl
                   ? {
                       id: String(r.id),
-                      imageUrl: String(r.image_url),
-                      createdAt: String(r.created_at),
+                      imageUrl: String(r.imageUrl),
+                      createdAt: String(r.createdAt),
                     }
                   : null
               )
@@ -347,14 +341,12 @@ export default function ImageLibraryPage(): JSX.Element {
             .toLowerCase();
           const filename = `${user.id}_${Date.now()}_${safeName}.png`;
           const path = `campaigns/${user.id}/${filename}`;
-          const { error: uploadError } = await supabase.storage
-            .from("campaign-assets")
-            .upload(path, blob, { cacheControl: "3600", upsert: false });
+          const { error: uploadError } = await storageClient.upload("campaign-assets", path, blob, {
+            cacheControl: "3600",
+            upsert: false,
+          });
           if (uploadError) throw uploadError;
-          const { data: publicData } = supabase.storage
-            .from("campaign-assets")
-            .getPublicUrl(path);
-          image_url = (publicData as any)?.publicUrl ?? imageToPublish;
+          image_url = storageClient.getPublicUrl("campaign-assets", path);
           image_path = path;
           try {
             await supabase.from("user_generated_image").insert([
@@ -545,20 +537,18 @@ export default function ImageLibraryPage(): JSX.Element {
             .toLowerCase();
           const filename = `${user.id}_${Date.now()}_${safeName}.png`;
           const path = `campaigns/${user.id}/${filename}`;
-          const { error: uploadError } = await supabase.storage
-            .from("campaign-assets")
-            .upload(path, blob, { cacheControl: "3600", upsert: true });
+          const { error: uploadError } = await storageClient.upload("campaign-assets", path, blob, {
+            cacheControl: "3600",
+            upsert: true,
+          });
           if (uploadError) throw uploadError;
-          const { data: publicData } = supabase.storage
-            .from("campaign-assets")
-            .getPublicUrl(path);
-          creativeImageUrl = (publicData as any)?.publicUrl ?? "";
+          creativeImageUrl = storageClient.getPublicUrl("campaign-assets", path);
           if (!creativeImageUrl) creativeImageDataUrl = imageToUse;
         } else if (imageToUse.startsWith("http")) {
           creativeImageUrl = imageToUse;
         }
       } catch (e) {
-        console.error("upload creative to supabase failed", e);
+        console.error("upload creative to storage failed", e);
         creativeImageDataUrl = imageToUse;
       }
 

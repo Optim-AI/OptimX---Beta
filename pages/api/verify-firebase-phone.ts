@@ -1,20 +1,12 @@
 // pages/api/verify-firebase-phone.ts
 import type { NextApiRequest, NextApiResponse } from 'next';
 import * as admin from 'firebase-admin';
-import { createClient } from '@supabase/supabase-js';
-import { initFirebaseAdmin } from '../../lib/firebaseAdmin';
+import { supabaseAdmin } from '@/auth/supabase/admin';
+import { initFirebaseAdmin } from '@/auth/firebase/admin';
+import { ProfileDAO } from '@/database';
 
 type SuccessResp = { success: true; phone: string };
 type ErrResp = { error: string };
-
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const SUPABASE_SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-
-if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE) {
-  console.warn('Supabase URL or service role key missing - verify-firebase-phone may fail.');
-}
-
-const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE);
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse<SuccessResp | ErrResp>) {
   if (req.method !== 'POST') {
@@ -55,19 +47,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
 
     if (!phoneNumber) return res.status(400).json({ error: 'No phone number present in Firebase token' });
 
-    // Build update payload
-    const updates: Record<string, any> = { id: supabaseUser.id };
+    // Build update payload for profile
+    const profileData: Record<string, any> = {};
     if (target === 'phone') {
-      updates.phone = phoneNumber;
-      updates.phone_verified = true;
+      profileData.phone = phoneNumber;
+      profileData.phone_verified = true;
     } else {
-      updates.business_mobile = phoneNumber;
-      updates.business_mobile_verified = true;
+      profileData.business_mobile = phoneNumber;
+      profileData.business_mobile_verified = true;
     }
 
-    const { error: upErr } = await supabaseAdmin.from('profiles').upsert(updates, { onConflict: 'id' });
-    if (upErr) {
-      console.error('Supabase upsert error', upErr);
+    // Update profile using Prisma DAO
+    try {
+      await ProfileDAO.upsert(supabaseUser.id, profileData);
+    } catch (upErr) {
+      console.error('Profile upsert error', upErr);
       return res.status(500).json({ error: 'Failed to update profile' });
     }
 

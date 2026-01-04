@@ -1,7 +1,10 @@
 // pages/api/facebook/posts/create.ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import { getMetaIntegration, requireFacebookPage } from "../../../../lib/meta/auth";
-import { createFacebookPost } from "../../../../lib/meta/facebook";
+import { getMetaIntegration, requireFacebookPage, TokenError } from '@/integrations/meta/auth';
+import { createFacebookPost } from '@/integrations/meta/facebook';
+import { detectTokenError } from '@/integrations/meta/token-refresh';
+import { updateIntegrationHealthInBackground } from '@/integrations/meta/health';
+import { getUserIdFromRequest } from '@/auth/request';
 
 /**
  * Create Facebook Page post for authenticated user.
@@ -15,6 +18,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
+    // Auto-checks health & refreshes token if needed
     const integration = await getMetaIntegration(req);
     await requireFacebookPage(integration);
 
@@ -37,7 +41,55 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       ...result,
     });
   } catch (err: any) {
+    // Handle token errors from getMetaIntegration
+    if (err instanceof TokenError) {
+      const userId = await getUserIdFromRequest(req);
+
+      // Update health in background (non-blocking)
+      if (userId) {
+        updateIntegrationHealthInBackground(
+          userId,
+          'meta',
+          err.code,
+          err.userMessage
+        );
+      }
+
+      return res.status(401).json({
+        error: 'token_error',
+        code: err.code,
+        message: err.userMessage,
+        needsReconnect: true,
+      });
+    }
+
+    // Check if this is a Facebook API error
+    const tokenError = detectTokenError(err);
+    if (tokenError.code !== 'error') {
+      const userId = await getUserIdFromRequest(req);
+
+      // Update health in background (non-blocking)
+      if (userId) {
+        updateIntegrationHealthInBackground(
+          userId,
+          'meta',
+          tokenError.code,
+          tokenError.message
+        );
+      }
+
+      return res.status(401).json({
+        error: 'token_error',
+        code: tokenError.code,
+        message: tokenError.message,
+        needsReconnect: true,
+      });
+    }
+
+    // Handle other errors
     console.error("facebook post create error:", err);
-    return res.status(500).json({ error: err?.message || "Failed to create Facebook post" });
+    return res.status(500).json({
+      error: err?.message || "Failed to create Facebook post"
+    });
   }
 }

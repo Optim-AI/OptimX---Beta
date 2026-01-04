@@ -1,7 +1,9 @@
 // lib/meta/auth.ts
 import type { NextApiRequest } from "next";
-import { getUserIdFromRequest } from "../requestHelpers";
-import { readSavedIntegration } from "../integrationStore";
+import { getUserIdFromRequest } from '@/auth/request';
+import { readSavedIntegration } from '@/integrations/store';
+import { shouldCheckHealth, checkIntegrationHealth } from './health';
+import { ensureValidToken, TokenError as TokenErrorClass } from './token-refresh';
 
 export type MetaIntegration = {
   userId: string;
@@ -12,10 +14,26 @@ export type MetaIntegration = {
   adAccountId: string | null;
   createdAt: string | null;
   savedRowId: string | null;
+  tokenExpiresAt?: string | null;
+  healthStatus?: string;
 };
 
 /**
+ * Custom error for token issues that need user reconnection
+ */
+export class TokenError extends Error {
+  constructor(
+    public code: string,
+    public userMessage: string
+  ) {
+    super(userMessage);
+    this.name = 'TokenError';
+  }
+}
+
+/**
  * Get authenticated user's Meta integration credentials.
+ * Automatically checks health and refreshes token if needed.
  * Throws error if user is not authenticated or Meta is not connected.
  */
 export async function getMetaIntegration(req: NextApiRequest): Promise<MetaIntegration> {
@@ -25,7 +43,7 @@ export async function getMetaIntegration(req: NextApiRequest): Promise<MetaInteg
     throw new Error("Unauthorized: No valid session");
   }
 
-  const integration = await readSavedIntegration({ provider: "meta", userId });
+  let integration = await readSavedIntegration({ provider: "meta", userId });
 
   if (!integration) {
     throw new Error("Meta not connected: Please connect your Facebook/Instagram account");
@@ -33,6 +51,42 @@ export async function getMetaIntegration(req: NextApiRequest): Promise<MetaInteg
 
   if (!integration.pageAccessToken) {
     throw new Error("Invalid integration: Missing page access token");
+  }
+
+  // Check if integration is unhealthy (expired, revoked, invalid)
+  const unhealthyStatuses = ['expired', 'revoked', 'invalid'];
+  if (integration.healthStatus && unhealthyStatuses.includes(integration.healthStatus)) {
+    throw new TokenError(
+      integration.healthStatus,
+      integration.healthErrorMessage || 'Your Facebook connection needs to be refreshed. Please reconnect.'
+    );
+  }
+
+  // Check if health check is needed (> 6 hours or expires soon)
+  if (shouldCheckHealth(integration)) {
+    try {
+      console.log('[getMetaIntegration] Running health check...');
+      const healthResult = await checkIntegrationHealth(integration);
+
+      if (!healthResult.healthy) {
+        throw new TokenError(healthResult.status, healthResult.message);
+      }
+    } catch (error: any) {
+      // If it's a token error, re-throw
+      if (error instanceof TokenError || error instanceof TokenErrorClass) {
+        throw new TokenError(error.code || 'error', error.message);
+      }
+      // Otherwise, log and continue (might be transient)
+      console.warn('[getMetaIntegration] Health check failed, continuing:', error.message);
+    }
+  }
+
+  // Check if token needs refresh (expires within 7 days)
+  try {
+    integration = await ensureValidToken(integration);
+  } catch (error: any) {
+    console.error('[getMetaIntegration] Token refresh failed:', error);
+    // Don't block the request if refresh fails - token might still be valid
   }
 
   return {
@@ -44,6 +98,8 @@ export async function getMetaIntegration(req: NextApiRequest): Promise<MetaInteg
     adAccountId: integration.adAccountId,
     createdAt: integration.createdAt,
     savedRowId: integration.savedRowId,
+    tokenExpiresAt: integration.tokenExpiresAt,
+    healthStatus: integration.healthStatus,
   };
 }
 

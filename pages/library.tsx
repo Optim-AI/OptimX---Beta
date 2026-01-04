@@ -9,10 +9,11 @@ import { Card, CardContent } from "../app/web/src/components/ui/card";
 import { Plus, Search } from "lucide-react";
 import { Input } from "../app/web/src/components/ui/input";
 import Sidebar from "../app/web/src/components/Sidebar";
-import { supabase } from "../lib/supabaseClient";
+import { supabase } from '@/auth/supabase/client';
+import { campaignClient } from '@/database/client-helpers';
 import type { JSX } from "react";
 // exact colors import path you requested — do NOT change
-import colors from "../lib/colors";
+import colors from '@/lib/ui/colors';
 
 type Campaign = {
   id: string;
@@ -78,43 +79,18 @@ export default function CampaignsPage(): JSX.Element {
         return;
       }
 
-      // Helper to run a filtered query by column name
-      async function queryByColumn(column: string) {
-        try {
-          const { data, error } = await supabase
-            .from("campaigns")
-            .select("*")
-            .eq(column, user.id)
-            .order("created_at", { ascending: false })
-            .limit(200);
+      // Use campaignClient.list() which handles user-scoped queries
+      const result = await campaignClient.list();
 
-          if (error) {
-            // return null on error so caller can try another column
-            console.warn(`Query by ${column} returned error:`, error);
-            return null;
-          }
-          return data as any[] | null;
-        } catch (err) {
-          console.warn(`Query by ${column} failed:`, err);
-          return null;
-        }
+      if (!result.success) {
+        console.warn('campaigns query error:', result.error);
+        setCampaigns([]);
+        return;
       }
 
-      // Try the common columns in order
-      const candidateColumns = ["user_id", "created_by", "owner", "profile_id", "author_id"];
-      let rows: any[] | null = null;
-      for (const col of candidateColumns) {
-        rows = await queryByColumn(col);
-        if (rows && rows.length > 0) {
-          break;
-        }
-      }
+      const rows = result.data || [];
 
-      // If none of the filtered queries returned data, return empty list (do NOT fetch all campaigns)
       if (!rows || rows.length === 0) {
-        // It's possible the campaigns table really uses a different column name.
-        // To avoid exposing other users' campaigns we intentionally return empty here
-        // instead of falling back to selecting all campaigns.
         setCampaigns([]);
         return;
       }

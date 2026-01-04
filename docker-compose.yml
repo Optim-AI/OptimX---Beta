@@ -1,0 +1,59 @@
+# ============================================================
+# OptimX Docker Compose - DEPRECATED
+# ============================================================
+#
+# ⚠️  THIS FILE IS NO LONGER USED FOR LOCAL DEVELOPMENT ⚠️
+#
+# OptimX now uses Supabase local for development, which provides:
+# - PostgreSQL database
+# - Authentication
+# - File Storage
+# - Realtime subscriptions
+# - Studio UI
+#
+# To start local development:
+#   ./scripts/dev.sh
+#   or
+#   npm run dev
+#
+# This will automatically start Supabase via the CLI.
+# No docker-compose needed!
+#
+# ============================================================
+# Supabase Local Services (managed by supabase CLI):
+# ============================================================
+# - PostgreSQL:     localhost:54322
+# - API:            http://localhost:54321
+# - Studio:         http://localhost:54323
+# - Storage:        http://localhost:54321/storage/v1
+# - Auth:           http://localhost:54321/auth/v1
+# - Inbucket:       http://localhost:54324
+# ============================================================
+#
+# Supabase Commands:
+#   supabase start        - Start all services
+#   supabase stop         - Stop all services
+#   supabase status       - Check service status
+#   supabase db reset     - Reset database & run migrations
+#
+# For more info: docs/SUPABASE_LOCAL_SETUP.md
+# ============================================================
+
+version: '3.8'
+
+# This file is kept for reference only
+# If you need additional services (e.g., Redis), you can add them here
+# Example:
+#
+# services:
+#   redis:
+#     image: redis:7-alpine
+#     container_name: optimx-redis
+#     ports:
+#       - "6379:6379"
+#     volumes:
+#       - redis_data:/data
+#
+# volumes:
+#   redis_data:
+#     driver: local

@@ -4,8 +4,8 @@ import React, { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 
 import Sidebar from "../app/web/src/components/Sidebar";
-import { supabase } from "../lib/supabaseClient";
-import colors from "../lib/colors";
+import { supabase } from '@/auth/supabase/client';
+import colors from '@/lib/ui/colors';
 
 type BetaInsertPayload = {
   user_id: string;

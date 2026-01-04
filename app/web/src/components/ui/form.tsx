@@ -14,7 +14,7 @@ import {
 
 import { cn } from "../../../../../lib/utils"
 import { Label } from "./label"
-import colors from "../../../../../lib/colors" // <- your color tokens
+import colors from '@/lib/ui/colors' // <- your color tokens
 
 const Form = FormProvider
 

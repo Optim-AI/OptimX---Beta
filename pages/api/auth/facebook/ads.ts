@@ -1,8 +1,8 @@
 // pages/api/auth/facebook/ads.ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import { getUserIdFromRequest } from "../../../../lib/requestHelpers";
-import { readSavedIntegration } from "../../../../lib/integrationStore";
-import { supabaseAdmin } from "../../../../lib/supabaseClient";
+import { getUserIdFromRequest } from '@/auth/request';
+import { readSavedIntegration } from '@/integrations/store';
+import { supabaseAdmin } from '@/auth/supabase/client';
 
 const VERSION = process.env.FACEBOOK_API_VERSION || "23.0";
 

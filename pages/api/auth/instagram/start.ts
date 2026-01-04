@@ -1,6 +1,6 @@
 // pages/api/auth/instagram/start.ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import { encodeState } from "../../../../lib/authHelpers";
+import { encodeState } from '@/auth/helpers';
 
 export default function handler(req: NextApiRequest, res: NextApiResponse) {
   const appId = process.env.FACEBOOK_APP_ID!;

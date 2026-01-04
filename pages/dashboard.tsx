@@ -8,6 +8,7 @@ import type { JSX } from "react";
 import Sidebar from "../app/web/src/components/Sidebar";
 import { Button } from "../app/web/src/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../app/web/src/components/ui/card";
+import { Alert, AlertTitle, AlertDescription } from "../app/web/src/components/ui/alert";
 import {
   Plus,
   TrendingUp,
@@ -15,11 +16,13 @@ import {
   MousePointerClick,
   Eye,
   Sparkles,
+  AlertCircle,
 } from "lucide-react";
 
-import colors from "../lib/colors";
-import { apiFetch } from "../lib/apiFetch";
-import { supabase } from "../lib/supabaseClient";
+import colors from '@/lib/ui/colors';
+import { apiFetch } from '@/api/fetch';
+import { supabase } from '@/auth/supabase/client';
+import { campaignClient } from '@/database/client-helpers';
 
 /* -------------------- Helpers & tokens -------------------- */
 function hexToRgba(hex: string, alpha = 1) {
@@ -100,6 +103,15 @@ export default function DashboardPage(): JSX.Element {
   // statuses: per-user flags returned from /api/integrations/status and/or local cache
   const [statuses, setStatuses] = useState<Record<string, any> | null>(null);
   const [statusLoading, setStatusLoading] = useState(false);
+
+  // Meta integration health status
+  const [metaHealth, setMetaHealth] = useState<{
+    connected: boolean;
+    healthStatus?: string;
+    message?: string;
+    needsReconnect?: boolean;
+    tokenExpiresAt?: string | null;
+  } | null>(null);
 
   const [metaSummary, setMetaSummary] = useState<SummaryResp | null>(null);
   const [loadingMeta, setLoadingMeta] = useState(false);
@@ -185,6 +197,28 @@ export default function DashboardPage(): JSX.Element {
     }
   }
 
+  /* -------------------- Check Meta integration health -------------------- */
+  async function checkMetaHealth(uid: string | null) {
+    try {
+      if (!uid) {
+        setMetaHealth(null);
+        return;
+      }
+
+      const response = await apiFetch('/api/dashboard/health-check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setMetaHealth(data.meta || null);
+      }
+    } catch (err) {
+      console.error('Meta health check error:', err);
+    }
+  }
+
   /* -------------------- Fetch meta metrics (no cache), include supabase token if present (user-scoped) -------------------- */
   async function fetchMetaMetricsAllTime(uid: string | null) {
     setLoadingMeta(true);
@@ -251,32 +285,16 @@ export default function DashboardPage(): JSX.Element {
         return;
       }
 
-      async function queryByColumn(column: string) {
-        try {
-          const { data, error } = await supabase
-            .from("campaigns")
-            .select("*")
-            .eq(column, uid)
-            .order("created_at", { ascending: false })
-            .limit(200);
+      // Use the campaignClient.list() which already handles user-scoped queries
+      const result = await campaignClient.list();
 
-          if (error) {
-            console.debug(`campaigns query by ${column} error:`, (error as any).message || error);
-            return null;
-          }
-          return data as any[] | null;
-        } catch (err) {
-          console.debug(`campaigns query by ${column} failed:`, err);
-          return null;
-        }
+      if (!result.success) {
+        console.debug('campaigns query error:', result.error);
+        setCampaigns([]);
+        return;
       }
 
-      const candidateColumns = ["user_id", "created_by", "owner", "profile_id", "author_id"];
-      let rows: any[] | null = null;
-      for (const col of candidateColumns) {
-        rows = await queryByColumn(col);
-        if (rows && rows.length > 0) break;
-      }
+      const rows = result.data || [];
 
       if (!rows || rows.length === 0) {
         setCampaigns([]);
@@ -567,6 +585,7 @@ export default function DashboardPage(): JSX.Element {
           fetchStatuses(user.id),
           fetchCampaigns(user.id),
           fetchMetaMetricsAllTime(user.id),
+          checkMetaHealth(user.id),
         ]);
       } catch (err) {
         console.error("init dashboard error:", err);
@@ -640,11 +659,29 @@ export default function DashboardPage(): JSX.Element {
                 </Button>
               </a>
             </Link>
-            <button onClick={() => { fetchStatuses(userId); fetchMetaMetricsAllTime(userId); fetchCampaigns(userId); }} className="px-3 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-sm">
+            <button onClick={() => { fetchStatuses(userId); fetchMetaMetricsAllTime(userId); fetchCampaigns(userId); checkMetaHealth(userId); }} className="px-3 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-sm">
               Refresh
             </button>
           </div>
         </div>
+
+        {/* -------------------- Meta reconnect banner -------------------- */}
+        {metaHealth?.needsReconnect && (
+          <Alert variant="destructive" className="mb-6">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>Meta Connection Issue</AlertTitle>
+            <AlertDescription className="flex items-center justify-between">
+              <span>{metaHealth.message || 'Your Facebook/Instagram connection needs to be refreshed. Please reconnect to continue using Meta features.'}</span>
+              <Link href="/integrations" legacyBehavior>
+                <a>
+                  <Button size="sm" className="ml-4">
+                    Reconnect
+                  </Button>
+                </a>
+              </Link>
+            </AlertDescription>
+          </Alert>
+        )}
 
         <div className="grid grid-cols-1 gap-8">
           <div className="space-y-6">

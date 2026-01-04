@@ -8,7 +8,7 @@ import {
   AccordionTrigger,
 } from './ui/accordion';
 import { useScrollAnimation } from '../hooks/use-scroll-animation';
-import colors from "../../../../lib/colors";
+import colors from '@/lib/ui/colors';
 
 type FAQItem = {
   question: string;

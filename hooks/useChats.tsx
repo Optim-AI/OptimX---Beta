@@ -1,7 +1,7 @@
 // app/hooks/useChats.tsx
 import { useEffect, useState, useCallback } from 'react';
-import { saveChatLocally, getChatLocal, getAllChatsLocal, deleteChatLocal, enqueueSync, drainSyncQueue } from '../lib/chatDB';
-import { supabase } from '../lib/supabaseClient'; // your client-side supabase
+import { saveChatLocally, getChatLocal, getAllChatsLocal, deleteChatLocal, enqueueSync, drainSyncQueue } from '@/storage/chat-db';
+import { supabase } from '@/auth/supabase/client'; // your client-side supabase
 import { v4 as uuidv4 } from 'uuid';
 
 type Chat = {

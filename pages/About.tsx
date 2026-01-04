@@ -4,7 +4,7 @@ import React, { useEffect, useRef } from "react";
 import Header from "../app/web/src/components/Header";
 import Footer from "../app/web/src/components/Footer";
 // **As requested** — importing from your relative file path
-import colors from "../lib/colors";
+import colors from '@/lib/ui/colors';
 
 const addAlpha = (hsl: string, alpha: number) => {
   if (!hsl) return hsl;

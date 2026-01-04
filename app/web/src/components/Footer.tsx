@@ -4,7 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Facebook, Instagram, Linkedin, Twitter } from 'lucide-react';
-import colors from '../../../../lib/colors';
+import colors from '@/lib/ui/colors';
 
 // const optimLogo = '/lovable-uploads/97baedae-c6f2-422c-95ad-b5efa06f182e.png';
 

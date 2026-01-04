@@ -1,7 +1,8 @@
 // pages/integrationsInstagram.tsx
 import React, { useEffect, useState } from "react";
-import { supabase } from "../lib/supabaseClient";
-import { apiFetch } from "../lib/apiFetch";
+import { supabase } from '@/auth/supabase/client';
+import { apiFetch } from '@/api/fetch';
+import { storageClient } from '@/lib/storage/client';
 
 /**
  * Full integrations page for Instagram / Facebook + Ads.
@@ -162,28 +163,24 @@ export default function IntegrationsInstagram() {
       const filePath = `campaigns/${user.id}/uploads/${Date.now()}_${safeName}`;
 
       // upload to 'campaign-assets' bucket (must exist)
-      const { error: uploadError } = await supabase.storage
-        .from("campaign-assets")
-        .upload(filePath, file, { cacheControl: "3600", upsert: false });
+      const { error: uploadError } = await storageClient.upload("campaign-assets", filePath, file, {
+        cacheControl: "3600",
+        upsert: false,
+      });
 
       // If conflict, attempt upsert
       if (uploadError && /already exists/i.test(String(uploadError.message || ""))) {
-        const { error: upsertErr } = await supabase.storage
-          .from("campaign-assets")
-          .upload(filePath, file, { cacheControl: "3600", upsert: true });
+        const { error: upsertErr } = await storageClient.upload("campaign-assets", filePath, file, {
+          cacheControl: "3600",
+          upsert: true,
+        });
         if (upsertErr) throw upsertErr;
       } else if (uploadError) {
         throw uploadError;
       }
 
-      // get public URL (handle SDK variations)
-      const publicData = supabase.storage.from("campaign-assets").getPublicUrl(filePath);
-      // some SDKs return { data: { publicUrl }} others return { publicUrl } — be defensive:
-      const publicUrl =
-        (publicData as any)?.data?.publicUrl ??
-        (publicData as any)?.publicUrl ??
-        (publicData as any)?.publicURL ??
-        null;
+      // get public URL
+      const publicUrl = storageClient.getPublicUrl("campaign-assets", filePath);
 
       if (!publicUrl) {
         throw new Error("Could not obtain public URL after upload.");

@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import * as CollapsiblePrimitive from "@radix-ui/react-collapsible";
-import colors from "../../../../../lib/colors";
+import colors from '@/lib/ui/colors';
 import { cn } from "../../../../../lib/utils";
 
 // Root container for collapsible logic

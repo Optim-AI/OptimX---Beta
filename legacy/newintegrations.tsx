@@ -8,11 +8,11 @@
 // import { Button } from "../app/web/src/components/ui/button";
 // import { Check, X } from "lucide-react";
 
-// import { supabase } from "../lib/supabaseClient";
+// import { supabase } from '@/auth/supabase/client';
 // import { apiFetch } from "../lib/apiFetch";
 
 // // exact path you provided — do NOT change
-// import colors from "../lib/colors";
+// import colors from '@/lib/ui/colors';
 
 // /* ---------- Platforms (UI names + backend authPaths) ---------- */
 // type Platform = {

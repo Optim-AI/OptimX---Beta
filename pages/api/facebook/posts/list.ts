@@ -1,7 +1,7 @@
 // pages/api/facebook/posts/list.ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import { getMetaIntegration, requireFacebookPage } from "../../../../lib/meta/auth";
-import { getFacebookPosts } from "../../../../lib/meta/facebook";
+import { getMetaIntegration, requireFacebookPage } from '@/integrations/meta/auth';
+import { getFacebookPosts } from '@/integrations/meta/facebook';
 
 /**
  * Get Facebook Page posts for authenticated user.

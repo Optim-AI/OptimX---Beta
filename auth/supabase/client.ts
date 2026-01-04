@@ -1,4 +1,11 @@
 // lib/supabaseClient.ts
+// ⚠️ IMPORTANT: This file is for Supabase Auth and Storage ONLY
+// For database operations, use Prisma DAOs from @/lib/db instead
+//
+// Usage:
+// - Authentication: Use supabase client for auth operations
+// - Storage: Use supabase.storage for file uploads (campaign-assets bucket)
+// - Database: DO NOT USE - Use Prisma DAOs instead (IntegrationDAO, CreditsDAO, etc.)
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;

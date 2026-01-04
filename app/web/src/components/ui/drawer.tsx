@@ -4,7 +4,7 @@ import * as React from "react"
 import { Drawer as DrawerPrimitive } from "vaul"
 
 import { cn } from "../../../../../lib/utils"
-import colors from "../../../../../lib/colors" // <- your colors file
+import colors from '@/lib/ui/colors' // <- your colors file
 
 const Drawer = ({
   shouldScaleBackground = true,

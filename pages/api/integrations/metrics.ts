@@ -1,7 +1,7 @@
 // pages/api/integrations/metrics.ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import { getUserIdFromRequest } from "../../../lib/requestHelpers";
-import { supabaseAdmin } from "../../../lib/supabaseClient";
+import { getUserIdFromRequest } from '@/auth/request';
+import { IntegrationDAO } from '@/database';
 
 const VERSION = process.env.FACEBOOK_API_VERSION || "23.0";
 
@@ -70,18 +70,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     // Fetch only this user's meta integration row (user-scoped)
-    const { data: integration, error: intErr } = await supabaseAdmin
-      .from("integrations")
-      .select("*")
-      .eq("user_id", userId)
-      .eq("provider", "meta")
-      .limit(1)
-      .maybeSingle();
-
-    if (intErr) {
-      console.error("integrations.metrics db error:", intErr);
-      return res.status(500).json({ ok: false, error: "db_error", details: intErr.message });
-    }
+    const integration = await IntegrationDAO.findByUserAndProvider(userId, "meta");
 
     // If user has no integration at all -> return safe "no metrics" response (do not mark connected)
     if (!integration) {
@@ -93,11 +82,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
 
-    // prefer refresh_token (long user token) -> access_token (page token) -> metadata fields -> raw.tokenJson.access_token
-    const userAccessToken = integration.refresh_token ?? integration.access_token ?? integration.metadata?.userAccessToken ?? integration.metadata?.pageAccessToken ?? integration.raw?.tokenJson?.access_token ?? null;
+    // prefer refreshToken (long user token) -> accessToken (page token) -> metadata fields -> raw.tokenJson.access_token
+    const userAccessToken = integration.refreshToken ?? integration.accessToken ?? (integration.metadata as any)?.userAccessToken ?? (integration.metadata as any)?.pageAccessToken ?? (integration.raw as any)?.tokenJson?.access_token ?? null;
 
     // Do NOT fall back to global env ad account — require per-user ad account. If missing, return safe meta null
-    const rawAdAccount = integration.ad_account_id ?? integration.metadata?.adAccountId ?? integration.raw?.adAccountsJson?.data?.[0]?.account_id ?? null;
+    const rawAdAccount = integration.adAccountId ?? (integration.metadata as any)?.adAccountId ?? (integration.raw as any)?.adAccountsJson?.data?.[0]?.account_id ?? null;
 
     if (!userAccessToken || !rawAdAccount) {
       // return safe shape — client will treat as not connected / no metrics

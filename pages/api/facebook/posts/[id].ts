@@ -1,7 +1,7 @@
 // pages/api/facebook/posts/[id].ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import { getMetaIntegration, requireFacebookPage } from "../../../../lib/meta/auth";
-import { getFacebookPost, deleteFacebookPost } from "../../../../lib/meta/facebook";
+import { getMetaIntegration, requireFacebookPage } from '@/integrations/meta/auth';
+import { getFacebookPost, deleteFacebookPost } from '@/integrations/meta/facebook';
 
 /**
  * Get or delete single Facebook post for authenticated user.

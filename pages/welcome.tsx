@@ -3,8 +3,8 @@
 
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/router";
-import { supabase } from "../lib/supabaseClient";
-import colors from "../lib/colors";
+import { supabase } from '@/auth/supabase/client';
+import colors from '@/lib/ui/colors';
 
 /** Capitalize first letter */
 function capitalize(str: string) {

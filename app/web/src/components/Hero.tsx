@@ -10,7 +10,7 @@ import {
   Zap,
   User,
 } from "lucide-react";
-import colors from "../../../../lib/colors";
+import colors from '@/lib/ui/colors';
 
 /** Convert "hsl(H S% L%)" -> "hsla(H, S%, L%, a)" for inline usage */
 function withAlpha(token: string, alpha: number) {

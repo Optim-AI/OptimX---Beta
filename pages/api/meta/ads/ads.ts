@@ -1,7 +1,7 @@
 // pages/api/meta/ads/ads.ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import { getMetaIntegration, requireAdsAccount } from "../../../../lib/meta/auth";
-import { getAds } from "../../../../lib/meta/ads";
+import { getMetaIntegration, requireAdsAccount } from '@/integrations/meta/auth';
+import { getAds } from '@/integrations/meta/ads';
 
 /**
  * Get Meta ads for authenticated user's ad account, campaign, or ad set.

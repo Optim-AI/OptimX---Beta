@@ -1,7 +1,7 @@
 // pages/api/instagram/posts/[id].ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import { getMetaIntegration, requireInstagramAccount } from "../../../../lib/meta/auth";
-import { getInstagramMedia, deleteInstagramMedia } from "../../../../lib/meta/instagram";
+import { getMetaIntegration, requireInstagramAccount } from '@/integrations/meta/auth';
+import { getInstagramMedia, deleteInstagramMedia } from '@/integrations/meta/instagram';
 
 /**
  * Get or delete single Instagram post for authenticated user.

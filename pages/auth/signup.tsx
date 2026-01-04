@@ -2,8 +2,9 @@
 
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
-import { supabase } from '../../lib/supabaseClient';
-import colors from '../../lib/colors';
+import { supabase } from '@/auth/supabase/client';
+import colors from '@/lib/ui/colors';
+import { profileClient } from '@/database/client-helpers';
 
 export default function SignUpPage(): React.ReactElement {
   const router = useRouter();
@@ -78,19 +79,18 @@ export default function SignUpPage(): React.ReactElement {
         user.user_metadata?.preferred_username ??
         usernameFallback;
 
-      const payload: Record<string, any> = { id };
+      const payload: Record<string, any> = {};
       if (emailVal) payload.email = emailVal;
       if (full_name) payload.full_name = full_name;
       if (username) payload.username = username;
 
-      const { error } = await supabase.from('profiles').upsert(payload, {
-        onConflict: 'id',
-      });
+      // Upsert profile using Prisma via API (replaces direct Supabase call)
+      const result = await profileClient.upsert(payload);
 
-      if (error) {
-        console.error('profiles upsert error:', error);
+      if (result.success) {
+        console.debug('profiles upserted for user:', id, result.data);
       } else {
-        console.debug('profiles upserted for user:', id);
+        console.error('profiles upsert error:', result.error);
       }
     } catch (err) {
       console.error('upsertProfile unexpected error:', err);

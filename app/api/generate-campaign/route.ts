@@ -1,7 +1,7 @@
 // app/api/generate-campaign/route.ts
 import axios from "axios";
 import { NextResponse } from "next/server";
-import { supabaseAdmin } from "../../../lib/supabaseClient"; // adjust path if necessary
+import { supabaseAdmin } from '@/auth/supabase/client'; // adjust path if necessary
 
 const NANO_API_KEY = process.env.NANO_API_KEY;
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash-image";
@@ -357,19 +357,24 @@ export async function POST(request: Request) {
     // credits
     let currentCredits: number | null = null;
     try {
+      console.log('[Credits] Looking up credits for user:', user.id);
       const { data: creditRow, error: creditError } = await supabaseAdmin
         .from("user_credits")
         .select("credits")
-        .eq("id", user.id)
+        .eq("id", user.id) // id IS the user_id in production schema
         .single();
+      console.log('[Credits] Lookup result:', { creditRow, creditError });
       if (creditError && (creditError as any).code !== "PGRST116") {
         console.warn("user_credits lookup error", creditError);
       }
       if (creditRow && (creditRow as any).credits !== undefined) {
         currentCredits = Number((creditRow as any).credits);
+        console.log('[Credits] Found credits:', currentCredits);
       } else {
+        console.log('[Credits] No credits row found, attempting to seed...');
         try {
           const seed = DEFAULT_INITIAL_CREDITS;
+          // In production schema, id IS the user_id
           const { data: upserted, error: upsertError } = await supabaseAdmin
             .from("user_credits")
             .upsert({ id: user.id, credits: seed }, { onConflict: "id" })
@@ -666,7 +671,7 @@ export async function POST(request: Request) {
       const { data: updatedRow, error: updateError } = await supabaseAdmin
         .from("user_credits")
         .update({ credits: (currentCredits ?? 0) - 1 })
-        .eq("id", user.id)
+        .eq("id", user.id) // id IS the user_id in production schema
         .gt("credits", 0)
         .select()
         .single();
@@ -674,8 +679,8 @@ export async function POST(request: Request) {
       if (updateError) {
         try {
           const { data: rpcData, error: rpcErr } = await supabaseAdmin.rpc(
-            "decrement_user_credits",
-            { p_user_id: user.id }
+            "decrement_credit",
+            { user_id: user.id }
           );
           if (!rpcErr && rpcData) {
             if (typeof rpcData === "number") updatedCredits = rpcData;

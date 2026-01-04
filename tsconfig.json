@@ -23,7 +23,18 @@
         "name": "next"
       }
     ],
-    "strictNullChecks": true
+    "strictNullChecks": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./*"],
+      "@/auth/*": ["./auth/*"],
+      "@/integrations/*": ["./integrations/*"],
+      "@/database": ["./database"],
+      "@/database/*": ["./database/*"],
+      "@/api/*": ["./api/*"],
+      "@/storage/*": ["./storage/*"],
+      "@/lib/*": ["./lib/*"]
+    }
   },
   "include": [
     "next-env.d.ts",

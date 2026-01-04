@@ -1,8 +1,8 @@
 // pages/api/meta/oauth/callback.ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import { decodeState } from "../../../../lib/authHelpers";
-import { supabaseAdmin } from "../../../../lib/supabaseClient";
-import { saveIntegration, setStatus } from "../../../../lib/integrationStore";
+import { decodeState } from '@/auth/helpers';
+import { supabaseAdmin } from '@/auth/supabase/client';
+import { storeOAuthSession } from '@/integrations/meta/oauth-session';
 
 const VERSION = process.env.FACEBOOK_API_VERSION || "23.0";
 const DEBUG = process.env.DEBUG_CALLBACK === "true";
@@ -23,6 +23,12 @@ function safeStringify(obj: any) {
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   let stage = "start";
   try {
+    // Handle OAuth cancellation/errors
+    if (req.query.error) {
+      const errorReason = req.query.error_reason || req.query.error_description || "";
+      return res.redirect(`/integrations/meta/cancelled?reason=${encodeURIComponent(String(errorReason))}`);
+    }
+
     // 1. Read authorization code
     stage = "read_code";
     const code = Array.isArray(req.query.code) ? req.query.code[0] : req.query.code;
@@ -115,99 +121,61 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
 
-    // 7. Get user's Facebook Pages
+    // 7. Get user's Facebook Pages with extended fields
     stage = "get_pages";
     const pagesResp = await fetch(
-      `https://graph.facebook.com/v${VERSION}/me/accounts?access_token=${encodeURIComponent(userAccessToken)}`
+      `https://graph.facebook.com/v${VERSION}/me/accounts?fields=id,name,category,access_token,tasks,instagram_business_account&access_token=${encodeURIComponent(userAccessToken)}`
     );
     const pagesJson = await pagesResp.json();
 
-    if (!pagesJson?.data?.length) {
-      return res.status(400).json({
-        error: "no_pages_found",
-        message:
-          "No Facebook Pages found. Please create a Facebook Page and connect an Instagram Business account to it.",
-      });
+    // Calculate token expiration (long-lived tokens last 60 days)
+    const tokenExpiresAt = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000);
+
+    // Handle error from Graph API
+    if (pagesJson.error) {
+      console.error("Failed to fetch pages:", pagesJson.error);
+      return res.redirect(`/integrations/meta/error?type=pages_fetch_failed`);
     }
 
-    // Use first page
-    const page = pagesJson.data[0];
-    const pageAccessToken = page.access_token;
-    const pageId = page.id;
+    // ERROR: No Facebook Pages found
+    if (!pagesJson?.data?.length) {
+      // Store session for potential retry after page creation
+      try {
+        const sessionId = await storeOAuthSession(resolvedUserId, {
+          userAccessToken,
+          pages: [],
+          errorType: "NO_PAGES",
+        });
+        return res.redirect(`/integrations/meta/no-pages?sessionId=${sessionId}`);
+      } catch (err) {
+        console.error("Failed to store no-pages session:", err);
+        return res.redirect(`/integrations/meta/no-pages`);
+      }
+    }
 
-    // 8. Get Instagram Business Account linked to this page
-    stage = "get_ig";
-    const igResp = await fetch(
-      `https://graph.facebook.com/v${VERSION}/${encodeURIComponent(pageId)}?fields=instagram_business_account&access_token=${encodeURIComponent(pageAccessToken)}`
-    );
-    const igJson = await igResp.json();
-    const igUserId = igJson.instagram_business_account?.id ?? null;
-
-    // 9. Get Ad Accounts
+    // 8. Get Ad Accounts
     stage = "get_adaccounts";
     const adAccountsResp = await fetch(
       `https://graph.facebook.com/v${VERSION}/me/adaccounts?access_token=${encodeURIComponent(userAccessToken)}`
     );
     const adAccountsJson = await adAccountsResp.json();
-    const adAccountId = adAccountsJson?.data?.[0]?.id
-      ? adAccountsJson.data[0].id.replace(/^act_/, "")
-      : null;
 
-    // 10. Save integration to Supabase
-    const saved = {
-      createdAt: new Date().toISOString(),
-      userAccessToken,
-      pageAccessToken,
-      pageId,
-      igUserId,
-      adAccountId,
-      raw: { tokenJson, exchangeJson, pagesJson, igJson, adAccountsJson },
-    };
-
-    stage = "save_integration";
+    // 9. Store temporary OAuth session
+    stage = "store_session";
     try {
-      await saveIntegration(saved, { provider: "meta", userId: resolvedUserId });
-    } catch (dbErr) {
-      console.error("saveIntegration failed:", dbErr);
-      return res.status(500).json({
-        error: "db_save_failed",
-        details: safeStringify(dbErr),
+      const sessionId = await storeOAuthSession(resolvedUserId, {
+        userAccessToken,
+        pages: pagesJson.data,
+        adAccounts: adAccountsJson?.data || [],
+        tokenExpiresAt: tokenExpiresAt.toISOString(),
       });
-    }
 
-    // 11. Update global status flag (optional)
-    try {
-      await setStatus("meta", true);
-    } catch (e) {
-      /* non-fatal */
+      // 10. Redirect to page selection UI
+      return res.redirect(`/integrations/meta/select-page?sessionId=${sessionId}`);
+    } catch (sessionErr) {
+      console.error("Failed to store OAuth session:", sessionErr);
+      return res.redirect(`/integrations/meta/error?type=session_storage_failed`);
     }
-
-    // 12. Send success response with popup close script
-    const fallback = `/integrations?connected=meta&next=/integrationsInstagram`;
-    return res.send(`
-      <!doctype html>
-      <html>
-        <head><meta charset="utf-8"/><title>Meta Connected</title></head>
-        <body>
-          <p>Meta integration connected successfully. You can close this window.</p>
-          <script>
-            try {
-              if (window.opener && !window.opener.closed) {
-                window.opener.postMessage({
-                  type: "oauth_connected",
-                  platform: "meta",
-                  redirect: "/integrationsInstagram"
-                }, "*");
-              }
-            } catch (e) {}
-            setTimeout(function(){
-              try{ window.close(); } catch(e){}
-              window.location = ${JSON.stringify(fallback)};
-            }, 600);
-          </script>
-        </body>
-      </html>
-    `);
   } catch (err: any) {
     console.error("meta oauth callback error (stage:", stage, "):", err);
     if (DEBUG)
@@ -216,9 +184,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         stage,
         details: safeStringify(err),
       });
-    return res.status(500).json({
-      error: "callback_error",
-      details: `stage=${stage}. Check server logs.`,
-    });
+    return res.redirect(`/integrations/meta/error?type=callback_error&stage=${stage}`);
   }
 }

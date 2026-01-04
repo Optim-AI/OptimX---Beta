@@ -2,8 +2,8 @@
 
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
-import { supabase } from '../../lib/supabaseClient';
-import colors from '../../lib/colors';
+import { supabase } from '@/auth/supabase/client';
+import colors from '@/lib/ui/colors';
 
 export default function ResetPasswordPage(): React.ReactElement {
   const router = useRouter();

@@ -19,7 +19,7 @@ import {
   TooltipTrigger,
 } from "./tooltip"
 
-import colors from "../../../../../lib/colors"
+import colors from '@/lib/ui/colors'
 
 const SIDEBAR_COOKIE_NAME = "sidebar:state"
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7

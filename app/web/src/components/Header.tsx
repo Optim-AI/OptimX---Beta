@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Button } from './ui/button';
 import { Menu, X } from 'lucide-react';
-import colors from '../../../../lib/colors';
+import colors from '@/lib/ui/colors';
 
 const optimLogo = '/lovable-uploads/97baedae-c6f2-422c-95ad-b5efa06f182e.png';
 

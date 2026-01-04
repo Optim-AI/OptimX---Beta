@@ -10,7 +10,7 @@ import { Label } from "../app/web/src/components/ui/label";
 import { Upload, Users } from "lucide-react";
 
 // Importing exact colors file you requested
-import colors from "../lib/colors";
+import colors from '@/lib/ui/colors';
 
 /** Helper to add slash-style alpha to HSL tokens (returns original if not hsl) */
 const withAlpha = (token: string, alpha: number) => {

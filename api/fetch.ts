@@ -1,8 +1,8 @@
-// lib/apiFetch.ts
+// api/fetch.ts
 // Robust helper for browser -> Next API calls that attach Supabase session token (if present).
 // Works with Supabase JS v1 and v2 client shapes, and falls back to reading cookies when necessary.
 
-import { supabase } from "./supabaseClient";
+import { supabase } from "@/auth/supabase/client";
 
 /**
  * Read a cookie by name (browser only).

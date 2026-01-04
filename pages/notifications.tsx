@@ -4,8 +4,8 @@ import type { JSX } from "react";
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Sidebar from "../app/web/src/components/Sidebar";
-import { supabase } from "../lib/supabaseClient";
-import { apiFetch } from "../lib/apiFetch";
+import { supabase } from '@/auth/supabase/client';
+import { apiFetch } from '@/api/fetch';
 
 /**
  * Notifications page

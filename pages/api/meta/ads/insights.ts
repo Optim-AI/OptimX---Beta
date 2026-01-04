@@ -1,7 +1,7 @@
 // pages/api/meta/ads/insights.ts
 import type { NextApiRequest, NextApiResponse} from "next";
-import { getMetaIntegration, requireAdsAccount } from "../../../../lib/meta/auth";
-import { getInsights } from "../../../../lib/meta/ads";
+import { getMetaIntegration, requireAdsAccount } from '@/integrations/meta/auth';
+import { getInsights } from '@/integrations/meta/ads';
 
 /**
  * Get Meta ad insights for authenticated user.

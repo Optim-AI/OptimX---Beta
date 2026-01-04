@@ -1,8 +1,8 @@
 // pages/api/auth/facebook/deletePost.ts
 import type { NextApiRequest, NextApiResponse } from "next";
 import crypto from "crypto";
-import { getUserIdFromRequest } from "../../../../lib/requestHelpers";
-import { readSavedIntegration } from "../../../../lib/integrationStore";
+import { getUserIdFromRequest } from '@/auth/request';
+import { readSavedIntegration } from '@/integrations/store';
 
 const VERSION = process.env.FACEBOOK_API_VERSION || "23.0";
 const APP_SECRET = process.env.FACEBOOK_APP_SECRET;

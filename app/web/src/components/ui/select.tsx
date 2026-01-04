@@ -5,7 +5,7 @@ import * as SelectPrimitive from "@radix-ui/react-select"
 import { Check, ChevronDown, ChevronUp } from "lucide-react"
 
 import { cn } from "../../../../../lib/utils"
-import colors from "../../../../../lib/colors" // <- your tokens
+import colors from '@/lib/ui/colors' // <- your tokens
 
 const Select = SelectPrimitive.Root
 

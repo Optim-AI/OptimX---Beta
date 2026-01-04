@@ -5,7 +5,7 @@ import * as ContextMenuPrimitive from "@radix-ui/react-context-menu"
 import { Check, ChevronRight, Circle } from "lucide-react"
 
 import { cn } from "../../../../../lib/utils"
-import colors from "../../../../../lib/colors" // <-- your colors file
+import colors from '@/lib/ui/colors' // <-- your colors file
 
 const ContextMenu = ContextMenuPrimitive.Root
 

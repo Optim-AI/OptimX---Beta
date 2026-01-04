@@ -3,7 +3,7 @@ import * as MenubarPrimitive from "@radix-ui/react-menubar"
 import { Check, ChevronRight, Circle } from "lucide-react"
 
 import { cn } from "../../../../../lib/utils"
-import colors from "../../../../../lib/colors" // <- your color tokens
+import colors from '@/lib/ui/colors' // <- your color tokens
 
 const MenubarMenu = MenubarPrimitive.Menu
 

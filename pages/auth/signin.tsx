@@ -2,8 +2,9 @@
 
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/router";
-import { supabase } from "../../lib/supabaseClient";
-import colors from "../../lib/colors";
+import { supabase } from '@/auth/supabase/client';
+import colors from '@/lib/ui/colors';
+import { profileClient } from '@/database/client-helpers';
 
 export default function SignInPage(): React.ReactElement {
   const router = useRouter();
@@ -106,23 +107,18 @@ export default function SignInPage(): React.ReactElement {
       const full_name_value = deriveFullName(user);
       const username = deriveUsername(user);
 
-      const payload: Record<string, any> = { id };
+      const payload: Record<string, any> = {};
       if (emailValue) payload.email = emailValue;
       if (full_name_value) payload.full_name = full_name_value;
       if (username) payload.username = username;
 
-      // Perform upsert and request the row back; select() helps surface errors
-      const { data: upserted, error: upsertError } = await supabase
-        .from("profiles")
-        .upsert(payload, { onConflict: "id" })
-        .select()
-        .maybeSingle();
+      // Upsert profile using Prisma via API (replaces direct Supabase call)
+      const result = await profileClient.upsert(payload);
 
-      if (upsertError) {
-        // log full error for debugging
-        console.error("profiles upsert error:", upsertError);
+      if (result.success) {
+        console.debug("profiles upserted for user:", id, result.data);
       } else {
-        console.debug("profiles upserted for user:", id, upserted ?? payload);
+        console.error("profiles upsert error:", result.error);
       }
     } catch (err) {
       console.error("upsertProfile unexpected error:", err);

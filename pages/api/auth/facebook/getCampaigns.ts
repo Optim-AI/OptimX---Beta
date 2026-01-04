@@ -1,7 +1,7 @@
 // pages/api/auth/facebook/getCampaigns.ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import { getUserIdFromRequest } from "../../../../lib/requestHelpers";
-import { readSavedIntegration } from "../../../../lib/integrationStore";
+import { getUserIdFromRequest } from '@/auth/request';
+import { readSavedIntegration } from '@/integrations/store';
 
 const VERSION = process.env.FACEBOOK_API_VERSION || "23.0";
 

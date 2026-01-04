@@ -1,6 +1,6 @@
 // pages/api/auth/instagram/post.ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import { readSavedIntegration } from "../../../../lib/integrationStore";
+import { readSavedIntegration } from '@/integrations/store';
 
 const version = process.env.FACEBOOK_API_VERSION || "23.0";
 

@@ -3,7 +3,7 @@
 import React from 'react';
 import { AlertTriangle, Clock, DollarSign, Users, BarChart3 } from 'lucide-react';
 import { useScrollAnimation } from '../hooks/use-scroll-animation';
-import colors from '../../../../lib/colors';
+import colors from '@/lib/ui/colors';
 
 const Problem: React.FC = () => {
   const { elementRef: titleRef, isVisible: titleVisible } = useScrollAnimation();

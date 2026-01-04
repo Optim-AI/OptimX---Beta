@@ -1,7 +1,7 @@
 // app/web/src/components/ui/skeleton.tsx
 import * as React from "react"
 import { cn } from "../../../../../lib/utils"
-import colors from "../../../../../lib/colors"
+import colors from '@/lib/ui/colors'
 
 export function Skeleton({
   className,

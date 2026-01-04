@@ -1,6 +1,6 @@
 // lib/requestHelpers.ts
 import type { NextApiRequest } from "next";
-import { supabaseAdmin } from "./supabaseClient";
+import { supabaseAdmin } from '@/auth/supabase/client';
 
 /** Extract token from Authorization or cookies */
 export function getTokenFromReq(req: NextApiRequest): string | null {

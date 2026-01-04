@@ -1,8 +1,8 @@
 // pages/api/auth/facebook/updateLeadStatus.ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import { getUserIdFromRequest } from "../../../../lib/requestHelpers";
-import { readSavedIntegration } from "../../../../lib/integrationStore";
-import { supabaseAdmin } from "../../../../lib/supabaseClient";
+import { getUserIdFromRequest } from '@/auth/request';
+import { readSavedIntegration } from '@/integrations/store';
+import { supabaseAdmin } from '@/auth/supabase/client';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed: use POST" });

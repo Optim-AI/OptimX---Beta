@@ -10,7 +10,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { Button } from "../app/web/src/components/ui/button";
-import colors from "../lib/colors";
+import colors from '@/lib/ui/colors';
 import Link from 'next/link';
 
 function withAlpha(token: string, alpha: number) {

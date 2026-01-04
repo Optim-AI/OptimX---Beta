@@ -4,7 +4,7 @@
 import * as React from "react"
 import * as TabsPrimitive from "@radix-ui/react-tabs"
 import { cn } from "../../../../../lib/utils"
-import colors from "../../../../../lib/colors"
+import colors from '@/lib/ui/colors'
 
 export const Tabs = TabsPrimitive.Root
 

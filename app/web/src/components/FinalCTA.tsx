@@ -4,7 +4,7 @@ import React from 'react';
 import { Button } from './ui/button';
 import { ArrowRight, Sparkles } from 'lucide-react';
 import { useScrollAnimation } from '../hooks/use-scroll-animation';
-import colors from '../../../../lib/colors';
+import colors from '@/lib/ui/colors';
 import { useRouter } from 'next/navigation';
 
 const FinalCTA: React.FC = () => {

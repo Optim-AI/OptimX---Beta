@@ -1,9 +1,9 @@
 // pages/integrationsnew.tsx
 import React, { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/router";
-import { supabase } from "../lib/supabaseClient";
+import { supabase } from '@/auth/supabase/client';
 import type { JSX } from "react";
-import { apiFetch } from "../lib/apiFetch";
+import { apiFetch } from '@/api/fetch';
 
 /**
  * IntegrationsNew - single-purpose page to connect Facebook (Meta).

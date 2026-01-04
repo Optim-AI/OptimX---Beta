@@ -6,7 +6,7 @@ import * as ToastPrimitives from "@radix-ui/react-toast"
 import { cva, type VariantProps } from "class-variance-authority"
 import { X } from "lucide-react"
 import { cn } from "../../../../../lib/utils"
-import colors from "../../../../../lib/colors"
+import colors from '@/lib/ui/colors'
 
 export const ToastProvider = ToastPrimitives.Provider
 

@@ -1,12 +1,12 @@
 // pages/api/integrations/status.ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import { getUserIdFromRequest } from "../../../lib/requestHelpers";
+import { getUserIdFromRequest } from '@/auth/request';
 import {
   getStatuses,
   getUserStatuses,
   readSavedIntegration,
   PLATFORMS,
-} from "../../../lib/integrationStore";
+} from '@/integrations/store';
 
 /**
  * Returns which platforms are connected.
@@ -33,17 +33,39 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return fallback;
       });
 
-      const result: Record<string, boolean> = {};
+      const result: Record<string, any> = {};
       PLATFORMS.forEach((p) => {
         result[p] = !!userFlags[p];
       });
 
       // Additionally ensure that if an integration row exists for this user/provider we mark it true.
+      // Also include health status information for Meta
       await Promise.all(
         PLATFORMS.map(async (provider) => {
           try {
             const saved = await readSavedIntegration({ userId, provider });
-            if (saved) result[provider] = true;
+            if (saved) {
+              // For Meta, include detailed health information
+              if (provider === 'meta') {
+                const unhealthyStatuses = ['expired', 'revoked', 'invalid'];
+                const needsReconnect = unhealthyStatuses.includes(saved.healthStatus || '');
+
+                result[provider] = {
+                  connected: !needsReconnect,
+                  healthStatus: saved.healthStatus || 'healthy',
+                  healthMessage: saved.healthErrorMessage || 'Connected and working normally',
+                  tokenExpiresAt: saved.tokenExpiresAt || null,
+                  lastChecked: saved.lastHealthCheck || null,
+                  needsReconnect,
+                  // Add flags for Facebook and Instagram availability
+                  hasFacebook: !!saved.pageId,
+                  hasInstagram: !!saved.igUserId,
+                };
+              } else {
+                // For other providers, just return boolean
+                result[provider] = true;
+              }
+            }
           } catch (err) {
             // ignore per-provider errors
           }

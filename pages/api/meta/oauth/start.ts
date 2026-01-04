@@ -1,12 +1,17 @@
 // pages/api/meta/oauth/start.ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import { encodeState } from "../../../../lib/authHelpers";
+import { encodeState } from '@/auth/helpers';
+import { cleanupExpiredSessions } from '@/integrations/meta/oauth-session';
 
 /**
  * Initiates Meta OAuth flow for Facebook + Instagram.
  * This replaces /api/auth/instagram/start
  */
-export default function handler(req: NextApiRequest, res: NextApiResponse) {
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  // Opportunistically clean up expired sessions (non-blocking)
+  cleanupExpiredSessions().catch((err) => {
+    console.warn("Failed to cleanup expired sessions:", err);
+  });
   const appId = process.env.FACEBOOK_APP_ID;
   const version = process.env.FACEBOOK_API_VERSION || "23.0";
   const redirectUri = `${process.env.NEXT_PUBLIC_APP_URL}/api/meta/oauth/callback`;

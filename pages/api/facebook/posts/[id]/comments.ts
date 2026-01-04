@@ -1,7 +1,7 @@
 // pages/api/facebook/posts/[id]/comments.ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import { getMetaIntegration, requireFacebookPage } from "../../../../../lib/meta/auth";
-import { getFacebookComments, postFacebookComment } from "../../../../../lib/meta/facebook";
+import { getMetaIntegration, requireFacebookPage } from '@/integrations/meta/auth';
+import { getFacebookComments, postFacebookComment } from '@/integrations/meta/facebook';
 
 /**
  * Get or post comments on Facebook post for authenticated user.

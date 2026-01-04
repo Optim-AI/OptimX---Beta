@@ -1,7 +1,10 @@
 // pages/api/instagram/posts/create.ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import { getMetaIntegration, requireInstagramAccount } from "../../../../lib/meta/auth";
-import { createInstagramMedia, publishInstagramMedia } from "../../../../lib/meta/instagram";
+import { getMetaIntegration, requireInstagramAccount, TokenError } from '@/integrations/meta/auth';
+import { createInstagramMedia, publishInstagramMedia } from '@/integrations/meta/instagram';
+import { detectTokenError } from '@/integrations/meta/token-refresh';
+import { updateIntegrationHealthInBackground } from '@/integrations/meta/health';
+import { getUserIdFromRequest } from '@/auth/request';
 
 /**
  * Create Instagram post for authenticated user.
@@ -15,6 +18,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
+    // Auto-checks health & refreshes token if needed
     const integration = await getMetaIntegration(req);
     await requireInstagramAccount(integration);
 
@@ -45,7 +49,55 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       publishResult,
     });
   } catch (err: any) {
+    // Handle token errors from getMetaIntegration
+    if (err instanceof TokenError) {
+      const userId = await getUserIdFromRequest(req);
+
+      // Update health in background (non-blocking)
+      if (userId) {
+        updateIntegrationHealthInBackground(
+          userId,
+          'meta',
+          err.code,
+          err.userMessage
+        );
+      }
+
+      return res.status(401).json({
+        error: 'token_error',
+        code: err.code,
+        message: err.userMessage,
+        needsReconnect: true,
+      });
+    }
+
+    // Check if this is a Facebook API error
+    const tokenError = detectTokenError(err);
+    if (tokenError.code !== 'error') {
+      const userId = await getUserIdFromRequest(req);
+
+      // Update health in background (non-blocking)
+      if (userId) {
+        updateIntegrationHealthInBackground(
+          userId,
+          'meta',
+          tokenError.code,
+          tokenError.message
+        );
+      }
+
+      return res.status(401).json({
+        error: 'token_error',
+        code: tokenError.code,
+        message: tokenError.message,
+        needsReconnect: true,
+      });
+    }
+
+    // Handle other errors
     console.error("instagram post create error:", err);
-    return res.status(500).json({ error: err?.message || "Failed to create Instagram post" });
+    return res.status(500).json({
+      error: err?.message || "Failed to create Instagram post"
+    });
   }
 }

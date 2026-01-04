@@ -5,7 +5,7 @@ import { Button } from "./ui/button";
 import { Card, CardContent } from "./ui/card";
 import { useScrollAnimation } from "../hooks/use-scroll-animation";
 import { Mail, Phone, MessageSquare, ArrowRight } from "lucide-react";
-import colors from "../../../../lib/colors";
+import colors from '@/lib/ui/colors';
 
 export default function ContactForPricing() {
   const { elementRef: sectionRef, isVisible: sectionVisible } =

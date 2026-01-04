@@ -1,6 +1,6 @@
 // pages/api/meta/integration/status.ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import { getMetaIntegrationOptional } from "../../../../lib/meta/auth";
+import { getMetaIntegrationOptional } from '@/integrations/meta/auth';
 
 /**
  * Get Meta integration connection status for authenticated user.

@@ -3,7 +3,9 @@
 
 import React, { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "../lib/supabaseClient";
+import { supabase } from '@/auth/supabase/client';
+import { profileClient } from '@/database/client-helpers';
+import { storageClient } from '@/lib/storage/client';
 import type { JSX } from "react"; 
 
 type ProfileRow = {
@@ -170,13 +172,10 @@ export default function OnboardingInfoPage(): JSX.Element {
         }
         setEmail(user.email ?? null);
 
-        const { data, error: fetchErr } = await supabase
-          .from("profiles")
-          .select("*")
-          .eq("id", user.id)
-          .single();
+        const result = await profileClient.get();
+        const data = result.success ? result.data : null;
 
-        if (!fetchErr && data) {
+        if (result.success && data) {
           setProfile(data as Partial<ProfileRow>);
           setBusinessName(data.business_name || "");
           setLocation(data.location || "");
@@ -188,11 +187,7 @@ export default function OnboardingInfoPage(): JSX.Element {
           setHeardFromOther(data.heard_from_other || "");
 
           if (data.logo_path) {
-            // getPublicUrl is synchronous and returns { data: { publicUrl } }
-            const publicUrlResponse = supabase.storage
-              .from("user-uploads")
-              .getPublicUrl(data.logo_path);
-            const publicUrl = (publicUrlResponse?.data as any)?.publicUrl;
+            const publicUrl = storageClient.getPublicUrl("user-uploads", data.logo_path);
             setLogoPreview(publicUrl || null);
           }
 
@@ -203,9 +198,9 @@ export default function OnboardingInfoPage(): JSX.Element {
           if (!email && data.email) {
             setEmail(String(data.email));
           }
-        } else if (fetchErr) {
+        } else if (!result.success) {
           // not fatal — may be first time user
-          // console.warn("profile fetch:", fetchErr);
+          // console.warn("profile fetch:", result.error);
         }
       } catch (e: any) {
         setError(e?.message ?? String(e));
@@ -244,9 +239,9 @@ export default function OnboardingInfoPage(): JSX.Element {
   const progressPercent = ((step - 1) / 3) * 100;
 
   async function uploadFile(file: File, path: string) {
-    const { error } = await supabase.storage
-      .from("user-uploads")
-      .upload(path, file, { upsert: true });
+    const { error } = await storageClient.upload("user-uploads", path, file, {
+      upsert: true,
+    });
     if (error) throw error;
     return path;
   }
@@ -271,7 +266,6 @@ export default function OnboardingInfoPage(): JSX.Element {
       }
 
       const payload = {
-        id: userId,
         // NEW: make sure email + full_name are saved in profiles
         email: email || profile.email || null,
         full_name: fullName || profile.full_name || null,
@@ -287,11 +281,8 @@ export default function OnboardingInfoPage(): JSX.Element {
           heardFrom === "Other" ? heardFromOther || null : null,
       };
 
-      // cast to any to avoid strict typing mismatch with generated supabase types
-      const { error: upErr } = await supabase
-        .from("profiles")
-        .upsert(payload as any, { onConflict: "id" });
-      if (upErr) throw upErr;
+      const result = await profileClient.upsert(payload);
+      if (!result.success) throw new Error(result.error || "Profile update failed");
       router.push("/integrationsbeta");
     } catch (e: any) {
       setError(e?.message ?? String(e));

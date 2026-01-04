@@ -3,7 +3,7 @@ import Link from 'next/link';
 import React, { useRef, useEffect } from "react";
 import { ArrowRight, Sparkles } from "lucide-react";
 import { Button } from "../app/web/src/components/ui/button";
-import colors from "../lib/colors";
+import colors from '@/lib/ui/colors';
 
 /** Convert "hsl(H S% L%)" -> "hsla(H, S%, L%, a)" for inline usage */
 function withAlpha(token: string, alpha: number) {

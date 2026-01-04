@@ -3,7 +3,7 @@
 import React, { useRef, useEffect, useState } from "react";
 import { Play, Search, BookOpen, Tag, ArrowRight, Sparkles } from "lucide-react";
 import { Button } from "../app/web/src/components/ui/button";
-import colors from "../lib/colors";
+import colors from '@/lib/ui/colors';
 import Link from 'next/link';
 function withAlpha(token: string, alpha: number) {
   const hslMatch = token.match(/hsl\(\s*([\d.]+)\s+([\d.]+)%\s+([\d.]+)%\s*\)/i);

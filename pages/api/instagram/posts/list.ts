@@ -1,7 +1,7 @@
 // pages/api/instagram/posts/list.ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import { getMetaIntegration, requireInstagramAccount } from "../../../../lib/meta/auth";
-import { getInstagramPosts } from "../../../../lib/meta/instagram";
+import { getMetaIntegration, requireInstagramAccount } from '@/integrations/meta/auth';
+import { getInstagramPosts } from '@/integrations/meta/instagram';
 
 /**
  * Get Instagram posts for authenticated user.

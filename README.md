@@ -35,12 +35,14 @@ OptimX is a comprehensive social media marketing automation platform that levera
 | **Language** | TypeScript | 5.9.2 |
 | **Styling** | Tailwind CSS | 4.1.12 |
 | **Components** | Radix UI | 1.x |
-| **Database** | Supabase (PostgreSQL) | 2.58.0 |
+| **Database** | PostgreSQL (Supabase) | 15 |
+| **ORM** | Drizzle ORM | 0.45.1 |
+| **Storage** | Supabase Storage | - |
 | **Auth** | Supabase + Firebase | - |
 | **AI** | OpenAI API | 5.23.2 |
 | **Ads** | Google Ads API | 21.0.1 |
 
-**Architecture**: Hybrid Next.js (Pages + App Router) with TypeScript, Supabase, and multi-provider authentication.
+**Architecture**: Hybrid Next.js (Pages + App Router) with TypeScript, Drizzle ORM, Supabase local (dev)/Supabase cloud (production), and multi-provider authentication.
 
 For complete tech stack details, see [Architecture Documentation](./docs/ARCHITECTURE.md).
 
@@ -50,8 +52,9 @@ For complete tech stack details, see [Architecture Documentation](./docs/ARCHITE
 
 ### Prerequisites
 
-- Node.js 18+
-- Supabase account
+- **Node.js 18+**
+- **Docker Desktop** (for Supabase local)
+- **Supabase CLI** (`brew install supabase/tap/supabase`)
 - Firebase account (for phone auth)
 - Google Cloud project (for Google Ads)
 - Meta Developer account (for Facebook/Instagram)
@@ -68,13 +71,23 @@ npm install
 
 # Configure environment variables
 cp .env.example .env.local
-# Edit .env.local with your credentials
+# Edit .env.local with your API keys (Facebook, OpenAI, etc.)
 
-# Run development server
+# Start development (includes Supabase and Next.js)
+./scripts/dev.sh
+# or
 npm run dev
 ```
 
-Access at `http://localhost:3000`
+**What `npm run dev` starts:**
+- 🗄️ PostgreSQL database (port 54322) - via Supabase
+- 🔐 Supabase Auth (port 54321)
+- 💾 Supabase Storage (http://localhost:54321/storage)
+- 🎨 Supabase Studio (http://localhost:54323) - Database UI
+- 📧 Inbucket (http://localhost:54324) - Email testing
+- 🌐 Next.js app (http://localhost:3000)
+
+**First-time setup:** The script will automatically start Supabase and apply migrations.
 
 For detailed setup instructions, see [Development Guide](./docs/DEVELOPMENT.md).
 
@@ -87,6 +100,7 @@ For detailed setup instructions, see [Development Guide](./docs/DEVELOPMENT.md).
 - 📐 **[Architecture](./docs/ARCHITECTURE.md)** - System design, data flows, and architectural patterns
 - 🔌 **[API Reference](./docs/API_REFERENCE.md)** - Complete API endpoint documentation
 - 🗄️ **[Database Schema](./docs/DATABASE.md)** - Database structure and relationships
+- 🗃️ **[Supabase Local Setup](./docs/SUPABASE_LOCAL_SETUP.md)** - Complete local development setup guide
 - 🛠️ **[Development Guide](./docs/DEVELOPMENT.md)** - Setup and development workflow
 - 🚀 **[Deployment Guide](./docs/DEPLOYMENT.md)** - Production deployment instructions
 - 🤝 **[Contributing](./docs/CONTRIBUTING.md)** - Contribution guidelines and workflow
@@ -143,14 +157,23 @@ See [Architecture](./docs/ARCHITECTURE.md) for detailed project structure.
 Create `.env.local` with the following (see `.env.example` for complete template):
 
 ```bash
-# Supabase
+# Database (Prisma - auto-switches between MySQL local / PostgreSQL prod)
+DATABASE_URL="mysql://optimx_user:optimx_password@localhost:3306/optimx"
+
+# Supabase (Auth + Production Storage)
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 
-# Firebase
+# MinIO (Local Storage - auto-configured via Docker)
+MINIO_ENDPOINT=http://localhost:9000
+MINIO_ACCESS_KEY=minioadmin
+MINIO_SECRET_KEY=minioadmin
+
+# Firebase (Phone Auth)
 NEXT_PUBLIC_FIREBASE_API_KEY=your_firebase_api_key
 
-# Meta
+# Meta (Facebook/Instagram)
 FACEBOOK_APP_ID=your_facebook_app_id
 FACEBOOK_APP_SECRET=your_facebook_app_secret
 
@@ -161,13 +184,25 @@ OPENAI_API_KEY=your_openai_api_key
 NEXT_PUBLIC_INTEGRATIONS_BETA_MODE=false
 ```
 
+**Storage & Database Auto-Switching:**
+- Local dev (`NODE_ENV=development`): Uses MySQL + MinIO
+- Production: Uses PostgreSQL + Supabase Storage
+
 ---
 
 ## Development
 
 ```bash
-# Run development server
+# Run development server (starts MySQL, MinIO, Next.js)
 npm run dev
+
+# Run ONLY Next.js (if Docker services already running)
+npm run dev:next
+
+# Prisma commands
+npm run prisma:generate  # Generate Prisma Client
+npm run prisma:studio    # Open Prisma Studio (database GUI)
+npm run prisma:migrate   # Run database migrations
 
 # Build for production
 npm run build
@@ -180,7 +215,18 @@ npx tsc --noEmit
 
 # Linting
 npm run lint
+
+# Docker commands
+docker-compose up -d      # Start all services
+docker-compose down       # Stop all services
+docker-compose logs -f    # View logs
 ```
+
+**Accessing Services:**
+- App: http://localhost:3000
+- phpMyAdmin: http://localhost:8081 (user: `optimx_user`, password: `optimx_password`)
+- MinIO Console: http://localhost:9001 (user: `minioadmin`, password: `minioadmin`)
+- Prisma Studio: Run `npm run prisma:studio`
 
 See [Development Guide](./docs/DEVELOPMENT.md) for detailed instructions.
 

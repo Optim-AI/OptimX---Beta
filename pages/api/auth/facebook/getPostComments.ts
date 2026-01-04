@@ -1,7 +1,7 @@
 // pages/api/auth/facebook/getPostComments.ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import { getUserIdFromRequest } from "../../../../lib/requestHelpers";
-import { readSavedIntegration } from "../../../../lib/integrationStore";
+import { getUserIdFromRequest } from '@/auth/request';
+import { readSavedIntegration } from '@/integrations/store';
 
 const VERSION = process.env.FACEBOOK_API_VERSION || "23.0";
 function safeJsonParse(text: string) { try { return JSON.parse(text); } catch { return text; } }

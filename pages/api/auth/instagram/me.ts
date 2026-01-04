@@ -1,7 +1,7 @@
 // pages/api/auth/instagram/me.ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import { getUserIdFromRequest } from "../../../../lib/requestHelpers";
-import { readSavedIntegration } from "../../../../lib/integrationStore";
+import { getUserIdFromRequest } from '@/auth/request';
+import { readSavedIntegration } from '@/integrations/store';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {

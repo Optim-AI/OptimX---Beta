@@ -1,7 +1,7 @@
 // pages/api/instagram/posts/[id]/comments.ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import { getMetaIntegration, requireInstagramAccount } from "../../../../../lib/meta/auth";
-import { getInstagramComments, postInstagramComment } from "../../../../../lib/meta/instagram";
+import { getMetaIntegration, requireInstagramAccount } from '@/integrations/meta/auth';
+import { getInstagramComments, postInstagramComment } from '@/integrations/meta/instagram';
 
 /**
  * Get or post comments on Instagram media for authenticated user.

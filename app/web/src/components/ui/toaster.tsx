@@ -10,7 +10,7 @@ import {
   ToastTitle,
   ToastViewport,
 } from "./toast"
-import colors from "../../../../../lib/colors"
+import colors from '@/lib/ui/colors'
 
 export function Toaster() {
   const { toasts } = useToast()
