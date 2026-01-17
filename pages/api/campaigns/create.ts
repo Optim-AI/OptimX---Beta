@@ -25,7 +25,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ error: 'Campaign name is required' });
     }
 
-    const campaign = await CampaignDAO.create(userId, name, status, data);
+    const campaign = await CampaignDAO.create({
+      userId,
+      name,
+      ...data
+    });
 
     return res.status(201).json({
       success: true,

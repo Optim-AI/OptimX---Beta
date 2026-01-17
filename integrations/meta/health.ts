@@ -9,6 +9,26 @@ const VERSION = process.env.FACEBOOK_API_VERSION || "23.0";
 
 export type HealthStatus = 'healthy' | 'expires_soon' | 'expired' | 'revoked' | 'invalid';
 
+/**
+ * Convert TokenErrorCode to HealthStatus
+ * Filters out transient and generic errors which shouldn't affect health status
+ */
+export function tokenErrorCodeToHealthStatus(code: string): HealthStatus | null {
+  switch (code) {
+    case 'expired':
+      return 'expired';
+    case 'revoked':
+      return 'revoked';
+    case 'invalid':
+      return 'invalid';
+    case 'transient':
+    case 'error':
+    default:
+      // Don't update health for transient or generic errors
+      return null;
+  }
+}
+
 export interface HealthCheckResult {
   healthy: boolean;
   status: HealthStatus;

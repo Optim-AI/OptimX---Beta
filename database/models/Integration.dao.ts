@@ -169,7 +169,7 @@ export class IntegrationDAO {
       accessToken: data.accessToken ?? null,
       refreshToken: data.refreshToken ?? null,
       tokenExpiresAt: data.tokenExpiresAt ? new Date(data.tokenExpiresAt).toISOString() : null,
-      scopes: data.scopes ?? null,
+      scopes: data.scopes ? (Array.isArray(data.scopes) ? data.scopes : [data.scopes]) : null,
       credentials: data.credentials ?? null,
       pageName: data.pageName ?? null,
       pageCategory: data.pageCategory ?? null,
@@ -177,8 +177,8 @@ export class IntegrationDAO {
       raw: data.raw ?? null,
       metadata: data.metadata ?? null,
       healthStatus: data.healthStatus ?? 'healthy',
-      lastHealthCheck: data.lastHealthCheck ?? now,
       healthErrorMessage: data.healthErrorMessage ?? null,
+      lastHealthCheck: data.lastHealthCheck ?? now,
       updatedAt: now,
     };
 

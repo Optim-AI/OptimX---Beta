@@ -19,11 +19,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const userCredits = await CreditsDAO.get(userId);
+    const result = await CreditsDAO.getBalance(userId);
+
+    if (!result.success) {
+      return res.status(404).json({
+        error: result.error || 'Credits not found'
+      });
+    }
 
     return res.status(200).json({
       success: true,
-      credits: userCredits?.credits || 0
+      credits: result.credits || 0
     });
   } catch (error: any) {
     console.error('Credits balance error:', error);

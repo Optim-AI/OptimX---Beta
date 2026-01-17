@@ -11,7 +11,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Deduct 1 credit using Prisma DAO
     const result = await CreditsDAO.deduct(userId, 1);
 
-    return res.status(200).json({ ok: true, credits: result.credits });
+    if (!result.success) {
+      // Check if insufficient credits
+      if (result.error?.includes('Insufficient credits')) {
+        return res.status(400).json({ error: 'Insufficient credits' });
+      }
+
+      return res.status(500).json({ error: result.error || 'Failed to deduct credits' });
+    }
+
+    return res.status(200).json({ ok: true, credits: result.newCredits });
   } catch (e) {
     console.error("credits/update error", e);
 

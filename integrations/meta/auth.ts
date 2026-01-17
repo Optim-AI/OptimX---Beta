@@ -89,6 +89,10 @@ export async function getMetaIntegration(req: NextApiRequest): Promise<MetaInteg
     // Don't block the request if refresh fails - token might still be valid
   }
 
+  if (!integration) {
+    throw new Error('Integration not found or token refresh failed');
+  }
+
   return {
     userId,
     pageAccessToken: integration.pageAccessToken,

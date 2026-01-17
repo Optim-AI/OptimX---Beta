@@ -24,9 +24,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Deduct credits
     const result = await CreditsDAO.deduct(userId, amount);
 
+    if (!result.success) {
+      // Check if insufficient credits
+      if (result.error?.includes('Insufficient credits')) {
+        return res.status(400).json({
+          error: 'Insufficient credits',
+          message: result.error
+        });
+      }
+
+      return res.status(500).json({
+        error: result.error || 'Failed to deduct credits'
+      });
+    }
+
     return res.status(200).json({
       success: true,
-      credits: result.credits
+      credits: result.newCredits
     });
   } catch (error: any) {
     console.error('Credits deduct error:', error);

@@ -43,8 +43,8 @@ export const storageClient = {
   ): Promise<{ error: Error | null; data: { path: string; publicUrl: string } | null }> {
     try {
       // Convert Buffer to Blob if needed (for Node.js environments)
-      let uploadFile: Blob | File = file instanceof Buffer 
-        ? new Blob([file], { type: options.contentType || 'application/octet-stream' })
+      const uploadFile = file instanceof Buffer
+        ? new Blob([new Uint8Array(file)], { type: options.contentType || 'application/octet-stream' })
         : file;
 
       const { error, data } = await supabase.storage

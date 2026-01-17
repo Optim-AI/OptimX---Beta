@@ -24,3 +24,6 @@ dist/
 
 # Generated Prisma client
 /src/generated/prisma
+
+# Supabase
+supabase/.temp/

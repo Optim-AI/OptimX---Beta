@@ -160,6 +160,8 @@ export function detectTokenError(error: any): TokenError {
           code: 'expired',
           status: 'expired',
           message: 'Your Facebook token has expired. Please reconnect your account.',
+          userMessage: 'Your Facebook token has expired. Please reconnect your account.',
+          name: 'TokenError',
           facebookCode: code,
         };
 
@@ -169,6 +171,8 @@ export function detectTokenError(error: any): TokenError {
           code: 'revoked',
           status: 'revoked',
           message: 'Your Facebook access was revoked. Please reconnect your account.',
+          userMessage: 'Your Facebook access was revoked. Please reconnect your account.',
+          name: 'TokenError',
           facebookCode: code,
         };
 
@@ -178,6 +182,8 @@ export function detectTokenError(error: any): TokenError {
           code: 'invalid',
           status: 'invalid',
           message: 'You no longer have access to this Facebook page. Please reconnect with a different page.',
+          userMessage: 'You no longer have access to this Facebook page. Please reconnect with a different page.',
+          name: 'TokenError',
           facebookCode: code,
         };
 
@@ -188,6 +194,8 @@ export function detectTokenError(error: any): TokenError {
           code: 'invalid',
           status: 'invalid',
           message: 'Permission denied. You may no longer have access to this resource.',
+          userMessage: 'Permission denied. You may no longer have access to this resource.',
+          name: 'TokenError',
           facebookCode: code,
         };
 
@@ -196,6 +204,8 @@ export function detectTokenError(error: any): TokenError {
           code: 'error',
           status: 'error',
           message: `Facebook API error: ${message}`,
+          userMessage: `Facebook API error: ${message}`,
+          name: 'TokenError',
           facebookCode: code,
         };
     }
@@ -207,6 +217,8 @@ export function detectTokenError(error: any): TokenError {
       code: 'transient',
       status: 'transient',
       message: 'Network error. Please try again.',
+      userMessage: 'Network error. Please try again.',
+      name: 'TokenError',
     };
   }
 
@@ -215,6 +227,8 @@ export function detectTokenError(error: any): TokenError {
     code: 'error',
     status: 'error',
     message: error.message || 'An unknown error occurred',
+    userMessage: error.message || 'An unknown error occurred',
+    name: 'TokenError',
   };
 }
 

@@ -34,7 +34,6 @@ export class SettingsDAO {
     const [result] = await db
       .insert(appSettings)
       .values({
-        id: randomUUID(),
         key,
         value,
         createdAt: now,

@@ -3,7 +3,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { getMetaIntegration, requireFacebookPage, TokenError } from '@/integrations/meta/auth';
 import { createFacebookPost } from '@/integrations/meta/facebook';
 import { detectTokenError } from '@/integrations/meta/token-refresh';
-import { updateIntegrationHealthInBackground } from '@/integrations/meta/health';
+import { updateIntegrationHealthInBackground, tokenErrorCodeToHealthStatus } from '@/integrations/meta/health';
 import { getUserIdFromRequest } from '@/auth/request';
 
 /**
@@ -47,12 +47,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       // Update health in background (non-blocking)
       if (userId) {
-        updateIntegrationHealthInBackground(
-          userId,
-          'meta',
-          err.code,
-          err.userMessage
-        );
+        const healthStatus = tokenErrorCodeToHealthStatus(err.code);
+        if (healthStatus) {
+          updateIntegrationHealthInBackground(
+            userId,
+            'meta',
+            healthStatus,
+            err.userMessage
+          );
+        }
       }
 
       return res.status(401).json({
@@ -70,12 +73,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       // Update health in background (non-blocking)
       if (userId) {
-        updateIntegrationHealthInBackground(
-          userId,
-          'meta',
-          tokenError.code,
-          tokenError.message
-        );
+        const healthStatus = tokenErrorCodeToHealthStatus(tokenError.code);
+        if (healthStatus) {
+          updateIntegrationHealthInBackground(
+            userId,
+            'meta',
+            healthStatus,
+            tokenError.message
+          );
+        }
       }
 
       return res.status(401).json({

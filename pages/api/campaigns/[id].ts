@@ -22,7 +22,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     if (req.method === 'GET') {
-      const campaign = await CampaignDAO.getById(id);
+      const campaign = await CampaignDAO.findById(id);
 
       if (!campaign) {
         return res.status(404).json({ error: 'Campaign not found' });
@@ -43,12 +43,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const { name, status, data } = req.body;
 
       // Verify ownership
-      const existing = await CampaignDAO.getById(id);
+      const existing = await CampaignDAO.findById(id);
       if (!existing || existing.userId !== userId) {
         return res.status(404).json({ error: 'Campaign not found' });
       }
 
-      const campaign = await CampaignDAO.update(id, name, status, data);
+      const campaign = await CampaignDAO.update(id, {
+        name,
+        ...data
+      });
 
       return res.status(200).json({
         success: true,
@@ -58,7 +61,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     if (req.method === 'DELETE') {
       // Verify ownership
-      const existing = await CampaignDAO.getById(id);
+      const existing = await CampaignDAO.findById(id);
       if (!existing || existing.userId !== userId) {
         return res.status(404).json({ error: 'Campaign not found' });
       }

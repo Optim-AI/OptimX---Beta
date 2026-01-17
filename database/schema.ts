@@ -73,6 +73,9 @@ export const integrations = pgTable("integrations", {
 	scopes: text().array(),
 	raw: jsonb(),
 	metadata: jsonb(),
+	healthStatus: text("health_status").default('healthy'),
+	healthErrorMessage: text("health_error_message"),
+	lastHealthCheck: timestamp("last_health_check", { withTimezone: true, mode: 'string' }),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 }, (table) => [
