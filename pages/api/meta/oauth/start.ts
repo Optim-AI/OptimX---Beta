@@ -8,10 +8,10 @@ import { cleanupExpiredSessions } from '@/integrations/meta/oauth-session';
  * This replaces /api/auth/instagram/start
  */
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  // Opportunistically clean up expired sessions (non-blocking)
-  cleanupExpiredSessions().catch((err) => {
-    console.warn("Failed to cleanup expired sessions:", err);
-  });
+  // Skip cleanup if DATABASE_URL not configured (sessions expire naturally after 10min)
+  // cleanupExpiredSessions().catch((err) => {
+  //   console.warn("Failed to cleanup expired sessions:", err);
+  // });
   const appId = process.env.FACEBOOK_APP_ID;
   const version = process.env.FACEBOOK_API_VERSION || "23.0";
   const redirectUri = `${process.env.NEXT_PUBLIC_APP_URL}/api/meta/oauth/callback`;
@@ -46,6 +46,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     "pages_read_engagement",
     "pages_read_user_content",
     "pages_manage_posts",
+    // Business management - REQUIRED for pages connected to Instagram Business accounts
+    // Without this, /me/accounts returns empty when Instagram permissions are requested
+    "business_management",
     // Ads permissions
     "ads_read",
     "ads_management",
