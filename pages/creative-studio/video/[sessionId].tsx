@@ -22,6 +22,7 @@ import {
   VIDEO_ASPECT_RATIOS,
 } from '@/app/web/src/components/creative-studio';
 import { authFetch } from '@/lib/utils';
+import { supabase } from '@/auth/supabase/client';
 
 // ============== Types ==============
 
@@ -57,6 +58,7 @@ export default function VideoSessionPage() {
   const [showBrandOnboarding, setShowBrandOnboarding] = useState(false);
   const [showBrandGuidelineModal, setShowBrandGuidelineModal] = useState(false);
   const [onboardingMode, setOnboardingMode] = useState<'website' | 'manual'>('website');
+  const [isAnalyzingBrand, setIsAnalyzingBrand] = useState(false);
 
   // Ad Builder state
   const [step, setStep] = useState<AdBuilderStep>(1);
@@ -85,8 +87,38 @@ export default function VideoSessionPage() {
   // Credits state
   const [credits, setCredits] = useState<number | null>(null);
 
+  // Auth state
+  const [isAuthReady, setIsAuthReady] = useState(false);
+
   // Auto-save ref
   const autoSaveTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+
+  // ============== Wait for Auth ==============
+
+  useEffect(() => {
+    let mounted = true;
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (mounted && session) {
+        setIsAuthReady(true);
+      }
+    });
+
+    const checkSession = async () => {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      const { data } = await supabase.auth.getSession();
+      if (mounted) {
+        setIsAuthReady(true);
+      }
+    };
+
+    checkSession();
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
 
   // ============== Load Session ==============
 
@@ -94,6 +126,7 @@ export default function VideoSessionPage() {
   const prevSessionIdRef = React.useRef<string | null>(null);
 
   useEffect(() => {
+    if (!isAuthReady) return;
     if (!sessionId || typeof sessionId !== 'string') return;
 
     async function loadSession() {
@@ -110,12 +143,18 @@ export default function VideoSessionPage() {
       setSelectedImageIndex(null);
 
       try {
-        // Handle 'new' session
+        // Handle 'new' session - load brand from database
         if (sessionId === 'new') {
-          const storedBrand = localStorage.getItem('brand:snapshot');
-          if (storedBrand) {
-            setBrand(JSON.parse(storedBrand));
-          } else {
+          try {
+            const brandResponse = await authFetch('/api/brand/snapshot');
+            const brandData = await brandResponse.json();
+            if (brandData.ok && brandData.brandSnapshot) {
+              setBrand(brandData.brandSnapshot);
+            } else {
+              setShowBrandOnboarding(true);
+            }
+          } catch (err) {
+            console.error('Error loading brand snapshot:', err);
             setShowBrandOnboarding(true);
           }
           setIsLoading(false);
@@ -184,11 +223,13 @@ export default function VideoSessionPage() {
     }
 
     loadSession();
-  }, [sessionId]);
+  }, [sessionId, isAuthReady]);
 
   // ============== Load Video Sessions for Sidebar ==============
 
   useEffect(() => {
+    if (!isAuthReady) return;
+
     async function loadVideoSessions() {
       try {
         const response = await authFetch('/api/creative-studio/sessions?type=video');
@@ -211,11 +252,13 @@ export default function VideoSessionPage() {
     }
 
     loadVideoSessions();
-  }, []);
+  }, [isAuthReady]);
 
   // ============== Load Credits ==============
 
   useEffect(() => {
+    if (!isAuthReady) return;
+
     async function loadCredits() {
       try {
         const response = await authFetch('/api/credits/balance');
@@ -228,7 +271,7 @@ export default function VideoSessionPage() {
       }
     }
     loadCredits();
-  }, []);
+  }, [isAuthReady]);
 
   // ============== Auto-save Session ==============
 
@@ -281,8 +324,19 @@ export default function VideoSessionPage() {
 
   // ============== Brand Handlers ==============
 
+  async function saveBrandSnapshot(brandData: BrandSnapshot) {
+    try {
+      await authFetch('/api/brand/snapshot', {
+        method: 'PUT',
+        body: JSON.stringify({ brandSnapshot: brandData }),
+      });
+    } catch (err) {
+      console.error('Error saving brand snapshot:', err);
+    }
+  }
+
   async function handleWebsiteBrandSetup(website: string) {
-    setShowBrandOnboarding(false);
+    setIsAnalyzingBrand(true);
 
     try {
       const response = await authFetch('/api/brand/fullAnalyze', {
@@ -292,26 +346,32 @@ export default function VideoSessionPage() {
 
       const data = await response.json();
 
-      if (data.ok && data.brand) {
+      // API returns { result: {...} } on success, { error: string } on failure
+      if (data.result) {
+        const result = data.result;
         const brandSnapshot: BrandSnapshot = {
-          name: data.brand.name || 'Unknown Brand',
-          description: data.brand.description || '',
-          audience: data.brand.audience || '',
-          offering: data.brand.offering || '',
-          tone: data.brand.tone || '',
-          logo: data.brand.logo,
+          name: result.facts?.company_name || 'Unknown Brand',
+          description: result.positioning?.primary_value_proposition || '',
+          audience: result.facts?.who_it_is_for?.join(', ') || '',
+          offering: result.facts?.what_they_sell?.join(', ') || '',
+          tone: result.brandVoice || result.personality || 'professional',
+          logo: result.logo,
         };
 
         setBrand(brandSnapshot);
-        localStorage.setItem('brand:snapshot', JSON.stringify(brandSnapshot));
+        saveBrandSnapshot(brandSnapshot);
+        setShowBrandOnboarding(false);
       } else {
-        alert('Could not analyze website. Please try manual setup.');
-        setShowBrandOnboarding(true);
+        console.error('Brand analysis failed:', data.error || 'Unknown error');
+        alert(`Could not analyze website: ${data.error || 'Unknown error'}. Please try manual setup.`);
+        // Keep modal open on error
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Brand analysis error:', err);
-      alert('Error analyzing website. Please try manual setup.');
-      setShowBrandOnboarding(true);
+      alert(`Error analyzing website: ${err.message || 'Unknown error'}. Please try manual setup.`);
+      // Keep modal open on error
+    } finally {
+      setIsAnalyzingBrand(false);
     }
   }
 
@@ -335,7 +395,7 @@ export default function VideoSessionPage() {
     };
 
     setBrand(brandSnapshot);
-    localStorage.setItem('brand:snapshot', JSON.stringify(brandSnapshot));
+    saveBrandSnapshot(brandSnapshot);
     setShowBrandOnboarding(false);
   }
 
@@ -349,11 +409,12 @@ export default function VideoSessionPage() {
       tone: 'professional',
     };
     setBrand(minimalBrand);
+    saveBrandSnapshot(minimalBrand);
   }
 
   function updateBrandGuideline(updated: BrandSnapshot) {
     setBrand(updated);
-    localStorage.setItem('brand:snapshot', JSON.stringify(updated));
+    saveBrandSnapshot(updated);
     setShowBrandGuidelineModal(false);
   }
 
@@ -1193,6 +1254,7 @@ export default function VideoSessionPage() {
             onWebsiteSubmit={handleWebsiteBrandSetup}
             onManualSubmit={handleManualBrandSetup}
             onSkip={handleSkipBrandSetup}
+            isLoading={isAnalyzingBrand}
           />
         )}
 

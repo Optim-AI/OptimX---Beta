@@ -432,7 +432,7 @@ ${JSON.stringify({
 
 /* ---------------------- PROMPTS ---------------------- */
 const factsPrompt = (d: any) => `
-Extract ONLY verifiable facts.
+Extract ONLY verifiable facts from this website.
 
 Return JSON:
 {
@@ -444,8 +444,14 @@ Return JSON:
   "claims_made":[]
 }
 
-TEXT:
-${d.text}
+IMPORTANT: Extract the company/brand name from the title, URL, or page content. The company name is required.
+
+PAGE TITLE: ${d.title || 'Unknown'}
+META DESCRIPTION: ${d.metaDesc || 'None'}
+URL: ${d.url || 'Unknown'}
+
+PAGE CONTENT:
+${d.text || 'No text content extracted'}
 `;
 
 const classificationPrompt = (facts: any) => `

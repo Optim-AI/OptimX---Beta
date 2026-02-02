@@ -22,10 +22,10 @@ export function cn(...inputs: ClassValue[]): string {
  */
 export async function getAuthToken(): Promise<string | null> {
   try {
-    const { data } = await supabase.auth.getSession();
-    return (data as any)?.session?.access_token ?? null;
+    const { data, error } = await supabase.auth.getSession();
+    if (error) return null;
+    return data?.session?.access_token ?? null;
   } catch (e) {
-    console.debug('getSession error:', e);
     return null;
   }
 }

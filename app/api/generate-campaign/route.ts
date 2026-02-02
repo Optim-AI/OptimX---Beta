@@ -150,6 +150,47 @@ function buildPromptFromInputs(body: any) {
   if (body.startDate || body.endDate)
     parts.push(`Schedule: ${body.startDate || "start"} → ${body.endDate || "end"}`);
 
+  // Extract brand details from brandSnapshot if available
+  const brand = body.brandSnapshot;
+  if (brand) {
+    const brandContext: string[] = [];
+    
+    // Brand colors - CRITICAL for visual consistency
+    if (brand.primaryColors && Array.isArray(brand.primaryColors) && brand.primaryColors.length > 0) {
+      brandContext.push(`MANDATORY BRAND COLORS: ${brand.primaryColors.join(", ")}. Use ONLY these colors as the dominant palette.`);
+    } else if (brand.colors) {
+      const colorParts: string[] = [];
+      if (brand.colors.primary) colorParts.push(`PRIMARY: ${brand.colors.primary}`);
+      if (brand.colors.secondary) colorParts.push(`SECONDARY: ${brand.colors.secondary}`);
+      if (brand.colors.accent) colorParts.push(`ACCENT: ${brand.colors.accent}`);
+      if (colorParts.length > 0) {
+        brandContext.push(`MANDATORY BRAND COLORS: ${colorParts.join(", ")}. Use these as the dominant visual elements.`);
+      }
+    }
+    
+    // Brand voice/tone
+    if (brand.brandVoice) brandContext.push(`Brand voice: ${brand.brandVoice}`);
+    if (brand.coreValueProp) brandContext.push(`Core value proposition: "${brand.coreValueProp}"`);
+    if (brand.audience) brandContext.push(`Target audience: ${brand.audience}`);
+    if (brand.fontStyles) brandContext.push(`Typography style: ${brand.fontStyles}`);
+    if (brand.productCategory) brandContext.push(`Product category: ${brand.productCategory}`);
+    if (brand.pricePositioning) brandContext.push(`Price positioning: ${brand.pricePositioning}`);
+    if (brand.ctaPatterns && Array.isArray(brand.ctaPatterns) && brand.ctaPatterns.length > 0) {
+      brandContext.push(`Preferred CTAs: ${brand.ctaPatterns.join(", ")}`);
+    }
+    
+    if (brandContext.length > 0) {
+      parts.push(`BRAND GUIDELINES (MUST FOLLOW): ${brandContext.join(". ")}`);
+    }
+  }
+  
+  // Product image instruction
+  if (body.productProvided || body.productDataUrl) {
+    parts.push(
+      "CRITICAL PRODUCT IMAGE: A product image has been provided. Use THIS EXACT product image as the hero element. Do NOT regenerate or replace the product. Only adjust background and composition around it."
+    );
+  }
+
   // Reference images
   const refUrls: string[] =
     Array.isArray(body.refUrls) ? body.refUrls : body.aiCustomization?.refUrls ?? [];
@@ -514,9 +555,29 @@ export async function POST(request: Request) {
       refUrls: mergedAi.refUrls,
     });
 
-    // Build Gemini parts: text + inline logo/ref data
+    // Build Gemini parts: text + inline images
     const parts: any[] = [{ text: prompt }];
+    
+    // Extract productDataUrl from body (main product image - highest priority)
+    const productDataUrl = body.productDataUrl;
+    
+    // Add main product image FIRST (most important reference)
+    if (productDataUrl && typeof productDataUrl === "string" && productDataUrl.startsWith("data:")) {
+      const m = productDataUrl.match(/^data:(.+);base64,(.+)$/);
+      if (m) {
+        const mimeType = m[1];
+        const base64Data = m[2];
+        parts.push({
+          inline_data: {
+            mimeType,
+            data: base64Data,
+          },
+        });
+        parts.push({ text: "The image above is the MAIN PRODUCT IMAGE. This is the primary subject. Use this exact product in the poster design. Do NOT alter, regenerate, or replace this product image." });
+      }
+    }
 
+    // Add additional reference images (lower priority)
     if (Array.isArray(refDataUrls) && refDataUrls.length) {
       let added = 0;
       for (const d of refDataUrls) {
@@ -532,11 +593,13 @@ export async function POST(request: Request) {
             data: base64Data,
           },
         });
+        parts.push({ text: "The image above is an additional reference image for style/context." });
         added++;
-        if (added >= 3) break;
+        if (added >= 2) break; // Limit to 2 additional refs (3 total including product)
       }
     }
 
+    // Add brand logo
     if (logoDataUrl && typeof logoDataUrl === "string" && logoDataUrl.startsWith("data:")) {
       const m = logoDataUrl.match(/^data:(.+);base64,(.+)$/);
       if (m) {
@@ -546,9 +609,9 @@ export async function POST(request: Request) {
           inline_data: {
             mimeType,
             data: base64Data,
-            label: "brand_logo",
           },
         });
+        parts.push({ text: "The image above is the BRAND LOGO. Include this logo in the poster design in an appropriate location." });
       }
     }
 
@@ -665,40 +728,58 @@ export async function POST(request: Request) {
 
     const dataUrl = `data:image/png;base64,${finalBuffer.toString("base64")}`;
 
-    // decrement credits
+    // decrement credits - MUST use atomic operation for parallel request safety
     let updatedCredits: number | null = null;
     try {
-      const { data: updatedRow, error: updateError } = await supabaseAdmin
-        .from("user_credits")
-        .update({ credits: (currentCredits ?? 0) - 1 })
-        .eq("id", user.id) // id IS the user_id in production schema
-        .gt("credits", 0)
-        .select()
-        .single();
-
-      if (updateError) {
-        try {
-          const { data: rpcData, error: rpcErr } = await supabaseAdmin.rpc(
-            "decrement_credit",
-            { user_id: user.id }
-          );
-          if (!rpcErr && rpcData) {
-            if (typeof rpcData === "number") updatedCredits = rpcData;
-            else if (Array.isArray(rpcData) && rpcData.length)
-              updatedCredits = Number(
-                (rpcData[0] as any).credits ?? null
-              );
-            else if ((rpcData as any)?.credits !== undefined)
-              updatedCredits = Number((rpcData as any).credits);
-          } else {
-            console.warn("Atomic decrement fallback rpc failed:", rpcErr);
-          }
-        } catch (e) {
-          console.warn("rpc decrement failed", e);
+      // Primary: Use RPC for atomic decrement (prevents race conditions with parallel requests)
+      // The function parameter is p_user (not user_id) and returns void
+      const { error: rpcErr } = await supabaseAdmin.rpc(
+        "decrement_credit",
+        { p_user: user.id }
+      );
+      
+      if (!rpcErr) {
+        // RPC returns void, so we need to query the current balance
+        const { data: creditRow, error: queryErr } = await supabaseAdmin
+          .from("user_credits")
+          .select("credits")
+          .eq("id", user.id)
+          .single();
+        
+        if (!queryErr && creditRow && (creditRow as any).credits !== undefined) {
+          updatedCredits = Number((creditRow as any).credits);
         }
-        console.warn("Failed to decrement user_credits via direct update:", updateError);
-      } else if (updatedRow && (updatedRow as any).credits !== undefined) {
-        updatedCredits = Number((updatedRow as any).credits);
+        console.log('[Credits] Atomic decrement successful, new balance:', updatedCredits);
+      } else {
+        // Fallback: Re-read current credits and decrement (less ideal but works)
+        console.warn("RPC decrement_credit failed:", rpcErr);
+        
+        // Re-read current credits to get fresh value
+        const { data: freshCredits } = await supabaseAdmin
+          .from("user_credits")
+          .select("credits")
+          .eq("id", user.id)
+          .single();
+        
+        const currentVal = freshCredits ? Number((freshCredits as any).credits) : (currentCredits ?? 1);
+        
+        const { data: updatedRow, error: updateError } = await supabaseAdmin
+          .from("user_credits")
+          .update({ 
+            credits: Math.max(currentVal - 1, 0),
+            updated_at: new Date().toISOString()
+          })
+          .eq("id", user.id)
+          .gt("credits", 0)
+          .select()
+          .single();
+        
+        if (!updateError && updatedRow && (updatedRow as any).credits !== undefined) {
+          updatedCredits = Number((updatedRow as any).credits);
+          console.log('[Credits] Direct update fallback, new balance:', updatedCredits);
+        } else {
+          console.warn("Credit decrement fallback failed:", updateError);
+        }
       }
     } catch (e) {
       console.warn("Credit decrement failed", e);

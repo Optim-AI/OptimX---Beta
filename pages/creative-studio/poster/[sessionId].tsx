@@ -60,6 +60,7 @@ export default function PosterSessionPage() {
   const [showBrandOnboarding, setShowBrandOnboarding] = useState(false);
   const [showBrandGuidelineModal, setShowBrandGuidelineModal] = useState(false);
   const [onboardingMode, setOnboardingMode] = useState<'website' | 'manual'>('website');
+  const [isAnalyzingBrand, setIsAnalyzingBrand] = useState(false);
   
   // Product state
   const [productPrompt, setProductPrompt] = useState('');
@@ -99,9 +100,40 @@ export default function PosterSessionPage() {
   const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const messageIdCounter = useRef<number>(0);
 
+  // Auth state
+  const [isAuthReady, setIsAuthReady] = useState(false);
+
+  // ============== Wait for Auth ==============
+
+  useEffect(() => {
+    let mounted = true;
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (mounted && session) {
+        setIsAuthReady(true);
+      }
+    });
+
+    const checkSession = async () => {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      const { data } = await supabase.auth.getSession();
+      if (mounted) {
+        setIsAuthReady(true);
+      }
+    };
+
+    checkSession();
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
+
   // ============== Load Session ==============
   
   useEffect(() => {
+    if (!isAuthReady) return;
     if (!sessionId || typeof sessionId !== 'string') return;
     
     async function loadSession() {
@@ -124,13 +156,18 @@ export default function PosterSessionPage() {
       setHasInsufficientCredits(false);
       
       try {
-        // Handle 'new' session - don't fetch from API
+        // Handle 'new' session - load brand from database
         if (sessionId === 'new') {
-          // Load brand from localStorage if available
-          const storedBrand = localStorage.getItem('brand:snapshot');
-          if (storedBrand) {
-            setBrand(JSON.parse(storedBrand));
-          } else {
+          try {
+            const brandResponse = await authFetch('/api/brand/snapshot');
+            const brandData = await brandResponse.json();
+            if (brandData.ok && brandData.brandSnapshot) {
+              setBrand(brandData.brandSnapshot);
+            } else {
+              setShowBrandOnboarding(true);
+            }
+          } catch (err) {
+            console.error('Error loading brand snapshot:', err);
             setShowBrandOnboarding(true);
           }
           setIsLoading(false);
@@ -192,11 +229,13 @@ export default function PosterSessionPage() {
     }
     
     loadSession();
-  }, [sessionId]);
+  }, [sessionId, isAuthReady]);
 
   // ============== Load Poster Sessions for Sidebar ==============
   
   useEffect(() => {
+    if (!isAuthReady) return;
+
     async function loadPosterSessions() {
       try {
         const response = await authFetch('/api/creative-studio/sessions?type=poster');
@@ -217,11 +256,13 @@ export default function PosterSessionPage() {
     }
     
     loadPosterSessions();
-  }, []);
+  }, [isAuthReady]);
 
   // ============== Load Credits ==============
 
   useEffect(() => {
+    if (!isAuthReady) return;
+
     async function loadCredits() {
       try {
         const response = await authFetch('/api/credits/balance');
@@ -234,7 +275,7 @@ export default function PosterSessionPage() {
       }
     }
     loadCredits();
-  }, []);
+  }, [isAuthReady]);
 
   // ============== Auto-save Session ==============
   
@@ -353,10 +394,20 @@ export default function PosterSessionPage() {
   }
 
   // ============== Brand Handlers ==============
+
+  async function saveBrandSnapshot(brandData: BrandSnapshot) {
+    try {
+      await authFetch('/api/brand/snapshot', {
+        method: 'PUT',
+        body: JSON.stringify({ brandSnapshot: brandData }),
+      });
+    } catch (err) {
+      console.error('Error saving brand snapshot:', err);
+    }
+  }
   
   async function handleWebsiteBrandSetup(website: string) {
-    setShowBrandOnboarding(false);
-    setThinkingMessages(['Analyzing your website...']);
+    setIsAnalyzingBrand(true);
     
     try {
       const response = await authFetch('/api/brand/fullAnalyze', {
@@ -366,35 +417,39 @@ export default function PosterSessionPage() {
       
       const data = await response.json();
       
-      if (data.ok && data.brand) {
+      // API returns { result: {...} } on success, { error: string } on failure
+      if (data.result) {
+        const result = data.result;
         const brandSnapshot: BrandSnapshot = {
-          name: data.brand.name || 'Unknown Brand',
-          description: data.brand.description || '',
-          audience: data.brand.audience || '',
-          offering: data.brand.offering || '',
-          tone: data.brand.tone || '',
-          logo: data.brand.logo,
-          logoUrl: data.brand.logoUrl,
-          primaryColors: data.brand.primaryColors,
-          fontStyles: data.brand.fontStyles,
-          brandVoice: data.brand.brandVoice,
-          coreValueProp: data.brand.coreValueProp,
+          name: result.facts?.company_name || 'Unknown Brand',
+          description: result.positioning?.primary_value_proposition || '',
+          audience: result.facts?.who_it_is_for?.join(', ') || '',
+          offering: result.facts?.what_they_sell?.join(', ') || '',
+          tone: result.brandVoice || result.personality || 'professional',
+          logo: result.logo,
+          logoUrl: result.logoUrl,
+          primaryColors: result.primaryColors,
+          fontStyles: result.fontStyles,
+          brandVoice: result.brandVoice,
+          coreValueProp: result.coreValueProp,
         };
         
         setBrand(brandSnapshot);
-        localStorage.setItem('brand:snapshot', JSON.stringify(brandSnapshot));
+        saveBrandSnapshot(brandSnapshot);
+        setShowBrandOnboarding(false);
         setPhase('brand-review');
         addMessage('system', `I've analyzed your website and extracted your brand information. Please review it below.`);
       } else {
-        addMessage('system', 'I had trouble analyzing that website. Please try a different URL or set up your brand manually.');
-        setShowBrandOnboarding(true);
+        console.error('Brand analysis failed:', data.error || 'Unknown error');
+        addMessage('system', `I had trouble analyzing that website: ${data.error || 'Unknown error'}. Please try a different URL or set up your brand manually.`);
+        // Keep modal open on error
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Brand analysis error:', err);
-      addMessage('system', 'There was an error analyzing your website. Please try again or set up your brand manually.');
-      setShowBrandOnboarding(true);
+      addMessage('system', `There was an error analyzing your website: ${err.message || 'Unknown error'}. Please try again or set up your brand manually.`);
+      // Keep modal open on error
     } finally {
-      setThinkingMessages([]);
+      setIsAnalyzingBrand(false);
     }
   }
 
@@ -418,7 +473,7 @@ export default function PosterSessionPage() {
     };
     
     setBrand(brandSnapshot);
-    localStorage.setItem('brand:snapshot', JSON.stringify(brandSnapshot));
+    saveBrandSnapshot(brandSnapshot);
     setShowBrandOnboarding(false);
     setPhase('brand-review');
     addMessage('system', `Great! I've set up your brand profile. Please review it below.`);
@@ -435,13 +490,14 @@ export default function PosterSessionPage() {
       tone: 'professional',
     };
     setBrand(minimalBrand);
+    saveBrandSnapshot(minimalBrand);
     setPhase('product-input');
     addMessage('system', `No problem! You can set up your brand guidelines later. Let's start creating - tell me about what you want to promote.`);
   }
 
   function handleBrandConfirm() {
     if (brand) {
-      localStorage.setItem('brand:snapshot', JSON.stringify(brand));
+      saveBrandSnapshot(brand);
     }
     setPhase('product-input');
     addMessage('system', `Great! Your brand is set. Now tell me about the product or service you want to promote, or upload some product images.`);
@@ -449,7 +505,7 @@ export default function PosterSessionPage() {
 
   function updateBrandGuideline(updated: BrandSnapshot) {
     setBrand(updated);
-    localStorage.setItem('brand:snapshot', JSON.stringify(updated));
+    saveBrandSnapshot(updated);
     setShowBrandGuidelineModal(false);
   }
 
@@ -512,53 +568,184 @@ export default function PosterSessionPage() {
     setThinkingMessages(['Generating your poster variants...']);
     
     try {
-      // Build the generation prompt
       const hasProductImage = savedProductData?.images && savedProductData.images.length > 0;
       
-      const prompt = buildPosterPrompt({
-        userRequest: posterPrompt || savedProductData?.prompt || '',
+      // Build base user request from poster prompt or product data
+      let userRequest = posterPrompt || savedProductData?.prompt || '';
+      if (!userRequest.trim()) {
+        // Fallback: build from brand
+        const promptParts: string[] = [];
+        if (brand?.name) promptParts.push(`Create a marketing poster for ${brand.name}`);
+        if (brand?.description) promptParts.push(brand.description);
+        if (config.theme) promptParts.push(`Theme: ${config.theme}`);
+        userRequest = promptParts.length > 0 ? promptParts.join('. ') : 'Create a professional marketing poster';
+      }
+      
+      // CRITICAL: Enhance prompt with comprehensive brand context (from revised branch)
+      let finalPrompt = userRequest;
+      if (brand) {
+        const brandContext: string[] = [];
+        
+        // Core brand info
+        if (brand.name) brandContext.push(`Brand: ${brand.name}`);
+        if (brand.description) brandContext.push(brand.description);
+        if (brand.audience) brandContext.push(`Target audience: ${brand.audience}`);
+        if (brand.brandVoice) brandContext.push(`Brand tone: ${brand.brandVoice}`);
+        if (brand.personality) brandContext.push(`Brand personality: ${brand.personality}`);
+        if (brand.coreValueProp) brandContext.push(`Value proposition: ${brand.coreValueProp}`);
+        
+        // Brand Colors - CRITICAL for visual consistency (STRONG ENFORCEMENT)
+        if (brand.primaryColors && brand.primaryColors.length > 0) {
+          brandContext.push(`CRITICAL BRAND COLORS (MANDATORY - MUST DOMINATE DESIGN): ${brand.primaryColors.join(', ')}. These colors must be the primary visual elements. Do NOT use random colors.`);
+        } else if (brand.colors) {
+          const colorParts: string[] = [];
+          if (brand.colors.primary) colorParts.push(`PRIMARY COLOR: ${brand.colors.primary} (use as dominant color)`);
+          if (brand.colors.secondary) colorParts.push(`SECONDARY COLOR: ${brand.colors.secondary} (use for accents)`);
+          if (brand.colors.accent) colorParts.push(`ACCENT COLOR: ${brand.colors.accent} (use for CTAs)`);
+          if (colorParts.length > 0) {
+            brandContext.push(`CRITICAL BRAND COLORS (MANDATORY): ${colorParts.join('. ')}. Do NOT deviate from these brand colors.`);
+          }
+        }
+        
+        // CTA Patterns
+        if (brand.ctaPatterns && brand.ctaPatterns.length > 0) {
+          brandContext.push(`Preferred CTAs: ${brand.ctaPatterns.join(', ')}`);
+        }
+        
+        // Product Category & Price Positioning
+        if (brand.productCategory) brandContext.push(`Product category: ${brand.productCategory}`);
+        if (brand.pricePositioning) brandContext.push(`Price positioning: ${brand.pricePositioning}`);
+        
+        // Inject brand context into prompt
+        if (brandContext.length > 0) {
+          finalPrompt = `${finalPrompt}. CRITICAL BRAND GUIDELINES (MUST FOLLOW): ${brandContext.join('. ')}. All visual elements, logo, typography, and copy must strictly adhere to these brand guidelines.`;
+        }
+      }
+      
+      // Map aspect ratio to dimensions
+      const aspectDimensions: Record<string, { width: number; height: number }> = {
+        '1:1': { width: 1080, height: 1080 },
+        '4:5': { width: 1080, height: 1350 },
+        '9:16': { width: 1080, height: 1920 },
+        '1.91:1': { width: 1910, height: 1000 },
+      };
+      const target = aspectDimensions[config.aspectRatio] || { width: 1080, height: 1080 };
+      
+      // Prepare logo data URL if brand has logo
+      let logoDataUrl: string | undefined;
+      if (brand?.logo) {
+        if (brand.logo.startsWith('data:')) {
+          logoDataUrl = brand.logo;
+        } else if (brand.logo.startsWith('http')) {
+          // Fetch logo via proxy
+          try {
+            const logoResponse = await fetch('/api/creative-studio/fetch-image', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ url: brand.logo }),
+            });
+            const logoData = await logoResponse.json();
+            if (logoData.ok && logoData.dataUrl) {
+              logoDataUrl = logoData.dataUrl;
+            }
+          } catch (e) {
+            console.warn('Failed to fetch logo:', e);
+          }
+        }
+      }
+      
+      // Prepare product images - first image as productDataUrl, rest as refDataUrls
+      const allImageUrls = savedProductData?.imageDataUrls || [];
+      const productDataUrl = allImageUrls.length > 0 ? allImageUrls[0] : undefined;
+      const refDataUrls = allImageUrls.length > 1 ? allImageUrls.slice(1) : [];
+      
+      // Build base payload (same for all variants)
+      const basePayload = {
+        mode: 'generate',
         theme: config.theme,
-        aspectRatio: config.aspectRatio,
-        brand,
-        hasProductImage: !!hasProductImage,
-      });
+        target,
+        aspectLabel: config.aspectRatio,
+        brandName: brand?.name || '',
+        brandSnapshot: brand,
+        tone: brand?.brandVoice || config.theme,
+        productDataUrl,
+        productProvided: !!productDataUrl,
+        refDataUrls,
+        logoDataUrl,
+        logoProvided: !!logoDataUrl,
+      };
       
-      // Generate 3 variants
-      const posters: string[] = [];
-      let creditError = false;
-      let lastError = '';
+      // Generate 3 variants in parallel for faster results
+      setThinkingMessages(['Generating 3 poster variants in parallel...']);
       
-      for (let i = 0; i < 3; i++) {
-        setThinkingMessages([`Generating variant ${i + 1} of 3...`]);
+      // Use PosterGenerator utility to create 3 professional, theme-aware variant prompts
+      const variantPrompts = [1, 2, 3].map(variantNum => 
+        buildPosterPrompt({
+          userRequest: finalPrompt,
+          theme: config.theme,
+          aspectRatio: config.aspectRatio,
+          brand,
+          hasProductImage: !!hasProductImage,
+          variant: variantNum,
+        })
+      );
+      
+      // Create promises for all 3 variants
+      const variantPromises = variantPrompts.map(async (variantPrompt, idx) => {
+        const variantNum = idx + 1;
         
         const response = await authFetch('/api/generate-campaign', {
           method: 'POST',
           body: JSON.stringify({
-            prompt: prompt,
-            images: savedProductData?.imageDataUrls || [],
-            aspectRatio: config.aspectRatio,
-            variant: i + 1,
+            ...basePayload,
+            prompt: variantPrompt,
+            description: variantPrompt,
           }),
         });
         
         const data = await response.json();
-        
-        if (data.ok && data.image) {
-          posters.push(data.image);
-          // Update credits if returned
-          if (data.creditsRemaining !== undefined) {
-            setCredits(data.creditsRemaining);
+        return { variantNum, response, data };
+      });
+      
+      // Wait for all to complete (don't fail fast - collect all results)
+      const results = await Promise.allSettled(variantPromises);
+      
+      // Process results
+      const posters: string[] = [];
+      let creditError = false;
+      let lastError = '';
+      let latestCredits: number | undefined;
+      
+      for (const result of results) {
+        if (result.status === 'fulfilled') {
+          const { variantNum, response, data } = result.value;
+          
+          if (data.ok && data.image) {
+            posters.push(data.image);
+            // Track latest credits value
+            if (data.creditsRemaining !== undefined) {
+              latestCredits = data.creditsRemaining;
+            }
+          } else if (data.error) {
+            console.error(`Poster variant ${variantNum} failed:`, data.error);
+            lastError = data.error;
+            // Check for credit-related errors
+            if (data.error.toLowerCase().includes('credit') || response.status === 402) {
+              creditError = true;
+              latestCredits = 0;
+            }
           }
-        } else if (data.error) {
-          console.error(`Poster generation ${i + 1} failed:`, data.error);
-          lastError = data.error;
-          // Check for credit-related errors
-          if (data.error.toLowerCase().includes('credit') || response.status === 402) {
-            creditError = true;
-            setCredits(0);
-            setHasInsufficientCredits(true);
-            break; // Stop trying if no credits
-          }
+        } else {
+          console.error('Variant generation promise rejected:', result.reason);
+          lastError = result.reason?.message || 'Unknown error';
+        }
+      }
+      
+      // Update credits once with the latest value
+      if (latestCredits !== undefined) {
+        setCredits(latestCredits);
+        if (latestCredits <= 0) {
+          setHasInsufficientCredits(true);
         }
       }
       
@@ -699,31 +886,100 @@ export default function PosterSessionPage() {
       setShowBrandOnboarding(true);
     } else {
       // We have a brand, treat as product input
-      // Set product data first, then trigger the submit which will add the message
-      setProductPrompt(currentInput);
-      setProductImages(currentImages);
       
-      // Add user message
-      addMessage('user', currentInput || 'Product images uploaded', currentImages.length > 0 ? currentImages : undefined);
+      // Check if input contains a URL (could be image URL or product page URL)
+      const urlRegex = /https?:\/\/[^\s]+/gi;
+      const urls = currentInput.match(urlRegex) || [];
       
-      // Process product and move to next phase
-      setTimeout(async () => {
-        // Save product data
-        const productImageDataUrls: string[] = [];
-        for (const img of currentImages) {
-          const dataUrl = await fileToDataUrl(img);
-          productImageDataUrls.push(dataUrl);
-        }
+      if (urls.length > 0 && currentImages.length === 0) {
+        // User pasted URL(s) - fetch image via API (handles both direct images and product pages)
+        const url = urls[0]; // Use first URL
+        console.log('Fetching image from URL:', url);
+        addMessage('user', currentInput);
+        setThinkingMessages(['Fetching image from URL...']);
         
-        setSavedProductData({
-          prompt: currentInput,
-          images: currentImages,
-          imageDataUrls: productImageDataUrls,
-        });
+        setTimeout(async () => {
+          try {
+            const response = await fetch('/api/creative-studio/fetch-image', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ url }),
+            });
+            
+            const result = await response.json();
+            
+            setThinkingMessages([]);
+            
+            if (!response.ok || !result.ok) {
+              addMessage('system', `I couldn't fetch the image: ${result.error || 'Unknown error'}. Please try uploading the image directly.`);
+              return;
+            }
+            
+            // Convert data URL to File object
+            const dataUrl = result.dataUrl;
+            const contentType = result.contentType || 'image/jpeg';
+            
+            // Extract base64 data and convert to File
+            const base64Data = dataUrl.split(',')[1];
+            const binaryString = atob(base64Data);
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+              bytes[i] = binaryString.charCodeAt(i);
+            }
+            const blob = new Blob([bytes], { type: contentType });
+            
+            // Determine file extension
+            let extension = 'jpg';
+            if (contentType.includes('png')) extension = 'png';
+            else if (contentType.includes('gif')) extension = 'gif';
+            else if (contentType.includes('webp')) extension = 'webp';
+            
+            const file = new File([blob], `fetched_${Date.now()}.${extension}`, { type: contentType });
+            
+            setProductPrompt(currentInput);
+            setProductImages([file]);
+            setSavedProductData({
+              prompt: currentInput,
+              images: [file],
+              imageDataUrls: [dataUrl],
+            });
+            
+            // Show the fetched image
+            addMessage('system', `Got it! I've fetched the image from the URL. Now describe the poster you want to create.`, [file]);
+            setPhase('poster-prompt');
+          } catch (err: any) {
+            setThinkingMessages([]);
+            console.error('Error fetching image:', err);
+            addMessage('system', `There was an error fetching the image: ${err.message || 'Unknown error'}. Please try uploading it directly.`);
+          }
+        }, 0);
+      } else {
+        // Regular text input and/or uploaded images (no URL to fetch)
+        setProductPrompt(currentInput);
+        setProductImages(currentImages);
         
-        addMessage('system', `Got it! Now describe the poster you want to create.`);
-        setPhase('poster-prompt');
-      }, 0);
+        // Add user message
+        addMessage('user', currentInput || 'Product images uploaded', currentImages.length > 0 ? currentImages : undefined);
+        
+        // Process product and move to next phase
+        setTimeout(async () => {
+          // Save product data
+          const productImageDataUrls: string[] = [];
+          for (const img of currentImages) {
+            const dataUrl = await fileToDataUrl(img);
+            productImageDataUrls.push(dataUrl);
+          }
+          
+          setSavedProductData({
+            prompt: currentInput,
+            images: currentImages,
+            imageDataUrls: productImageDataUrls,
+          });
+          
+          addMessage('system', `Got it! Now describe the poster you want to create.`);
+          setPhase('poster-prompt');
+        }, 0);
+      }
     }
   }
 
@@ -1049,6 +1305,7 @@ export default function PosterSessionPage() {
             onWebsiteSubmit={handleWebsiteBrandSetup}
             onManualSubmit={handleManualBrandSetup}
             onSkip={handleSkipBrandSetup}
+            isLoading={isAnalyzingBrand}
           />
         )}
 
