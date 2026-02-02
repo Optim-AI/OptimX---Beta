@@ -1,0 +1,96 @@
+{
+  "createdAt": "2025-11-01T10:52:40.075Z",
+  "userAccessToken": "EAALGA8VZArcwBPzYFoq7duOUyU1PoKi4yLqXuHk1XduZAInTV1aHZBcFz1lnxUbXwC9F3HCYR5wNWQqmmUfel6Vt0SgS5eBQUxqyxYIcv1WeezYTZBEFW9wP8BnJLZBq5Bat7aLFZCGVqtZBDaK7F9syl4pQR3hmnPwxLfpNXi04OQZCucwpsixcljjSXlDV",
+  "pageAccessToken": "EAALGA8VZArcwBP33xDq8iFh6PEThVm0tVZAPW4ZCeHqPPpWyVjbgWLpOewLrXyhIhrFXu5Ryuj4tvYwHTokF9uHsuZBQ4yl8LVL9F4HyNjkZCjnZCwb6zZCYVe6C3jDhEq4uGlqHqHcvGB9yBkph5m93rruPuUFomRVdFg2i6Pc0QovkpQRQSyljdRNMfdbPHAP0uVzQZBKq",
+  "pageId": "843708132160602",
+  "igUserId": "17841476839861872",
+  "adAccountId": "act_847683517914126",
+  "raw": {
+    "tokenJson": {
+      "access_token": "EAALGA8VZArcwBP39ZB1DOSsYoHPYzfdhoNeFM9LrzYlRtvDZC6YurGz7VbeAUjhfOtebP5LMBn7TP5j2tPfxNoYBiqbSReNn3UZAknVTsZByxq3Px8qBsJWMDhIklz9LoxZCdQl4vvLfOh5CjY17CDustSwX1hsS75nA2yA9kOSsOWOddmTQGkBPky9HWLE5MY02oZA2wXEbAjRhjkMQamyZCPhOobNAM0VZAWse3pJXbGkmZBrZAh9uSZBbytK4la16r8o8oBF86jON4roEhElVuOu4MpWh4MVbMsAa",
+      "token_type": "bearer"
+    },
+    "exchangeJson": {
+      "access_token": "EAALGA8VZArcwBPzYFoq7duOUyU1PoKi4yLqXuHk1XduZAInTV1aHZBcFz1lnxUbXwC9F3HCYR5wNWQqmmUfel6Vt0SgS5eBQUxqyxYIcv1WeezYTZBEFW9wP8BnJLZBq5Bat7aLFZCGVqtZBDaK7F9syl4pQR3hmnPwxLfpNXi04OQZCucwpsixcljjSXlDV",
+      "token_type": "bearer"
+    },
+    "pagesJson": {
+      "data": [
+        {
+          "access_token": "EAALGA8VZArcwBP33xDq8iFh6PEThVm0tVZAPW4ZCeHqPPpWyVjbgWLpOewLrXyhIhrFXu5Ryuj4tvYwHTokF9uHsuZBQ4yl8LVL9F4HyNjkZCjnZCwb6zZCYVe6C3jDhEq4uGlqHqHcvGB9yBkph5m93rruPuUFomRVdFg2i6Pc0QovkpQRQSyljdRNMfdbPHAP0uVzQZBKq",
+          "category": "Food and drink",
+          "category_list": [
+            {
+              "id": "314853004119510",
+              "name": "Food and drink"
+            }
+          ],
+          "name": "Zubimendizoe",
+          "id": "843708132160602",
+          "tasks": [
+            "ADVERTISE",
+            "ANALYZE",
+            "CREATE_CONTENT",
+            "MESSAGING",
+            "MODERATE",
+            "MANAGE"
+          ]
+        },
+        {
+          "access_token": "EAALGA8VZArcwBP8KR0ncAVwpIXtdMaPEBPQFY2bdk19BB6HjJtzaek4JFJNbZBhdzApSX9MmgjJBDfbkZCMlZAz5R4wZAXyZB8o9uGQrZAoM6uaZBA80ykhdnbLd9jphLZBnKScX5yqyF3NE5V5djoZBNwCiqm4XmWqPUapPFZACAxpS2tZCWriwEraoldoKmRyzFYAl4FkrzAfL",
+          "category": "Marketing agency",
+          "category_list": [
+            {
+              "id": "123377808095874",
+              "name": "Marketing agency"
+            }
+          ],
+          "name": "Optamize",
+          "id": "833288613193080",
+          "tasks": [
+            "ADVERTISE",
+            "ANALYZE",
+            "CREATE_CONTENT",
+            "MESSAGING",
+            "MODERATE",
+            "MANAGE"
+          ]
+        }
+      ],
+      "paging": {
+        "cursors": {
+          "before": "QVFIU1BGSzRmX0J6MG9BZAEFzdG52NmhGR0lSTDZANN2syS3pFa19GVUY5cHNsRndBVnNTX2t2am92X0VmR3JrenRTUkx5ejY4QU9jVktsNng1NTRvbTNRX2R3",
+          "after": "QVFIU09CcVhQbHZA2eFRROVVMUkY1Rkp6RU5MdVdkSkdKUU1EQ2RRa2xUUUlYOVdCMnVIb1d0YWpLR2FCQXkyNWVTX3FwRHdBSlRfRjJaNDZABMWM4WTF1ZAzR3"
+        }
+      }
+    },
+    "igJson": {
+      "instagram_business_account": {
+        "id": "17841476839861872"
+      },
+      "id": "843708132160602"
+    },
+    "adAccountsJson": {
+      "data": [
+        {
+          "account_id": "847683517914126",
+          "id": "act_847683517914126"
+        },
+        {
+          "account_id": "690361720742536",
+          "id": "act_690361720742536"
+        },
+        {
+          "account_id": "995857819272047",
+          "id": "act_995857819272047"
+        }
+      ],
+      "paging": {
+        "cursors": {
+          "before": "MTIwMjMyNTU1MzUwMjYwNTUz",
+          "after": "MTIwMjM0MjU3OTE1NzYwMzI1"
+        }
+      }
+    }
+  }
+}
