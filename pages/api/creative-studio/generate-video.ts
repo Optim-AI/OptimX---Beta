@@ -264,36 +264,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       
       enhancedPrompt += `CRITICAL REQUIREMENTS:\n`;
       
-      // Strong aspect ratio enforcement with text-safe zones
+      // Strong aspect ratio enforcement with clear text placement guidance
       if (videoAspectRatio === "9:16") {
-        enhancedPrompt += `- Aspect Ratio: STRICTLY 9:16 VERTICAL/PORTRAIT format (1080x1920 or equivalent). This is a mobile-first vertical video.\n`;
-        enhancedPrompt += `- Frame composition: Vertical orientation, tall and narrow. All content must be optimized for vertical viewing.\n`;
-        enhancedPrompt += `- Camera angles: Use vertical-friendly shots - close-ups, vertical pans, top-to-bottom reveals.\n`;
-        enhancedPrompt += `- TEXT SAFE ZONES for 9:16:\n`;
-        enhancedPrompt += `  * Primary text area: Upper third (15-35% from top), centered horizontally\n`;
-        enhancedPrompt += `  * Secondary text area: Lower third (65-85% from top), centered\n`;
-        enhancedPrompt += `  * Avoid: Bottom 10% (covered by UI), top 5% (status bar), left/right 10% edges\n`;
-        enhancedPrompt += `  * Headlines: Large, centered, in upper safe zone\n`;
-        enhancedPrompt += `  * Subtitles/CTA: Lower safe zone with padding from bottom edge\n`;
+        enhancedPrompt += `- Aspect Ratio: STRICTLY 9:16 VERTICAL format. This is a tall, mobile-first video.\n`;
+        enhancedPrompt += `- Frame: Vertical orientation optimized for phone screens (TikTok, Reels, Shorts).\n`;
+        enhancedPrompt += `- Camera: Close-ups, vertical pans, top-to-bottom reveals work best.\n`;
+        enhancedPrompt += `- Text placement: Put text in the TOP HALF or CENTER of the frame. Keep text away from the very top and bottom edges.\n`;
       } else if (videoAspectRatio === "16:9") {
-        enhancedPrompt += `- Aspect Ratio: STRICTLY 16:9 HORIZONTAL/LANDSCAPE format (1920x1080 or equivalent). This is a widescreen video.\n`;
-        enhancedPrompt += `- Frame composition: Horizontal orientation, wide format. All content optimized for landscape viewing.\n`;
-        enhancedPrompt += `- Camera angles: Use horizontal-friendly shots - wide shots, horizontal pans, left-to-right reveals, establishing shots.\n`;
-        enhancedPrompt += `- TEXT SAFE ZONES for 16:9:\n`;
-        enhancedPrompt += `  * Title safe: Inner 90% of frame (5% margin all sides)\n`;
-        enhancedPrompt += `  * Action safe: Inner 93% of frame\n`;
-        enhancedPrompt += `  * Primary text: Lower third (60-80% from top), left-aligned or centered\n`;
-        enhancedPrompt += `  * Headlines: Can be center-frame or rule-of-thirds positioned\n`;
-        enhancedPrompt += `  * Avoid: Extreme corners, very top/bottom edges\n`;
+        enhancedPrompt += `- Aspect Ratio: STRICTLY 16:9 HORIZONTAL/WIDESCREEN format.\n`;
+        enhancedPrompt += `- Frame: Horizontal orientation optimized for YouTube, desktop, and TV screens.\n`;
+        enhancedPrompt += `- Camera: Wide shots, horizontal pans, establishing shots work best.\n`;
+        enhancedPrompt += `- Text placement: Put text in the LOWER THIRD or CENTER of the frame. Avoid the extreme edges.\n`;
       } else if (videoAspectRatio === "4:5") {
-        enhancedPrompt += `- Aspect Ratio: STRICTLY 4:5 PORTRAIT format (1080x1350 or equivalent). This is optimized for Instagram Feed.\n`;
-        enhancedPrompt += `- Frame composition: Portrait orientation, taller than square. All content optimized for 4:5 vertical feed.\n`;
-        enhancedPrompt += `- Camera angles: Use portrait-friendly shots - close-ups, vertical pans, top-to-bottom reveals; avoid extreme wide horizontal framing.\n`;
-        enhancedPrompt += `- TEXT SAFE ZONES for 4:5:\n`;
-        enhancedPrompt += `  * Safe area: Inner 90% (5% margin all sides)\n`;
-        enhancedPrompt += `  * Primary text: Upper third or center, horizontally centered\n`;
-        enhancedPrompt += `  * CTA text: Lower portion, above bottom 10%\n`;
-        enhancedPrompt += `  * Headlines: Centered, large enough to read on mobile feed\n`;
+        enhancedPrompt += `- Aspect Ratio: STRICTLY 4:5 PORTRAIT format. Slightly taller than square.\n`;
+        enhancedPrompt += `- Frame: Portrait orientation optimized for Instagram Feed.\n`;
+        enhancedPrompt += `- Camera: Close-ups, centered subjects, vertical compositions.\n`;
+        enhancedPrompt += `- Text placement: CENTER of frame works best. Keep margins from all edges.\n`;
       } else {
         enhancedPrompt += `- Aspect Ratio: ${videoAspectRatio} (${aspectRatioDesc[videoAspectRatio] || "Custom"} format)\n`;
       }
@@ -343,11 +329,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       enhancedPrompt += `- Cinematic visual style: professional lighting, smooth camera movements, shallow depth of field\n`;
       enhancedPrompt += `- Brand polish level: Match the quality of Apple, Stripe, or Linear product commercials\n`;
       enhancedPrompt += `- Avoid: stock photos, generic templates, PowerPoint-style layouts, cartoon illustrations, white backgrounds with floating icons\n`;
-      enhancedPrompt += `- Motion: Smooth, minimal, cinematic transitions at 24-30fps. No bouncing text or flashy effects.\n`;
-      enhancedPrompt += `- Typography baseline: Modern, clean fonts; high contrast against backgrounds; maximum 6 words per text element\n`;
-      enhancedPrompt += `- Text rendering: All on-screen text must be razor-sharp, properly anti-aliased, never blurry or pixelated\n`;
-      enhancedPrompt += `- Composition: Clean, uncluttered frames with intentional negative space for text placement\n`;
-      enhancedPrompt += `- Color grading: Consistent, cinematic color palette throughout; ensure text colors complement the grade\n`;
+      enhancedPrompt += `- Motion: Smooth, cinematic transitions. No janky or stuttering animations.\n`;
+      enhancedPrompt += `- Composition: Clean frames with space reserved for text overlays - don't crowd the entire frame with visuals\n`;
+      enhancedPrompt += `- Color grading: Consistent, professional color palette throughout the video\n`;
 
       // Add voiceover/narration as spoken audio (Veo 3.1 native audio generation)
       // Using dialogue format: A narrator says, 'text here'
@@ -365,85 +349,64 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       // Add on-screen text instructions if provided (displayed text overlays)
       if (headline || subtext) {
-        enhancedPrompt += `\nON-SCREEN TEXT OVERLAYS - PREMIUM TYPOGRAPHY:\n`;
+        enhancedPrompt += `\nON-SCREEN TEXT:\n`;
+        enhancedPrompt += `The video must display clear, readable text overlays as follows:\n\n`;
         
-        // Determine style-appropriate text treatment
-        const isLuxury = style?.toLowerCase().includes('luxury') || style?.toLowerCase().includes('premium') || style?.toLowerCase().includes('elegant');
+        // Determine text style based on ad style
+        const isLuxury = style?.toLowerCase().includes('luxury') || style?.toLowerCase().includes('premium');
         const isBold = style?.toLowerCase().includes('bold') || style?.toLowerCase().includes('energetic') || style?.toLowerCase().includes('neon');
-        const isMinimal = style?.toLowerCase().includes('minimal') || style?.toLowerCase().includes('clean');
-        
-        // Typography style based on ad style
-        const fontStyle = isLuxury 
-          ? "elegant serif or thin sans-serif (like Didot, Playfair Display, or Helvetica Neue Light)"
-          : isBold 
-            ? "bold, impactful sans-serif (like Montserrat Bold, Bebas Neue, or Impact)"
-            : isMinimal
-              ? "clean, lightweight sans-serif (like Inter, SF Pro, or Helvetica Neue)"
-              : "modern, professional sans-serif (like Proxima Nova, Gotham, or Open Sans)";
-        
-        enhancedPrompt += `\nTYPOGRAPHY STYLE:\n`;
-        enhancedPrompt += `- Font family: ${fontStyle}\n`;
-        enhancedPrompt += `- Letter spacing: ${isLuxury ? "wide tracking (0.1em)" : isBold ? "tight tracking (-0.02em)" : "normal tracking"}\n`;
-        enhancedPrompt += `- Text rendering: Crisp, anti-aliased, sharp edges\n`;
+        const isRetro = style?.toLowerCase().includes('retro');
         
         if (headline) {
-          enhancedPrompt += `\nHEADLINE TEXT: '${headline}'\n`;
-          enhancedPrompt += `- Timing: Appear at 0.5-1 seconds, display for 2-3 seconds\n`;
-          enhancedPrompt += `- Font size: Large, ${isLuxury ? "40-60pt equivalent" : isBold ? "60-80pt equivalent, extra bold weight" : "48-64pt equivalent"}\n`;
-          enhancedPrompt += `- Font weight: ${isLuxury ? "Light or Regular (300-400)" : isBold ? "Bold or Black (700-900)" : "Semi-bold (600)"}\n`;
-          enhancedPrompt += `- Color: ${isLuxury ? "White or gold (#FFFFFF or #D4AF37)" : isBold ? "High contrast (white on dark, or vibrant color)" : "White (#FFFFFF) with subtle drop shadow"}\n`;
+          enhancedPrompt += `MAIN HEADLINE: "${headline}"\n`;
+          enhancedPrompt += `- Display this text PROMINENTLY on screen\n`;
+          enhancedPrompt += `- Timing: Show the headline early in the video (within first 2 seconds)\n`;
+          enhancedPrompt += `- Size: LARGE text that fills a significant portion of the frame\n`;
           
-          // Position based on aspect ratio
-          if (videoAspectRatio === "9:16") {
-            enhancedPrompt += `- Position: Centered horizontally, upper third of frame (20-35% from top)\n`;
-            enhancedPrompt += `- Safe zone: Keep 10% margin from left/right edges\n`;
-          } else if (videoAspectRatio === "16:9") {
-            enhancedPrompt += `- Position: Lower third of frame (60-75% from top), left-aligned or centered\n`;
-            enhancedPrompt += `- Safe zone: Keep 5% margin from all edges (title safe area)\n`;
+          // Style-specific look
+          if (isLuxury) {
+            enhancedPrompt += `- Style: Elegant, thin, sophisticated lettering with gold or white color\n`;
+            enhancedPrompt += `- Animation: Fade in gracefully, subtle and refined\n`;
+          } else if (isBold) {
+            enhancedPrompt += `- Style: BOLD, thick, impactful lettering with high contrast colors\n`;
+            enhancedPrompt += `- Animation: Punch in dynamically, energetic entrance\n`;
+          } else if (isRetro) {
+            enhancedPrompt += `- Style: Vintage typography, retro fonts with nostalgic colors\n`;
+            enhancedPrompt += `- Animation: Typewriter effect or classic TV reveal\n`;
           } else {
-            enhancedPrompt += `- Position: Center of frame, slightly above middle\n`;
-            enhancedPrompt += `- Safe zone: Keep 8% margin from edges\n`;
+            enhancedPrompt += `- Style: Modern, clean, professional sans-serif lettering in white\n`;
+            enhancedPrompt += `- Animation: Smooth fade in or slide up from bottom\n`;
           }
           
-          enhancedPrompt += `- Animation: ${isLuxury ? "Elegant fade in (0.5s ease-out), subtle scale from 98% to 100%" : isBold ? "Dynamic slide up with slight bounce, or glitch reveal" : "Smooth fade in (0.3s), gentle slide from bottom (20px)"}\n`;
-          enhancedPrompt += `- Exit: ${isLuxury ? "Gentle fade out" : "Quick fade (0.2s) or slide away"}\n`;
+          // Position based on aspect ratio - simple and clear
+          if (videoAspectRatio === "9:16") {
+            enhancedPrompt += `- Position: CENTER of screen, in the TOP HALF of the vertical frame\n`;
+          } else if (videoAspectRatio === "16:9") {
+            enhancedPrompt += `- Position: CENTER or LOWER THIRD of the widescreen frame\n`;
+          } else {
+            enhancedPrompt += `- Position: CENTER of the frame\n`;
+          }
+          
+          enhancedPrompt += `- The headline must be CLEARLY READABLE against any background\n`;
+          enhancedPrompt += `- Add a subtle shadow or dark overlay behind text if needed for visibility\n\n`;
         }
         
         if (subtext) {
-          enhancedPrompt += `\nSUBTEXT: '${subtext}'\n`;
-          enhancedPrompt += `- Timing: Appear 0.3-0.5 seconds after headline, display for 2 seconds\n`;
-          enhancedPrompt += `- Font size: Medium, ${isLuxury ? "24-32pt equivalent" : "20-28pt equivalent"}\n`;
-          enhancedPrompt += `- Font weight: ${isLuxury ? "Light (300)" : "Regular or Medium (400-500)"}\n`;
-          enhancedPrompt += `- Color: ${isLuxury ? "Subtle white or light gray (#FFFFFF or #E0E0E0)" : "White with 90% opacity"}\n`;
-          enhancedPrompt += `- Position: Directly below headline with ${isLuxury ? "generous spacing (24px gap)" : "tight spacing (12px gap)"}\n`;
-          enhancedPrompt += `- Animation: Follow headline animation style, delayed by 0.2s\n`;
+          enhancedPrompt += `SUBTEXT/TAGLINE: "${subtext}"\n`;
+          enhancedPrompt += `- Display this as supporting text, smaller than the headline\n`;
+          enhancedPrompt += `- Timing: Appear shortly after the headline\n`;
+          enhancedPrompt += `- Position: Below the headline, maintaining visual hierarchy\n`;
+          enhancedPrompt += `- Style: Same font family as headline but lighter weight and smaller size\n`;
+          enhancedPrompt += `- Must be readable but not compete with the headline for attention\n\n`;
         }
         
-        // Text effects for readability
-        enhancedPrompt += `\nTEXT EFFECTS FOR READABILITY:\n`;
-        if (isLuxury) {
-          enhancedPrompt += `- Subtle drop shadow: 0 2px 8px rgba(0,0,0,0.3)\n`;
-          enhancedPrompt += `- Optional: thin gold underline accent for headline\n`;
-        } else if (isBold) {
-          enhancedPrompt += `- Strong drop shadow: 0 4px 12px rgba(0,0,0,0.5)\n`;
-          enhancedPrompt += `- Optional: text stroke/outline for extra pop\n`;
-          enhancedPrompt += `- Consider: color gradient or glow effect for neon style\n`;
-        } else {
-          enhancedPrompt += `- Clean drop shadow: 0 2px 4px rgba(0,0,0,0.25)\n`;
-          enhancedPrompt += `- Ensure contrast ratio of at least 4.5:1 against background\n`;
-        }
-        
-        // Background treatment if needed
-        enhancedPrompt += `- If text overlaps busy visuals: add subtle dark gradient overlay or frosted glass blur behind text\n`;
-        enhancedPrompt += `- Text must ALWAYS be readable - never place over similar-colored backgrounds without treatment\n`;
-        
-        // Final text quality requirements
-        enhancedPrompt += `\nTEXT QUALITY REQUIREMENTS:\n`;
-        enhancedPrompt += `- All text must be perfectly sharp and crisp (no blur or pixelation)\n`;
-        enhancedPrompt += `- Text should feel integrated into the video, not pasted on top\n`;
-        enhancedPrompt += `- Maintain consistent typography throughout the video\n`;
-        enhancedPrompt += `- Maximum 6-8 words per text element for quick readability\n`;
-        enhancedPrompt += `- Text animations should be smooth (60fps), not janky or stuttering\n`;
+        // Universal text requirements
+        enhancedPrompt += `TEXT REQUIREMENTS:\n`;
+        enhancedPrompt += `- Text must be SHARP and CRISP - no blurry or distorted letters\n`;
+        enhancedPrompt += `- Text must have HIGH CONTRAST against the background (white on dark, or dark on light)\n`;
+        enhancedPrompt += `- If the background is busy or colorful, add a semi-transparent dark gradient or blur behind the text\n`;
+        enhancedPrompt += `- Text should animate smoothly (no glitching or stuttering)\n`;
+        enhancedPrompt += `- Keep text away from the very edges of the frame\n`;
       }
       
       videoPrompt = enhancedPrompt;
@@ -463,10 +426,16 @@ Style: Professional, commercial-grade cinematography with high visual impact.
 Target: Social media platforms (Instagram Reels, TikTok, YouTube Shorts, YouTube Ads, Instagram Feed).
 Requirements:
 - Strong visual hook in the first 1.5 seconds
-- Clear, readable text overlays (positioned for ${videoAspectRatio} framing)
-- Dynamic, engaging motion
+- Dynamic, engaging motion with smooth transitions
 - Professional production quality
 - Optimized for ${videoAspectRatio === "16:9" ? "desktop/landscape" : "mobile/portrait"} viewing
+
+Text on Video:
+- Any text must be LARGE, BOLD, and easy to read
+- Use high contrast colors (white text on dark, or dark text on light)
+- Position text in the ${videoAspectRatio === "9:16" ? "top half or center" : videoAspectRatio === "16:9" ? "lower third or center" : "center"} of the frame
+- Add a subtle shadow or dark overlay behind text for visibility
+- Text should animate smoothly (fade in or slide)
 - Native audio generation
 - Keep it concise and engaging (aim for quick, impactful content)
 
