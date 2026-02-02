@@ -3,6 +3,7 @@
 
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { supabase } from '@/auth/supabase/client';
 
 /**
  * Combines multiple class names conditionally and merges Tailwind classes safely.
@@ -14,4 +15,49 @@ import { twMerge } from 'tailwind-merge';
  */
 export function cn(...inputs: ClassValue[]): string {
   return twMerge(clsx(inputs));
+}
+
+/**
+ * Get the current user's access token for API calls
+ */
+export async function getAuthToken(): Promise<string | null> {
+  try {
+    const { data } = await supabase.auth.getSession();
+    return (data as any)?.session?.access_token ?? null;
+  } catch (e) {
+    console.debug('getSession error:', e);
+    return null;
+  }
+}
+
+/**
+ * Get headers for authenticated API calls
+ */
+export async function getAuthHeaders(): Promise<HeadersInit> {
+  const token = await getAuthToken();
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json',
+  };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  return headers;
+}
+
+/**
+ * Authenticated fetch wrapper - automatically includes auth token
+ */
+export async function authFetch(url: string, options: RequestInit = {}): Promise<Response> {
+  const token = await getAuthToken();
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json',
+    ...(options.headers || {}),
+  };
+  if (token) {
+    (headers as Record<string, string>)['Authorization'] = `Bearer ${token}`;
+  }
+  return fetch(url, {
+    ...options,
+    headers,
+  });
 }

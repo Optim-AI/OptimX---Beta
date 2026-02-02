@@ -15,6 +15,11 @@ import {
   Settings,
   ChevronLeft,
   ChevronRight,
+  Palette,
+  Folder,
+  MessageSquare,
+  FileText,
+  Trash2,
 } from 'lucide-react';
 import colors from '@/lib/ui/colors';
 
@@ -27,22 +32,46 @@ type NavItem = {
 
 const NAV_ITEMS: NavItem[] = [
   { href: '/dashboard', label: 'Dashboard', Icon: Home },
+  { href: '/creative-studio', label: 'Creative Studio', Icon: Palette },
   { href: '/create-campaign', label: 'Create Campaign', Icon: PlusCircle },
   // { href: '/insights', label: 'AI Insights', Icon: Cpu },
   { href: '/analytics', label: 'Analytics', Icon: BarChart3 },
-  { href: '/library', label: 'Campaign Library', Icon: BookOpen },
+  { href: '/library', label: 'Campaign Library', Icon: Folder },
   { href: '/image-library', label: 'Image Library', Icon: UploadCloud },
   { href: '/integrations', label: 'Integrations', Icon: Link2 },
   { href: '/notifications', label: 'Notifications', Icon: Bell },
   { href: '/settings', label: 'Settings', Icon: Settings },
 ];
 
+type ChatItem = {
+  id: string;
+  title: string;
+  timestamp: string;
+};
+
 type SidebarProps = {
   logoUrl?: string | null;
   onLogoClick?: () => void;
+  showChatHistory?: boolean;
+  chatHistory?: ChatItem[];
+  activeChatId?: string | null;
+  onNewChat?: () => void;
+  onChatSelect?: (chatId: string) => void;
+  onChatDelete?: (chatId: string) => void;
+  onBrandGuideline?: () => void;
 };
 
-const Sidebar: React.FC<SidebarProps> = ({ logoUrl, onLogoClick }) => {
+const Sidebar: React.FC<SidebarProps> = ({ 
+  logoUrl, 
+  onLogoClick,
+  showChatHistory = false,
+  chatHistory = [],
+  activeChatId,
+  onNewChat,
+  onChatSelect,
+  onChatDelete,
+  onBrandGuideline,
+}) => {
   const router = useRouter();
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
@@ -150,28 +179,139 @@ const Sidebar: React.FC<SidebarProps> = ({ logoUrl, onLogoClick }) => {
         })}
       </nav>
 
-      {/* Footer button - sticky bottom area, compact when collapsed */}
-      {/* <div className="px-3 py-3">
-        <button
-          onClick={() => router.push('/create-campaign')}
-          className="flex items-center gap-3 w-full rounded-lg px-3 py-2 font-medium transition-transform duration-150"
-          style={{
-            backgroundColor: sidebarPrimary,
-            color: '#05203a', // darker foreground on bright blue button
-            border: 'none',
-            boxShadow: deepShadow,
-          }}
-          onMouseEnter={(e) => {
-            (e.currentTarget as HTMLElement).style.filter = 'brightness(0.98)';
-          }}
-          onMouseLeave={(e) => {
-            (e.currentTarget as HTMLElement).style.filter = 'none';
-          }}
-        >
-          <PlusCircle size={16} />
-          <span className={`${collapsed ? 'hidden' : 'inline-block'}`}>Start Campaign</span>
-        </button>
-      </div> */}
+      {/* Bottom Section - Brand Guideline (always shown when onBrandGuideline is provided) and Session History */}
+      {(onBrandGuideline || showChatHistory) && (
+        <div className="mt-auto border-t" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
+          {/* Brand Guideline Button - Always shown when callback provided */}
+          {onBrandGuideline && (
+            <div className="px-3 py-3">
+              <button
+                onClick={() => onBrandGuideline?.()}
+                className={`flex items-center gap-3 w-full rounded-lg px-3 py-2 transition-colors duration-150 ${collapsed ? 'justify-center' : ''}`}
+                style={{
+                  backgroundColor: 'rgba(235, 243, 255, 1)',
+                  color: 'rgba(54, 145, 255, 1)',
+                  border: `1px solid rgba(255, 255, 255, 0.1)`,
+                }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLElement).style.backgroundColor = sidebarAccent;
+                  (e.currentTarget as HTMLElement).style.color = sidebarAccentFg;
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLElement).style.backgroundColor = 'rgba(235, 243, 255, 1)';
+                  (e.currentTarget as HTMLElement).style.color = 'rgba(54, 145, 255, 1)';
+                }}
+              >
+                <FileText size={16} style={{ color: 'rgba(54, 145, 255, 1)' }} />
+                <span className={`${collapsed ? 'hidden' : 'inline-block'}`} style={{ color: 'rgba(54, 145, 255, 1)', fontWeight: '300' }}>Brand guideline</span>
+              </button>
+            </div>
+          )}
+
+          {/* Session History Section - Only show on session pages */}
+          {showChatHistory && (
+            <>
+              {/* New Session Button */}
+              <div className="px-3 pb-2">
+                <button
+                  onClick={() => onNewChat?.()}
+                  className={`flex items-center gap-3 w-full rounded-lg px-3 py-2 font-light transition-all duration-150 ${collapsed ? 'justify-center' : ''}`}
+                  style={{
+                    backgroundColor: 'rgba(54, 145, 255, 1)',
+                    color: 'rgba(250, 250, 250, 1)',
+                    border: 'none',
+                    boxShadow: deepShadow,
+                  }}
+                  onMouseEnter={(e) => {
+                    (e.currentTarget as HTMLElement).style.filter = 'brightness(0.98)';
+                  }}
+                  onMouseLeave={(e) => {
+                    (e.currentTarget as HTMLElement).style.filter = 'none';
+                  }}
+                >
+                  <MessageSquare size={16} />
+                  <span className={`${collapsed ? 'hidden' : 'inline-block'}`}>New session</span>
+                </button>
+              </div>
+
+              {/* Session History List */}
+              {!collapsed && (
+                <div className="px-3 pb-3">
+                  <div className="text-xs font-medium mb-2" style={{ color: sidebarFg, opacity: 0.7 }}>
+                    Your sessions
+                  </div>
+                  <div className="space-y-1 max-h-[calc(100vh-380px)] overflow-y-auto" style={{ scrollbarWidth: 'thin' }}>
+                    {chatHistory.length === 0 ? (
+                      <div className="text-xs opacity-50 px-3 py-2">No sessions yet</div>
+                    ) : (
+                      chatHistory.map((chat) => {
+                        const isActiveChat = activeChatId === chat.id;
+                        return (
+                          <div key={chat.id} className="flex items-center gap-2 group w-full">
+                            <button
+                              className="flex-1 text-left px-3 py-2 rounded-lg text-sm transition-colors duration-150 min-w-0"
+                              style={{
+                                color: isActiveChat ? sidebarAccentFg : sidebarFg,
+                                backgroundColor: isActiveChat ? sidebarAccent : 'transparent',
+                              }}
+                              onMouseEnter={(e) => {
+                                if (!isActiveChat) {
+                                  (e.currentTarget as HTMLElement).style.backgroundColor = sidebarAccent;
+                                  (e.currentTarget as HTMLElement).style.color = sidebarAccentFg;
+                                }
+                              }}
+                              onMouseLeave={(e) => {
+                                if (!isActiveChat) {
+                                  (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent';
+                                  (e.currentTarget as HTMLElement).style.color = sidebarFg;
+                                }
+                              }}
+                              onClick={() => onChatSelect?.(chat.id)}
+                            >
+                              <div className="truncate font-medium">{chat.title}</div>
+                              <div className="text-xs opacity-60">{chat.timestamp}</div>
+                            </button>
+                            {onChatDelete ? (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onChatDelete(chat.id);
+                                }}
+                                className="opacity-0 group-hover:opacity-100 p-2 rounded-md transition-all duration-200 hover:bg-red-500/30 active:bg-red-500/50 flex-shrink-0 flex items-center justify-center z-10"
+                                style={{ 
+                                  color: '#ef4444',
+                                  backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                                  minWidth: '32px',
+                                  minHeight: '32px',
+                                  border: '1px solid rgba(239, 68, 68, 0.3)'
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.color = '#ffffff';
+                                  e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.4)';
+                                  e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.6)';
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.color = '#ef4444';
+                                  e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.15)';
+                                  e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.3)';
+                                }}
+                                aria-label="Delete session"
+                                title="Delete session"
+                              >
+                                <Trash2 size={16} strokeWidth={2.5} />
+                              </button>
+                            ) : null}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
     </aside>
   );
 };

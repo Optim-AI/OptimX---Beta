@@ -216,3 +216,29 @@ export const oauthSessions = pgTable("oauth_sessions", {
 	index("oauth_sessions_provider_idx").using("btree", table.provider.asc().nullsLast()),
 	index("oauth_sessions_expires_at_idx").using("btree", table.expiresAt.asc().nullsLast()),
 ]);
+
+// creative_studio_sessions table (for Creative Studio feature)
+export const creativeStudioSessions = pgTable("creative_studio_sessions", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	userId: uuid("user_id").notNull(),
+	name: text().notNull(),
+	sessionType: text("session_type").notNull().default('poster'), // 'poster' | 'video'
+	brandSnapshot: jsonb("brand_snapshot").notNull(),
+	// Poster-specific fields
+	phase: text(), // input, analyzing, brand-review, product-input, poster-prompt, config, generating, ready
+	messages: jsonb(), // Array of chat messages
+	productData: jsonb("product_data"),
+	posterPrompt: text("poster_prompt"),
+	config: jsonb(), // { theme, aspectRatio }
+	generatedPosters: jsonb("generated_posters"), // Array of poster URLs
+	// Video-specific fields
+	adBuilderData: jsonb("ad_builder_data"), // Video wizard state
+	generatedVideos: jsonb("generated_videos"), // Array of video URLs
+	// Timestamps
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (table) => [
+	index("idx_creative_studio_sessions_user_id").using("btree", table.userId.asc().nullsLast()),
+	index("idx_creative_studio_sessions_type").using("btree", table.sessionType.asc().nullsLast()),
+	index("idx_creative_studio_sessions_user_type").using("btree", table.userId.asc().nullsLast(), table.sessionType.asc().nullsLast()),
+]);
