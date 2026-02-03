@@ -7,30 +7,105 @@ import type { Message } from './types';
 type SystemBubbleProps = {
   children: React.ReactNode;
   images?: File[];
+  imageUrls?: string[];
+  onImageClick?: (url: string) => void;
+  onUseAsReference?: (url: string) => void;
+  onDownload?: (url: string) => void;
 };
 
-export function SystemBubble({ children, images }: SystemBubbleProps) {
+export function SystemBubble({ children, images, imageUrls, onImageClick, onUseAsReference, onDownload }: SystemBubbleProps) {
+  const hasImages = (images && images.length > 0) || (imageUrls && imageUrls.length > 0);
+  
+  const handleDownload = (url: string, idx: number) => {
+    if (onDownload) {
+      onDownload(url);
+    } else {
+      // Default download behavior
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `poster-${idx + 1}.png`;
+      link.click();
+    }
+  };
+  
   return (
-    <div className="flex gap-4 max-w-3xl">
+    <div className="flex gap-4 max-w-4xl">
       <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center">
         <span className="text-xs text-gray-600">AI</span>
       </div>
       <div className="flex-1 flex flex-col gap-2">
-        {images && images.length > 0 && (
-          <div className="flex flex-wrap gap-2 mb-2">
-            {images.map((img, idx) => (
-              <img
-                key={idx}
-                src={URL.createObjectURL(img)}
-                alt={`Fetched image ${idx + 1}`}
-                className="w-32 h-32 object-cover rounded-lg border border-gray-200 shadow-sm"
-              />
-            ))}
-          </div>
-        )}
         <div className="bg-gray-100 text-gray-700 p-4 rounded-2xl rounded-tl-sm text-sm leading-relaxed">
           {children}
         </div>
+        {hasImages && (
+          <div className="flex flex-wrap gap-4 mt-2">
+            {/* File images */}
+            {images && images.map((img, idx) => (
+              <img
+                key={`file-${idx}`}
+                src={URL.createObjectURL(img)}
+                alt={`Image ${idx + 1}`}
+                className="w-32 h-32 object-cover rounded-lg border border-gray-200 shadow-sm"
+              />
+            ))}
+            {/* URL images (generated posters) with action buttons */}
+            {imageUrls && imageUrls.map((url, idx) => (
+              <div
+                key={`url-${idx}`}
+                className="relative group"
+              >
+                {/* Image thumbnail */}
+                <div 
+                  className="cursor-pointer"
+                  onClick={() => onImageClick?.(url)}
+                >
+                  <img
+                    src={url}
+                    alt={`Generated ${idx + 1}`}
+                    className="w-40 h-auto max-h-48 object-contain rounded-lg border border-gray-200 shadow-sm transition-transform group-hover:scale-[1.02]"
+                  />
+                  {/* Preview hint overlay */}
+                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors rounded-lg flex items-center justify-center pointer-events-none">
+                    <span className="opacity-0 group-hover:opacity-100 transition-opacity text-white bg-black/60 px-2 py-1 rounded text-xs font-medium">
+                      Click to preview
+                    </span>
+                  </div>
+                </div>
+                
+                {/* Action buttons - shown on hover */}
+                <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                  {onUseAsReference && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onUseAsReference(url);
+                      }}
+                      className="px-2.5 py-1.5 bg-white text-gray-800 rounded-md text-xs font-medium shadow-lg hover:bg-gray-100 transition-colors flex items-center gap-1 border border-gray-200"
+                      title="Use as Reference"
+                    >
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      Reference
+                    </button>
+                  )}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDownload(url, idx);
+                    }}
+                    className="p-1.5 bg-white text-gray-800 rounded-md shadow-lg hover:bg-gray-100 transition-colors border border-gray-200"
+                    title="Download"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -104,11 +104,13 @@ export type AdBuilderData = {
   storyboard?: Array<{
     scene: number;
     duration: string;
+    time_range?: string; // e.g., "0-3s", "3-7s"
     visual_description: string;
     on_screen_text: string;
     emotion: string;
     motion_style: string;
     voiceover_script?: string;
+    voiceover_line?: string; // Per-scene voiceover
   }>;
   visualStyleGuide?: {
     color_palette: string;
@@ -125,6 +127,7 @@ export type Message = {
   role: "user" | "system";
   content: string;
   images?: File[];
+  imageUrls?: string[]; // For displaying generated poster URLs in chat history
   timestamp: number;
 };
 
@@ -134,6 +137,7 @@ export type SerializedMessage = {
   role: "user" | "system";
   content: string;
   timestamp: number;
+  imageUrls?: string[]; // Persist generated poster URLs in chat history
 };
 
 export type UserInput = {

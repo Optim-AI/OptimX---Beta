@@ -5,11 +5,11 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { supabaseAdmin } from "@/auth/supabase/client";
 import { getUserIdFromRequest } from "@/auth/request";
 
-// Increase body size limit to 10MB for large image payloads
+// Increase body size limit to 50MB for large image payloads (multiple poster data URLs)
 export const config = {
   api: {
     bodyParser: {
-      sizeLimit: '10mb',
+      sizeLimit: '50mb',
     },
   },
 };

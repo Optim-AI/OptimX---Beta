@@ -13,7 +13,9 @@ export const config = {
 };
 
 // Using Gemini as the "Creative Director Brain" to expand prompts
+// This implements the "Mini Gemini Studio" approach
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GEMINI_VEO_API_KEY;
+// Use v1beta API for text generation (REST API uses snake_case field names)
 const GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -22,10 +24,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
+    // Check if body exists and is valid
     if (!req.body || typeof req.body !== 'object') {
+      console.error("Invalid request body:", typeof req.body, req.body);
       return res.status(400).json({ 
         ok: false, 
         error: "Invalid request body. Expected JSON object.",
+        received: typeof req.body,
       });
     }
 
@@ -42,10 +47,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       key_message,
       cta,
       on_screen_text,
-      user_description,
+      user_description, // User's description of what they want
+      product_images, // Product images for analysis
     } = req.body;
 
-    // Normalize inputs
+    // Normalize string inputs (trim whitespace, convert to string if needed)
     product_name = typeof product_name === 'string' ? product_name.trim() : String(product_name || '').trim();
     brand_name = typeof brand_name === 'string' ? brand_name.trim() : String(brand_name || '').trim();
     category = category ? String(category).trim() : undefined;
@@ -54,16 +60,43 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     key_message = key_message ? String(key_message).trim() : undefined;
     cta = cta ? String(cta).trim() : undefined;
 
-    // Validate required fields
+    console.log("Received request body:", {
+      product_name: product_name || "(empty)",
+      brand_name: brand_name || "(empty)",
+      category,
+      style,
+      duration,
+      platform,
+      aspect_ratio,
+      voiceover,
+      tone,
+      has_user_description: !!user_description,
+      has_product_images: !!(product_images && Array.isArray(product_images) && product_images.length > 0),
+    });
+
+    // Validate required fields with better error messages
     const missingFields: string[] = [];
-    if (!product_name) missingFields.push('product_name');
-    if (!brand_name) missingFields.push('brand_name');
+    if (!product_name || product_name === '') {
+      missingFields.push('product_name');
+    }
+    if (!brand_name || brand_name === '') {
+      missingFields.push('brand_name');
+    }
 
     if (missingFields.length > 0) {
+      console.error("Missing required fields:", missingFields);
+      console.error("Received values:", { 
+        product_name: product_name || null, 
+        brand_name: brand_name || null 
+      });
       return res.status(400).json({ 
         ok: false, 
         error: `Missing required fields: ${missingFields.join(', ')}`,
         missingFields,
+        received: {
+          product_name: product_name || null,
+          brand_name: brand_name || null,
+        }
       });
     }
 
@@ -71,9 +104,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(500).json({ ok: false, error: "GEMINI_API_KEY is not configured" });
     }
 
+    // ========================================
+    // MINI GEMINI STUDIO APPROACH
+    // ========================================
+    // Step A: Use Gemini as "Creative Director Brain"
+    // This expands user input into a comprehensive cinematic prompt
+    // ========================================
+    
+    // Duration in seconds (user's choice) — used to size shot plan and voiceover
     const durationSeconds = typeof duration === 'number' ? Math.max(5, Math.min(120, duration)) : parseInt(String(duration || '6'), 10) || 6;
     const durationSecondsClamped = Math.max(5, Math.min(120, durationSeconds));
 
+    // System prompt: Creative Ad Film Director — thinks like a director, writes for exact duration
     const systemPrompt = `You are a creative ad film director. You think and write like one: you care about story, emotion, rhythm, and the exact length of the film.
 
 Your role:
@@ -86,48 +128,92 @@ Your role:
 
 Rules:
 - Total duration of the ad is exactly ${durationSecondsClamped} seconds. All shots and voiceover must fit this.
-- Shot lengths and storyboard durations must sum to ${durationSecondsClamped}s.
+- Shot lengths and storyboard durations must sum to ${durationSecondsClamped}s. E.g. for ${durationSecondsClamped}s use ~${Math.max(2, Math.floor(durationSecondsClamped / 3))}–${Math.max(4, Math.ceil(durationSecondsClamped / 2))} shots.
 - Voiceover script must be readable in ${durationSecondsClamped} seconds (about ${Math.floor(durationSecondsClamped * 2.2)}–${Math.floor(durationSecondsClamped * 2.5)} words max).
 - Avoid generic or templated lines. Reflect the user's vision and the product's story.
 - Output must be production-ready, director-grade JSON only.`;
 
-    const userPrompt = `As a creative ad film director, write a complete commercial script for the following. The ad must be exactly ${durationSecondsClamped} seconds long.
+    // User message: Ad vision + product drive the script; duration is fixed
+    const userPrompt = `As a creative ad film director, write a complete commercial script for the following. The ad must be exactly ${durationSecondsClamped} seconds long — all shots and voiceover must fit this duration.
 
-${user_description ? `USER'S AD VISION:\n"${user_description}"\n` : ""}
+${user_description ? `USER'S AD VISION (your creative North Star):\n"${user_description}"\n\nUse this vision to shape the story, mood, and how you present the product. Every shot should serve this idea.` : ""}
 
-PRODUCT:
+ABOUT THE PRODUCT:
 - Product: ${product_name}
 - Brand: ${brand_name}
 - Category: ${category || "general"}
 
 AD REQUIREMENTS:
 - Style: ${style || "Product Close-up"}
-- Duration: exactly ${durationSecondsClamped} seconds
+- Duration: exactly ${durationSecondsClamped} seconds (user chosen — do not exceed or shorten)
 - Platform: ${platform || "Instagram Reels / TikTok"}
 - Aspect Ratio: ${aspect_ratio || "9:16"}
 - Voiceover: ${voiceover ? "Yes" : "No"}
 - Tone: ${tone || "Energetic"}
 ${key_message ? `- Key Message: ${key_message}` : ""}
 ${cta ? `- CTA: ${cta}` : ""}
-${on_screen_text ? `- On-Screen Text: Enabled` : ""}
+${on_screen_text ? `- On-Screen Text: Enabled` : "- On-Screen Text: Disabled"}
 
-Return JSON with this structure:
+DIRECTOR REQUIREMENTS:
+- Create a shot-by-shot plan where the sum of all shot durations equals ${durationSecondsClamped} seconds. Use time ranges like "0-3s", "3-7s", etc., ending at ${durationSecondsClamped}s.
+- Each shot: 1–4 seconds typically; adjust number of shots so the total is ${durationSecondsClamped}s.
+- Specify camera (angle, movement), lighting, and composition for each shot.
+- Voiceover (if enabled): write a script that can be read in ${durationSecondsClamped} seconds (~${Math.floor(durationSecondsClamped * 2.2)}–${Math.floor(durationSecondsClamped * 2.5)} words). ${key_message ? `Weave in: "${key_message}".` : ""} ${cta ? `End with CTA: "${cta}".` : ""}
+- final_video_prompt: 300–800 tokens, director-grade, describing the full ${durationSecondsClamped}-second film (cinematic lighting, movement, pacing, color, premium brand quality).
+
+Return your response as a JSON object with this exact structure (use real timings that sum to ${durationSecondsClamped}s):
 {
-  "ad_angle": "The creative angle and hook",
-  "shot_plan": [{ "time": "0-Xs", "description": "Shot description" }],
-  "storyboard": [{ "scene": 1, "duration": "Xs", "visual_description": "", "on_screen_text": "", "emotion": "", "motion_style": "" }],
-  "visual_style_guide": { "color_palette": "", "lighting_mood": "", "typography": "", "motion_style": "", "brand_polish": "" },
-  "voiceover_script": "${voiceover ? "Full voiceover script" : "N/A"}",
-  "headline": "${on_screen_text ? "Short headline" : "N/A"}",
-  "subtext": "${on_screen_text ? "Supporting text" : "N/A"}",
-  "final_video_prompt": "Single cinematic prompt for the full ${durationSecondsClamped}-second video"
+  "ad_angle": "The creative angle and hook, inspired by the user's vision and product (1-2 lines)",
+  "shot_plan": [
+    { "time": "0-Xs", "description": "Shot description with camera, lighting, composition" },
+    { "time": "X-Ys", "description": "..." }
+  ],
+  "storyboard": [
+    {
+      "scene": 1,
+      "duration": "Xs",
+      "time_range": "0-Xs",
+      "visual_description": "Director-grade visual description",
+      "on_screen_text": "Max 6 words",
+      "emotion": "Emotion to evoke",
+      "motion_style": "Camera and motion style",
+      "voiceover_line": "Voiceover for this scene (if enabled)"
+    }
+  ],
+  "visual_style_guide": {
+    "color_palette": "Color palette",
+    "lighting_mood": "Lighting mood",
+    "typography": "Typography",
+    "motion_style": "Overall motion",
+    "brand_polish": "Brand polish (e.g. Apple/Stripe quality)"
+  },
+  "voiceover_script": "${voiceover ? `Full voiceover script readable in exactly ${durationSecondsClamped} seconds, ${tone || "Energetic"} tone.` : "N/A - Voiceover disabled"}",
+  "headline": "${on_screen_text ? "Short headline (3-5 words)" : "N/A"}",
+  "subtext": "${on_screen_text ? "Supporting text (5-8 words)" : "N/A"}",
+  "final_video_prompt": "Single cinematic prompt (300-800 tokens) for the full ${durationSecondsClamped}-second video: camera, lighting, composition, pacing, color grading, shot transitions, premium quality."
 }
 
-Return ONLY valid JSON.`;
+IMPORTANT: shot_plan and storyboard durations must cover 0 to ${durationSecondsClamped} seconds total. final_video_prompt must describe the entire ${durationSecondsClamped}-second film with rich cinematic language. Return ONLY valid JSON; no markdown or extra text.`;
 
+    // Call Gemini API as Creative Director Brain
+    // Using gemini-2.5-flash with v1beta REST API
     const requestBody = {
-      contents: [{ parts: [{ text: userPrompt }] }],
-      system_instruction: { parts: [{ text: systemPrompt }] },
+      contents: [
+        {
+          parts: [
+            {
+              text: userPrompt,
+            },
+          ],
+        },
+      ],
+      system_instruction: {
+        parts: [
+          {
+            text: systemPrompt,
+          },
+        ],
+      },
       generation_config: {
         temperature: 0.8,
         top_k: 40,
@@ -136,6 +222,12 @@ Return ONLY valid JSON.`;
       },
     };
 
+    const requestBodyStr = JSON.stringify(requestBody);
+    console.log("Calling Gemini API - Request size:", requestBodyStr.length, "chars");
+    console.log("User prompt length:", userPrompt.length, "chars");
+    console.log("System prompt length:", systemPrompt.length, "chars");
+
+    // Use gemini-2.5-flash which has better support for system instructions
     const response = await fetch(
       `${GEMINI_BASE_URL}/models/gemini-2.5-flash:generateContent`,
       {
@@ -144,75 +236,167 @@ Return ONLY valid JSON.`;
           "Content-Type": "application/json",
           "x-goog-api-key": GEMINI_API_KEY,
         },
-        body: JSON.stringify(requestBody),
+        body: requestBodyStr,
       }
     );
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error("Gemini API error:", response.status, errorText);
+      let errorDetails;
+      try {
+        errorDetails = JSON.parse(errorText);
+      } catch {
+        errorDetails = errorText;
+      }
+      
+      console.error("Gemini API error:", response.status);
+      console.error("Error details:", errorDetails);
+      
+      // Map common Gemini API errors to user-friendly messages
+      let errorMessage = `Failed to generate script: ${response.statusText}`;
+      if (response.status === 400) {
+        errorMessage = "Invalid request to AI service. Please check your input fields.";
+        if (errorDetails?.error?.message) {
+          errorMessage += ` Details: ${errorDetails.error.message}`;
+        }
+      } else if (response.status === 401 || response.status === 403) {
+        errorMessage = "Authentication failed. Please check API key configuration.";
+      } else if (response.status === 429) {
+        errorMessage = "Rate limit exceeded. Please try again in a moment.";
+      } else if (response.status >= 500) {
+        errorMessage = "AI service temporarily unavailable. Please try again later.";
+      }
+      
       return res.status(response.status >= 500 ? 500 : response.status).json({
         ok: false,
-        error: `Failed to generate script: ${response.statusText}`,
+        error: errorMessage,
+        details: errorDetails,
+        status: response.status,
       });
     }
 
     const data = await response.json();
+
+    // Extract the generated text from Gemini response
+    // Gemini response structure: { candidates: [{ content: { parts: [{ text: "..." }] } }] }
     const generatedText = data.candidates?.[0]?.content?.parts?.[0]?.text;
 
     if (!generatedText) {
-      return res.status(500).json({ ok: false, error: "No script generated" });
+      return res.status(500).json({
+        ok: false,
+        error: "No script generated from Gemini API",
+        rawResponse: data,
+      });
     }
 
-    // Parse JSON from response
+    // Try to parse JSON from the response
     let scriptData;
     try {
+      // Clean the response - remove markdown code blocks if present
       let cleanedText = generatedText.trim();
-      const jsonMatch = cleanedText.match(/```json\s*([\s\S]*?)\s*```/) ||
-                       cleanedText.match(/```\s*([\s\S]*?)\s*```/) ||
-                       [null, cleanedText.match(/\{[\s\S]*\}/)?.[0]];
+      
+      // Try multiple patterns to extract JSON
+      // Pattern 1: ```json ... ```
+      let jsonMatch = cleanedText.match(/```json\s*([\s\S]*?)\s*```/);
+      // Pattern 2: ``` ... ```
+      if (!jsonMatch) {
+        jsonMatch = cleanedText.match(/```\s*([\s\S]*?)\s*```/);
+      }
+      // Pattern 3: Look for JSON object directly (starts with { ends with })
+      if (!jsonMatch) {
+        const jsonObjectMatch = cleanedText.match(/\{[\s\S]*\}/);
+        if (jsonObjectMatch) {
+          jsonMatch = [null, jsonObjectMatch[0]];
+        }
+      }
       
       if (jsonMatch && jsonMatch[1]) {
         cleanedText = jsonMatch[1].trim();
       }
       
-      scriptData = JSON.parse(cleanedText);
+      console.log("Attempting to parse JSON, length:", cleanedText.length);
       
+      scriptData = JSON.parse(cleanedText);
+      console.log("Successfully parsed JSON with keys:", Object.keys(scriptData));
+      
+      // Validate required fields exist
       if (!scriptData.storyboard || !Array.isArray(scriptData.storyboard)) {
+        console.warn("Missing or invalid storyboard array, using shot_plan if available");
+        // Try to use shot_plan if storyboard is missing
         if (scriptData.shot_plan && Array.isArray(scriptData.shot_plan)) {
           scriptData.storyboard = scriptData.shot_plan.map((shot: any, idx: number) => ({
             scene: idx + 1,
-            duration: shot.time || "2-3s",
+            duration: shot.time?.replace(/[^\d-]/g, '') + 's' || "2-3s",
+            time_range: shot.time || `${idx * 2}-${(idx + 1) * 2}s`,
             visual_description: shot.description || "",
             on_screen_text: "",
             emotion: "",
             motion_style: "",
+            voiceover_line: "",
           }));
         } else {
-          scriptData.storyboard = [{
+          // Create a default storyboard
+          scriptData.storyboard = [
+            {
+              scene: 1,
+              duration: `${durationSecondsClamped}s`,
+              time_range: `0-${durationSecondsClamped}s`,
+              visual_description: scriptData.final_video_prompt?.substring(0, 200) || "Product showcase",
+              on_screen_text: scriptData.headline || "",
+              emotion: "Desire",
+              motion_style: "Smooth, cinematic",
+              voiceover_line: scriptData.voiceover_script || "",
+            },
+          ];
+        }
+      } else {
+        // Ensure each storyboard scene has time_range
+        scriptData.storyboard = scriptData.storyboard.map((scene: any, idx: number) => {
+          if (!scene.time_range && scriptData.shot_plan?.[idx]?.time) {
+            scene.time_range = scriptData.shot_plan[idx].time;
+          } else if (!scene.time_range) {
+            // Calculate approximate time range based on duration
+            const durationNum = parseInt(scene.duration) || 2;
+            const startTime = scriptData.storyboard.slice(0, idx).reduce((acc: number, s: any) => acc + (parseInt(s.duration) || 2), 0);
+            scene.time_range = `${startTime}-${startTime + durationNum}s`;
+          }
+          return scene;
+        });
+      }
+      
+    } catch (parseError: any) {
+      // If JSON parsing fails, try to extract structured data manually
+      console.error("Failed to parse JSON:", parseError.message);
+      console.error("Raw response (first 500 chars):", generatedText.substring(0, 500));
+      
+      // Try to extract fields manually using regex
+      const extractField = (text: string, field: string): string => {
+        const regex = new RegExp(`"${field}"\\s*:\\s*"([^"]*)"`, 'i');
+        const match = text.match(regex);
+        return match ? match[1] : "";
+      };
+      
+      const adAngle = extractField(generatedText, "ad_angle") || "Premium product showcase";
+      const headline = extractField(generatedText, "headline") || "Check it out";
+      const subtext = extractField(generatedText, "subtext") || "";
+      const voiceoverText = extractField(generatedText, "voiceover_script") || "";
+      const finalPrompt = extractField(generatedText, "final_video_prompt") || "";
+      
+      // Fallback: create a structured response
+      scriptData = {
+        ad_angle: adAngle,
+        storyboard: [
+          {
             scene: 1,
             duration: `${durationSecondsClamped}s`,
-            visual_description: scriptData.final_video_prompt?.substring(0, 200) || "Product showcase",
-            on_screen_text: scriptData.headline || "",
+            time_range: `0-${durationSecondsClamped}s`,
+            visual_description: finalPrompt || "Product-focused cinematic sequence showcasing the product",
+            on_screen_text: headline,
             emotion: "Desire",
             motion_style: "Smooth, cinematic",
-          }];
-        }
-      }
-    } catch (parseError: any) {
-      console.error("Failed to parse JSON:", parseError.message);
-      
-      // Fallback response
-      scriptData = {
-        ad_angle: "Premium product showcase",
-        storyboard: [{
-          scene: 1,
-          duration: `${durationSecondsClamped}s`,
-          visual_description: "Product-focused cinematic sequence",
-          on_screen_text: "",
-          emotion: "Desire",
-          motion_style: "Smooth, cinematic",
-        }],
+            voiceover_line: voiceoverText || "",
+          },
+        ],
         visual_style_guide: {
           color_palette: "Modern, premium",
           lighting_mood: "Cinematic",
@@ -220,19 +404,36 @@ Return ONLY valid JSON.`;
           motion_style: "Smooth, minimal",
           brand_polish: "Apple/Stripe quality",
         },
-        voiceover_script: voiceover ? "Discover the premium quality that sets us apart." : "",
-        headline: "",
-        subtext: "",
-        final_video_prompt: `Create a ${durationSecondsClamped}-second professional product video showcasing ${product_name} by ${brand_name} with cinematic quality.`,
+        voiceover_script: voiceoverText || (voiceover ? "Discover the premium quality that sets us apart." : ""),
+        headline: headline,
+        subtext: subtext,
+        final_video_prompt: finalPrompt || `Create a ${durationSecondsClamped}-second professional product video showcasing ${product_name || "the product"} by ${brand_name || "the brand"} with cinematic quality and engaging visuals.`,
       };
+      
+      console.log("Using fallback scriptData with extracted fields");
     }
 
-    return res.status(200).json({ ok: true, script: scriptData });
+    return res.status(200).json({
+      ok: true,
+      script: scriptData,
+    });
   } catch (error: any) {
     console.error("Script generation error:", error);
+    console.error("Error stack:", error.stack);
+    
+    // Handle specific error types
+    if (error.name === 'SyntaxError' || error.message?.includes('JSON')) {
+      return res.status(400).json({
+        ok: false,
+        error: "Invalid JSON in request body",
+        details: error.message,
+      });
+    }
+    
     return res.status(500).json({
       ok: false,
       error: error.message || "Failed to generate script",
+      type: error.name || "UnknownError",
     });
   }
 }

@@ -89,6 +89,9 @@ export default function PosterSessionPage() {
   const [deleteSessionId, setDeleteSessionId] = useState<string | null>(null);
   const [isDeletingSession, setIsDeletingSession] = useState(false);
 
+  // Image preview state (for chat history images)
+  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
+
   // Credits state
   const [credits, setCredits] = useState<number | null>(null);
   const [hasInsufficientCredits, setHasInsufficientCredits] = useState(false);
@@ -99,6 +102,7 @@ export default function PosterSessionPage() {
   const chatInputRef = useRef<HTMLTextAreaElement>(null);
   const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const messageIdCounter = useRef<number>(0);
+  const isAddingReferenceRef = useRef<boolean>(false);
 
   // Auth state
   const [isAuthReady, setIsAuthReady] = useState(false);
@@ -192,11 +196,15 @@ export default function PosterSessionPage() {
         setConfig(loadedSession.config || DEFAULT_POSTER_CONFIG);
         setGeneratedPosters(loadedSession.generatedPosters || []);
         
-        // Restore messages
+        // Restore messages (including imageUrls for poster history)
         if (loadedSession.messages) {
           const restoredMessages: Message[] = loadedSession.messages.map((m: SerializedMessage) => ({
-            ...m,
-            images: undefined, // Images aren't stored in serialized messages
+            id: m.id,
+            role: m.role,
+            content: m.content,
+            timestamp: m.timestamp,
+            imageUrls: m.imageUrls, // Restore poster URLs for chat history
+            images: undefined, // File objects aren't stored in serialized messages
           }));
           setMessages(restoredMessages);
         }
@@ -294,12 +302,13 @@ export default function PosterSessionPage() {
         }
       }
       
-      // Serialize messages (remove File objects)
+      // Serialize messages (remove File objects, but keep imageUrls for poster history)
       const serializedMessages: SerializedMessage[] = messages.map(m => ({
         id: m.id,
         role: m.role,
         content: m.content,
         timestamp: m.timestamp,
+        imageUrls: m.imageUrls, // Preserve poster URLs in chat history
       }));
       
       const payload = {
@@ -353,12 +362,13 @@ export default function PosterSessionPage() {
 
   // ============== Message Handlers ==============
   
-  function addMessage(role: 'user' | 'system', content: string, images?: File[]) {
+  function addMessage(role: 'user' | 'system', content: string, images?: File[], imageUrls?: string[]) {
     const newMessage: Message = {
       id: generateId(),
       role,
       content,
       images,
+      imageUrls,
       timestamp: Date.now(),
     };
     setMessages(prev => [...prev, newMessage]);
@@ -752,7 +762,13 @@ export default function PosterSessionPage() {
       if (posters.length > 0) {
         setGeneratedPosters(posters);
         setPhase('ready');
-        addMessage('system', `Here ${posters.length === 1 ? 'is your poster' : `are your ${posters.length} poster variants`}! Click on any to save it or use it in a campaign.`);
+        // Add message with poster images in chat history
+        addMessage(
+          'system', 
+          `Here ${posters.length === 1 ? 'is your poster' : `are your ${posters.length} poster variants`}! Click on any to preview, save, or use in a campaign.`,
+          undefined,
+          posters
+        );
       } else if (creditError) {
         throw new Error('You have no credits remaining. Please purchase more credits to generate posters.');
       } else {
@@ -848,9 +864,46 @@ export default function PosterSessionPage() {
     handleConfigSubmit();
   }
 
-  function handleUseAsReference(url: string, index: number) {
-    // TODO: Implement use as reference functionality
-    alert('Use as reference feature coming soon!');
+  async function handleUseAsReference(url: string, index: number) {
+    // Prevent double-clicks or multiple rapid calls
+    if (isAddingReferenceRef.current) {
+      console.log('Already adding reference, skipping...');
+      return;
+    }
+    isAddingReferenceRef.current = true;
+    
+    try {
+      addMessage('system', "Great! I'll use this poster as a reference. You can adjust the theme, format, and add a prompt to create variations.");
+
+      // Fetch the image and convert to File
+      const response = await fetch(url);
+      const blob = await response.blob();
+      const file = new File([blob], `reference-poster-${Date.now()}-${index}.png`, { type: 'image/png' });
+
+      // Convert file to data URL
+      const dataUrl = await fileToDataUrl(file);
+      
+      // Set ONLY this poster as the reference (replace, don't accumulate)
+      // User can add more references by clicking "Use as Reference" on additional posters
+      setSavedProductData({
+        prompt: posterPrompt || savedProductData?.prompt || '',
+        images: [file],
+        imageDataUrls: [dataUrl],
+      });
+
+      // Go to config phase so user can edit theme, format, and add prompt
+      setPhase('config');
+      
+      addMessage('system', "I've set this poster as your reference image. Now you can:\n• Select a different theme\n• Choose a different format\n• Add a prompt describing the changes you want\n\nThen click 'Generate 3 Variants' to create new variations inspired by this poster!");
+    } catch (error: any) {
+      console.error('Error using poster as reference:', error);
+      addMessage('system', `Sorry, I couldn't use this poster as a reference: ${error.message || 'Unknown error'}.`);
+    } finally {
+      // Reset the flag after a short delay
+      setTimeout(() => {
+        isAddingReferenceRef.current = false;
+      }, 500);
+    }
   }
 
   // ============== Initial Submit Handler ==============
@@ -1180,17 +1233,36 @@ export default function PosterSessionPage() {
               )}
 
               {/* Message history */}
-              {messages.map((msg) => (
-                <div key={msg.id}>
-                  {msg.role === 'user' ? (
-                    <UserBubble message={msg} />
-                  ) : (
-                    <SystemBubble images={msg.images}>
-                      {msg.content}
-                    </SystemBubble>
-                  )}
-                </div>
-              ))}
+              {messages.map((msg, msgIndex) => {
+                // Check if this is the latest message with generated posters
+                // If so, and we're in 'ready' phase, don't show imageUrls (PosterGrid shows them)
+                const isLatestPosterMessage = msg.imageUrls && msg.imageUrls.length > 0 && 
+                  msgIndex === messages.findLastIndex(m => m.imageUrls && m.imageUrls.length > 0);
+                const hideImageUrls = isLatestPosterMessage && phase === 'ready';
+                
+                return (
+                  <div key={msg.id}>
+                    {msg.role === 'user' ? (
+                      <UserBubble message={msg} />
+                    ) : (
+                      <SystemBubble 
+                        images={msg.images}
+                        imageUrls={hideImageUrls ? undefined : msg.imageUrls}
+                        onImageClick={(url) => setPreviewImageUrl(url)}
+                        onUseAsReference={(url) => handleUseAsReference(url, 0)}
+                        onDownload={(url) => {
+                          const link = document.createElement('a');
+                          link.href = url;
+                          link.download = `poster-${Date.now()}.png`;
+                          link.click();
+                        }}
+                      >
+                        {msg.content}
+                      </SystemBubble>
+                    )}
+                  </div>
+                );
+              })}
 
               {/* Thinking messages */}
               {thinkingMessages.length > 0 && (
@@ -1246,6 +1318,18 @@ export default function PosterSessionPage() {
                   config={config}
                   onConfigChange={setConfig}
                   onSubmit={handleConfigSubmit}
+                  referenceImages={savedProductData?.imageDataUrls || []}
+                  onRemoveReferenceImage={(index) => {
+                    if (savedProductData) {
+                      const newImages = savedProductData.images.filter((_, i) => i !== index);
+                      const newDataUrls = savedProductData.imageDataUrls?.filter((_, i) => i !== index) || [];
+                      setSavedProductData({
+                        ...savedProductData,
+                        images: newImages,
+                        imageDataUrls: newDataUrls,
+                      });
+                    }
+                  }}
                 />
               )}
 
@@ -1370,6 +1454,102 @@ export default function PosterSessionPage() {
                   </button>
                 </div>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Image Preview Modal (for chat history images) */}
+        {previewImageUrl && (
+          <div
+            className="fixed inset-0 bg-black/90 flex items-center justify-center z-50"
+            onClick={() => setPreviewImageUrl(null)}
+          >
+            {/* Close button */}
+            <button
+              onClick={() => setPreviewImageUrl(null)}
+              className="fixed top-4 right-4 z-50 p-2 bg-white/10 hover:bg-white/20 rounded-full text-white transition-colors"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            
+            {/* Image container */}
+            <div 
+              className="relative w-full h-full flex items-center justify-center p-8"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <img
+                src={previewImageUrl}
+                alt="Preview"
+                className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
+                style={{ imageRendering: 'auto' }}
+              />
+            </div>
+            
+            {/* Action buttons */}
+            <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 flex gap-3 z-50">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  // Download the image
+                  const link = document.createElement('a');
+                  link.href = previewImageUrl;
+                  link.download = `poster-${Date.now()}.png`;
+                  link.click();
+                }}
+                className="px-5 py-2.5 bg-white text-gray-900 rounded-lg text-sm font-medium hover:bg-gray-100 shadow-lg transition-colors flex items-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                Download
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  // For data URLs, create a blob and open it
+                  if (previewImageUrl.startsWith('data:')) {
+                    try {
+                      const [header, base64Data] = previewImageUrl.split(',');
+                      const mimeMatch = header.match(/data:([^;]+)/);
+                      const mimeType = mimeMatch ? mimeMatch[1] : 'image/png';
+                      const binaryString = atob(base64Data);
+                      const bytes = new Uint8Array(binaryString.length);
+                      for (let i = 0; i < binaryString.length; i++) {
+                        bytes[i] = binaryString.charCodeAt(i);
+                      }
+                      const blob = new Blob([bytes], { type: mimeType });
+                      const blobUrl = URL.createObjectURL(blob);
+                      window.open(blobUrl, '_blank');
+                    } catch (err) {
+                      console.error('Error opening image:', err);
+                      window.open(previewImageUrl, '_blank');
+                    }
+                  } else {
+                    window.open(previewImageUrl, '_blank');
+                  }
+                }}
+                className="px-5 py-2.5 bg-white text-gray-900 rounded-lg text-sm font-medium hover:bg-gray-100 shadow-lg transition-colors flex items-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                </svg>
+                Open in New Tab
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleUseAsReference(previewImageUrl, 0);
+                  setPreviewImageUrl(null);
+                }}
+                className="px-5 py-2.5 bg-white text-gray-900 rounded-lg text-sm font-medium hover:bg-gray-100 shadow-lg transition-colors flex items-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                Use as Reference
+              </button>
             </div>
           </div>
         )}
@@ -1634,10 +1814,14 @@ function ConfigInput({
   config,
   onConfigChange,
   onSubmit,
+  referenceImages = [],
+  onRemoveReferenceImage,
 }: {
   config: PosterConfig;
   onConfigChange: (config: PosterConfig) => void;
   onSubmit: () => void;
+  referenceImages?: string[];
+  onRemoveReferenceImage?: (index: number) => void;
 }) {
   const themes = POSTER_THEMES;
   const aspectRatios = ASPECT_RATIOS;
@@ -1647,6 +1831,42 @@ function ConfigInput({
       <div className="flex-shrink-0 w-8" />
       <div className="flex-1">
         <div className="border-2 border-gray-200 rounded-xl p-6 bg-white space-y-6 hover:border-gray-300 shadow-sm">
+          {/* Reference Images Display */}
+          {referenceImages.length > 0 && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-3">
+                Reference Images ({referenceImages.length})
+              </label>
+              <div className="flex flex-wrap gap-3">
+                {referenceImages.map((imageUrl, idx) => (
+                  <div key={idx} className="relative group">
+                    <img
+                      src={imageUrl}
+                      alt={`Reference ${idx + 1}`}
+                      className="w-20 h-20 object-cover rounded-lg border border-gray-200 shadow-sm"
+                    />
+                    {onRemoveReferenceImage && (
+                      <button
+                        type="button"
+                        onClick={() => onRemoveReferenceImage(idx)}
+                        className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full text-xs opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center hover:bg-red-600 shadow-sm"
+                        title="Remove reference"
+                      >
+                        ×
+                      </button>
+                    )}
+                    <span className="absolute bottom-1 left-1 bg-black/60 text-white text-xs px-1.5 py-0.5 rounded">
+                      {idx + 1}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-gray-500 mt-2">
+                These images will be used as style references for your new posters
+              </p>
+            </div>
+          )}
+
           {/* Theme Selection */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-3">
@@ -1740,84 +1960,355 @@ function PosterGrid({
   onRegenerateSubmit: () => void;
   onRegenerateCancel: () => void;
 }) {
+  const [openMenuIndex, setOpenMenuIndex] = useState<number | null>(null);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setOpenMenuIndex(null);
+      }
+    }
+
+    if (openMenuIndex !== null) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [openMenuIndex]);
+
+  // Handle download
+  const handleDownload = (poster: string, idx: number) => {
+    try {
+      // Save to local storage for history
+      const storageKey = 'creative_studio_downloaded_posters';
+      const existingPosters = JSON.parse(localStorage.getItem(storageKey) || '[]');
+      
+      const posterEntry = {
+        id: `poster_${Date.now()}_${idx}`,
+        url: poster,
+        downloadedAt: Date.now(),
+        index: idx,
+        prompt: posterPrompt || '',
+      };
+      
+      existingPosters.push(posterEntry);
+      const trimmedPosters = existingPosters.slice(-50);
+      localStorage.setItem(storageKey, JSON.stringify(trimmedPosters));
+      
+      // Trigger browser download
+      const link = document.createElement('a');
+      link.href = poster;
+      link.download = `poster-${idx + 1}.png`;
+      link.click();
+      
+      setOpenMenuIndex(null);
+    } catch (error) {
+      console.error('Error saving poster to local storage:', error);
+      // Still trigger download even if storage fails
+      const link = document.createElement('a');
+      link.href = poster;
+      link.download = `poster-${idx + 1}.png`;
+      link.click();
+      setOpenMenuIndex(null);
+    }
+  };
+
   return (
-    <div className="flex gap-4 max-w-4xl ml-auto">
-      <div className="flex-shrink-0 w-8" />
-      <div className="flex-1 space-y-8">
-        {showRegeneratePrompt && (
-          <div className="border border-gray-200 rounded-lg p-4 bg-white">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Edit your prompt or add changes
-            </label>
-            <textarea
-              value={regeneratePrompt}
-              onChange={(e) => onRegeneratePromptChange(e.target.value)}
-              placeholder="e.g., Make it more colorful..."
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 resize-none"
-              rows={3}
+    <>
+      {/* Image Preview Modal */}
+      {previewImage && (
+        <div
+          className="fixed inset-0 bg-black/90 flex items-center justify-center z-50"
+          onClick={() => setPreviewImage(null)}
+        >
+          {/* Close button - fixed position in viewport */}
+          <button
+            onClick={() => setPreviewImage(null)}
+            className="fixed top-4 right-4 z-50 p-2 bg-white/10 hover:bg-white/20 rounded-full text-white transition-colors"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+          
+          {/* Image container with proper aspect ratio */}
+          <div 
+            className="relative w-full h-full flex items-center justify-center p-8"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img
+              src={previewImage}
+              alt="Preview"
+              className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
+              style={{ imageRendering: 'auto' }}
             />
-            <div className="flex gap-2 mt-3">
-              <button
-                onClick={onRegenerateSubmit}
-                className="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800"
-              >
-                Generate
-              </button>
-              <button
-                onClick={onRegenerateCancel}
-                className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-            </div>
           </div>
-        )}
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          {posters.map((poster, idx) => (
-            <div key={idx} className="group">
-              <div className="mb-4 rounded-lg overflow-hidden bg-gray-50 border border-gray-100">
-                <img
-                  src={poster}
-                  alt={`Generated poster ${idx + 1}`}
-                  className="w-full h-auto block"
-                />
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => onCreateCampaign(poster, idx)}
-                  disabled={creatingCampaign === idx}
-                  className="flex-1 px-4 py-2.5 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {creatingCampaign === idx ? 'Creating...' : 'Use in Campaign'}
-                </button>
-
-                <button
-                  onClick={() => onSavePoster(poster, idx)}
-                  disabled={savingPoster === idx}
-                  className="p-2.5 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50"
-                  title="Save to Library"
-                >
-                  {savingPoster === idx ? '...' : '💾'}
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {!showRegeneratePrompt && (
-          <div className="pt-4 border-t border-gray-100">
+          
+          {/* Action buttons - fixed position at bottom */}
+          <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 flex gap-3 z-50">
             <button
-              onClick={onRegenerate}
-              className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900"
+              onClick={(e) => {
+                e.stopPropagation();
+                const idx = posters.findIndex(p => p === previewImage);
+                if (idx >= 0) handleDownload(previewImage, idx);
+              }}
+              className="px-5 py-2.5 bg-white text-gray-900 rounded-lg text-sm font-medium hover:bg-gray-100 shadow-lg transition-colors flex items-center gap-2"
             >
-              Generate New Variants
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              Download
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                // For data URLs, create a blob and open it
+                if (previewImage.startsWith('data:')) {
+                  try {
+                    const [header, base64Data] = previewImage.split(',');
+                    const mimeMatch = header.match(/data:([^;]+)/);
+                    const mimeType = mimeMatch ? mimeMatch[1] : 'image/png';
+                    const binaryString = atob(base64Data);
+                    const bytes = new Uint8Array(binaryString.length);
+                    for (let i = 0; i < binaryString.length; i++) {
+                      bytes[i] = binaryString.charCodeAt(i);
+                    }
+                    const blob = new Blob([bytes], { type: mimeType });
+                    const blobUrl = URL.createObjectURL(blob);
+                    window.open(blobUrl, '_blank');
+                  } catch (err) {
+                    console.error('Error opening image:', err);
+                    // Fallback: try direct open
+                    window.open(previewImage, '_blank');
+                  }
+                } else {
+                  window.open(previewImage, '_blank');
+                }
+              }}
+              className="px-5 py-2.5 bg-white text-gray-900 rounded-lg text-sm font-medium hover:bg-gray-100 shadow-lg transition-colors flex items-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+              </svg>
+              Open in New Tab
             </button>
           </div>
-        )}
+        </div>
+      )}
+
+      <div className="flex gap-4 max-w-4xl ml-auto">
+        <div className="flex-shrink-0 w-8" />
+        <div className="flex-1 space-y-8">
+          {/* Regeneration Prompt Input */}
+          {showRegeneratePrompt && (
+            <div className="border border-gray-200 rounded-lg p-4 bg-white">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Edit your prompt or add changes
+              </label>
+              <div className="mb-3 p-2 bg-gray-50 rounded border border-gray-100">
+                <p className="text-xs text-gray-500 mb-1">Current prompt:</p>
+                <p className="text-sm text-gray-700">{posterPrompt || 'No prompt set'}</p>
+              </div>
+              <textarea
+                value={regeneratePrompt}
+                onChange={(e) => onRegeneratePromptChange(e.target.value)}
+                placeholder="e.g., Make it more colorful, Add more text, Change the background to dark..."
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 resize-none"
+                rows={3}
+              />
+              <div className="flex gap-2 mt-3">
+                <button
+                  onClick={onRegenerateSubmit}
+                  className="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 transition-colors"
+                >
+                  Generate
+                </button>
+                <button
+                  onClick={onRegenerateCancel}
+                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Gallery-style poster grid */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            {posters.map((poster, idx) => (
+              <div
+                key={idx}
+                className="group"
+              >
+                {/* Poster - Clickable for preview */}
+                <div 
+                  className="mb-4 rounded-lg overflow-hidden bg-gray-50 border border-gray-100 cursor-pointer relative"
+                  onClick={() => setPreviewImage(poster)}
+                >
+                  <img
+                    src={poster}
+                    alt={`Generated poster ${idx + 1}`}
+                    className="w-full h-auto block transition-transform duration-200 group-hover:scale-[1.02]"
+                    style={{ imageRendering: 'auto' }}
+                  />
+                  {/* Hover overlay */}
+                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
+                    <span className="opacity-0 group-hover:opacity-100 transition-opacity text-white bg-black/50 px-3 py-1.5 rounded-lg text-sm font-medium">
+                      Click to preview
+                    </span>
+                  </div>
+                </div>
+
+                {/* Subtle Divider */}
+                <div className="h-px bg-gray-100 mb-4" />
+
+                {/* Action Area */}
+                <div className="flex items-center gap-2">
+                  {/* Primary CTA - Use in Campaign */}
+                  <button
+                    onClick={() => onCreateCampaign(poster, idx)}
+                    disabled={creatingCampaign === idx}
+                    className="flex-1 px-4 py-2.5 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {creatingCampaign === idx ? 'Creating...' : 'Use in Campaign'}
+                  </button>
+
+                  {/* More Actions Menu - Click based, not hover */}
+                  <div 
+                    className="relative"
+                    ref={openMenuIndex === idx ? menuRef : null}
+                  >
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setOpenMenuIndex(openMenuIndex === idx ? null : idx);
+                      }}
+                      className={`p-2.5 border rounded-lg transition-colors ${
+                        openMenuIndex === idx 
+                          ? 'border-gray-400 bg-gray-100 text-gray-900' 
+                          : 'border-gray-300 text-gray-600 hover:bg-gray-50'
+                      }`}
+                      aria-label="More actions"
+                    >
+                      <svg
+                        className="w-5 h-5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"
+                        />
+                      </svg>
+                    </button>
+
+                    {/* Dropdown Menu - with seamless connection to button */}
+                    {openMenuIndex === idx && (
+                      <div 
+                        className="absolute right-0 mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-20"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div className="py-1">
+                          <button
+                            onClick={() => handleDownload(poster, idx)}
+                            className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                            </svg>
+                            Download
+                          </button>
+                          <button
+                            onClick={() => {
+                              // For data URLs, create a blob and open it
+                              if (poster.startsWith('data:')) {
+                                try {
+                                  const [header, base64Data] = poster.split(',');
+                                  const mimeMatch = header.match(/data:([^;]+)/);
+                                  const mimeType = mimeMatch ? mimeMatch[1] : 'image/png';
+                                  const binaryString = atob(base64Data);
+                                  const bytes = new Uint8Array(binaryString.length);
+                                  for (let i = 0; i < binaryString.length; i++) {
+                                    bytes[i] = binaryString.charCodeAt(i);
+                                  }
+                                  const blob = new Blob([bytes], { type: mimeType });
+                                  const blobUrl = URL.createObjectURL(blob);
+                                  window.open(blobUrl, '_blank');
+                                } catch (err) {
+                                  console.error('Error opening image:', err);
+                                  window.open(poster, '_blank');
+                                }
+                              } else {
+                                window.open(poster, '_blank');
+                              }
+                              setOpenMenuIndex(null);
+                            }}
+                            className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                            </svg>
+                            View Full Size
+                          </button>
+                          <button
+                            onClick={() => {
+                              onSavePoster(poster, idx);
+                              setOpenMenuIndex(null);
+                            }}
+                            disabled={savingPoster === idx}
+                            className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+                            </svg>
+                            {savingPoster === idx ? 'Saving...' : 'Save to Library'}
+                          </button>
+                          <div className="border-t border-gray-100 my-1" />
+                          <button
+                            onClick={() => {
+                              onUseAsReference(poster, idx);
+                              setOpenMenuIndex(null);
+                            }}
+                            className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                            </svg>
+                            Use as Reference
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Regenerate Button - Improved UX */}
+          {!showRegeneratePrompt && (
+            <div className="pt-4 border-t border-gray-100 flex justify-center">
+              <button
+                onClick={onRegenerate}
+                className="px-6 py-2.5 border-2 border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 hover:border-gray-400 transition-all flex items-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                Generate New Variants
+              </button>
+            </div>
+          )}
+        </div>
+        <div className="flex-shrink-0 w-8" />
       </div>
-      <div className="flex-shrink-0 w-8" />
-    </div>
+    </>
   );
 }

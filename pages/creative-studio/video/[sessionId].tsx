@@ -1056,6 +1056,52 @@ export default function VideoSessionPage() {
                     </p>
                   </div>
 
+                  {/* Video Quality/Resolution */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Video Quality</label>
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() =>
+                          setAdBuilderData({
+                            ...adBuilderData,
+                            adSetup: { ...adBuilderData.adSetup, quality: 'standard' },
+                          })
+                        }
+                        className={`flex-1 px-4 py-3 rounded-lg border-2 text-sm font-medium transition-colors ${
+                          !adBuilderData.adSetup.quality || adBuilderData.adSetup.quality === 'standard'
+                            ? 'border-purple-600 bg-purple-50 text-purple-700'
+                            : 'border-gray-200 hover:border-gray-300'
+                        }`}
+                      >
+                        <div className="font-semibold">Standard</div>
+                        <div className="text-xs text-gray-600 mt-1">720p</div>
+                      </button>
+                      <button
+                        onClick={() =>
+                          setAdBuilderData({
+                            ...adBuilderData,
+                            adSetup: { ...adBuilderData.adSetup, quality: 'high' },
+                          })
+                        }
+                        className={`flex-1 px-4 py-3 rounded-lg border-2 text-sm font-medium transition-colors ${
+                          adBuilderData.adSetup.quality === 'high'
+                            ? 'border-purple-600 bg-purple-50 text-purple-700'
+                            : 'border-gray-200 hover:border-gray-300'
+                        }`}
+                      >
+                        <div className="font-semibold">High Quality</div>
+                        <div className="text-xs text-gray-600 mt-1">
+                          1080p {adBuilderData.adSetup.duration !== 8 && '(8s only)'}
+                        </div>
+                      </button>
+                    </div>
+                    {adBuilderData.adSetup.quality === 'high' && adBuilderData.adSetup.duration !== 8 && (
+                      <p className="mt-2 text-xs text-amber-600">
+                        ⚠️ 1080p requires 8-second duration. Please select 8s duration for high quality videos.
+                      </p>
+                    )}
+                  </div>
+
                   <div className="flex justify-between pt-4">
                     <button
                       onClick={() => setStep(1)}
@@ -1078,16 +1124,19 @@ export default function VideoSessionPage() {
             {step === 3 && (
               <div className="space-y-6">
                 <div>
-                  <h2 className="text-2xl font-bold text-gray-900 mb-2">Script Generation</h2>
-                  <p className="text-gray-600">Generate your video script and messaging</p>
+                  <h2 className="text-2xl font-bold text-gray-900 mb-2">Voiceover & Script</h2>
+                  <p className="text-gray-600">Configure voiceover and generate your video script</p>
                 </div>
 
                 <div className="bg-white rounded-lg border border-gray-200 p-6 space-y-6">
-                  {/* User Description */}
+                  {/* User Description Input */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Describe your vision (optional)
+                      Describe Your Video Ad Vision
                     </label>
+                    <p className="text-xs text-gray-500 mb-2">
+                      Tell us what you want in your video ad. Our AI will analyze your product and enhance your vision into a premium commercial script.
+                    </p>
                     <textarea
                       value={adBuilderData.userDescription || ''}
                       onChange={(e) =>
@@ -1096,48 +1145,517 @@ export default function VideoSessionPage() {
                           userDescription: e.target.value,
                         })
                       }
-                      placeholder="e.g., Focus on the product's premium quality and elegance..."
+                      placeholder="E.g., Show the product in action, highlight the key benefits, create an emotional connection with the audience, showcase the premium quality..."
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-purple-500"
-                      rows={3}
+                      rows={4}
                     />
                   </div>
 
-                  {/* Generate Button */}
+                  {/* Voiceover Toggle */}
+                  <div className="flex items-center justify-between pt-4 border-t border-gray-200">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Voiceover</label>
+                      <p className="text-xs text-gray-500">Enable AI-generated voiceover narration</p>
+                    </div>
+                    <button
+                      onClick={() =>
+                        setAdBuilderData({
+                          ...adBuilderData,
+                          voiceover: { ...adBuilderData.voiceover, enabled: !adBuilderData.voiceover.enabled },
+                        })
+                      }
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                        adBuilderData.voiceover.enabled ? 'bg-purple-600' : 'bg-gray-200'
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                          adBuilderData.voiceover.enabled ? 'translate-x-6' : 'translate-x-1'
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  {adBuilderData.voiceover.enabled && (
+                    <>
+                      {/* Tone Selection */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Tone</label>
+                        <div className="flex gap-3">
+                          {(['Energetic', 'Calm', 'Premium', 'Fun'] as const).map((tone) => (
+                            <button
+                              key={tone}
+                              onClick={() =>
+                                setAdBuilderData({
+                                  ...adBuilderData,
+                                  voiceover: { ...adBuilderData.voiceover, tone },
+                                })
+                              }
+                              className={`px-4 py-2 rounded-lg border-2 text-sm font-medium transition-colors ${
+                                adBuilderData.voiceover.tone === tone
+                                  ? 'border-purple-600 bg-purple-50 text-purple-700'
+                                  : 'border-gray-200 hover:border-gray-300'
+                              }`}
+                            >
+                              {tone}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Key Message & CTA */}
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Key Message (optional)
+                          </label>
+                          <input
+                            type="text"
+                            value={adBuilderData.voiceover.key_message || ''}
+                            onChange={(e) =>
+                              setAdBuilderData({
+                                ...adBuilderData,
+                                voiceover: { ...adBuilderData.voiceover, key_message: e.target.value },
+                              })
+                            }
+                            placeholder="e.g., 50% off sale"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            CTA (optional)
+                          </label>
+                          <input
+                            type="text"
+                            value={adBuilderData.voiceover.cta || ''}
+                            onChange={(e) =>
+                              setAdBuilderData({
+                                ...adBuilderData,
+                                voiceover: { ...adBuilderData.voiceover, cta: e.target.value },
+                              })
+                            }
+                            placeholder="e.g., Shop Now"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                          />
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {/* On-Screen Text Toggle */}
+                  <div className="flex items-center justify-between pt-4 border-t border-gray-200">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">On-Screen Text</label>
+                      <p className="text-xs text-gray-500">Show text overlays on video</p>
+                    </div>
+                    <button
+                      onClick={() =>
+                        setAdBuilderData({
+                          ...adBuilderData,
+                          onScreenText: { ...adBuilderData.onScreenText, enabled: !adBuilderData.onScreenText.enabled },
+                        })
+                      }
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                        adBuilderData.onScreenText.enabled ? 'bg-purple-600' : 'bg-gray-200'
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                          adBuilderData.onScreenText.enabled ? 'translate-x-6' : 'translate-x-1'
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  {/* Generate Script Button */}
                   <button
                     onClick={handleGenerateScript}
                     disabled={isGeneratingScript}
                     className="w-full px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {isGeneratingScript ? 'Generating Script...' : 'Generate Script'}
+                    {isGeneratingScript ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent" />
+                        Generating Script...
+                      </span>
+                    ) : (
+                      'Generate Script with AI'
+                    )}
                   </button>
 
-                  {/* Generated Script */}
-                  {adBuilderData.voiceover.script && (
-                    <div className="pt-4 border-t border-gray-200">
-                      <h3 className="text-lg font-semibold text-gray-900 mb-4">Generated Script</h3>
-                      <div className="bg-gray-50 rounded-lg p-4">
-                        <p className="text-sm text-gray-700 whitespace-pre-wrap">
-                          {adBuilderData.voiceover.script}
-                        </p>
+                  {/* Loading Skeleton while generating */}
+                  {isGeneratingScript && (
+                    <div className="pt-4 border-t border-gray-200 space-y-4">
+                      <div className="p-4 bg-purple-50 rounded-lg border border-purple-200 animate-pulse">
+                        <div className="h-4 bg-purple-200 rounded w-32 mb-3" />
+                        <div className="h-3 bg-purple-100 rounded w-full mb-2" />
+                        <div className="h-3 bg-purple-100 rounded w-3/4" />
                       </div>
+                      <div className="space-y-3">
+                        <div className="h-5 bg-gray-200 rounded w-48 animate-pulse" />
+                        {[1, 2, 3].map((i) => (
+                          <div key={i} className="p-4 bg-gray-50 rounded-lg border border-gray-200 animate-pulse">
+                            <div className="flex items-center justify-between mb-3">
+                              <div className="h-6 bg-purple-100 rounded-full w-20" />
+                              <div className="h-6 bg-gray-100 rounded-full w-16" />
+                            </div>
+                            <div className="space-y-2">
+                              <div className="h-3 bg-gray-200 rounded w-full" />
+                              <div className="h-3 bg-gray-200 rounded w-5/6" />
+                              <div className="h-3 bg-gray-200 rounded w-4/6" />
+                            </div>
+                            <div className="flex gap-2 mt-3">
+                              <div className="h-5 bg-amber-100 rounded w-24" />
+                              <div className="h-5 bg-blue-100 rounded w-28" />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
-                      {adBuilderData.onScreenText.headline && (
-                        <div className="mt-4">
-                          <p className="text-sm font-medium text-gray-700">Headline:</p>
-                          <p className="text-gray-900">{adBuilderData.onScreenText.headline}</p>
+                  {/* Ad Angle & Hook */}
+                  {!isGeneratingScript && adBuilderData.adAngle && (
+                    <div className="p-4 bg-purple-50 rounded-lg border border-purple-200">
+                      <label className="block text-sm font-semibold text-purple-900 mb-2">
+                        Ad Angle & Hook
+                      </label>
+                      <p className="text-sm text-purple-800">{adBuilderData.adAngle}</p>
+                    </div>
+                  )}
+
+                  {/* Scene-by-Scene Storyboard - Editable */}
+                  {!isGeneratingScript && adBuilderData.storyboard && adBuilderData.storyboard.length > 0 && (() => {
+                    // Calculate total duration from scenes
+                    const calculateTotalDuration = () => {
+                      let total = 0;
+                      for (const scene of adBuilderData.storyboard || []) {
+                        const timeStr = scene.time_range || scene.duration || '';
+                        // Parse formats like "0-3s", "3-7s", "2s", "2-3s"
+                        const rangeMatch = timeStr.match(/(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)\s*s?/);
+                        const singleMatch = timeStr.match(/^(\d+(?:\.\d+)?)\s*s?$/);
+                        
+                        if (rangeMatch) {
+                          // For "0-3s" format, use the end time minus start time
+                          const start = parseFloat(rangeMatch[1]);
+                          const end = parseFloat(rangeMatch[2]);
+                          total += end - start;
+                        } else if (singleMatch) {
+                          // For "3s" format, use the number directly
+                          total += parseFloat(singleMatch[1]);
+                        } else {
+                          // Default to 2 seconds if can't parse
+                          total += 2;
+                        }
+                      }
+                      return Math.round(total * 10) / 10; // Round to 1 decimal
+                    };
+                    
+                    const totalSceneDuration = calculateTotalDuration();
+                    const selectedDuration = adBuilderData.adSetup.duration;
+                    const isOverDuration = totalSceneDuration > selectedDuration;
+                    const isUnderDuration = totalSceneDuration < selectedDuration - 1; // Allow 1s buffer
+                    
+                    return (
+                    <div className="pt-4 border-t border-gray-200">
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-lg font-semibold text-gray-900">
+                          Scene-by-Scene Storyboard ({adBuilderData.storyboard.length} scenes) - Editable
+                        </h3>
+                        <div className="flex items-center gap-2">
+                          <span className={`text-sm font-medium px-3 py-1 rounded-full ${
+                            isOverDuration 
+                              ? 'bg-red-100 text-red-700' 
+                              : isUnderDuration 
+                                ? 'bg-amber-100 text-amber-700'
+                                : 'bg-green-100 text-green-700'
+                          }`}>
+                            {totalSceneDuration}s / {selectedDuration}s
+                          </span>
+                        </div>
+                      </div>
+                      
+                      {/* Duration Warning */}
+                      {isOverDuration && (
+                        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
+                          <svg className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                          </svg>
+                          <div>
+                            <p className="text-sm font-medium text-red-800">
+                              Total scene duration ({totalSceneDuration}s) exceeds selected video length ({selectedDuration}s)
+                            </p>
+                            <p className="text-xs text-red-600 mt-1">
+                              Consider removing scenes or reducing individual scene durations to fit within {selectedDuration} seconds.
+                            </p>
+                          </div>
                         </div>
                       )}
-
-                      {adBuilderData.onScreenText.subtext && (
-                        <div className="mt-2">
-                          <p className="text-sm font-medium text-gray-700">Subtext:</p>
-                          <p className="text-gray-900">{adBuilderData.onScreenText.subtext}</p>
+                      
+                      {isUnderDuration && !isOverDuration && (
+                        <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-2">
+                          <svg className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          <div>
+                            <p className="text-sm font-medium text-amber-800">
+                              Total scene duration ({totalSceneDuration}s) is shorter than selected video length ({selectedDuration}s)
+                            </p>
+                            <p className="text-xs text-amber-600 mt-1">
+                              You may want to add more scenes or extend existing ones to fill the {selectedDuration}-second video.
+                            </p>
+                          </div>
                         </div>
+                      )}
+                      
+                      <div className="space-y-4">
+                        {adBuilderData.storyboard.map((scene, idx) => (
+                          <div
+                            key={idx}
+                            className="p-4 bg-white rounded-lg border border-purple-100 shadow-sm"
+                          >
+                            {/* Scene Header */}
+                            <div className="flex items-center justify-between mb-4">
+                              <span className="text-sm font-semibold text-purple-700 bg-purple-100 px-3 py-1 rounded-full">
+                                Scene {scene.scene}
+                              </span>
+                              <button
+                                onClick={() => {
+                                  const newStoryboard = adBuilderData.storyboard?.filter((_, i) => i !== idx) || [];
+                                  // Renumber scenes
+                                  const renumbered = newStoryboard.map((s, i) => ({ ...s, scene: i + 1 }));
+                                  setAdBuilderData({ ...adBuilderData, storyboard: renumbered });
+                                }}
+                                className="text-xs text-red-600 hover:text-red-800 px-2 py-1 rounded hover:bg-red-50 transition-colors"
+                              >
+                                Remove Scene
+                              </button>
+                            </div>
+
+                            {/* Duration / Time Range */}
+                            <div className="mb-3">
+                              <label className="block text-xs font-medium text-gray-700 mb-1">
+                                Duration / Time Range
+                              </label>
+                              <input
+                                type="text"
+                                value={scene.time_range || scene.duration || ''}
+                                onChange={(e) => {
+                                  const newStoryboard = [...(adBuilderData.storyboard || [])];
+                                  newStoryboard[idx] = { ...scene, time_range: e.target.value, duration: e.target.value };
+                                  setAdBuilderData({ ...adBuilderData, storyboard: newStoryboard });
+                                }}
+                                placeholder="e.g., 0-3s or 2-3s"
+                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                              />
+                            </div>
+
+                            {/* Visual Description */}
+                            <div className="mb-3">
+                              <label className="block text-xs font-medium text-gray-700 mb-1">
+                                Visual Description
+                              </label>
+                              <textarea
+                                value={scene.visual_description || ''}
+                                onChange={(e) => {
+                                  const newStoryboard = [...(adBuilderData.storyboard || [])];
+                                  newStoryboard[idx] = { ...scene, visual_description: e.target.value };
+                                  setAdBuilderData({ ...adBuilderData, storyboard: newStoryboard });
+                                }}
+                                placeholder="Describe the visual scene with camera angles, lighting, composition..."
+                                rows={3}
+                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                              />
+                            </div>
+
+                            {/* On-Screen Text */}
+                            <div className="mb-3">
+                              <label className="block text-xs font-medium text-gray-700 mb-1">
+                                On-Screen Text (max 6 words)
+                              </label>
+                              <input
+                                type="text"
+                                value={scene.on_screen_text || ''}
+                                onChange={(e) => {
+                                  const newStoryboard = [...(adBuilderData.storyboard || [])];
+                                  newStoryboard[idx] = { ...scene, on_screen_text: e.target.value };
+                                  setAdBuilderData({ ...adBuilderData, storyboard: newStoryboard });
+                                }}
+                                placeholder="e.g., Discover Premium Quality"
+                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                              />
+                            </div>
+
+                            {/* Emotion & Motion Style (side by side) */}
+                            <div className="grid grid-cols-2 gap-3 mb-3">
+                              <div>
+                                <label className="block text-xs font-medium text-gray-700 mb-1">
+                                  Emotion
+                                </label>
+                                <input
+                                  type="text"
+                                  value={scene.emotion || ''}
+                                  onChange={(e) => {
+                                    const newStoryboard = [...(adBuilderData.storyboard || [])];
+                                    newStoryboard[idx] = { ...scene, emotion: e.target.value };
+                                    setAdBuilderData({ ...adBuilderData, storyboard: newStoryboard });
+                                  }}
+                                  placeholder="e.g., Desire, Excitement"
+                                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-medium text-gray-700 mb-1">
+                                  Motion / Camera Style
+                                </label>
+                                <input
+                                  type="text"
+                                  value={scene.motion_style || ''}
+                                  onChange={(e) => {
+                                    const newStoryboard = [...(adBuilderData.storyboard || [])];
+                                    newStoryboard[idx] = { ...scene, motion_style: e.target.value };
+                                    setAdBuilderData({ ...adBuilderData, storyboard: newStoryboard });
+                                  }}
+                                  placeholder="e.g., Slow zoom in, Pan left"
+                                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                />
+                              </div>
+                            </div>
+
+                            {/* Voiceover for this scene */}
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">
+                                Scene Voiceover (optional)
+                              </label>
+                              <textarea
+                                value={scene.voiceover_line || scene.voiceover_script || ''}
+                                onChange={(e) => {
+                                  const newStoryboard = [...(adBuilderData.storyboard || [])];
+                                  newStoryboard[idx] = { ...scene, voiceover_line: e.target.value, voiceover_script: e.target.value };
+                                  setAdBuilderData({ ...adBuilderData, storyboard: newStoryboard });
+                                }}
+                                placeholder="Voiceover text for this specific scene..."
+                                rows={2}
+                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                              />
+                            </div>
+                          </div>
+                        ))}
+
+                        {/* Add New Scene Button */}
+                        <button
+                          onClick={() => {
+                            const newScene = {
+                              scene: (adBuilderData.storyboard?.length || 0) + 1,
+                              duration: '2-3s',
+                              time_range: '',
+                              visual_description: '',
+                              on_screen_text: '',
+                              emotion: '',
+                              motion_style: '',
+                              voiceover_line: '',
+                              voiceover_script: '',
+                            };
+                            const newStoryboard = [...(adBuilderData.storyboard || []), newScene];
+                            setAdBuilderData({ ...adBuilderData, storyboard: newStoryboard });
+                          }}
+                          className="w-full px-4 py-3 text-sm text-purple-600 border-2 border-dashed border-purple-300 rounded-lg hover:bg-purple-50 hover:border-purple-400 transition-colors font-medium"
+                        >
+                          + Add New Scene
+                        </button>
+                      </div>
+                    </div>
+                    );
+                  })()}
+
+                  {/* Visual Style Guide */}
+                  {!isGeneratingScript && adBuilderData.visualStyleGuide && (
+                    <div className="p-4 bg-gradient-to-r from-purple-50 to-indigo-50 rounded-lg border border-purple-200">
+                      <label className="block text-sm font-semibold text-purple-900 mb-3">
+                        Visual Style Guide
+                      </label>
+                      <div className="grid grid-cols-2 gap-3 text-sm">
+                        <div>
+                          <span className="font-medium text-purple-800">Color Palette:</span>{' '}
+                          <span className="text-purple-700">{adBuilderData.visualStyleGuide.color_palette}</span>
+                        </div>
+                        <div>
+                          <span className="font-medium text-purple-800">Lighting:</span>{' '}
+                          <span className="text-purple-700">{adBuilderData.visualStyleGuide.lighting_mood}</span>
+                        </div>
+                        <div>
+                          <span className="font-medium text-purple-800">Typography:</span>{' '}
+                          <span className="text-purple-700">{adBuilderData.visualStyleGuide.typography}</span>
+                        </div>
+                        <div>
+                          <span className="font-medium text-purple-800">Motion:</span>{' '}
+                          <span className="text-purple-700">{adBuilderData.visualStyleGuide.motion_style}</span>
+                        </div>
+                      </div>
+                      {adBuilderData.visualStyleGuide.brand_polish && (
+                        <p className="text-xs text-purple-600 mt-3">
+                          Quality Level: {adBuilderData.visualStyleGuide.brand_polish}
+                        </p>
                       )}
                     </div>
                   )}
 
-                  <div className="flex justify-between pt-4">
+                  {/* Generated Voiceover Script */}
+                  {!isGeneratingScript && adBuilderData.voiceover.script && (
+                    <div className="p-4 bg-gray-50 rounded-lg">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Full Voiceover Script
+                      </label>
+                      <textarea
+                        value={adBuilderData.voiceover.script}
+                        onChange={(e) =>
+                          setAdBuilderData({
+                            ...adBuilderData,
+                            voiceover: { ...adBuilderData.voiceover, script: e.target.value },
+                          })
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        rows={4}
+                      />
+                    </div>
+                  )}
+
+                  {/* Headline & Subtext (editable) */}
+                  {!isGeneratingScript && adBuilderData.onScreenText.enabled && adBuilderData.voiceover.script && (
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Headline</label>
+                        <input
+                          type="text"
+                          value={adBuilderData.onScreenText.headline || ''}
+                          onChange={(e) =>
+                            setAdBuilderData({
+                              ...adBuilderData,
+                              onScreenText: { ...adBuilderData.onScreenText, headline: e.target.value },
+                            })
+                          }
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Subtext</label>
+                        <input
+                          type="text"
+                          value={adBuilderData.onScreenText.subtext || ''}
+                          onChange={(e) =>
+                            setAdBuilderData({
+                              ...adBuilderData,
+                              onScreenText: { ...adBuilderData.onScreenText, subtext: e.target.value },
+                            })
+                          }
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex justify-between pt-4 border-t border-gray-200">
                     <button
                       onClick={() => setStep(2)}
                       className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
@@ -1149,7 +1667,7 @@ export default function VideoSessionPage() {
                       disabled={!adBuilderData.voiceover.script}
                       className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      Continue to Generate
+                      Continue to Preview
                     </button>
                   </div>
                 </div>
