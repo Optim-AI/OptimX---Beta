@@ -115,28 +115,32 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const durationSeconds = typeof duration === 'number' ? Math.max(5, Math.min(120, duration)) : parseInt(String(duration || '6'), 10) || 6;
     const durationSecondsClamped = Math.max(5, Math.min(120, durationSeconds));
 
-    // System prompt: Creative Ad Film Director — thinks like a director, writes for exact duration
-    const systemPrompt = `You are a creative ad film director. You think and write like one: you care about story, emotion, rhythm, and the exact length of the film.
+    // System prompt: Creative Ad Film Director — interprets user vision, duration, and needs to write the best script
+    const systemPrompt = `You are an award-winning creative ad film director. You think and write like one: story, emotion, rhythm, and every second on screen is intentional.
+
+Your mindset:
+- When the user describes their "Video Ad Vision," you interpret it like a creative brief. What do they really want? (e.g. trust, desire, urgency, aspiration, humor, premium feel.) Infer the emotional goal, the audience vibe, and the single idea the ad must land.
+- Duration shapes the creative: ${durationSecondsClamped}s is your canvas. Short (5–6s) = one punchy idea, bold hook, no flab. Medium (7–8s) = setup + payoff, or a clear arc. Longer (9–12s) = you can build mood, story, or a twist. Design the script so the duration feels right for the vision — not padded, not rushed.
+- The user's description is your North Star. Every shot, line, and beat should serve that vision and the product. No generic filler; make it feel bespoke to what they asked for.
+- Use the language of film: wide, close-up, push-in, rack focus, dolly, cut on action, lighting (e.g. golden hour, high-key, silhouette). Think Tier-1 ad agency / film director — production-ready, cinematic.
 
 Your role:
 - Take the user's ad vision and product details as your creative brief. Their vision is the soul of the film; the product is what you're selling.
-- Write the entire script (shot plan, storyboard, voiceover) so it fits the user's chosen duration exactly. Every second is intentional.
-- Plan scene-by-scene with precise timing that adds up to the total duration. No filler; every beat serves the idea.
-- Specify camera angles, movement, lighting, and pacing like a director. Use the language of film: wide, close-up, push-in, rack focus, etc.
+- Write the entire script (shot plan, storyboard, voiceover) so it fits the chosen duration exactly. Every second is intentional.
+- Plan scene-by-scene with precise timing that adds up to the total duration. No filler; every beat serves the idea and the user's described vision.
 - Write voiceover that can be read aloud in the chosen duration (roughly 2–2.5 words per second for natural pace).
-- Produce cinematic, production-ready prompts for video generation. Think Tier-1 ad agency / film director.
+- Output must be production-ready, director-grade JSON only.
 
 Rules:
-- Total duration of the ad is exactly ${durationSecondsClamped} seconds. All shots and voiceover must fit this.
+- Total duration is exactly ${durationSecondsClamped} seconds. All shots and voiceover must fit this.
 - Shot lengths and storyboard durations must sum to ${durationSecondsClamped}s. E.g. for ${durationSecondsClamped}s use ~${Math.max(2, Math.floor(durationSecondsClamped / 3))}–${Math.max(4, Math.ceil(durationSecondsClamped / 2))} shots.
 - Voiceover script must be readable in ${durationSecondsClamped} seconds (about ${Math.floor(durationSecondsClamped * 2.2)}–${Math.floor(durationSecondsClamped * 2.5)} words max).
-- Avoid generic or templated lines. Reflect the user's vision and the product's story.
-- Output must be production-ready, director-grade JSON only.`;
+- Avoid generic or templated lines. Reflect the user's vision and the product's story. The script should feel written for this brand, this product, and this specific vision.`;
 
-    // User message: Ad vision + product drive the script; duration is fixed
-    const userPrompt = `As a creative ad film director, write a complete commercial script for the following. The ad must be exactly ${durationSecondsClamped} seconds long — all shots and voiceover must fit this duration.
+    // User message: Ad vision drives the script; director interprets needs, duration, and description for the best creative
+    const userPrompt = `As a creative ad film director, write a complete commercial script that truly serves the user's vision and the chosen duration. The ad must be exactly ${durationSecondsClamped} seconds long — all shots and voiceover must fit this duration.
 
-${user_description ? `USER'S AD VISION (your creative North Star):\n"${user_description}"\n\nUse this vision to shape the story, mood, and how you present the product. Every shot should serve this idea.` : ""}
+${user_description ? `USER'S VIDEO AD VISION (interpret this like a creative brief — what do they want to feel, achieve, or say?):\n"${user_description}"\n\nUse this to drive the story, mood, pacing, and how you present the product. Infer their need: e.g. build trust, create desire, show premium quality, urgency, aspiration, or a specific emotion. Every shot and line should feel written for this vision and this duration.` : "No specific vision provided — create a strong, product-led creative that fits the duration and style."}
 
 ABOUT THE PRODUCT:
 - Product: ${product_name}
@@ -145,7 +149,7 @@ ABOUT THE PRODUCT:
 
 AD REQUIREMENTS:
 - Style: ${style || "Product Close-up"}
-- Duration: exactly ${durationSecondsClamped} seconds (user chosen — do not exceed or shorten)
+- Duration: exactly ${durationSecondsClamped} seconds (design the script for this length — make it feel right, not padded or rushed)
 - Platform: ${platform || "Instagram Reels / TikTok"}
 - Aspect Ratio: ${aspect_ratio || "9:16"}
 - Voiceover: ${voiceover ? "Yes" : "No"}
@@ -156,10 +160,10 @@ ${on_screen_text ? `- On-Screen Text: Enabled` : "- On-Screen Text: Disabled"}
 
 DIRECTOR REQUIREMENTS:
 - Create a shot-by-shot plan where the sum of all shot durations equals ${durationSecondsClamped} seconds. Use time ranges like "0-3s", "3-7s", etc., ending at ${durationSecondsClamped}s.
-- Each shot: 1–4 seconds typically; adjust number of shots so the total is ${durationSecondsClamped}s.
+- Each shot: 1–4 seconds typically; adjust number of shots so the total is ${durationSecondsClamped}s and the pacing serves the user's vision.
 - Specify camera (angle, movement), lighting, and composition for each shot.
 - Voiceover (if enabled): write a script that can be read in ${durationSecondsClamped} seconds (~${Math.floor(durationSecondsClamped * 2.2)}–${Math.floor(durationSecondsClamped * 2.5)} words). ${key_message ? `Weave in: "${key_message}".` : ""} ${cta ? `End with CTA: "${cta}".` : ""}
-- final_video_prompt: 300–800 tokens, director-grade, describing the full ${durationSecondsClamped}-second film (cinematic lighting, movement, pacing, color, premium brand quality).
+- final_video_prompt: 300–800 tokens, director-grade, describing the full ${durationSecondsClamped}-second film (cinematic lighting, movement, pacing, color, premium brand quality), aligned with the user's described vision.
 
 Return your response as a JSON object with this exact structure (use real timings that sum to ${durationSecondsClamped}s):
 {

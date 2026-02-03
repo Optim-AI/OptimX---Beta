@@ -187,6 +187,14 @@ export default function VideoSessionPage() {
         // Restore Ad Builder data
         if (loadedSession.adBuilderData) {
           const savedAdBuilderData = loadedSession.adBuilderData as AdBuilderData;
+          // Use brand guideline logo for product when session has brand logo but product has no logo
+          const brandLogoUrl = loadedSession.brandSnapshot?.logo ?? loadedSession.brandSnapshot?.logoUrl;
+          if (savedAdBuilderData.product && brandLogoUrl && !savedAdBuilderData.product.brand_logo) {
+            savedAdBuilderData.product = {
+              ...savedAdBuilderData.product,
+              brand_logo: brandLogoUrl,
+            };
+          }
           setAdBuilderData(savedAdBuilderData);
           setStep((savedAdBuilderData as any).step || 1);
           
@@ -574,6 +582,9 @@ export default function VideoSessionPage() {
         adBuilderData.voiceover.script ||
         `Create a ${adBuilderData.adSetup.duration}-second ${adBuilderData.adSetup.style.toLowerCase()} video ad for ${adBuilderData.product.product_name}.`;
 
+      // Use brand logo from product first, then from brand guideline so the logo is always used when available
+      const brandLogo = adBuilderData.product.brand_logo ?? brand?.logo ?? brand?.logoUrl ?? null;
+
       const response = await authFetch('/api/creative-studio/generate-video', {
         method: 'POST',
         body: JSON.stringify({
@@ -589,7 +600,7 @@ export default function VideoSessionPage() {
           subtext: adBuilderData.onScreenText.subtext,
           product_images: adBuilderData.product.product_images,
           hero_image: adBuilderData.product.hero_image,
-          brand_logo: adBuilderData.product.brand_logo,
+          brand_logo: brandLogo,
         }),
       });
 
@@ -1054,52 +1065,6 @@ export default function VideoSessionPage() {
                     <p className="mt-2 text-xs text-gray-500">
                       Aspect Ratio: {adBuilderData.adSetup.aspect_ratio}
                     </p>
-                  </div>
-
-                  {/* Video Quality/Resolution */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Video Quality</label>
-                    <div className="flex gap-3">
-                      <button
-                        onClick={() =>
-                          setAdBuilderData({
-                            ...adBuilderData,
-                            adSetup: { ...adBuilderData.adSetup, quality: 'standard' },
-                          })
-                        }
-                        className={`flex-1 px-4 py-3 rounded-lg border-2 text-sm font-medium transition-colors ${
-                          !adBuilderData.adSetup.quality || adBuilderData.adSetup.quality === 'standard'
-                            ? 'border-purple-600 bg-purple-50 text-purple-700'
-                            : 'border-gray-200 hover:border-gray-300'
-                        }`}
-                      >
-                        <div className="font-semibold">Standard</div>
-                        <div className="text-xs text-gray-600 mt-1">720p</div>
-                      </button>
-                      <button
-                        onClick={() =>
-                          setAdBuilderData({
-                            ...adBuilderData,
-                            adSetup: { ...adBuilderData.adSetup, quality: 'high' },
-                          })
-                        }
-                        className={`flex-1 px-4 py-3 rounded-lg border-2 text-sm font-medium transition-colors ${
-                          adBuilderData.adSetup.quality === 'high'
-                            ? 'border-purple-600 bg-purple-50 text-purple-700'
-                            : 'border-gray-200 hover:border-gray-300'
-                        }`}
-                      >
-                        <div className="font-semibold">High Quality</div>
-                        <div className="text-xs text-gray-600 mt-1">
-                          1080p {adBuilderData.adSetup.duration !== 8 && '(8s only)'}
-                        </div>
-                      </button>
-                    </div>
-                    {adBuilderData.adSetup.quality === 'high' && adBuilderData.adSetup.duration !== 8 && (
-                      <p className="mt-2 text-xs text-amber-600">
-                        ⚠️ 1080p requires 8-second duration. Please select 8s duration for high quality videos.
-                      </p>
-                    )}
                   </div>
 
                   <div className="flex justify-between pt-4">

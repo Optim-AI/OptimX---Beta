@@ -14,7 +14,6 @@ import {
   formatTimestamp,
 } from '@/app/web/src/components/creative-studio';
 import { authFetch } from '@/lib/utils';
-import { supabase } from '@/auth/supabase/client';
 
 export default function CreativeStudioLanding() {
   const router = useRouter();
@@ -28,7 +27,6 @@ export default function CreativeStudioLanding() {
   const [showBrandOnboarding, setShowBrandOnboarding] = useState(false);
   const [showBrandGuidelineModal, setShowBrandGuidelineModal] = useState(false);
   const [onboardingMode, setOnboardingMode] = useState<'website' | 'manual'>('website');
-  const [isAnalyzingBrand, setIsAnalyzingBrand] = useState(false);
 
   // Session naming modal state
   const [showNameModal, setShowNameModal] = useState(false);
@@ -38,41 +36,9 @@ export default function CreativeStudioLanding() {
   // Credits state
   const [credits, setCredits] = useState<number | null>(null);
 
-  // Auth state
-  const [isAuthReady, setIsAuthReady] = useState(false);
-
-  // ============== Wait for Auth ==============
+  // ============== Load Sessions & Credits ==============
 
   useEffect(() => {
-    let mounted = true;
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (mounted && session) {
-        setIsAuthReady(true);
-      }
-    });
-
-    const checkSession = async () => {
-      await new Promise(resolve => setTimeout(resolve, 100));
-      const { data } = await supabase.auth.getSession();
-      if (mounted) {
-        setIsAuthReady(true);
-      }
-    };
-
-    checkSession();
-
-    return () => {
-      mounted = false;
-      subscription.unsubscribe();
-    };
-  }, []);
-
-  // ============== Load Sessions & Credits (after auth is ready) ==============
-
-  useEffect(() => {
-    if (!isAuthReady) return;
-
     async function loadCredits() {
       try {
         const response = await authFetch('/api/credits/balance');
@@ -85,11 +51,9 @@ export default function CreativeStudioLanding() {
       }
     }
     loadCredits();
-  }, [isAuthReady]);
+  }, []);
 
   useEffect(() => {
-    if (!isAuthReady) return;
-
     async function loadSessions() {
       setIsLoadingSessions(true);
       try {
@@ -115,49 +79,20 @@ export default function CreativeStudioLanding() {
     }
 
     loadSessions();
-  }, [isAuthReady]);
+  }, []);
 
-  // ============== Load Brand from Database ==============
-
-  const [isLoadingBrand, setIsLoadingBrand] = useState(true);
+  // ============== Load Brand from localStorage ==============
 
   useEffect(() => {
-    if (!isAuthReady) return;
-
-    async function loadBrandSnapshot() {
-      setIsLoadingBrand(true);
+    const storedBrand = localStorage.getItem('brand:snapshot');
+    if (storedBrand) {
       try {
-        const response = await authFetch('/api/brand/snapshot');
-        const data = await response.json();
-        if (data.ok && data.brandSnapshot) {
-          setBrand(data.brandSnapshot);
-        } else {
-          // No brand found - show the onboarding modal
-          setShowBrandOnboarding(true);
-        }
-      } catch (err) {
-        console.error('Error loading brand snapshot:', err);
-        // On error, also show the onboarding modal
-        setShowBrandOnboarding(true);
-      } finally {
-        setIsLoadingBrand(false);
+        setBrand(JSON.parse(storedBrand));
+      } catch (e) {
+        console.error('Failed to parse stored brand:', e);
       }
     }
-    loadBrandSnapshot();
-  }, [isAuthReady]);
-
-  // ============== Save Brand to Database ==============
-
-  async function saveBrandSnapshot(brandData: BrandSnapshot) {
-    try {
-      await authFetch('/api/brand/snapshot', {
-        method: 'PUT',
-        body: JSON.stringify({ brandSnapshot: brandData }),
-      });
-    } catch (err) {
-      console.error('Error saving brand snapshot:', err);
-    }
-  }
+  }, []);
 
   // ============== Session Handlers ==============
 
@@ -232,7 +167,7 @@ export default function CreativeStudioLanding() {
   // ============== Brand Handlers ==============
 
   async function handleWebsiteBrandSetup(website: string) {
-    setIsAnalyzingBrand(true);
+    setShowBrandOnboarding(false);
 
     try {
       const response = await authFetch('/api/brand/fullAnalyze', {
@@ -242,42 +177,34 @@ export default function CreativeStudioLanding() {
 
       const data = await response.json();
 
-      // API returns { result: {...} } on success, { error: string } on failure
-      if (data.result) {
-        const result = data.result;
+      if (data.ok && data.brand) {
         const brandSnapshot: BrandSnapshot = {
-          name: result.facts?.company_name || 'Unknown Brand',
-          description: result.positioning?.primary_value_proposition || '',
-          audience: result.facts?.who_it_is_for?.join(', ') || '',
-          offering: result.facts?.what_they_sell?.join(', ') || '',
-          tone: result.brandVoice || result.personality || 'professional',
-          logo: result.logo,
-          logoUrl: result.logoUrl,
-          primaryColors: result.primaryColors,
-          fontStyles: result.fontStyles,
-          brandVoice: result.brandVoice,
-          coreValueProp: result.coreValueProp,
+          name: data.brand.name || 'Unknown Brand',
+          description: data.brand.description || '',
+          audience: data.brand.audience || '',
+          offering: data.brand.offering || '',
+          tone: data.brand.tone || '',
+          logo: data.brand.logo,
+          logoUrl: data.brand.logoUrl,
+          primaryColors: data.brand.primaryColors,
+          fontStyles: data.brand.fontStyles,
+          brandVoice: data.brand.brandVoice,
+          coreValueProp: data.brand.coreValueProp,
         };
 
         setBrand(brandSnapshot);
-        saveBrandSnapshot(brandSnapshot);
-        setShowBrandOnboarding(false);
+        localStorage.setItem('brand:snapshot', JSON.stringify(brandSnapshot));
 
-        // Only show the naming modal if user was trying to create a session
-        if (newSessionType) {
-          setShowNameModal(true);
-        }
+        // Now show the naming modal
+        setShowNameModal(true);
       } else {
-        console.error('Brand analysis failed:', data.error || 'Unknown error');
-        alert(`Could not analyze website: ${data.error || 'Unknown error'}. Please try manual setup.`);
-        // Keep modal open on error
+        alert('Could not analyze website. Please try manual setup.');
+        setShowBrandOnboarding(true);
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error('Brand analysis error:', err);
-      alert(`Error analyzing website: ${err.message || 'Unknown error'}. Please try manual setup.`);
-      // Keep modal open on error
-    } finally {
-      setIsAnalyzingBrand(false);
+      alert('Error analyzing website. Please try manual setup.');
+      setShowBrandOnboarding(true);
     }
   }
 
@@ -301,13 +228,11 @@ export default function CreativeStudioLanding() {
     };
 
     setBrand(brandSnapshot);
-    saveBrandSnapshot(brandSnapshot);
+    localStorage.setItem('brand:snapshot', JSON.stringify(brandSnapshot));
     setShowBrandOnboarding(false);
 
-    // Only show the naming modal if user was trying to create a session
-    if (newSessionType) {
-      setShowNameModal(true);
-    }
+    // Now show the naming modal
+    setShowNameModal(true);
   }
 
   function handleSkipBrandSetup() {
@@ -320,17 +245,15 @@ export default function CreativeStudioLanding() {
       tone: 'professional',
     };
     setBrand(minimalBrand);
-    saveBrandSnapshot(minimalBrand);
+    localStorage.setItem('brand:snapshot', JSON.stringify(minimalBrand));
 
-    // Only show the naming modal if user was trying to create a session
-    if (newSessionType) {
-      setShowNameModal(true);
-    }
+    // Now show the naming modal
+    setShowNameModal(true);
   }
 
   function updateBrandGuideline(updated: BrandSnapshot) {
     setBrand(updated);
-    saveBrandSnapshot(updated);
+    localStorage.setItem('brand:snapshot', JSON.stringify(updated));
     setShowBrandGuidelineModal(false);
   }
 
@@ -518,7 +441,6 @@ export default function CreativeStudioLanding() {
             onWebsiteSubmit={handleWebsiteBrandSetup}
             onManualSubmit={handleManualBrandSetup}
             onSkip={handleSkipBrandSetup}
-            isLoading={isAnalyzingBrand}
           />
         )}
 

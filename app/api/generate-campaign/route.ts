@@ -611,7 +611,7 @@ export async function POST(request: Request) {
             data: base64Data,
           },
         });
-        parts.push({ text: "The image above is the BRAND LOGO. Include this logo in the poster design in an appropriate location." });
+        parts.push({ text: "The image above is the BRAND LOGO from the brand guideline. You MUST include this logo in the poster design in a visible, professional location (e.g. corner or bottom). Do not redesign or replace the logo; use it exactly as provided. Every poster must feature this brand logo." });
       }
     }
 

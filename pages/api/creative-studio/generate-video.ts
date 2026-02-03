@@ -15,6 +15,7 @@ export const config = {
 
 const GEMINI_VEO_API_KEY = process.env.GEMINI_VEO_API_KEY;
 
+// Parse data URL to get image bytes and mime type
 function parseDataUrl(dataUrl: string): { imageBytes: string; mimeType: string } | null {
   if (!dataUrl || typeof dataUrl !== "string") return null;
   const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
@@ -22,12 +23,72 @@ function parseDataUrl(dataUrl: string): { imageBytes: string; mimeType: string }
   return { mimeType: match[1], imageBytes: match[2] };
 }
 
-function createReferenceImage(dataUrl: string, referenceType: "asset" | "style" = "asset") {
-  const parsed = parseDataUrl(dataUrl);
-  if (!parsed) return null;
+// Fetch image from URL and convert to base64
+async function fetchImageAsBase64(url: string): Promise<{ imageBytes: string; mimeType: string } | null> {
+  try {
+    // Skip if it's already a data URL
+    if (url.startsWith('data:')) {
+      return parseDataUrl(url);
+    }
+    
+    // Fetch the image
+    const response = await fetch(url, {
+      headers: {
+        'Accept': 'image/*',
+        'User-Agent': 'OptimX-VideoGenerator/1.0',
+      },
+    });
+    
+    if (!response.ok) {
+      console.warn(`Failed to fetch image from URL: ${response.status}`);
+      return null;
+    }
+    
+    const contentType = response.headers.get('content-type') || 'image/jpeg';
+    const mimeType = contentType.split(';')[0].trim();
+    
+    // Only allow supported image types
+    if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(mimeType)) {
+      console.warn(`Unsupported image type: ${mimeType}`);
+      return null;
+    }
+    
+    const arrayBuffer = await response.arrayBuffer();
+    const imageBytes = Buffer.from(arrayBuffer).toString('base64');
+    
+    // Validate the base64 is not too large (max ~10MB decoded)
+    if (imageBytes.length > 14_000_000) {
+      console.warn('Image too large, skipping');
+      return null;
+    }
+    
+    console.log(`✅ Fetched image: ${mimeType}, ${Math.round(imageBytes.length / 1024)}KB`);
+    return { imageBytes, mimeType };
+  } catch (error) {
+    console.warn(`Error fetching image:`, error);
+    return null;
+  }
+}
+
+// Get image data from URL or data URL
+async function getImageData(imageSource: string): Promise<{ imageBytes: string; mimeType: string } | null> {
+  if (imageSource.startsWith('data:')) {
+    return parseDataUrl(imageSource);
+  } else if (imageSource.startsWith('http://') || imageSource.startsWith('https://')) {
+    return await fetchImageAsBase64(imageSource);
+  }
+  console.warn('Invalid image source format');
+  return null;
+}
+
+// Build a single reference image object for Veo 3.1 (referenceImages structure)
+// Structure: { image: { imageBytes, mimeType }, referenceType: "asset" }
+async function createReferenceAsset(imageSource: string): Promise<{ image: { imageBytes: string; mimeType: string }; referenceType: "asset" } | null> {
+  const imageData = await getImageData(imageSource);
+  if (!imageData) return null;
   return {
-    image: { imageBytes: parsed.imageBytes, mimeType: parsed.mimeType },
-    referenceType,
+    image: { imageBytes: imageData.imageBytes, mimeType: imageData.mimeType },
+    referenceType: "asset",
   };
 }
 
@@ -60,167 +121,196 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       hero_image,
     } = req.body;
 
-    // Build reference images
-    const referenceImages: any[] = [];
+    console.log('🎬 Video generation request:', {
+      hasPrompt: !!prompt,
+      hasFinalPrompt: !!final_video_prompt,
+      productName: product_name,
+      brandName: brand_name,
+      style,
+      duration,
+      aspectRatio: aspect_ratio,
+      hasHeroImage: !!hero_image,
+      hasBrandLogo: !!brand_logo,
+      productImagesCount: product_images?.length || 0,
+    });
+
+    // Build reference images array (Veo 3.1 structure: referenceImages with referenceType "asset")
+    // These are the EXACT product/images from URL or upload — video must depict them precisely
+    const referenceImagePromises: Promise<{ image: { imageBytes: string; mimeType: string }; referenceType: "asset" } | null>[] = [];
+    
     if (hero_image) {
-      const ref = createReferenceImage(hero_image, "asset");
-      if (ref) referenceImages.push(ref);
+      console.log('📷 Adding hero image as reference asset...');
+      referenceImagePromises.push(createReferenceAsset(hero_image));
     }
     if (brand_logo) {
-      const ref = createReferenceImage(brand_logo, "asset");
-      if (ref) referenceImages.push(ref);
+      console.log('📷 Adding brand logo as reference asset...');
+      referenceImagePromises.push(createReferenceAsset(brand_logo));
     }
     if (product_images && Array.isArray(product_images)) {
-      for (const imgUrl of product_images) {
-        if (referenceImages.length >= 3) break;
-        if (imgUrl === hero_image) continue;
-        const ref = createReferenceImage(imgUrl, "asset");
-        if (ref) referenceImages.push(ref);
+      for (const img of product_images.slice(0, 3)) {
+        if (img && img !== hero_image && img !== brand_logo) {
+          console.log('📷 Adding product image as reference asset...');
+          referenceImagePromises.push(createReferenceAsset(img));
+        }
       }
+    }
+    
+    const referenceImageResults = await Promise.all(referenceImagePromises);
+    const referenceImages = referenceImageResults.filter((r): r is NonNullable<typeof r> => r != null);
+    
+    if (referenceImages.length > 0) {
+      console.log(`✅ ${referenceImages.length} reference image(s) ready — video must depict these exactly`);
+    } else {
+      console.log('⚠️ No valid reference images — text-to-video mode');
     }
 
     let videoPrompt: string;
-    let videoDuration: number = 6;
-    let videoAspectRatio = aspect_ratio || "9:16";
-    if (!["9:16", "16:9", "4:5"].includes(videoAspectRatio)) {
+    let videoDuration: number = parseInt(duration) || 6;
+    // Support user's aspect ratio: 9:16 (vertical), 16:9 (landscape), 4:5 (portrait/social)
+    const allowedAspectRatios = ["9:16", "16:9", "4:5"];
+    let videoAspectRatio = typeof aspect_ratio === "string" ? aspect_ratio.trim() : "9:16";
+    if (!allowedAspectRatios.includes(videoAspectRatio)) {
       videoAspectRatio = "9:16";
     }
 
-    let videoResolution = "720p";
-    if (quality === "high" && duration === 8) {
-      videoResolution = "1080p";
-    }
-
     const styleDescriptions: Record<string, { prefix: string; details: string }> = {
-      "Cinematic": { prefix: "A cinematic, high-production", details: "Film-quality cinematography with dramatic lighting." },
-      "Product Close-up": { prefix: "A premium product showcase", details: "Macro-level product cinematography." },
-      "Lifestyle": { prefix: "A lifestyle-focused", details: "Authentic lifestyle footage." },
-      "Luxury": { prefix: "An elegant, luxury", details: "High-end luxury aesthetic." },
-      "Stop Motion": { prefix: "A charming stop-motion animation style", details: "Tactile stop-motion aesthetic." },
-      "3D Animation": { prefix: "A polished 3D animated", details: "High-quality 3D CGI animation." },
-      "Motion Graphics": { prefix: "A sleek motion graphics", details: "Professional motion graphics." },
-      "Bold & Energetic": { prefix: "A bold, high-energy", details: "Dynamic, fast-paced visuals." },
+      "Cinematic": { prefix: "A cinematic, high-production", details: "Film-quality cinematography with dramatic lighting and smooth camera movements." },
+      "Product Close-up": { prefix: "A premium product showcase", details: "Macro-level product cinematography with shallow depth of field, highlighting product details." },
+      "Lifestyle": { prefix: "A lifestyle-focused", details: "Authentic lifestyle footage with natural lighting and relatable scenarios." },
+      "Luxury": { prefix: "An elegant, luxury", details: "High-end luxury aesthetic with refined visuals and sophisticated color grading." },
+      "Stop Motion": { prefix: "A charming stop-motion animation style", details: "Tactile stop-motion aesthetic with creative transitions." },
+      "3D Animation": { prefix: "A polished 3D animated", details: "High-quality 3D CGI animation with realistic textures." },
+      "Motion Graphics": { prefix: "A sleek motion graphics", details: "Professional motion graphics with clean transitions and dynamic typography." },
+      "Bold & Energetic": { prefix: "A bold, high-energy", details: "Dynamic, fast-paced visuals with punchy edits and vibrant colors." },
     };
 
     if (final_video_prompt) {
-      videoDuration = duration || 6;
       const styleConfig = styleDescriptions[style] || { prefix: "A professional", details: "" };
       
-      videoPrompt = `${styleConfig.prefix} ${videoDuration}-second commercial for ${brand_name} ${product_name}.
+      videoPrompt = `${styleConfig.prefix} ${videoDuration}-second commercial video ad for ${brand_name || 'the brand'} featuring ${product_name || 'the product'}.
 
 ${styleConfig.details}
 
 ${final_video_prompt}
 
 Aspect ratio: ${videoAspectRatio}
-${voiceover_script ? `Voiceover: "${voiceover_script}"` : "No voiceover - music/sound effects only."}
-${headline ? `On-screen headline: "${headline}"` : ""}
-${subtext ? `Supporting text: "${subtext}"` : ""}`;
+${voiceover_script ? `Voiceover: "${voiceover_script}"` : "No voiceover - use music/sound effects."}
+${headline ? `Display headline: "${headline}"` : ""}
+${subtext ? `Display subtext: "${subtext}"` : ""}
+
+${referenceImages.length > 0 ? `CRITICAL — REFERENCE IMAGES: The attached reference images show the EXACT product (and/or logo) uploaded or fetched by the user. You MUST depict this product precisely in the video: same appearance, design, colors, packaging, and branding. Do not redesign, reimagine, or alter the product. The reference images are the source of truth. Generate a video ad that features this exact product.` : "Create visuals based on the description above."}`;
     } else if (prompt) {
-      videoPrompt = `Create a ${videoDuration}-second video ad (${videoAspectRatio}).
-${prompt}`;
+      videoPrompt = `Create a ${videoDuration}-second video ad (${videoAspectRatio} aspect ratio).
+
+${prompt}
+
+${referenceImages.length > 0 ? `CRITICAL: The attached reference images show the EXACT product. Depict it precisely — same look, design, and branding. Do not change or redesign the product. The video ad must feature this exact product as shown in the references.` : ''}`;
     } else {
-      return res.status(400).json({ ok: false, error: "Either 'prompt' or structured input is required" });
+      return res.status(400).json({ ok: false, error: "Either 'prompt' or 'final_video_prompt' is required" });
     }
 
-    console.log('Starting video generation, duration:', videoDuration);
+    console.log('📝 Video prompt length:', videoPrompt.length);
+    console.log('🚀 Starting Veo 3.1 video generation...', { aspectRatio: videoAspectRatio });
 
-    const needsExtension = videoDuration > 8;
-    const baseDuration = needsExtension ? (videoDuration === 10 ? 4 : 8) : videoDuration;
-    const sdkAspectRatio = videoAspectRatio === "4:5" ? "9:16" : videoAspectRatio;
-
+    // Config structure per Veo 3.1 reference: aspectRatio, optional referenceImages (each { image, referenceType: "asset" })
     const generateConfig: any = {
-      aspectRatio: sdkAspectRatio,
-      resolution: needsExtension ? "720p" : videoResolution,
+      aspectRatio: videoAspectRatio,
+      resolution: "720p",
       numberOfVideos: 1,
     };
-    
     if (referenceImages.length > 0) {
       generateConfig.referenceImages = referenceImages;
+      console.log(`📷 Using ${referenceImages.length} reference image(s) — product must appear exactly as in references`);
     }
 
-    let operation = await ai.models.generateVideos({
+    // generateVideos params: model, prompt, config (with referenceImages when provided)
+    const generateParams: any = {
       model: "veo-3.1-fast-generate-preview",
       prompt: videoPrompt,
       config: generateConfig,
-    });
+    };
+
+    let operation = await ai.models.generateVideos(generateParams);
+
+    console.log('⏳ Video generation started, polling for completion...');
 
     // Poll until complete
-    const maxAttempts = 60;
+    const maxAttempts = 60; // 10 minutes max
     let attempts = 0;
 
     while (!operation.done && attempts < maxAttempts) {
       attempts++;
-      await new Promise((resolve) => setTimeout(resolve, 10000));
+      console.log(`⏳ Polling attempt ${attempts}/${maxAttempts}...`);
+      await new Promise((resolve) => setTimeout(resolve, 10000)); // 10 second intervals
       operation = await ai.operations.getVideosOperation({ operation });
     }
 
     if (!operation.done) {
-      return res.status(408).json({ ok: false, error: "Video generation timed out." });
+      console.error('❌ Video generation timed out after 10 minutes');
+      return res.status(408).json({ ok: false, error: "Video generation timed out. Please try again." });
     }
 
-    let generatedVideo = operation.response?.generatedVideos?.[0];
+    const generatedVideo = operation.response?.generatedVideos?.[0];
     if (!generatedVideo?.video) {
+      console.error('❌ No video in response:', JSON.stringify(operation.response).substring(0, 500));
       return res.status(500).json({ ok: false, error: "Video not found in response" });
     }
 
-    // Handle extension for longer videos
-    if (needsExtension) {
-      const extensionPrompt = `Continue the video seamlessly. Maintain visual style and pacing.`;
-      
-      try {
-        let extensionOperation = await ai.models.generateVideos({
-          model: "veo-3.1-generate-preview",
-          video: generatedVideo.video,
-          prompt: extensionPrompt,
-          config: { numberOfVideos: 1, resolution: "720p" },
-        });
-        
-        let extensionAttempts = 0;
-        while (!extensionOperation.done && extensionAttempts < maxAttempts) {
-          extensionAttempts++;
-          await new Promise((resolve) => setTimeout(resolve, 10000));
-          extensionOperation = await ai.operations.getVideosOperation({ operation: extensionOperation });
-        }
-        
-        if (extensionOperation.done && extensionOperation.response?.generatedVideos?.[0]?.video) {
-          generatedVideo = extensionOperation.response.generatedVideos[0];
-        }
-      } catch (e) {
-        console.warn('Extension failed, using base video');
-      }
-    }
+    console.log('✅ Video generated successfully!');
 
     // Get video data
     let videoUrl: string;
     if (generatedVideo.video.videoBytes) {
       videoUrl = `data:video/mp4;base64,${generatedVideo.video.videoBytes}`;
+      console.log('📹 Video returned as base64 data');
     } else if (generatedVideo.video.uri) {
+      console.log('📹 Downloading video from URI...');
       const videoResponse = await fetch(generatedVideo.video.uri, {
         headers: { "x-goog-api-key": GEMINI_VEO_API_KEY },
       });
       if (!videoResponse.ok) {
-        return res.status(500).json({ ok: false, error: "Failed to download video" });
+        console.error('Failed to download video:', videoResponse.status);
+        return res.status(500).json({ ok: false, error: "Failed to download generated video" });
       }
       const videoBuffer = await videoResponse.arrayBuffer();
       videoUrl = `data:video/mp4;base64,${Buffer.from(videoBuffer).toString("base64")}`;
+      console.log('📹 Video downloaded and converted to base64');
     } else {
-      return res.status(500).json({ ok: false, error: "No video data available" });
+      return res.status(500).json({ ok: false, error: "No video data available in response" });
     }
 
     return res.status(200).json({
       ok: true,
       videoUrl,
-      duration: needsExtension ? baseDuration + 7 : baseDuration,
-      requestedDuration: videoDuration,
+      duration: videoDuration,
       aspectRatio: videoAspectRatio,
-      wasExtended: needsExtension,
+      referenceImagesUsed: referenceImages.length,
+      model: "veo-3.1-fast-generate-preview",
     });
   } catch (error: any) {
-    console.error("Video generation error:", error);
+    console.error("❌ Video generation error:", error);
+    
+    const errorMessage = error.message || String(error);
+    
+    if (errorMessage.includes('image')) {
+      return res.status(400).json({
+        ok: false,
+        error: "Failed to process the image. The image may be in an unsupported format or corrupted. Try using a JPEG or PNG image.",
+        details: errorMessage,
+      });
+    }
+    
+    if (errorMessage.includes('quota') || errorMessage.includes('rate')) {
+      return res.status(429).json({
+        ok: false,
+        error: "API rate limit reached. Please wait a moment and try again.",
+        details: errorMessage,
+      });
+    }
+    
     return res.status(500).json({
       ok: false,
-      error: error.message || "Failed to generate video",
+      error: errorMessage || "Failed to generate video",
     });
   }
 }
