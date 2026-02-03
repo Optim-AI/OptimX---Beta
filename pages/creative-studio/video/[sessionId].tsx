@@ -719,6 +719,7 @@ export default function VideoSessionPage() {
           id: data.session.id,
           name: data.session.name,
           sessionType: 'video',
+          createdAt: data.session.createdAt || new Date().toISOString(),
           updatedAt: data.session.updatedAt || new Date().toISOString(),
         };
         setVideoSessions(prev => [newSession, ...prev]);

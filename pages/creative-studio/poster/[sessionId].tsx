@@ -1093,6 +1093,7 @@ export default function PosterSessionPage() {
           id: data.session.id,
           name: data.session.name,
           sessionType: 'poster',
+          createdAt: data.session.createdAt || new Date().toISOString(),
           updatedAt: data.session.updatedAt || new Date().toISOString(),
         };
         setPosterSessions(prev => [newSession, ...prev]);
