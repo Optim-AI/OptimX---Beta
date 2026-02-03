@@ -140,7 +140,7 @@ ${prompt}`;
     }
 
     let operation = await ai.models.generateVideos({
-      model: "veo-3.1-generate-preview",
+      model: "veo-3.1-fast-generate-preview",
       prompt: videoPrompt,
       config: generateConfig,
     });
