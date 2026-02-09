@@ -36,17 +36,39 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const INITIAL_IMAGE_CREDITS = 10;
       const INITIAL_VIDEO_SECONDS = 30;
 
-      await CreditsDAO.initializeCredits(
-        userId,
-        0, // No subscription credits
-        0  // No subscription video credits
-      );
+      try {
+        // Initialize credit record
+        const initResult = await CreditsDAO.initializeCredits(
+          userId,
+          0, // No subscription credits
+          0  // No subscription video credits
+        );
 
-      // Add welcome bonus as addon credits (these don't expire)
-      await CreditsDAO.addImageCreditsAddon(userId, INITIAL_IMAGE_CREDITS);
-      await CreditsDAO.addVideoCreditsAddon(userId, INITIAL_VIDEO_SECONDS);
+        if (!initResult.success) {
+          console.error(`Failed to initialize credits for user ${userId}:`, initResult.error);
+        }
 
-      console.log(`Initialized welcome credits for new user ${userId}: ${INITIAL_IMAGE_CREDITS} image credits, ${INITIAL_VIDEO_SECONDS}s video`);
+        // Add welcome bonus as addon credits (these don't expire)
+        const imageResult = await CreditsDAO.addImageCreditsAddon(userId, INITIAL_IMAGE_CREDITS);
+        if (!imageResult.success) {
+          console.error(`Failed to add image credits for user ${userId}:`, imageResult.error);
+        }
+
+        const videoResult = await CreditsDAO.addVideoCreditsAddon(userId, INITIAL_VIDEO_SECONDS);
+        if (!videoResult.success) {
+          console.error(`Failed to add video credits for user ${userId}:`, videoResult.error);
+        }
+
+        if (initResult.success && imageResult.success && videoResult.success) {
+          console.log(`✓ Initialized welcome credits for new user ${userId}: ${INITIAL_IMAGE_CREDITS} image credits, ${INITIAL_VIDEO_SECONDS}s video`);
+        } else {
+          console.warn(`⚠ Partial credit initialization for user ${userId}. Init: ${initResult.success}, Image: ${imageResult.success}, Video: ${videoResult.success}`);
+        }
+      } catch (creditsError: any) {
+        // Don't fail the signup if credits fail, but log it prominently
+        console.error(`❌ CREDITS INITIALIZATION ERROR for user ${userId}:`, creditsError);
+        console.error('Stack:', creditsError.stack);
+      }
     }
 
     return res.status(200).json({
