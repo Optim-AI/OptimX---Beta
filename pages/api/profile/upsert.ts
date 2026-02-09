@@ -2,6 +2,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { getUserIdFromRequest } from '@/auth/request';
 import { ProfileDAO } from '@/database';
+import { CreditsDAO } from '@/database/models/Credits.dao';
 
 /**
  * POST /api/profile/upsert
@@ -23,12 +24,35 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Get profile data from request body
     const profileData = req.body || {};
 
+    // Check if this is a new user
+    const existingProfile = await ProfileDAO.get(userId);
+    const isNewUser = !existingProfile;
+
     // Upsert profile using Prisma DAO
     const profile = await ProfileDAO.upsert(userId, profileData);
 
+    // Initialize free credits for new users (pay-as-you-go welcome bonus)
+    if (isNewUser) {
+      const INITIAL_IMAGE_CREDITS = 10;
+      const INITIAL_VIDEO_SECONDS = 30;
+
+      await CreditsDAO.initializeCredits(
+        userId,
+        0, // No subscription credits
+        0  // No subscription video credits
+      );
+
+      // Add welcome bonus as addon credits (these don't expire)
+      await CreditsDAO.addImageCreditsAddon(userId, INITIAL_IMAGE_CREDITS);
+      await CreditsDAO.addVideoCreditsAddon(userId, INITIAL_VIDEO_SECONDS);
+
+      console.log(`Initialized welcome credits for new user ${userId}: ${INITIAL_IMAGE_CREDITS} image credits, ${INITIAL_VIDEO_SECONDS}s video`);
+    }
+
     return res.status(200).json({
       success: true,
-      data: profile
+      data: profile,
+      isNewUser
     });
   } catch (error: any) {
     console.error('Profile upsert error:', error);

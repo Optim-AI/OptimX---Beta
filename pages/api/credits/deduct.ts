@@ -1,11 +1,15 @@
 // pages/api/credits/deduct.ts
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { getUserIdFromRequest } from '@/auth/request';
-import { CreditsDAO } from '@/database';
+import { CreditsDAO } from '@/database/models/Credits.dao';
 
 /**
  * POST /api/credits/deduct
- * Deducts credits from user account (replaces Supabase RPC call)
+ * Deducts credits from user account
+ * 
+ * Body params:
+ * - type: 'image' | 'video' (defaults to 'image' for backward compatibility)
+ * - amount: number (defaults to 1)
  */
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
@@ -19,16 +23,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const { amount = 1 } = req.body;
+    const { type = 'image', amount = 1 } = req.body;
 
-    // Deduct credits
-    const result = await CreditsDAO.deduct(userId, amount);
+    // Deduct credits based on type
+    let result;
+    if (type === 'video') {
+      result = await CreditsDAO.deductVideoCredits(userId, amount);
+    } else {
+      result = await CreditsDAO.deductImageCredits(userId, amount);
+    }
 
     if (!result.success) {
       // Check if insufficient credits
-      if (result.error?.includes('Insufficient credits')) {
+      if (result.error?.includes('Insufficient')) {
         return res.status(400).json({
           error: 'Insufficient credits',
+          creditType: type,
           message: result.error
         });
       }
@@ -40,13 +50,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     return res.status(200).json({
       success: true,
-      credits: result.newCredits
+      creditType: type,
+      balance: result.balance,
+      // Legacy format for backward compatibility
+      credits: type === 'image' 
+        ? result.balance?.imageCredits.total 
+        : result.balance?.videoCredits.total
     });
   } catch (error: any) {
     console.error('Credits deduct error:', error);
 
     // Check if insufficient credits
-    if (error.message?.includes('Insufficient credits')) {
+    if (error.message?.includes('Insufficient')) {
       return res.status(400).json({
         error: 'Insufficient credits',
         message: error.message

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import {
@@ -20,27 +20,33 @@ import {
   MessageSquare,
   FileText,
   Trash2,
+  Crown,
+  Sparkles,
+  Zap,
+  Coins,
 } from 'lucide-react';
 import colors from '@/lib/ui/colors';
+import { authFetch } from '@/lib/utils';
 
 type NavItem = {
   href: string;
   label: string;
-  // relaxed to `any` so lucide-react's `size` / other icon props are allowed
   Icon: React.ComponentType<any>;
+  featureKey?: string; // Optional feature key for gating
 };
 
+// Map routes to feature keys for gating
 const NAV_ITEMS: NavItem[] = [
-  { href: '/dashboard', label: 'Dashboard', Icon: Home },
-  { href: '/creative-studio', label: 'Creative Studio', Icon: Palette },
-  { href: '/create-campaign', label: 'Create Campaign', Icon: PlusCircle },
-  // { href: '/insights', label: 'AI Insights', Icon: Cpu },
-  { href: '/analytics', label: 'Analytics', Icon: BarChart3 },
-  { href: '/library', label: 'Campaign Library', Icon: Folder },
-  { href: '/image-library', label: 'Image Library', Icon: UploadCloud },
-  { href: '/integrations', label: 'Integrations', Icon: Link2 },
-  { href: '/notifications', label: 'Notifications', Icon: Bell },
-  { href: '/settings', label: 'Settings', Icon: Settings },
+  { href: '/dashboard', label: 'Dashboard', Icon: Home, featureKey: 'dashboard' },
+  { href: '/creative-studio', label: 'Creative Studio', Icon: Palette }, // Always visible
+  { href: '/buy-credits', label: 'Buy Credits', Icon: Coins }, // Always visible (pay-as-you-go)
+  { href: '/create-campaign', label: 'Create Campaign', Icon: PlusCircle, featureKey: 'create_campaigns' },
+  { href: '/analytics', label: 'Analytics', Icon: BarChart3, featureKey: 'basic_analytics' },
+  { href: '/library', label: 'Campaign Library', Icon: Folder, featureKey: 'campaign_library' },
+  { href: '/image-library', label: 'Image Library', Icon: UploadCloud }, // Always visible
+  { href: '/integrations', label: 'Integrations', Icon: Link2, featureKey: 'integrations' },
+  { href: '/notifications', label: 'Notifications', Icon: Bell }, // Always visible
+  { href: '/settings', label: 'Settings', Icon: Settings }, // Always visible
 ];
 
 type ChatItem = {
@@ -61,6 +67,15 @@ type SidebarProps = {
   onBrandGuideline?: () => void;
 };
 
+// Plan styling configuration
+const PLAN_STYLES: Record<string, { color: string; bgColor: string; icon: React.ComponentType<any> }> = {
+  'Free Trial': { color: '#f59e0b', bgColor: 'rgba(245, 158, 11, 0.15)', icon: Sparkles },
+  'Basic': { color: '#64748b', bgColor: 'rgba(100, 116, 139, 0.15)', icon: Zap },
+  'Starter': { color: '#3b82f6', bgColor: 'rgba(59, 130, 246, 0.15)', icon: Zap },
+  'Lite Growth': { color: '#8b5cf6', bgColor: 'rgba(139, 92, 246, 0.15)', icon: Crown },
+  'Growth Pro': { color: '#ec4899', bgColor: 'rgba(236, 72, 153, 0.15)', icon: Crown },
+};
+
 const Sidebar: React.FC<SidebarProps> = ({ 
   logoUrl, 
   onLogoClick,
@@ -75,6 +90,37 @@ const Sidebar: React.FC<SidebarProps> = ({
   const router = useRouter();
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
+  const [currentPlan, setCurrentPlan] = useState<{ name: string; status: string } | null>(null);
+  const [featureAccess, setFeatureAccess] = useState<Record<string, any>>({});
+  const [loading, setLoading] = useState(true);
+
+  // Fetch current subscription and feature access on mount
+  useEffect(() => {
+    async function fetchSubscriptionAndFeatures() {
+      try {
+        const response = await authFetch('/api/billing/subscriptions/current');
+        const data = await response.json();
+        if (data.success && data.hasSubscription && data.subscription?.plan) {
+          setCurrentPlan({
+            name: data.subscription.plan.name,
+            status: data.subscription.status,
+          });
+        }
+
+        // Fetch feature access
+        const featuresResponse = await authFetch('/api/features/access');
+        const featuresData = await featuresResponse.json();
+        if (featuresData.success) {
+          setFeatureAccess(featuresData.features || {});
+        }
+      } catch (err) {
+        console.error('Failed to fetch subscription/features:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchSubscriptionAndFeatures();
+  }, []);
 
   // Blue-themed fallbacks (use tokens from your colors object if present)
   const sidebarBg =
@@ -148,6 +194,16 @@ const Sidebar: React.FC<SidebarProps> = ({
       <nav className="flex-1 px-2 py-3 space-y-1" aria-label="Primary">
         {NAV_ITEMS.map((item) => {
           const active = isActive(item.href);
+          
+          // Check feature access for gated items
+          if (item.featureKey) {
+            const access = featureAccess[item.featureKey];
+            // Hide if feature is not enabled and not coming soon
+            if (!access || (!access.enabled && !access.comingSoon)) {
+              return null;
+            }
+          }
+          
           return (
             <Link
               key={item.href}
@@ -173,15 +229,78 @@ const Sidebar: React.FC<SidebarProps> = ({
               }}
             >
               <item.Icon size={18} />
-              <span className={`truncate text-sm ${collapsed ? 'hidden' : 'block'}`}>{item.label}</span>
+              <span className={`truncate text-sm ${collapsed ? 'hidden' : 'block'}`}>
+                {item.label}
+                {/* Show "Coming Soon" badge if applicable */}
+                {item.featureKey && featureAccess[item.featureKey]?.comingSoon && (
+                  <span style={{
+                    marginLeft: 8,
+                    fontSize: 10,
+                    padding: '2px 6px',
+                    borderRadius: 4,
+                    background: 'rgba(245, 158, 11, 0.2)',
+                    color: '#f59e0b',
+                    fontWeight: 600,
+                  }}>
+                    Soon
+                  </span>
+                )}
+              </span>
             </Link>
           );
         })}
       </nav>
 
+      {/* Current Plan Badge */}
+      {currentPlan && (
+        <div className={`px-3 py-3 border-t ${!(onBrandGuideline || showChatHistory) ? 'mt-auto' : ''}`} style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
+          <Link
+            href="/pricing"
+            className={`flex items-center gap-3 w-full rounded-lg px-3 py-2.5 transition-all duration-200 ${collapsed ? 'justify-center' : ''}`}
+            style={{
+              backgroundColor: PLAN_STYLES[currentPlan.name]?.bgColor || 'rgba(100, 116, 139, 0.15)',
+              border: `1px solid ${PLAN_STYLES[currentPlan.name]?.color || '#64748b'}40`,
+            }}
+          >
+            {(() => {
+              const PlanIcon = PLAN_STYLES[currentPlan.name]?.icon || Zap;
+              const planColor = PLAN_STYLES[currentPlan.name]?.color || '#64748b';
+              return (
+                <>
+                  <PlanIcon size={18} style={{ color: planColor, flexShrink: 0 }} />
+                  {!collapsed && (
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold truncate" style={{ color: planColor }}>
+                          {currentPlan.name}
+                        </span>
+                        {currentPlan.status === 'trialing' && (
+                          <span 
+                            className="text-[10px] px-1.5 py-0.5 rounded-full font-medium"
+                            style={{ 
+                              backgroundColor: `${planColor}30`,
+                              color: planColor,
+                            }}
+                          >
+                            Trial
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[11px] opacity-70" style={{ color: sidebarFg }}>
+                        View plans
+                      </span>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
+          </Link>
+        </div>
+      )}
+
       {/* Bottom Section - Brand Guideline (always shown when onBrandGuideline is provided) and Session History */}
       {(onBrandGuideline || showChatHistory) && (
-        <div className="mt-auto border-t" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
+        <div className={`border-t ${!currentPlan ? 'mt-auto' : ''}`} style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
           {/* Brand Guideline Button - Always shown when callback provided */}
           {onBrandGuideline && (
             <div className="px-3 py-3">

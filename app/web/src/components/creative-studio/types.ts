@@ -149,6 +149,7 @@ export type UserInput = {
 export type PosterConfig = {
   theme: string;
   aspectRatio: "1:1" | "4:5" | "9:16" | "1.91:1";
+  variantCount: 1 | 2 | 3; // Number of variants to generate (1-3)
 };
 
 // Session type for database persistence

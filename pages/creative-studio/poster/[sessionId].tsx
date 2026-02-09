@@ -5,6 +5,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '@/auth/supabase/client';
 import Sidebar from '@/app/web/src/components/Sidebar';
+import { InsufficientCreditsAlert } from '@/app/web/src/components/billing';
 import {
   type BrandSnapshot,
   type Phase,
@@ -95,7 +96,10 @@ export default function PosterSessionPage() {
   // Credits state
   const [credits, setCredits] = useState<number | null>(null);
   const [hasInsufficientCredits, setHasInsufficientCredits] = useState(false);
-  
+
+  // Feature access state
+  const [canCreateCampaigns, setCanCreateCampaigns] = useState(false);
+
   // Refs
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -283,6 +287,27 @@ export default function PosterSessionPage() {
       }
     }
     loadCredits();
+  }, [isAuthReady]);
+
+  // ============== Load Feature Access ==============
+
+  useEffect(() => {
+    if (!isAuthReady) return;
+
+    async function loadFeatureAccess() {
+      try {
+        const response = await authFetch('/api/features/access');
+        const data = await response.json();
+        if (data.success && data.features) {
+          setCanCreateCampaigns(data.features['create_campaigns']?.enabled || false);
+        }
+      } catch (err) {
+        console.error('Error loading feature access:', err);
+        // Default to false on error
+        setCanCreateCampaigns(false);
+      }
+    }
+    loadFeatureAccess();
   }, [isAuthReady]);
 
   // ============== Auto-save Session ==============
@@ -684,12 +709,13 @@ export default function PosterSessionPage() {
         logoDataUrl,
         logoProvided: !!logoDataUrl,
       };
-      
-      // Generate 3 variants in parallel for faster results
-      setThinkingMessages(['Generating 3 poster variants in parallel...']);
-      
-      // Use PosterGenerator utility to create 3 professional, theme-aware variant prompts
-      const variantPrompts = [1, 2, 3].map(variantNum => 
+
+      // Generate variants in parallel for faster results
+      const variantCount = config.variantCount || 3;
+      setThinkingMessages([`Generating ${variantCount} poster ${variantCount === 1 ? 'variant' : 'variants'} in parallel...`]);
+
+      // Use PosterGenerator utility to create professional, theme-aware variant prompts
+      const variantPrompts = Array.from({ length: variantCount }, (_, i) => i + 1).map(variantNum =>
         buildPosterPrompt({
           userRequest: finalPrompt,
           theme: config.theme,
@@ -699,11 +725,11 @@ export default function PosterSessionPage() {
           variant: variantNum,
         })
       );
-      
-      // Create promises for all 3 variants
+
+      // Create promises for all variants
       const variantPromises = variantPrompts.map(async (variantPrompt, idx) => {
         const variantNum = idx + 1;
-        
+
         const response = await authFetch('/api/generate-campaign', {
           method: 'POST',
           body: JSON.stringify({
@@ -712,7 +738,7 @@ export default function PosterSessionPage() {
             description: variantPrompt,
           }),
         });
-        
+
         const data = await response.json();
         return { variantNum, response, data };
       });
@@ -1279,6 +1305,14 @@ export default function PosterSessionPage() {
                 </div>
               )}
 
+              {/* Insufficient Credits Alert */}
+              {hasInsufficientCredits && (
+                <InsufficientCreditsAlert
+                  type="image"
+                  onClose={() => setHasInsufficientCredits(false)}
+                />
+              )}
+
               {/* Brand Review Card */}
               {phase === 'brand-review' && brand && (
                 <BrandCard
@@ -1353,6 +1387,7 @@ export default function PosterSessionPage() {
                     setShowRegeneratePrompt(false);
                     setRegeneratePrompt('');
                   }}
+                  canCreateCampaigns={canCreateCampaigns}
                 />
               )}
 
@@ -1914,6 +1949,32 @@ function ConfigInput({
             </div>
           </div>
 
+          {/* Variant Count */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-3">
+              Number of Variants
+            </label>
+            <div className="flex gap-2">
+              {[1, 2, 3].map((count) => (
+                <button
+                  key={count}
+                  type="button"
+                  onClick={() => onConfigChange({ ...config, variantCount: count as PosterConfig['variantCount'] })}
+                  className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                    config.variantCount === count
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  {count} {count === 1 ? 'Variant' : 'Variants'}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-gray-500 mt-2">
+              Generate {config.variantCount} different {config.variantCount === 1 ? 'version' : 'versions'} of your poster ({config.variantCount} {config.variantCount === 1 ? 'credit' : 'credits'} will be deducted)
+            </p>
+          </div>
+
           {/* Submit */}
           <div className="flex justify-end pt-2">
             <button
@@ -1922,7 +1983,7 @@ function ConfigInput({
               disabled={!config.theme}
               className="px-6 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
             >
-              Generate 3 Variants
+              Generate {config.variantCount} {config.variantCount === 1 ? 'Variant' : 'Variants'}
             </button>
           </div>
         </div>
@@ -1946,6 +2007,7 @@ function PosterGrid({
   onRegeneratePromptChange,
   onRegenerateSubmit,
   onRegenerateCancel,
+  canCreateCampaigns,
 }: {
   posters: string[];
   posterPrompt: string;
@@ -1960,6 +2022,7 @@ function PosterGrid({
   onRegeneratePromptChange: (value: string) => void;
   onRegenerateSubmit: () => void;
   onRegenerateCancel: () => void;
+  canCreateCampaigns: boolean;
 }) {
   const [openMenuIndex, setOpenMenuIndex] = useState<number | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
@@ -2169,14 +2232,16 @@ function PosterGrid({
 
                 {/* Action Area */}
                 <div className="flex items-center gap-2">
-                  {/* Primary CTA - Use in Campaign */}
-                  <button
-                    onClick={() => onCreateCampaign(poster, idx)}
-                    disabled={creatingCampaign === idx}
-                    className="flex-1 px-4 py-2.5 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {creatingCampaign === idx ? 'Creating...' : 'Use in Campaign'}
-                  </button>
+                  {/* Primary CTA - Use in Campaign (only show if feature enabled) */}
+                  {canCreateCampaigns && (
+                    <button
+                      onClick={() => onCreateCampaign(poster, idx)}
+                      disabled={creatingCampaign === idx}
+                      className="flex-1 px-4 py-2.5 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {creatingCampaign === idx ? 'Creating...' : 'Use in Campaign'}
+                    </button>
+                  )}
 
                   {/* More Actions Menu - Click based, not hover */}
                   <div 

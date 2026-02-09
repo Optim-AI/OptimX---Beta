@@ -1,11 +1,12 @@
 // pages/api/credits/balance.ts
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { getUserIdFromRequest } from '@/auth/request';
-import { CreditsDAO } from '@/database';
+import { CreditsDAO } from '@/database/models/Credits.dao';
+import { SubscriptionsDAO } from '@/database/models/Subscriptions.dao';
 
 /**
  * GET /api/credits/balance
- * Gets current credit balance for user
+ * Gets current credit balance for user (new format with image/video split)
  */
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'GET') {
@@ -19,17 +20,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const result = await CreditsDAO.getBalance(userId);
+    const balance = await CreditsDAO.getFullBalance(userId);
+    const subscription = await SubscriptionsDAO.getActiveByUserId(userId);
 
-    if (!result.success) {
+    if (!balance) {
       return res.status(404).json({
-        error: result.error || 'Credits not found'
+        error: 'Credits not found'
       });
     }
 
     return res.status(200).json({
       success: true,
-      credits: result.credits || 0
+      // New format
+      imageCredits: balance.imageCredits,
+      videoCredits: balance.videoCredits,
+      lastResetAt: balance.lastResetAt,
+      nextResetDate: subscription?.nextResetDate || null,
+      // Legacy format for backward compatibility
+      credits: balance.imageCredits.total
     });
   } catch (error: any) {
     console.error('Credits balance error:', error);

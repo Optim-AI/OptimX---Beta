@@ -4,6 +4,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import Sidebar from '@/app/web/src/components/Sidebar';
+import { InsufficientCreditsAlert } from '@/app/web/src/components/billing';
 import {
   type BrandSnapshot,
   type AdBuilderData,

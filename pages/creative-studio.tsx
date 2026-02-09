@@ -34,7 +34,8 @@ export default function CreativeStudioLanding() {
   const [isCreatingSession, setIsCreatingSession] = useState(false);
 
   // Credits state
-  const [credits, setCredits] = useState<number | null>(null);
+  const [imageCredits, setImageCredits] = useState<number | null>(null);
+  const [videoCredits, setVideoCredits] = useState<number | null>(null);
 
   // ============== Load Sessions & Credits ==============
 
@@ -44,7 +45,8 @@ export default function CreativeStudioLanding() {
         const response = await authFetch('/api/credits/balance');
         const data = await response.json();
         if (data.success) {
-          setCredits(data.credits);
+          setImageCredits(data.imageCredits?.total ?? 0);
+          setVideoCredits(data.videoCredits?.total ?? 0);
         }
       } catch (err) {
         console.error('Error loading credits:', err);
@@ -285,15 +287,29 @@ export default function CreativeStudioLanding() {
                   Create poster-ready creatives and video-first ad concepts
                 </p>
               </div>
-              {credits !== null && (
-                <div className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-50 to-yellow-50 border border-amber-200 rounded-lg">
-                  <svg className="w-5 h-5 text-amber-500" fill="currentColor" viewBox="0 0 20 20">
-                    <path d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.736 6.979C9.208 6.193 9.696 6 10 6c.304 0 .792.193 1.264.979a1 1 0 001.715-1.029C12.279 4.784 11.232 4 10 4s-2.279.784-2.979 1.95c-.285.475-.507 1-.67 1.55H6a1 1 0 000 2h.013a9.358 9.358 0 000 1H6a1 1 0 100 2h.351c.163.55.385 1.075.67 1.55C7.721 15.216 8.768 16 10 16s2.279-.784 2.979-1.95a1 1 0 10-1.715-1.029c-.472.786-.96.979-1.264.979-.304 0-.792-.193-1.264-.979a4.265 4.265 0 01-.264-.521H10a1 1 0 100-2H8.017a7.36 7.36 0 010-1H10a1 1 0 100-2H8.472c.08-.185.167-.36.264-.521z" />
-                  </svg>
-                  <span className="font-semibold text-amber-700">{credits}</span>
-                  <span className="text-amber-600 text-sm">credits</span>
-                </div>
-              )}
+              <div className="flex items-center gap-3">
+                {/* Image Credits */}
+                {imageCredits !== null && (
+                  <div className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg">
+                    <svg className="w-5 h-5 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    <span className="font-semibold text-blue-700">{imageCredits}</span>
+                    <span className="text-blue-600 text-sm">images</span>
+                  </div>
+                )}
+
+                {/* Video Credits */}
+                {videoCredits !== null && (
+                  <div className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-50 to-pink-50 border border-purple-200 rounded-lg">
+                    <svg className="w-5 h-5 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                    <span className="font-semibold text-purple-700">{videoCredits}s</span>
+                    <span className="text-purple-600 text-sm">video</span>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>

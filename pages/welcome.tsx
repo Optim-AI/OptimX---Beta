@@ -4,6 +4,7 @@
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import { supabase } from '@/auth/supabase/client';
+import { authFetch } from '@/lib/utils';
 import colors from '@/lib/ui/colors';
 
 /** Capitalize first letter */
@@ -78,10 +79,32 @@ export default function Welcome(): React.ReactElement {
 
         if (!mounted) return;
 
-        if (user) {
-          const name = extractName(user);
-          if (name) setUserName(capitalize(name.split(" ")[0]));
+        if (!user) {
+          // Not logged in, redirect to signin
+          router.replace('/auth/signin');
+          return;
         }
+
+        // Check if plan system is enabled
+        const plansCheckResponse = await authFetch('/api/billing/plans/status');
+        const plansStatus = await plansCheckResponse.json();
+
+        // If plans are enabled, check if user has selected a plan
+        if (plansStatus.plansEnabled) {
+          const subResponse = await authFetch('/api/billing/subscriptions/current');
+          const subData = await subResponse.json();
+
+          if (!subData.hasSubscription) {
+            // Plans are enabled but user hasn't selected one
+            router.replace('/pricing?redirect=/welcome');
+            return;
+          }
+        }
+        // If plans are disabled, user can proceed with pay-as-you-go
+
+        // Extract and set user name
+        const name = extractName(user);
+        if (name) setUserName(capitalize(name.split(" ")[0]));
       } finally {
         if (mounted) setLoading(false);
       }
@@ -90,7 +113,7 @@ export default function Welcome(): React.ReactElement {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [router]);
 
   if (loading) {
     return (
@@ -375,7 +398,7 @@ export default function Welcome(): React.ReactElement {
           href="#"
           onClick={(e) => {
             e.preventDefault();
-            router.push("/dashboard");
+            router.push("/creative-studio");
           }}
         >
           Do it later

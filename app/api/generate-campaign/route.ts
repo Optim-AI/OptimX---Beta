@@ -2,11 +2,11 @@
 import axios from "axios";
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from '@/auth/supabase/client'; // adjust path if necessary
+import { CreditsDAO } from '@/database/models/Credits.dao';
 
 const NANO_API_KEY = process.env.NANO_API_KEY;
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash-image";
 const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
-const DEFAULT_INITIAL_CREDITS = Number(process.env.DEFAULT_INITIAL_CREDITS ?? 5);
 
 if (!NANO_API_KEY) {
   console.warn("NANO_API_KEY not set - Gemini calls will fail.");
@@ -395,61 +395,34 @@ export async function POST(request: Request) {
       );
     }
 
-    // credits
-    let currentCredits: number | null = null;
+    // Check image credits using new credit system
+    let imageCreditsAvailable: number = 0;
     try {
-      console.log('[Credits] Looking up credits for user:', user.id);
-      const { data: creditRow, error: creditError } = await supabaseAdmin
-        .from("user_credits")
-        .select("credits")
-        .eq("id", user.id) // id IS the user_id in production schema
-        .single();
-      console.log('[Credits] Lookup result:', { creditRow, creditError });
-      if (creditError && (creditError as any).code !== "PGRST116") {
-        console.warn("user_credits lookup error", creditError);
-      }
-      if (creditRow && (creditRow as any).credits !== undefined) {
-        currentCredits = Number((creditRow as any).credits);
-        console.log('[Credits] Found credits:', currentCredits);
+      console.log('[Credits] Looking up image credits for user:', user.id);
+      const balance = await CreditsDAO.getFullBalance(user.id);
+
+      if (!balance) {
+        console.log('[Credits] No credits found, initializing...');
+        // Initialize credits if they don't exist
+        await CreditsDAO.initializeCredits(user.id, 0, 0);
+        imageCreditsAvailable = 0;
       } else {
-        console.log('[Credits] No credits row found, attempting to seed...');
-        try {
-          const seed = DEFAULT_INITIAL_CREDITS;
-          // In production schema, id IS the user_id
-          const { data: upserted, error: upsertError } = await supabaseAdmin
-            .from("user_credits")
-            .upsert({ id: user.id, credits: seed }, { onConflict: "id" })
-            .select()
-            .single();
-          if (!upsertError && upserted && (upserted as any).credits !== undefined) {
-            currentCredits = Number((upserted as any).credits);
-            console.log(
-              `Seeded user_credits for ${user.id} with ${seed} credits.`
-            );
-          } else {
-            currentCredits = null;
-          }
-        } catch (e) {
-          console.warn("Seed credits failed", e);
-          currentCredits = null;
-        }
+        imageCreditsAvailable = balance.imageCredits.total;
+        console.log('[Credits] Found image credits:', imageCreditsAvailable);
       }
     } catch (e) {
-      console.warn("credits lookup failed", e);
-      currentCredits = null;
-    }
-
-    if (currentCredits === null) {
+      console.warn("Image credits lookup failed", e);
       return NextResponse.json(
-        { ok: false, error: "No credits found for user. Please purchase credits." },
-        { status: 402 }
+        { ok: false, error: "Failed to check credit balance. Please try again." },
+        { status: 500 }
       );
     }
-    if (currentCredits <= 0) {
+
+    if (imageCreditsAvailable <= 0) {
       return NextResponse.json(
         {
           ok: false,
-          error: "No credits available. Please buy new credits to generate images.",
+          error: "No image credits available. Please purchase more credits to generate posters.",
         },
         { status: 402 }
       );
@@ -728,61 +701,24 @@ export async function POST(request: Request) {
 
     const dataUrl = `data:image/png;base64,${finalBuffer.toString("base64")}`;
 
-    // decrement credits - MUST use atomic operation for parallel request safety
-    let updatedCredits: number | null = null;
+    // Deduct 1 image credit using new credit system
+    let updatedBalance: number | null = null;
     try {
-      // Primary: Use RPC for atomic decrement (prevents race conditions with parallel requests)
-      // The function parameter is p_user (not user_id) and returns void
-      const { error: rpcErr } = await supabaseAdmin.rpc(
-        "decrement_credit",
-        { p_user: user.id }
-      );
-      
-      if (!rpcErr) {
-        // RPC returns void, so we need to query the current balance
-        const { data: creditRow, error: queryErr } = await supabaseAdmin
-          .from("user_credits")
-          .select("credits")
-          .eq("id", user.id)
-          .single();
-        
-        if (!queryErr && creditRow && (creditRow as any).credits !== undefined) {
-          updatedCredits = Number((creditRow as any).credits);
+      console.log('[Credits] Deducting 1 image credit for user:', user.id);
+      const success = await CreditsDAO.deductImageCredits(user.id, 1);
+
+      if (success) {
+        // Get updated balance
+        const balance = await CreditsDAO.getFullBalance(user.id);
+        if (balance) {
+          updatedBalance = balance.imageCredits.total;
+          console.log('[Credits] Credit deducted successfully, new balance:', updatedBalance);
         }
-        console.log('[Credits] Atomic decrement successful, new balance:', updatedCredits);
       } else {
-        // Fallback: Re-read current credits and decrement (less ideal but works)
-        console.warn("RPC decrement_credit failed:", rpcErr);
-        
-        // Re-read current credits to get fresh value
-        const { data: freshCredits } = await supabaseAdmin
-          .from("user_credits")
-          .select("credits")
-          .eq("id", user.id)
-          .single();
-        
-        const currentVal = freshCredits ? Number((freshCredits as any).credits) : (currentCredits ?? 1);
-        
-        const { data: updatedRow, error: updateError } = await supabaseAdmin
-          .from("user_credits")
-          .update({ 
-            credits: Math.max(currentVal - 1, 0),
-            updated_at: new Date().toISOString()
-          })
-          .eq("id", user.id)
-          .gt("credits", 0)
-          .select()
-          .single();
-        
-        if (!updateError && updatedRow && (updatedRow as any).credits !== undefined) {
-          updatedCredits = Number((updatedRow as any).credits);
-          console.log('[Credits] Direct update fallback, new balance:', updatedCredits);
-        } else {
-          console.warn("Credit decrement fallback failed:", updateError);
-        }
+        console.warn('[Credits] Failed to deduct credit - insufficient balance');
       }
     } catch (e) {
-      console.warn("Credit decrement failed", e);
+      console.warn("Credit deduction failed", e);
     }
 
     if (saveTemp === true) {
@@ -800,9 +736,9 @@ export async function POST(request: Request) {
             images: [publicUrl ? publicUrl : dataUrl],
             dataUrl,
             savedPublicUrl: publicUrl ?? null,
-            creditsRemaining: updatedCredits,
+            creditsRemaining: updatedBalance,
             credits_depleted:
-              updatedCredits !== null ? updatedCredits <= 0 : undefined,
+              updatedBalance !== null ? updatedBalance <= 0 : undefined,
           },
           { status: 200 }
         );
@@ -816,9 +752,9 @@ export async function POST(request: Request) {
         ok: true,
         image: dataUrl,
         images: [dataUrl],
-        creditsRemaining: updatedCredits,
+        creditsRemaining: updatedBalance,
         credits_depleted:
-          updatedCredits !== null ? updatedCredits <= 0 : undefined,
+          updatedBalance !== null ? updatedBalance <= 0 : undefined,
       },
       { status: 200 }
     );

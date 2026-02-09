@@ -474,6 +474,7 @@ export const DEFAULT_AD_BUILDER_DATA = {
 export const DEFAULT_POSTER_CONFIG: PosterConfig = {
   theme: "",
   aspectRatio: "1:1",
+  variantCount: 3, // Default to 3 variants
 };
 
 /**

@@ -9,6 +9,8 @@ import Sidebar from "../app/web/src/components/Sidebar";
 import { Button } from "../app/web/src/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../app/web/src/components/ui/card";
 import { Alert, AlertTitle, AlertDescription } from "../app/web/src/components/ui/alert";
+import { ComingSoonOverlay } from '@/app/web/src/components/billing/ComingSoonOverlay';
+import { authFetch } from '@/lib/utils';
 import {
   Plus,
   TrendingUp,
@@ -99,6 +101,10 @@ export default function DashboardPage(): JSX.Element {
   const router = useRouter();
 
   const [userId, setUserId] = useState<string | null>(null);
+
+  // Feature access checking
+  const [featureAccess, setFeatureAccess] = useState<{ enabled: boolean; comingSoon: boolean } | null>(null);
+  const [checkingFeature, setCheckingFeature] = useState(true);
 
   // statuses: per-user flags returned from /api/integrations/status and/or local cache
   const [statuses, setStatuses] = useState<Record<string, any> | null>(null);
@@ -568,6 +574,21 @@ export default function DashboardPage(): JSX.Element {
   useEffect(() => {
     (async () => {
       try {
+        // Check feature access first
+        try {
+          const response = await authFetch('/api/features/access');
+          const data = await response.json();
+          if (data.success && data.features) {
+            const dashboardAccess = data.features['dashboard'];
+            setFeatureAccess(dashboardAccess || { enabled: false, comingSoon: true });
+          }
+        } catch (err) {
+          console.error('Failed to check feature access:', err);
+          setFeatureAccess({ enabled: false, comingSoon: true });
+        } finally {
+          setCheckingFeature(false);
+        }
+
         const { data: userData, error: userErr } = await supabase.auth.getUser();
         if (userErr) {
           console.error("Error getting user from supabase.auth:", userErr);
@@ -641,6 +662,50 @@ export default function DashboardPage(): JSX.Element {
   const cardShadowStyle = shadowGlow ? { boxShadow: shadowGlow } : undefined;
 
   /* -------------------- Render -------------------- */
+
+  // Loading state while checking feature access
+  if (checkingFeature) {
+    return (
+      <div className="min-h-screen flex bg-slate-50">
+        <Sidebar />
+        <main className="flex-1 p-10 flex items-center justify-center">
+          <div>Loading...</div>
+        </main>
+      </div>
+    );
+  }
+
+  // If feature is not enabled or is coming soon, show overlay
+  if (!featureAccess?.enabled || featureAccess?.comingSoon) {
+    return (
+      <div className="min-h-screen flex bg-slate-50">
+        <Sidebar />
+        <main className="flex-1 relative">
+          <ComingSoonOverlay featureKey="dashboard">
+            <div className="p-10">
+              <div className="flex items-center justify-between mb-8">
+                <div>
+                  <h2 className="text-3xl font-extrabold text-slate-900">Dashboard</h2>
+                  <p className="mt-1 text-sm" style={mutedFg ? { color: mutedFg } : undefined}>Overview — all-time metrics & actionable suggestions</p>
+                </div>
+              </div>
+              {/* Placeholder content for visual effect */}
+              <div className="space-y-6">
+                <div className="grid grid-cols-2 gap-6">
+                  {[1, 2, 3, 4].map((i) => (
+                    <div key={i} className="p-6 bg-white rounded-xl h-32" />
+                  ))}
+                </div>
+                <div className="p-8 bg-white rounded-xl h-64" />
+                <div className="p-8 bg-white rounded-xl h-64" />
+              </div>
+            </div>
+          </ComingSoonOverlay>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen flex bg-slate-50">
       <Sidebar />

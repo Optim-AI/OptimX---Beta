@@ -14,6 +14,11 @@ export { CampaignDAO } from './models/Campaign.dao';
 export { ChatDAO } from './models/Chat.dao';
 export { GeneratedImageDAO } from './models/GeneratedImage.dao';
 
+// Billing DAOs
+export { PlansDAO } from './models/Plans.dao';
+export { SubscriptionsDAO } from './models/Subscriptions.dao';
+export { PaymentsDAO, WebhookEventsDAO } from './models/Payments.dao';
+
 // Note: Removed DAOs for tables that don't exist in production:
 // - GoogleAdsDAO (google_ads_tokens table removed)
 // - RecommendationDAO (recommendations table removed)
@@ -36,6 +41,15 @@ export {
   integrationsBeta,
   trainingArtifacts,
   userUIState,
+  // Billing tables
+  plans,
+  featureKeys,
+  planFeatureFlags,
+  subscriptions,
+  creditPacks,
+  payments,
+  webhookEvents,
+  creditHistory,
 } from '@/database/schema';
 
 // Export inferred types
@@ -54,6 +68,15 @@ import {
   integrationsBeta,
   trainingArtifacts,
   userUIState,
+  // Billing tables
+  plans,
+  featureKeys,
+  planFeatureFlags,
+  subscriptions,
+  creditPacks,
+  payments,
+  webhookEvents,
+  creditHistory,
 } from '@/database/schema';
 
 // Note: User type removed - use auth.users directly via Supabase Auth
@@ -71,3 +94,13 @@ export type IntegrationFlags = typeof integrationFlags.$inferSelect;
 export type IntegrationsBeta = typeof integrationsBeta.$inferSelect;
 export type TrainingArtifacts = typeof trainingArtifacts.$inferSelect;
 export type UserUIState = typeof userUIState.$inferSelect;
+
+// Billing types
+export type Plan = typeof plans.$inferSelect;
+export type FeatureKey = typeof featureKeys.$inferSelect;
+export type PlanFeatureFlag = typeof planFeatureFlags.$inferSelect;
+export type Subscription = typeof subscriptions.$inferSelect;
+export type CreditPack = typeof creditPacks.$inferSelect;
+export type Payment = typeof payments.$inferSelect;
+export type WebhookEvent = typeof webhookEvents.$inferSelect;
+export type CreditHistory = typeof creditHistory.$inferSelect;

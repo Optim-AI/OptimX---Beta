@@ -2,6 +2,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { supabaseAdmin } from "@/auth/supabase/client";
 import { getUserIdFromRequest } from "@/auth/request";
+import { GeneratedImageDAO } from "@/database/models/GeneratedImage.dao";
 import { randomUUID } from "crypto";
 
 // Increase body size limit for large image data URLs (up to 10MB)
@@ -111,31 +112,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Insert into user_generated_image table (only if authenticated)
     if (userId) {
       try {
-        const payload = {
-          user_id: userId,
-          image_url: publicUrl,
-          image_path: uploadedPath || null,
-          source: "creative-studio",
-          metadata: metadata || {},
-        };
-
-        const { data, error } = await supabaseAdmin
-          .from("user_generated_image")
-          .insert([payload])
-          .select()
-          .single();
-
-        if (error) {
-          console.error("Failed to insert user_generated_image:", error);
-          // Don't fail the request if DB insert fails - image is still uploaded to storage
-          console.warn("Continuing despite DB insert failure - image uploaded to storage");
-        }
+        // Use DAO to insert - it handles ID generation properly
+        const record = await GeneratedImageDAO.insert(
+          userId,
+          publicUrl,
+          uploadedPath || null
+        );
 
         return res.status(200).json({
           ok: true,
           imageUrl: publicUrl,
           imagePath: uploadedPath,
-          record: data || null,
+          record: record,
         });
       } catch (e: any) {
         console.error("Save poster error:", e);

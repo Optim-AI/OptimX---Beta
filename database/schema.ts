@@ -1,4 +1,4 @@
-import { pgTable, timestamp, text, integer, boolean, index, uniqueIndex, jsonb, uuid } from "drizzle-orm/pg-core"
+import { pgTable, timestamp, text, integer, boolean, index, uniqueIndex, jsonb, uuid, unique } from "drizzle-orm/pg-core"
 import { sql } from "drizzle-orm"
 
 // ============================================================
@@ -151,12 +151,148 @@ export const userChats = pgTable("user_chats", {
 	index("idx_user_chats_user").using("btree", table.userId.asc().nullsLast()),
 ]);
 
-// user_credits table
+// user_credits table (updated with separate image/video credits)
 export const userCredits = pgTable("user_credits", {
 	id: uuid().primaryKey().notNull(),
-	credits: integer().notNull().default(0),
+	credits: integer().notNull().default(0), // Legacy field, kept for compatibility
+	imageCreditsSubscription: integer("image_credits_subscription").notNull().default(0),
+	imageCreditsAddon: integer("image_credits_addon").notNull().default(0),
+	videoCreditsSubscription: integer("video_credits_subscription").notNull().default(0),
+	videoCreditsAddon: integer("video_credits_addon").notNull().default(0),
+	lastResetAt: timestamp("last_reset_at", { withTimezone: true, mode: 'string' }),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 });
+
+// ============================================================
+// BILLING SYSTEM TABLES
+// ============================================================
+
+// plans table
+export const plans = pgTable("plans", {
+	id: text().primaryKey().notNull(),
+	name: text().notNull(),
+	slug: text().notNull(),
+	description: text(),
+	billingCycle: text("billing_cycle").notNull(), // 'monthly' | 'quarterly' | 'trial'
+	priceInr: integer("price_inr").notNull().default(0),
+	imageCredits: integer("image_credits").notNull().default(0),
+	videoCredits: integer("video_credits").notNull().default(0),
+	razorpayPlanId: text("razorpay_plan_id"),
+	isActive: boolean("is_active").notNull().default(true),
+	displayOrder: integer("display_order").notNull().default(0),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (table) => [
+	uniqueIndex("plans_slug_unique").using("btree", table.slug.asc().nullsLast()),
+]);
+
+// feature_keys table
+export const featureKeys = pgTable("feature_keys", {
+	id: text().primaryKey().notNull(),
+	name: text().notNull(),
+	description: text(),
+	category: text().notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+});
+
+// plan_feature_flags table
+export const planFeatureFlags = pgTable("plan_feature_flags", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	planId: text("plan_id").notNull().references(() => plans.id, { onDelete: 'cascade' }),
+	featureKey: text("feature_key").notNull().references(() => featureKeys.id, { onDelete: 'cascade' }),
+	isEnabled: boolean("is_enabled").notNull().default(false),
+	isComingSoon: boolean("is_coming_soon").notNull().default(false),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (table) => [
+	uniqueIndex("plan_feature_flags_unique").using("btree", table.planId.asc().nullsLast(), table.featureKey.asc().nullsLast()),
+]);
+
+// subscriptions table
+export const subscriptions = pgTable("subscriptions", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	userId: uuid("user_id").notNull(),
+	planId: text("plan_id").notNull().references(() => plans.id),
+	status: text().notNull(), // 'trialing' | 'active' | 'cancelled' | 'expired' | 'past_due'
+	razorpaySubscriptionId: text("razorpay_subscription_id"),
+	razorpayCustomerId: text("razorpay_customer_id"),
+	currentPeriodStart: timestamp("current_period_start", { withTimezone: true, mode: 'string' }).notNull(),
+	currentPeriodEnd: timestamp("current_period_end", { withTimezone: true, mode: 'string' }).notNull(),
+	trialEndsAt: timestamp("trial_ends_at", { withTimezone: true, mode: 'string' }),
+	nextResetDate: timestamp("next_reset_date", { withTimezone: true, mode: 'string' }).notNull(),
+	cancelledAt: timestamp("cancelled_at", { withTimezone: true, mode: 'string' }),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (table) => [
+	index("idx_subscriptions_user_active").using("btree", table.userId.asc().nullsLast()).where(sql`${table.status} IN ('trialing', 'active')`),
+	index("idx_subscriptions_status").using("btree", table.status.asc().nullsLast()),
+	index("idx_subscriptions_next_reset").using("btree", table.nextResetDate.asc().nullsLast()).where(sql`${table.status} IN ('trialing', 'active')`),
+]);
+
+// credit_packs table
+export const creditPacks = pgTable("credit_packs", {
+	id: text().primaryKey().notNull(),
+	name: text().notNull(),
+	creditType: text("credit_type").notNull(), // 'image' | 'video'
+	credits: integer().notNull(),
+	priceInr: integer("price_inr").notNull(),
+	razorpayItemId: text("razorpay_item_id"),
+	isActive: boolean("is_active").notNull().default(true),
+	displayOrder: integer("display_order").notNull().default(0),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+});
+
+// payments table
+export const payments = pgTable("payments", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	userId: uuid("user_id").notNull(),
+	subscriptionId: uuid("subscription_id").references(() => subscriptions.id, { onDelete: 'set null' }),
+	creditPackId: text("credit_pack_id").references(() => creditPacks.id, { onDelete: 'set null' }),
+	razorpayPaymentId: text("razorpay_payment_id"),
+	razorpayOrderId: text("razorpay_order_id"),
+	razorpaySignature: text("razorpay_signature"),
+	amount: integer().notNull(),
+	currency: text().notNull().default('INR'),
+	status: text().notNull(), // 'created' | 'captured' | 'failed' | 'refunded'
+	paymentType: text("payment_type").notNull(), // 'subscription' | 'image_topup' | 'video_topup'
+	metadata: jsonb(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (table) => [
+	index("idx_payments_user").using("btree", table.userId.asc().nullsLast()),
+	index("idx_payments_razorpay").using("btree", table.razorpayPaymentId.asc().nullsLast()).where(sql`${table.razorpayPaymentId} IS NOT NULL`),
+	index("idx_payments_status").using("btree", table.status.asc().nullsLast()),
+]);
+
+// webhook_events table
+export const webhookEvents = pgTable("webhook_events", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	razorpayEventId: text("razorpay_event_id").notNull().unique(),
+	eventType: text("event_type").notNull(),
+	payload: jsonb().notNull(),
+	status: text().notNull(), // 'pending' | 'processed' | 'failed'
+	errorMessage: text("error_message"),
+	processedAt: timestamp("processed_at", { withTimezone: true, mode: 'string' }),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (table) => [
+	index("idx_webhook_events_type").using("btree", table.eventType.asc().nullsLast()),
+	index("idx_webhook_events_status").using("btree", table.status.asc().nullsLast()),
+]);
+
+// credit_history table
+export const creditHistory = pgTable("credit_history", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	userId: uuid("user_id").notNull(),
+	creditType: text("credit_type").notNull(), // 'image' | 'video'
+	amount: integer().notNull(),
+	operation: text().notNull(), // 'add' | 'deduct' | 'reset' | 'expire'
+	source: text().notNull(),
+	balanceAfter: integer("balance_after").notNull(),
+	metadata: jsonb(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (table) => [
+	index("idx_credit_history_user").using("btree", table.userId.asc().nullsLast()),
+	index("idx_credit_history_created").using("btree", table.createdAt.asc().nullsLast()),
+]);
 
 // user_generated_image table
 export const userGeneratedImage = pgTable("user_generated_image", {

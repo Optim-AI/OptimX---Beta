@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '@/auth/supabase/client';
+import { authFetch } from '@/lib/utils';
 import colors from '@/lib/ui/colors';
 import { profileClient } from '@/database/client-helpers';
 
@@ -98,17 +99,24 @@ export default function SignUpPage(): React.ReactElement {
   }
 
   useEffect(() => {
-    // If already signed in, send to welcome (and ensure profile upsert)
+    // Upsert profile and redirect to welcome (no subscription check needed for pay-as-you-go)
+    async function checkAndRedirect(user: any) {
+      try {
+        await upsertProfile(user);
+      } catch (err) {
+        console.error('upsert failed:', err);
+      }
+
+      // Redirect directly to welcome page
+      router.replace('/welcome');
+    }
+
+    // If already signed in, check subscription
     (async () => {
       try {
         const { data } = await supabase.auth.getUser();
         if (data?.user) {
-          try {
-            await upsertProfile(data.user);
-          } catch (err) {
-            console.error('upsert on mount failed:', err);
-          }
-          router.replace('/welcome');
+          await checkAndRedirect(data.user);
         }
       } catch {
         // ignore
@@ -118,15 +126,7 @@ export default function SignUpPage(): React.ReactElement {
     // Also subscribe to auth state changes to catch OAuth sign-up flows (provider redirect back).
     const subscription = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_IN' && session?.user) {
-        try {
-          await upsertProfile(session.user);
-        } catch (err) {
-          console.error('upsert on SIGNED_IN failed:', err);
-        }
-        // keep behavior consistent: navigate to welcome
-        try {
-          router.replace('/welcome');
-        } catch {}
+        await checkAndRedirect(session.user);
       }
     });
 
@@ -207,7 +207,7 @@ export default function SignUpPage(): React.ReactElement {
         } catch (err) {
           console.error('upsert after signUp failed:', err);
         }
-        // redirect to welcome (keep behavior consistent with SignIn)
+        // redirect directly to welcome (pay-as-you-go - no plan required)
         router.replace('/welcome');
         return;
       }

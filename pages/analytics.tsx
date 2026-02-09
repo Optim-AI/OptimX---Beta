@@ -6,6 +6,8 @@ import type { JSX } from "react";
 import Sidebar from "../app/web/src/components/Sidebar";
 import { apiFetch } from '@/api/fetch';
 import { supabase } from '@/auth/supabase/client';
+import { ComingSoonOverlay } from '@/app/web/src/components/billing/ComingSoonOverlay';
+import { authFetch } from '@/lib/utils';
 
 import { Card, CardContent, CardHeader, CardTitle } from "../app/web/src/components/ui/card";
 import { Button } from "../app/web/src/components/ui/button";
@@ -142,6 +144,10 @@ export default function Analytics(): JSX.Element {
   const [metaSummary, setMetaSummary] = useState<SummaryResp | null>(null);
   const [loadingMeta, setLoadingMeta] = useState(false);
 
+  // Feature access checking
+  const [featureAccess, setFeatureAccess] = useState<{ enabled: boolean; comingSoon: boolean } | null>(null);
+  const [checkingFeature, setCheckingFeature] = useState(true);
+
   const [recList, setRecList] = useState<Recommendation[]>([]);
   const [recLoading, setRecLoading] = useState(false);
   const [recsRequested, setRecsRequested] = useState(false);
@@ -161,6 +167,24 @@ export default function Analytics(): JSX.Element {
   const [series, setSeries] = useState<TimeSeriesPoint[]>([]);
 
   useEffect(() => {
+    // Check feature access first
+    async function checkFeature() {
+      try {
+        const response = await authFetch('/api/features/access');
+        const data = await response.json();
+        if (data.success && data.features) {
+          const analyticsAccess = data.features['basic_analytics'];
+          setFeatureAccess(analyticsAccess || { enabled: false, comingSoon: true });
+        }
+      } catch (err) {
+        console.error('Failed to check feature access:', err);
+        setFeatureAccess({ enabled: false, comingSoon: true });
+      } finally {
+        setCheckingFeature(false);
+      }
+    }
+
+    checkFeature();
     fetchCampaigns();
     fetchStatuses();
     fetchMetrics({ range: selectedRange });
@@ -721,6 +745,52 @@ export default function Analytics(): JSX.Element {
       ((currentMetrics as any).roas == null)
   );
   const noDataInSelectedRange = metaConnected && !loadingMeta && series.length === 0 && allMetricsEmpty;
+
+  // Loading state while checking feature access
+  if (checkingFeature) {
+    return (
+      <div className="min-h-screen flex bg-slate-50">
+        <Sidebar />
+        <main className="flex-1 p-8 flex items-center justify-center">
+          <div>Loading...</div>
+        </main>
+      </div>
+    );
+  }
+
+  // If feature is not enabled or is coming soon, show overlay
+  if (!featureAccess?.enabled || featureAccess?.comingSoon) {
+    return (
+      <div className="min-h-screen flex bg-slate-50">
+        <Sidebar />
+        <main className="flex-1 relative">
+          <ComingSoonOverlay featureKey="basic_analytics">
+            <div className="p-8">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h2 className="text-2xl font-bold text-slate-800">AI Analytics</h2>
+                  <p className="text-sm text-slate-500">Deep insights across your connected platforms</p>
+                </div>
+              </div>
+              {/* Placeholder content for visual effect */}
+              <div className="space-y-4">
+                <div className="grid grid-cols-6 gap-4">
+                  {[1, 2, 3, 4, 5, 6].map((i) => (
+                    <div key={i} className="p-4 bg-white rounded-xl h-24" />
+                  ))}
+                </div>
+                <div className="grid grid-cols-2 gap-6">
+                  {[1, 2, 3, 4].map((i) => (
+                    <div key={i} className="p-6 bg-white rounded-xl h-64" />
+                  ))}
+                </div>
+              </div>
+            </div>
+          </ComingSoonOverlay>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex bg-slate-50">
