@@ -10,7 +10,7 @@ export const config = {
       sizeLimit: '20mb',
     },
   },
-  maxDuration: 600, // 10 minutes max
+  maxDuration: 300, // 5 minutes max (Vercel hobby plan limit)
 };
 
 const GEMINI_VEO_API_KEY = process.env.GEMINI_VEO_API_KEY;
