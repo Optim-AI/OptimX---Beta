@@ -118,7 +118,7 @@ export class SubscriptionService {
       await SubscriptionsDAO.updateRazorpayIds(
         subscription.id,
         razorpaySubscription.id,
-        razorpaySubscription.customer_id
+        razorpaySubscription.customer_id || undefined
       );
 
       // Initialize credits immediately for paid plans

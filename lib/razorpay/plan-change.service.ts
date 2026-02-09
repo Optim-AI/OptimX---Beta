@@ -111,10 +111,8 @@ export class PlanChangeService {
           // 1. Cancel current subscription
           // 2. Create new subscription with prorated amount adjustment
           
-          // Cancel current subscription (will end at period end)
-          await razorpay.subscriptions.cancel(currentSubscription.razorpaySubscriptionId, {
-            cancel_at_cycle_end: 0, // Cancel immediately
-          });
+          // Cancel current subscription immediately
+          await razorpay.subscriptions.cancel(currentSubscription.razorpaySubscriptionId, true);
 
           // Create new subscription starting now
           if (!newPlan.razorpayPlanId) {

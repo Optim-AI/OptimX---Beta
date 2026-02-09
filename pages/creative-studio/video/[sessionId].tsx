@@ -159,7 +159,7 @@ export default function VideoSessionPage() {
             setShowBrandOnboarding(true);
           }
           setIsLoading(false);
-          prevSessionIdRef.current = sessionId;
+          prevSessionIdRef.current = typeof sessionId === 'string' ? sessionId : null;
           return;
         }
 
@@ -221,8 +221,8 @@ export default function VideoSessionPage() {
         if (loadedSession.generatedVideos) {
           setGeneratedVideos(loadedSession.generatedVideos);
         }
-        
-        prevSessionIdRef.current = sessionId;
+
+        prevSessionIdRef.current = typeof sessionId === 'string' ? sessionId : null;
       } catch (err: any) {
         console.error('Error loading session:', err);
         setError(err.message || 'Failed to load session');
