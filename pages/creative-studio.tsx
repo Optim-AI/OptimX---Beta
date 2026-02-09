@@ -143,9 +143,9 @@ export default function CreativeStudioLanding() {
         setShowNameModal(false);
         // Navigate to the session page
         if (newSessionType === 'poster') {
-          router.push(`/creative-studio/poster/${data.session.id}`);
+          router.push(`/creative-studio/poster?id=${data.session.id}`);
         } else {
-          router.push(`/creative-studio/video/${data.session.id}`);
+          router.push(`/creative-studio/video?id=${data.session.id}`);
         }
       } else {
         alert('Failed to create session: ' + (data.error || 'Unknown error'));
@@ -160,9 +160,9 @@ export default function CreativeStudioLanding() {
 
   function handleSessionClick(session: SessionListItem) {
     if (session.sessionType === 'poster') {
-      router.push(`/creative-studio/poster/${session.id}`);
+      router.push(`/creative-studio/poster?id=${session.id}`);
     } else {
-      router.push(`/creative-studio/video/${session.id}`);
+      router.push(`/creative-studio/video?id=${session.id}`);
     }
   }
 

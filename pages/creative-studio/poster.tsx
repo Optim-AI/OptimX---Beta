@@ -36,7 +36,7 @@ import { authFetch } from '@/lib/utils';
 
 export default function PosterSessionPage() {
   const router = useRouter();
-  const { sessionId } = router.query;
+  const { id: sessionId } = router.query; // Get id from query params (e.g., ?id=xxx)
   
   // Session state
   const [session, setSession] = useState<CreativeStudioSession | null>(null);
@@ -183,7 +183,7 @@ export default function PosterSessionPage() {
         }
         
         // Fetch existing session
-        const response = await authFetch(`/api/creative-studio/sessions/${sessionId}`);
+        const response = await authFetch(`/api/creative-studio/sessions?id=${sessionId}`);
         const data = await response.json();
         
         if (!data.ok) {
@@ -349,7 +349,7 @@ export default function PosterSessionPage() {
         generatedPosters: generatedPosters.slice(0, 10),
       };
       
-      const response = await authFetch(`/api/creative-studio/sessions/${sessionId}`, {
+      const response = await authFetch(`/api/creative-studio/sessions?id=${sessionId}`, {
         method: 'PUT',
         body: JSON.stringify(payload),
       });
@@ -1077,7 +1077,7 @@ export default function PosterSessionPage() {
         await saveSession();
       }
       
-      router.push(`/creative-studio/poster/${selectedSessionId}`);
+      router.push(`/creative-studio/poster?id=${selectedSessionId}`);
     }
   }
 
@@ -1125,7 +1125,7 @@ export default function PosterSessionPage() {
         setPosterSessions(prev => [newSession, ...prev]);
         
         setShowNewSessionModal(false);
-        router.push(`/creative-studio/poster/${data.session.id}`);
+        router.push(`/creative-studio/poster?id=${data.session.id}`);
       } else {
         alert('Failed to create session: ' + (data.error || 'Unknown error'));
       }
@@ -1146,7 +1146,7 @@ export default function PosterSessionPage() {
     
     setIsDeletingSession(true);
     try {
-      const response = await authFetch(`/api/creative-studio/sessions/${deleteSessionId}`, {
+      const response = await authFetch(`/api/creative-studio/sessions?id=${deleteSessionId}`, {
         method: 'DELETE',
       });
       

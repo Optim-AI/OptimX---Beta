@@ -43,7 +43,7 @@ type ProductData = {
 
 export default function VideoSessionPage() {
   const router = useRouter();
-  const { sessionId } = router.query;
+  const { id: sessionId } = router.query; // Get id from query params (e.g., ?id=xxx)
 
   // Session state
   const [session, setSession] = useState<CreativeStudioSession | null>(null);
@@ -164,7 +164,7 @@ export default function VideoSessionPage() {
         }
 
         // Fetch existing session
-        const response = await authFetch(`/api/creative-studio/sessions/${sessionId}`);
+        const response = await authFetch(`/api/creative-studio/sessions?id=${sessionId}`);
         const data = await response.json();
 
         if (!data.ok) {
@@ -296,7 +296,7 @@ export default function VideoSessionPage() {
         generatedVideos,
       };
 
-      const response = await authFetch(`/api/creative-studio/sessions/${sessionId}`, {
+      const response = await authFetch(`/api/creative-studio/sessions?id=${sessionId}`, {
         method: 'PUT',
         body: JSON.stringify(payload),
       });
@@ -666,7 +666,7 @@ export default function VideoSessionPage() {
             productUrl: adBuilderData.product?.product_url,
           });
 
-          const response = await authFetch(`/api/creative-studio/sessions/${sessionId}`, {
+          const response = await authFetch(`/api/creative-studio/sessions?id=${sessionId}`, {
             method: 'PUT',
             body: JSON.stringify(payload),
           });
@@ -678,7 +678,7 @@ export default function VideoSessionPage() {
         }
       }
       
-      router.push(`/creative-studio/video/${selectedSessionId}`);
+      router.push(`/creative-studio/video?id=${selectedSessionId}`);
     }
   }
 
@@ -726,7 +726,7 @@ export default function VideoSessionPage() {
         setVideoSessions(prev => [newSession, ...prev]);
 
         setShowNewSessionModal(false);
-        router.push(`/creative-studio/video/${data.session.id}`);
+        router.push(`/creative-studio/video?id=${data.session.id}`);
       } else {
         alert('Failed to create session: ' + (data.error || 'Unknown error'));
       }
@@ -747,7 +747,7 @@ export default function VideoSessionPage() {
 
     setIsDeletingSession(true);
     try {
-      const response = await authFetch(`/api/creative-studio/sessions/${deleteSessionId}`, {
+      const response = await authFetch(`/api/creative-studio/sessions?id=${deleteSessionId}`, {
         method: 'DELETE',
       });
 
