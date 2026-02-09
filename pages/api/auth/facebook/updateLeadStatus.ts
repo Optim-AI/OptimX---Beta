@@ -2,7 +2,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { getUserIdFromRequest } from '@/auth/request';
 import { readSavedIntegration } from '@/integrations/store';
-import { supabaseAdmin } from '@/auth/supabase/client';
+import { IntegrationDAO } from '@/database/models/Integration.dao';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed: use POST" });
@@ -24,20 +24,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const rowId = savedRow.savedRowId;
 
     // fetch existing row to merge metadata safely
-    const { data: existingRows, error: selErr } = await supabaseAdmin.from("integrations").select("metadata").eq("id", rowId).maybeSingle();
-    if (selErr) {
-      console.error("updateLeadStatus - select error:", selErr);
-      return res.status(500).json({ error: "Database read error" });
+    const existingIntegration = await IntegrationDAO.getById(rowId);
+    if (!existingIntegration) {
+      console.error("updateLeadStatus - integration not found:", rowId);
+      return res.status(500).json({ error: "Integration not found" });
     }
-    const metadata = (existingRows?.metadata ?? {}) as any;
+
+    const metadata = (existingIntegration.metadata ?? {}) as any;
     metadata.leadStatuses = metadata.leadStatuses ?? {};
     metadata.leadStatuses[String(lead_id)] = String(status);
 
-    const { error: updErr } = await supabaseAdmin.from("integrations").update({ metadata }).eq("id", rowId);
-    if (updErr) {
-      console.error("updateLeadStatus - update error:", updErr);
-      return res.status(500).json({ error: "Database update error" });
-    }
+    await IntegrationDAO.updateMetadata(rowId, metadata);
 
     return res.status(200).json({ ok: true, lead_id: String(lead_id), status: String(status) });
   } catch (err: any) {

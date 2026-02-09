@@ -43,6 +43,13 @@ export class IntegrationDAO {
   }
 
   /**
+   * Alias for findById
+   */
+  static async getById(id: string): Promise<Integration | null> {
+    return this.findById(id);
+  }
+
+  /**
    * Find integration by page ID (for Meta integrations)
    */
   static async findByPageId(
@@ -327,6 +334,27 @@ export class IntegrationDAO {
         healthStatus: 'healthy',
         healthErrorMessage: null,
         lastHealthCheck: now,
+        updatedAt: now,
+      })
+      .where(eq(integrations.id, id))
+      .returning();
+
+    return result;
+  }
+
+  /**
+   * Update integration metadata
+   */
+  static async updateMetadata(
+    id: string,
+    metadata: any
+  ): Promise<Integration> {
+    const now = new Date().toISOString();
+
+    const [result] = await db
+      .update(integrations)
+      .set({
+        metadata,
         updatedAt: now,
       })
       .where(eq(integrations.id, id))

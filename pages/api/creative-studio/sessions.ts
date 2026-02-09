@@ -2,8 +2,8 @@
 // Handles GET (list all sessions) and POST (create new session)
 
 import type { NextApiRequest, NextApiResponse } from "next";
-import { supabaseAdmin } from "@/auth/supabase/client";
 import { getUserIdFromRequest } from "@/auth/request";
+import { CreativeStudioSessionDAO } from "@/database/models/CreativeStudioSession.dao";
 
 // Increase body size limit to 10MB for large image payloads
 export const config = {
@@ -53,46 +53,22 @@ async function handleGetSessions(
   const limitNum = Math.min(parseInt(limit as string) || 50, 100);
 
   try {
-    let query = supabaseAdmin
-      .from("creative_studio_sessions")
-      .select("id, name, session_type, brand_snapshot, phase, created_at, updated_at")
-      .eq("user_id", userId)
-      .order("updated_at", { ascending: false })
-      .limit(limitNum);
+    const sessionType = (type === "poster" || type === "video") ? type : undefined;
 
-    // Filter by session type if provided
-    if (type && (type === "poster" || type === "video")) {
-      query = query.eq("session_type", type);
-    }
-
-    const { data, error } = await query;
-
-    if (error) {
-      // If table doesn't exist, return empty array
-      if (error.message?.includes("does not exist") || error.code === "42P01") {
-        return res.status(200).json({
-          ok: true,
-          sessions: [],
-          message: "Sessions table not configured",
-        });
-      }
-
-      console.error("Failed to fetch sessions:", error);
-      return res.status(500).json({
-        ok: false,
-        error: `Failed to fetch sessions: ${error.message}`,
-      });
-    }
+    const data = await CreativeStudioSessionDAO.listByUser(userId, {
+      sessionType,
+      limit: limitNum,
+    });
 
     // Transform data to match frontend types
-    const sessions = (data || []).map((session) => ({
+    const sessions = data.map((session) => ({
       id: session.id,
       name: session.name,
-      sessionType: session.session_type,
-      brandSnapshot: session.brand_snapshot,
+      sessionType: session.sessionType,
+      brandSnapshot: session.brandSnapshot,
       phase: session.phase,
-      createdAt: session.created_at,
-      updatedAt: session.updated_at,
+      createdAt: session.createdAt,
+      updatedAt: session.updatedAt,
     }));
 
     return res.status(200).json({
@@ -157,91 +133,63 @@ async function handleCreateSession(
 
   try {
     const trimmedName = name.trim();
-    
+
     // Check for duplicate session name for this user and session type
-    const { data: existingSession } = await supabaseAdmin
-      .from("creative_studio_sessions")
-      .select("id")
-      .eq("user_id", userId)
-      .eq("session_type", sessionType)
-      .ilike("name", trimmedName)
-      .limit(1)
-      .single();
-    
-    if (existingSession) {
+    const exists = await CreativeStudioSessionDAO.existsByNameAndType(
+      userId,
+      trimmedName,
+      sessionType
+    );
+
+    if (exists) {
       return res.status(400).json({
         ok: false,
         error: `A ${sessionType} session with this name already exists. Please choose a different name.`,
       });
     }
-    
-    const now = new Date().toISOString();
-    const payload: Record<string, any> = {
-      user_id: userId,
+
+    const payload: any = {
+      userId,
       name: trimmedName,
-      session_type: sessionType,
-      brand_snapshot: brandSnapshot,
-      created_at: now,
-      updated_at: now,
+      sessionType,
+      brandSnapshot,
     };
 
     // Add poster-specific fields
     if (sessionType === "poster") {
       if (phase) payload.phase = phase;
       if (messages) payload.messages = messages;
-      if (productData) payload.product_data = productData;
-      if (posterPrompt) payload.poster_prompt = posterPrompt;
+      if (productData) payload.productData = productData;
+      if (posterPrompt) payload.posterPrompt = posterPrompt;
       if (config) payload.config = config;
-      if (generatedPosters) payload.generated_posters = generatedPosters;
+      if (generatedPosters) payload.generatedPosters = generatedPosters;
     }
 
     // Add video-specific fields
     if (sessionType === "video") {
-      if (adBuilderData) payload.ad_builder_data = adBuilderData;
-      if (generatedVideos) payload.generated_videos = generatedVideos;
+      if (adBuilderData) payload.adBuilderData = adBuilderData;
+      if (generatedVideos) payload.generatedVideos = generatedVideos;
     }
 
-    const { data, error } = await supabaseAdmin
-      .from("creative_studio_sessions")
-      .insert([payload])
-      .select()
-      .single();
-
-    if (error) {
-      console.error("Failed to insert session:", error);
-
-      // Check if it's a "relation does not exist" error
-      if (error.message?.includes("does not exist") || error.code === "42P01") {
-        return res.status(500).json({
-          ok: false,
-          error: "Sessions table not configured. Please run the database migration.",
-          details: "Run: supabase db reset or apply the migration manually",
-        });
-      }
-
-      return res.status(500).json({
-        ok: false,
-        error: `Failed to save session: ${error.message}`,
-      });
-    }
+    const data = await CreativeStudioSessionDAO.create(payload);
 
     // Transform response to match frontend types
     const session = {
       id: data.id,
-      userId: data.user_id,
+      userId: data.userId,
       name: data.name,
-      sessionType: data.session_type,
-      brandSnapshot: data.brand_snapshot,
+      sessionType: data.sessionType,
+      brandSnapshot: data.brandSnapshot,
       phase: data.phase,
       messages: data.messages,
-      productData: data.product_data,
-      posterPrompt: data.poster_prompt,
+      productData: data.productData,
+      posterPrompt: data.posterPrompt,
       config: data.config,
-      generatedPosters: data.generated_posters,
-      adBuilderData: data.ad_builder_data,
-      generatedVideos: data.generated_videos,
-      createdAt: data.created_at,
-      updatedAt: data.updated_at,
+      generatedPosters: data.generatedPosters,
+      adBuilderData: data.adBuilderData,
+      generatedVideos: data.generatedVideos,
+      createdAt: data.createdAt,
+      updatedAt: data.updatedAt,
     };
 
     return res.status(201).json({

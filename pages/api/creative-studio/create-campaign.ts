@@ -1,7 +1,9 @@
 // pages/api/creative-studio/create-campaign.ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import { supabaseAdmin } from "@/auth/supabase/client";
+import { supabaseAdmin } from "@/auth/supabase/client"; // Keep for storage operations
 import { getUserIdFromRequest } from "@/auth/request";
+import { CampaignDAO } from "@/database/models/Campaign.dao";
+import { GeneratedImageDAO } from "@/database/models/GeneratedImage.dao";
 
 function dataUrlToBuffer(dataUrl: string) {
   const m = dataUrl.match(/^data:(.+);base64,(.+)$/);
@@ -106,54 +108,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // Also record in user_generated_image
     try {
-      await supabaseAdmin.from("user_generated_image").insert([
-        {
-          user_id: userId,
-          image_url: image_url,
-          image_path: image_path || null,
-          source: "creative-studio",
-          metadata: {
-            campaignName,
-            objective,
-            brand: brandSnapshot?.name,
-            theme: config?.theme,
-          },
-        },
-      ]);
+      await GeneratedImageDAO.insert(userId, image_url, image_path || null);
     } catch (e) {
       console.warn("Failed to record in user_generated_image:", e);
     }
 
     // Create campaign record
     try {
-      const campaignPayload = {
-        user_id: userId,
+      const campaignData = await CampaignDAO.create({
+        userId,
         name: campaignName.trim(),
-        campaign_type: "post",
-        brand_voice: brandSnapshot?.tone || config?.theme || null,
-        content_types: ["image"],
-        vision: null,
+        campaignType: "post",
+        brandVoice: brandSnapshot?.tone || config?.theme || undefined,
+        contentTypes: ["image"],
+        vision: undefined,
         output: {
           images: [image_url],
         },
-        image_url: [image_url],
-        image_path: [image_path],
-        is_published: false, // Campaigns from Creative Studio start as drafts
-      };
-
-      const { data: campaignData, error: campaignError } = await supabaseAdmin
-        .from("campaigns")
-        .insert([campaignPayload])
-        .select()
-        .single();
-
-      if (campaignError) {
-        console.error("Failed to create campaign:", campaignError);
-        return res.status(500).json({
-          ok: false,
-          error: `Failed to create campaign: ${campaignError.message}`,
-        });
-      }
+        imageUrl: [image_url],
+        imagePath: [image_path],
+        isPublished: false, // Campaigns from Creative Studio start as drafts
+      });
 
       return res.status(200).json({
         ok: true,

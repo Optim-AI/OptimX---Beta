@@ -1,7 +1,7 @@
 // database/models/Subscriptions.dao.ts
 import { db } from '../client';
 import { subscriptions, plans } from '@/database/schema';
-import { eq, and, or, lte, inArray } from 'drizzle-orm';
+import { eq, and, or, lte, inArray, getTableColumns } from 'drizzle-orm';
 
 // Type inference from Drizzle schema
 export type Subscription = typeof subscriptions.$inferSelect;
@@ -44,7 +44,7 @@ export class SubscriptionsDAO {
   static async getActiveByUserId(userId: string): Promise<SubscriptionWithPlan | null> {
     const result = await db
       .select({
-        subscription: subscriptions,
+        ...getTableColumns(subscriptions),
         plan: plans,
       })
       .from(subscriptions)
@@ -62,9 +62,10 @@ export class SubscriptionsDAO {
 
     if (!result[0]) return null;
 
+    const { plan, ...subscriptionData } = result[0];
     return {
-      ...result[0].subscription,
-      plan: result[0].plan,
+      ...subscriptionData,
+      plan,
     };
   }
 
@@ -138,7 +139,7 @@ export class SubscriptionsDAO {
   static async getDueForReset(asOf: Date = new Date()): Promise<SubscriptionWithPlan[]> {
     const result = await db
       .select({
-        subscription: subscriptions,
+        ...getTableColumns(subscriptions),
         plan: plans,
       })
       .from(subscriptions)
@@ -153,10 +154,13 @@ export class SubscriptionsDAO {
         )
       );
 
-    return result.map(r => ({
-      ...r.subscription,
-      plan: r.plan,
-    }));
+    return result.map(r => {
+      const { plan, ...subscriptionData } = r;
+      return {
+        ...subscriptionData,
+        plan,
+      };
+    });
   }
 
   /**
@@ -210,7 +214,7 @@ export class SubscriptionsDAO {
   static async getAllByUserId(userId: string): Promise<SubscriptionWithPlan[]> {
     const result = await db
       .select({
-        subscription: subscriptions,
+        ...getTableColumns(subscriptions),
         plan: plans,
       })
       .from(subscriptions)
@@ -218,10 +222,13 @@ export class SubscriptionsDAO {
       .where(eq(subscriptions.userId, userId))
       .orderBy(subscriptions.createdAt);
 
-    return result.map(r => ({
-      ...r.subscription,
-      plan: r.plan,
-    }));
+    return result.map(r => {
+      const { plan, ...subscriptionData } = r;
+      return {
+        ...subscriptionData,
+        plan,
+      };
+    });
   }
 
   /**

@@ -2,8 +2,8 @@
 // Handles GET (single session), PUT (update), DELETE
 
 import type { NextApiRequest, NextApiResponse } from "next";
-import { supabaseAdmin } from "@/auth/supabase/client";
 import { getUserIdFromRequest } from "@/auth/request";
+import { CreativeStudioSessionDAO } from "@/database/models/CreativeStudioSession.dao";
 
 // Increase body size limit to 50MB for large image payloads (multiple poster data URLs)
 export const config = {
@@ -56,29 +56,9 @@ async function handleGetSession(
   sessionId: string
 ) {
   try {
-    const { data, error } = await supabaseAdmin
-      .from("creative_studio_sessions")
-      .select("*")
-      .eq("id", sessionId)
-      .eq("user_id", userId)
-      .single();
+    const session = await CreativeStudioSessionDAO.getByIdAndUserId(sessionId, userId);
 
-    if (error) {
-      if (error.code === "PGRST116") {
-        return res.status(404).json({
-          ok: false,
-          error: "Session not found",
-        });
-      }
-
-      console.error("Failed to fetch session:", error);
-      return res.status(500).json({
-        ok: false,
-        error: `Failed to fetch session: ${error.message}`,
-      });
-    }
-
-    if (!data) {
+    if (!session) {
       return res.status(404).json({
         ok: false,
         error: "Session not found",
@@ -87,34 +67,34 @@ async function handleGetSession(
 
     console.log('[DEBUG API] Get session from DB:', {
       sessionId,
-      hasAdBuilderData: !!data.ad_builder_data,
-      adBuilderStep: data.ad_builder_data?.step,
-      hasProduct: !!data.ad_builder_data?.product,
-      productName: data.ad_builder_data?.product?.product_name,
+      hasAdBuilderData: !!session.adBuilderData,
+      adBuilderStep: (session.adBuilderData as any)?.step,
+      hasProduct: !!(session.adBuilderData as any)?.product,
+      productName: (session.adBuilderData as any)?.product?.product_name,
     });
 
     // Transform response to match frontend types
-    const session = {
-      id: data.id,
-      userId: data.user_id,
-      name: data.name,
-      sessionType: data.session_type,
-      brandSnapshot: data.brand_snapshot,
-      phase: data.phase,
-      messages: data.messages,
-      productData: data.product_data,
-      posterPrompt: data.poster_prompt,
-      config: data.config,
-      generatedPosters: data.generated_posters,
-      adBuilderData: data.ad_builder_data,
-      generatedVideos: data.generated_videos,
-      createdAt: data.created_at,
-      updatedAt: data.updated_at,
+    const transformedSession = {
+      id: session.id,
+      userId: session.userId,
+      name: session.name,
+      sessionType: session.sessionType,
+      brandSnapshot: session.brandSnapshot,
+      phase: session.phase,
+      messages: session.messages,
+      productData: session.productData,
+      posterPrompt: session.posterPrompt,
+      config: session.config,
+      generatedPosters: session.generatedPosters,
+      adBuilderData: session.adBuilderData,
+      generatedVideos: session.generatedVideos,
+      createdAt: session.createdAt,
+      updatedAt: session.updatedAt,
     };
 
     return res.status(200).json({
       ok: true,
-      session,
+      session: transformedSession,
     });
   } catch (e: any) {
     console.error("Get session error:", e);
@@ -148,7 +128,7 @@ async function handleUpdateSession(
     adBuilderData,
     generatedVideos,
   } = req.body ?? {};
-  
+
   console.log('[DEBUG API] Update session:', {
     sessionId,
     hasAdBuilderData: !!adBuilderData,
@@ -159,14 +139,9 @@ async function handleUpdateSession(
 
   try {
     // First, verify the session exists and belongs to the user
-    const { data: existingSession, error: fetchError } = await supabaseAdmin
-      .from("creative_studio_sessions")
-      .select("id, session_type")
-      .eq("id", sessionId)
-      .eq("user_id", userId)
-      .single();
+    const existingSession = await CreativeStudioSessionDAO.getByIdAndUserId(sessionId, userId);
 
-    if (fetchError || !existingSession) {
+    if (!existingSession) {
       return res.status(404).json({
         ok: false,
         error: "Session not found",
@@ -174,63 +149,58 @@ async function handleUpdateSession(
     }
 
     // Build update payload
-    const payload: Record<string, any> = {
-      updated_at: new Date().toISOString(),
-    };
+    const payload: any = {};
 
     // Common fields
     if (name !== undefined) payload.name = name.trim();
-    if (brandSnapshot !== undefined) payload.brand_snapshot = brandSnapshot;
+    if (brandSnapshot !== undefined) payload.brandSnapshot = brandSnapshot;
 
     // Poster-specific fields
-    if (existingSession.session_type === "poster") {
+    if (existingSession.sessionType === "poster") {
       if (phase !== undefined) payload.phase = phase;
       if (messages !== undefined) payload.messages = messages;
-      if (productData !== undefined) payload.product_data = productData;
-      if (posterPrompt !== undefined) payload.poster_prompt = posterPrompt;
+      if (productData !== undefined) payload.productData = productData;
+      if (posterPrompt !== undefined) payload.posterPrompt = posterPrompt;
       if (config !== undefined) payload.config = config;
-      if (generatedPosters !== undefined) payload.generated_posters = generatedPosters;
+      if (generatedPosters !== undefined) payload.generatedPosters = generatedPosters;
     }
 
     // Video-specific fields
-    if (existingSession.session_type === "video") {
-      if (adBuilderData !== undefined) payload.ad_builder_data = adBuilderData;
-      if (generatedVideos !== undefined) payload.generated_videos = generatedVideos;
+    if (existingSession.sessionType === "video") {
+      if (adBuilderData !== undefined) payload.adBuilderData = adBuilderData;
+      if (generatedVideos !== undefined) payload.generatedVideos = generatedVideos;
     }
 
-    const { data, error } = await supabaseAdmin
-      .from("creative_studio_sessions")
-      .update(payload)
-      .eq("id", sessionId)
-      .eq("user_id", userId)
-      .select()
-      .single();
+    const updatedSession = await CreativeStudioSessionDAO.updateByIdAndUserId(
+      sessionId,
+      userId,
+      payload
+    );
 
-    if (error) {
-      console.error("Failed to update session:", error);
+    if (!updatedSession) {
       return res.status(500).json({
         ok: false,
-        error: `Failed to update session: ${error.message}`,
+        error: "Failed to update session",
       });
     }
 
     // Transform response to match frontend types
     const session = {
-      id: data.id,
-      userId: data.user_id,
-      name: data.name,
-      sessionType: data.session_type,
-      brandSnapshot: data.brand_snapshot,
-      phase: data.phase,
-      messages: data.messages,
-      productData: data.product_data,
-      posterPrompt: data.poster_prompt,
-      config: data.config,
-      generatedPosters: data.generated_posters,
-      adBuilderData: data.ad_builder_data,
-      generatedVideos: data.generated_videos,
-      createdAt: data.created_at,
-      updatedAt: data.updated_at,
+      id: updatedSession.id,
+      userId: updatedSession.userId,
+      name: updatedSession.name,
+      sessionType: updatedSession.sessionType,
+      brandSnapshot: updatedSession.brandSnapshot,
+      phase: updatedSession.phase,
+      messages: updatedSession.messages,
+      productData: updatedSession.productData,
+      posterPrompt: updatedSession.posterPrompt,
+      config: updatedSession.config,
+      generatedPosters: updatedSession.generatedPosters,
+      adBuilderData: updatedSession.adBuilderData,
+      generatedVideos: updatedSession.generatedVideos,
+      createdAt: updatedSession.createdAt,
+      updatedAt: updatedSession.updatedAt,
     };
 
     return res.status(200).json({
@@ -258,31 +228,21 @@ async function handleDeleteSession(
 ) {
   try {
     // First, verify the session exists and belongs to the user
-    const { data: existingSession, error: fetchError } = await supabaseAdmin
-      .from("creative_studio_sessions")
-      .select("id")
-      .eq("id", sessionId)
-      .eq("user_id", userId)
-      .single();
+    const existingSession = await CreativeStudioSessionDAO.getByIdAndUserId(sessionId, userId);
 
-    if (fetchError || !existingSession) {
+    if (!existingSession) {
       return res.status(404).json({
         ok: false,
         error: "Session not found",
       });
     }
 
-    const { error } = await supabaseAdmin
-      .from("creative_studio_sessions")
-      .delete()
-      .eq("id", sessionId)
-      .eq("user_id", userId);
+    const success = await CreativeStudioSessionDAO.deleteByIdAndUserId(sessionId, userId);
 
-    if (error) {
-      console.error("Failed to delete session:", error);
+    if (!success) {
       return res.status(500).json({
         ok: false,
-        error: `Failed to delete session: ${error.message}`,
+        error: "Failed to delete session",
       });
     }
 

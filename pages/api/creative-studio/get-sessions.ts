@@ -1,7 +1,7 @@
 // pages/api/creative-studio/get-sessions.ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import { supabaseAdmin } from "@/auth/supabase/client";
 import { getUserIdFromRequest } from "@/auth/request";
+import { CreativeStudioSessionDAO } from "@/database/models/CreativeStudioSession.dao";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "GET") {
@@ -9,40 +9,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    // Get authenticated user ID using staging's auth helper
+    // Get authenticated user ID
     const userId = await getUserIdFromRequest(req);
     if (!userId) {
       return res.status(401).json({ ok: false, error: "Authentication required" });
     }
 
     try {
-      const { data, error } = await supabaseAdmin
-        .from("creative_studio_sessions")
-        .select("*")
-        .eq("user_id", userId)
-        .order("updated_at", { ascending: false })
-        .limit(50);
-
-      if (error) {
-        // If table doesn't exist, return empty array
-        if (error.message?.includes("does not exist") || error.code === "42P01") {
-          return res.status(200).json({
-            ok: true,
-            sessions: [],
-            message: "Sessions table not configured",
-          });
-        }
-
-        console.error("Failed to fetch sessions:", error);
-        return res.status(500).json({
-          ok: false,
-          error: `Failed to fetch sessions: ${error.message}`,
-        });
-      }
+      const sessions = await CreativeStudioSessionDAO.listByUser(userId, { limit: 50 });
 
       return res.status(200).json({
         ok: true,
-        sessions: data || [],
+        sessions,
       });
     } catch (e: any) {
       console.error("Get sessions error:", e);

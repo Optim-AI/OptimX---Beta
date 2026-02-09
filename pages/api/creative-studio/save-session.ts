@@ -1,7 +1,7 @@
 // pages/api/creative-studio/save-session.ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import { supabaseAdmin } from "@/auth/supabase/client";
 import { getUserIdFromRequest } from "@/auth/request";
+import { CreativeStudioSessionDAO } from "@/database/models/CreativeStudioSession.dao";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") {
@@ -9,7 +9,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    // Get authenticated user ID using staging's auth helper
+    // Get authenticated user ID
     const userId = await getUserIdFromRequest(req);
     if (!userId) {
       return res.status(401).json({ ok: false, error: "Authentication required" });
@@ -28,38 +28,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Save session data
     try {
       const payload = {
-        user_id: userId,
-        name: name,
-        brand_snapshot: brandSnapshot,
-        product_data: productData || null,
+        userId,
+        name: name.trim(),
+        sessionType: 'poster' as const, // Default to poster type
+        brandSnapshot,
+        productData: productData || null,
         config: config || null,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
       };
 
-      const { data, error } = await supabaseAdmin
-        .from("creative_studio_sessions")
-        .insert([payload])
-        .select()
-        .single();
-
-      if (error) {
-        console.error("Failed to insert session:", error);
-        
-        // Check if it's a "relation does not exist" error
-        if (error.message?.includes("does not exist") || error.code === "42P01") {
-          return res.status(500).json({
-            ok: false,
-            error: "Sessions table not configured. Please run the database migration.",
-            details: "Run: supabase db reset or apply the migration manually",
-          });
-        }
-
-        return res.status(500).json({
-          ok: false,
-          error: `Failed to save session: ${error.message}`,
-        });
-      }
+      const data = await CreativeStudioSessionDAO.create(payload);
 
       return res.status(200).json({
         ok: true,
