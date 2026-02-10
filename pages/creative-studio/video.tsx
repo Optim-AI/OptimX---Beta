@@ -87,6 +87,11 @@ export default function VideoSessionPage() {
 
   // Credits state
   const [credits, setCredits] = useState<number | null>(null);
+  const [videoCredits, setVideoCredits] = useState<{
+    subscription: number;
+    addon: number;
+    total: number;
+  } | null>(null);
 
   // Auth state
   const [isAuthReady, setIsAuthReady] = useState(false);
@@ -274,6 +279,7 @@ export default function VideoSessionPage() {
         const data = await response.json();
         if (data.success) {
           setCredits(data.credits);
+          setVideoCredits(data.videoCredits);
         }
       } catch (err) {
         console.error('Error loading credits:', err);
@@ -834,13 +840,13 @@ export default function VideoSessionPage() {
                 </p>
               </div>
               <div className="flex items-center gap-4">
-                {credits !== null && (
-                  <div className="flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-amber-50 to-yellow-50 border border-amber-200 rounded-lg">
-                    <svg className="w-4 h-4 text-amber-500" fill="currentColor" viewBox="0 0 20 20">
-                      <path d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.736 6.979C9.208 6.193 9.696 6 10 6c.304 0 .792.193 1.264.979a1 1 0 001.715-1.029C12.279 4.784 11.232 4 10 4s-2.279.784-2.979 1.95c-.285.475-.507 1-.67 1.55H6a1 1 0 000 2h.013a9.358 9.358 0 000 1H6a1 1 0 100 2h.351c.163.55.385 1.075.67 1.55C7.721 15.216 8.768 16 10 16s2.279-.784 2.979-1.95a1 1 0 10-1.715-1.029c-.472.786-.96.979-1.264.979-.304 0-.792-.193-1.264-.979a4.265 4.265 0 01-.264-.521H10a1 1 0 100-2H8.017a7.36 7.36 0 010-1H10a1 1 0 100-2H8.472c.08-.185.167-.36.264-.521z" />
+                {videoCredits !== null && (
+                  <div className="flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-200 rounded-lg">
+                    <svg className="w-4 h-4 text-purple-500" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M2 6a2 2 0 012-2h6a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V6zM14.553 7.106A1 1 0 0014 8v4a1 1 0 00.553.894l2 1A1 1 0 0018 13V7a1 1 0 00-1.447-.894l-2 1z" />
                     </svg>
-                    <span className="font-semibold text-amber-700 text-sm">{credits}</span>
-                    <span className="text-amber-600 text-xs">credits</span>
+                    <span className="font-semibold text-purple-700 text-sm">{videoCredits.total}</span>
+                    <span className="text-purple-600 text-xs">seconds</span>
                   </div>
                 )}
                 <BackButton />
