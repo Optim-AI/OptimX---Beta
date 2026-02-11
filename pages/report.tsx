@@ -1,0 +1,344 @@
+"use client";
+
+import React, { useState, useRef, useCallback } from "react";
+import Sidebar from "../app/web/src/components/Sidebar";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "../app/web/src/components/ui/card";
+import { Button } from "../app/web/src/components/ui/button";
+import { Input } from "../app/web/src/components/ui/input";
+import { Label } from "../app/web/src/components/ui/label";
+import { Textarea } from "../app/web/src/components/ui/textarea";
+import { toast } from "../app/web/src/hooks/use-toast";
+import { authFetch } from "@/lib/utils";
+import { Flag, AlertCircle, MessageSquare, Upload, X } from "lucide-react";
+import colors from "@/lib/ui/colors";
+
+const MAX_IMAGES = 3;
+const MAX_IMAGE_BYTES = 3 * 1024 * 1024; // 3MB per image
+
+type ReportType = "error" | "feedback";
+
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+export default function ReportPage() {
+  const [type, setType] = useState<ReportType>("feedback");
+  const [message, setMessage] = useState("");
+  const [pageUrl, setPageUrl] = useState("");
+  const [images, setImages] = useState<string[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const addImages = useCallback(async (files: FileList | File[]) => {
+    const list = Array.from(files);
+    const imageFiles = list.filter((f) => f.type.startsWith("image/"));
+    if (imageFiles.length === 0) return;
+    const remaining = MAX_IMAGES - images.length;
+    if (remaining <= 0) {
+      toast({ title: "Maximum 3 images", description: "You can attach up to 3 images.", variant: "destructive" });
+      return;
+    }
+    const toAdd = imageFiles.slice(0, remaining);
+    for (const f of toAdd) {
+      if (f.size > MAX_IMAGE_BYTES) {
+        toast({ title: "Image too large", description: `${f.name} is over 3MB. Use a smaller image.`, variant: "destructive" });
+        continue;
+      }
+    }
+    try {
+      const dataUrls = await Promise.all(toAdd.map(fileToDataUrl));
+      setImages((prev) => [...prev, ...dataUrls].slice(0, MAX_IMAGES));
+      if (toAdd.length < imageFiles.length) {
+        toast({ title: "Some images skipped", description: `Only ${MAX_IMAGES} images allowed. Added ${toAdd.length}.`, variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Could not add images", description: "Please try again.", variant: "destructive" });
+    }
+  }, [images.length]);
+
+  const removeImage = (index: number) => setImages((prev) => prev.filter((_, i) => i !== index));
+
+  const handlePaste = useCallback(
+    (e: React.ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items?.length) return;
+      const files = Array.from(items)
+        .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+        .map((item) => item.getAsFile())
+        .filter((f): f is File => f != null);
+      if (files.length) {
+        e.preventDefault();
+        addImages(files);
+      }
+    },
+    [addImages]
+  );
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!message.trim()) {
+      toast({
+        title: "Message required",
+        description: "Please describe the error or share your feedback.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const res = await authFetch("/api/report", {
+        method: "POST",
+        body: JSON.stringify({
+          type,
+          message: message.trim(),
+          pageUrl: pageUrl.trim() || undefined,
+          images: images.length ? images : undefined,
+        }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        toast({
+          title: "Could not submit",
+          description: data.error || "Something went wrong. Please try again.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      toast({
+        title: "Thank you",
+        description:
+          type === "error"
+            ? "We've received your report and will look into it."
+            : "We've received your feedback and appreciate it.",
+      });
+      setMessage("");
+      setPageUrl("");
+      setImages([]);
+    } catch (err) {
+      console.error("Report submit error:", err);
+      toast({
+        title: "Error",
+        description: "Failed to submit. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="flex min-h-screen" style={{ backgroundColor: colors.background }}>
+      <Sidebar />
+      <main className="flex-1 p-6 md:p-8 lg:p-10">
+        <div className="mx-auto max-w-2xl">
+          <div className="mb-8 flex items-center gap-3">
+            <div
+              className="flex h-10 w-10 items-center justify-center rounded-lg"
+              style={{
+                backgroundColor: type === "error" ? "rgba(239, 68, 68, 0.15)" : colors.primary + "20",
+                color: type === "error" ? colors.destructive : colors.primary,
+              }}
+            >
+              <Flag size={20} />
+            </div>
+            <div>
+              <h1 className="text-2xl font-semibold" style={{ color: colors.foreground }}>
+                Report
+              </h1>
+              <p className="text-sm" style={{ color: colors.mutedForeground }}>
+                Report an error or share feedback so we can improve.
+              </p>
+            </div>
+          </div>
+
+          <Card style={{ borderColor: "rgba(0,0,0,0.06)" }}>
+            <CardHeader>
+              <CardTitle style={{ color: colors.foreground }}>
+                What would you like to share?
+              </CardTitle>
+              <CardDescription style={{ color: colors.mutedForeground }}>
+                Describe a bug, an error you saw, or any feedback. Your report helps us fix issues and build a better product.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleSubmit} className="space-y-6">
+                {/* Type selector */}
+                <div className="space-y-2">
+                  <Label style={{ color: colors.foreground }}>Type</Label>
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setType("error")}
+                      className="flex flex-1 items-center gap-2 rounded-lg border-2 px-4 py-3 text-left transition-colors"
+                      style={{
+                        borderColor: type === "error" ? colors.primary : "rgba(0,0,0,0.1)",
+                        backgroundColor: type === "error" ? colors.primary + "12" : "transparent",
+                        color: colors.foreground,
+                      }}
+                    >
+                      <AlertCircle size={18} style={{ color: type === "error" ? colors.primary : colors.mutedForeground }} />
+                      <span className="font-medium">Error / Bug</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setType("feedback")}
+                      className="flex flex-1 items-center gap-2 rounded-lg border-2 px-4 py-3 text-left transition-colors"
+                      style={{
+                        borderColor: type === "feedback" ? colors.primary : "rgba(0,0,0,0.1)",
+                        backgroundColor: type === "feedback" ? colors.primary + "12" : "transparent",
+                        color: colors.foreground,
+                      }}
+                    >
+                      <MessageSquare size={18} style={{ color: type === "feedback" ? colors.primary : colors.mutedForeground }} />
+                      <span className="font-medium">Feedback</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Message */}
+                <div className="space-y-2">
+                  <Label htmlFor="message" style={{ color: colors.foreground }}>
+                    {type === "error" ? "What went wrong?" : "Your feedback"}
+                  </Label>
+                  <Textarea
+                    id="message"
+                    placeholder={
+                      type === "error"
+                        ? "Describe what happened, what you expected, and any error message you saw..."
+                        : "Share your thoughts, suggestions, or ideas..."
+                    }
+                    value={message}
+                    onChange={(e) => setMessage(e.target.value)}
+                    onPaste={handlePaste}
+                    rows={5}
+                    className="resize-none"
+                    style={{
+                      backgroundColor: colors.background,
+                      borderColor: "rgba(0,0,0,0.1)",
+                      color: colors.foreground,
+                    }}
+                    required
+                  />
+                </div>
+
+                {/* Optional: Page URL */}
+                <div className="space-y-2">
+                  <Label htmlFor="pageUrl" style={{ color: colors.foreground }}>
+                    Where did it happen? <span className="text-muted-foreground">(optional)</span>
+                  </Label>
+                  <Input
+                    id="pageUrl"
+                    type="url"
+                    placeholder="e.g. https://app.example.com/creative-studio/video"
+                    value={pageUrl}
+                    onChange={(e) => setPageUrl(e.target.value)}
+                    style={{
+                      backgroundColor: colors.background,
+                      borderColor: "rgba(0,0,0,0.1)",
+                      color: colors.foreground,
+                    }}
+                  />
+                </div>
+
+                {/* Images: upload or paste, up to 3 */}
+                <div className="space-y-2">
+                  <Label style={{ color: colors.foreground }}>
+                    Attach screenshots <span className="text-muted-foreground">(optional, up to 3)</span>
+                  </Label>
+                  <div
+                    className="rounded-lg border-2 border-dashed p-4 transition-colors focus-within:ring-2 focus-within:ring-offset-2"
+                    style={{
+                      borderColor: "rgba(0,0,0,0.12)",
+                      backgroundColor: colors.background + "80",
+                    }}
+                    onPaste={handlePaste}
+                    tabIndex={0}
+                  >
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      className="hidden"
+                      onChange={(e) => {
+                        const files = e.target.files;
+                        if (files?.length) addImages(files);
+                        e.target.value = "";
+                      }}
+                    />
+                    <div className="flex flex-wrap items-center gap-3">
+                      {images.map((dataUrl, i) => (
+                        <div
+                          key={i}
+                          className="relative inline-block rounded-lg overflow-hidden border shadow-sm"
+                          style={{ borderColor: "rgba(0,0,0,0.1)" }}
+                        >
+                          <img
+                            src={dataUrl}
+                            alt={`Attachment ${i + 1}`}
+                            className="h-20 w-20 object-cover"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => removeImage(i)}
+                            className="absolute top-1 right-1 rounded-full p-1 shadow-md hover:opacity-90"
+                            style={{ backgroundColor: "rgba(0,0,0,0.6)", color: "#fff" }}
+                            aria-label="Remove image"
+                          >
+                            <X size={14} />
+                          </button>
+                        </div>
+                      ))}
+                      {images.length < MAX_IMAGES && (
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="flex h-20 w-20 flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed transition-colors hover:bg-black/5"
+                          style={{
+                            borderColor: "rgba(0,0,0,0.2)",
+                            color: colors.mutedForeground,
+                          }}
+                        >
+                          <Upload size={20} />
+                          <span className="text-[10px] font-medium">Upload</span>
+                        </button>
+                      )}
+                    </div>
+                    <p className="mt-2 text-xs" style={{ color: colors.mutedForeground }}>
+                      Upload or paste (Ctrl+V / Cmd+V) up to 3 images. Max 3MB each.
+                    </p>
+                  </div>
+                </div>
+
+                <Button
+                  type="submit"
+                  disabled={isSubmitting}
+                  style={{
+                    backgroundColor: type === "error" ? colors.destructive : colors.primary,
+                    color: type === "error" ? colors.destructiveForeground : colors.primaryForeground,
+                  }}
+                >
+                  {isSubmitting ? "Sending…" : "Submit report"}
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
+      </main>
+    </div>
+  );
+}

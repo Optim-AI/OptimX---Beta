@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
+import Link from 'next/link';
 import Sidebar from '@/app/web/src/components/Sidebar';
 import {
   type BrandSnapshot,
@@ -345,6 +346,17 @@ export default function CreativeStudioLanding() {
         {/* Content */}
         <div className="flex-1 overflow-y-auto">
           <div className="max-w-4xl mx-auto px-6 py-8">
+            {/* AI disclaimer note */}
+            <div className="mb-8 p-4 bg-amber-50 border border-amber-200 rounded-xl">
+              <p className="text-sm text-amber-900">
+                <strong>Note:</strong> If a generation glitches or looks incorrect,{' '}
+                <Link href="/report" className="font-medium text-amber-700 underline hover:text-amber-800">
+                  send us a screenshot
+                </Link>
+                {' '}and we&apos;ll refund the credit as an apology. We&apos;re continuously improving the system to deliver better results every day.
+              </p>
+            </div>
+
             {/* Recent Sessions */}
             {sessions.length > 0 && (
               <div className="mb-12">

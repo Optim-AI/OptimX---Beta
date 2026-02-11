@@ -465,6 +465,9 @@ export const DEFAULT_AD_BUILDER_DATA = {
   },
   onScreenText: {
     enabled: true,
+    textStyle: "animated_effects" as const,
+    textPosition: "lower_third" as const,
+    alignBrand: true,
   },
 };
 
@@ -524,7 +527,7 @@ export const VIDEO_STYLES = [
 /**
  * Video durations
  */
-export const VIDEO_DURATIONS = [6, 8, 10, 15] as const;
+export const VIDEO_DURATIONS = [4, 6, 8] as const;
 
 /**
  * Video platforms
@@ -540,3 +543,24 @@ export const VIDEO_PLATFORMS = [
  * Video aspect ratios
  */
 export const VIDEO_ASPECT_RATIOS = ["9:16", "1:1", "16:9", "4:5"] as const;
+
+/**
+ * On-screen text styles for video (kinetic, animated, captions, etc.)
+ */
+export const VIDEO_TEXT_STYLES = [
+  { id: "kinetic", label: "Kinetic Typography", description: "Dynamic, moving text that adds energy" },
+  { id: "animated_titles", label: "Animated Titles", description: "Typewriter, glitch, or bouncing" },
+  { id: "subtitles_captions", label: "Subtitles / Captions", description: "Karaoke-style, accessibility-friendly" },
+  { id: "specialized", label: "Specialized", description: "Meme-style, testimonial, or countdown" },
+  { id: "animated_effects", label: "Animated Effects", description: "Fade-in, drop, or sliding" },
+] as const;
+
+/**
+ * On-screen text positions (lower third recommended)
+ */
+export const VIDEO_TEXT_POSITIONS = [
+  { id: "lower_third", label: "Lower Third", description: "Does not obstruct key visuals" },
+  { id: "center", label: "Center", description: "Prominent, center screen" },
+  { id: "top_third", label: "Top Third", description: "Upper area" },
+  { id: "full_width", label: "Full Width", description: "Caption bar style" },
+] as const;

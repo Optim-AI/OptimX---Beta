@@ -24,6 +24,7 @@ import {
   Sparkles,
   Zap,
   Coins,
+  Flag,
 } from 'lucide-react';
 import colors from '@/lib/ui/colors';
 import { authFetch } from '@/lib/utils';
@@ -47,6 +48,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/integrations', label: 'Integrations', Icon: Link2, featureKey: 'integrations' },
   { href: '/notifications', label: 'Notifications', Icon: Bell }, // Always visible
   { href: '/settings', label: 'Settings', Icon: Settings }, // Always visible
+  { href: '/report', label: 'Report', Icon: Flag }, // Report errors or feedback
 ];
 
 type ChatItem = {
@@ -131,6 +133,10 @@ const Sidebar: React.FC<SidebarProps> = ({
   const sidebarAccent = (colors as any).sidebarAccentBlue ?? (colors as any).sidebarAccent ?? 'rgba(96,165,250,0.08)';
   const sidebarAccentFg = (colors as any).sidebarAccentForeground ?? '#dbeafe';
   const deepShadow = (colors as any).shadowDeep ?? (colors as any).shadowMedium ?? '0 12px 40px rgba(6,18,60,0.28)';
+  // Report item: red CTA styling
+  const reportRed = (colors as any).destructive ?? '#ef4444';
+  const reportAccent = 'rgba(239, 68, 68, 0.12)';
+  const reportAccentFg = '#fecaca';
 
   // Helper function to check if a route is active
   const isActive = (href: string) => pathname === href;
@@ -193,6 +199,10 @@ const Sidebar: React.FC<SidebarProps> = ({
       <nav className="flex-1 px-2 py-3 space-y-1" aria-label="Primary">
         {NAV_ITEMS.map((item) => {
           const active = isActive(item.href);
+          const isReport = item.href === '/report';
+          const itemPrimary = isReport ? reportRed : sidebarPrimary;
+          const itemAccent = isReport ? reportAccent : sidebarAccent;
+          const itemAccentFg = isReport ? reportAccentFg : sidebarAccentFg;
           
           // Check feature access for gated items
           if (item.featureKey) {
@@ -209,21 +219,21 @@ const Sidebar: React.FC<SidebarProps> = ({
               href={item.href}
               className={`group flex items-center gap-3 rounded-lg px-3 py-2 transition-colors duration-150 ${collapsed ? 'justify-center' : ''}`}
               style={{
-                color: active ? sidebarPrimary : sidebarFg,
-                background: active ? sidebarAccent : 'transparent',
+                color: active ? itemPrimary : (isReport ? reportRed : sidebarFg),
+                background: active ? itemAccent : 'transparent',
                 fontWeight: active ? 600 : 400,
-                borderLeft: active ? `3px solid ${sidebarPrimary}` : '3px solid transparent',
+                borderLeft: active ? `3px solid ${itemPrimary}` : '3px solid transparent',
               }}
               onMouseEnter={(e) => {
                 if (!active) {
-                  (e.currentTarget as HTMLElement).style.backgroundColor = sidebarAccent;
-                  (e.currentTarget as HTMLElement).style.color = sidebarAccentFg;
+                  (e.currentTarget as HTMLElement).style.backgroundColor = itemAccent;
+                  (e.currentTarget as HTMLElement).style.color = itemAccentFg;
                 }
               }}
               onMouseLeave={(e) => {
                 if (!active) {
                   (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent';
-                  (e.currentTarget as HTMLElement).style.color = sidebarFg;
+                  (e.currentTarget as HTMLElement).style.color = isReport ? reportRed : sidebarFg;
                 }
               }}
             >

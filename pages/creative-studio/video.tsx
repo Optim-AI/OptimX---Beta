@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/router';
+import Link from 'next/link';
 import Sidebar from '@/app/web/src/components/Sidebar';
 import { InsufficientCreditsAlert } from '@/app/web/src/components/billing';
 import {
@@ -21,6 +22,8 @@ import {
   VIDEO_DURATIONS,
   VIDEO_PLATFORMS,
   VIDEO_ASPECT_RATIOS,
+  VIDEO_TEXT_STYLES,
+  VIDEO_TEXT_POSITIONS,
 } from '@/app/web/src/components/creative-studio';
 import { authFetch } from '@/lib/utils';
 import { supabase } from '@/auth/supabase/client';
@@ -605,6 +608,9 @@ export default function VideoSessionPage() {
           voiceover_script: adBuilderData.voiceover.script,
           headline: adBuilderData.onScreenText.headline,
           subtext: adBuilderData.onScreenText.subtext,
+          text_style: adBuilderData.onScreenText.textStyle ?? 'animated_effects',
+          text_position: adBuilderData.onScreenText.textPosition ?? 'lower_third',
+          align_brand: adBuilderData.onScreenText.alignBrand ?? true,
           product_images: adBuilderData.product.product_images,
           hero_image: adBuilderData.product.hero_image,
           brand_logo: brandLogo,
@@ -1050,6 +1056,9 @@ export default function VideoSessionPage() {
                         </button>
                       ))}
                     </div>
+                    <p className="mt-2 text-xs text-gray-500">
+                      Available lengths: 4 s, 6 s, and 8 s.
+                    </p>
                   </div>
 
                   {/* Platform */}
@@ -1594,37 +1603,105 @@ export default function VideoSessionPage() {
                     </div>
                   )}
 
-                  {/* Headline & Subtext (editable) */}
+                  {/* Headline & Subtext (editable) + Text style & position */}
                   {!isGeneratingScript && adBuilderData.onScreenText.enabled && adBuilderData.voiceover.script && (
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Headline</label>
+                          <input
+                            type="text"
+                            value={adBuilderData.onScreenText.headline || ''}
+                            onChange={(e) =>
+                              setAdBuilderData({
+                                ...adBuilderData,
+                                onScreenText: { ...adBuilderData.onScreenText, headline: e.target.value },
+                              })
+                            }
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Subtext</label>
+                          <input
+                            type="text"
+                            value={adBuilderData.onScreenText.subtext || ''}
+                            onChange={(e) =>
+                              setAdBuilderData({
+                                ...adBuilderData,
+                                onScreenText: { ...adBuilderData.onScreenText, subtext: e.target.value },
+                              })
+                            }
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                          />
+                        </div>
+                      </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Headline</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Text style</label>
+                        <p className="text-xs text-gray-500 mb-2">How the on-screen text appears (kinetic, animated, captions, etc.)</p>
+                        <div className="flex flex-wrap gap-2">
+                          {VIDEO_TEXT_STYLES.map((opt) => (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              onClick={() =>
+                                setAdBuilderData({
+                                  ...adBuilderData,
+                                  onScreenText: { ...adBuilderData.onScreenText, textStyle: opt.id },
+                                })
+                              }
+                              className={`px-3 py-2 rounded-lg border-2 text-sm font-medium transition-colors ${
+                                (adBuilderData.onScreenText.textStyle ?? 'animated_effects') === opt.id
+                                  ? 'border-purple-600 bg-purple-50 text-purple-700'
+                                  : 'border-gray-200 hover:border-gray-300'
+                              }`}
+                              title={opt.description}
+                            >
+                              {opt.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Text position</label>
+                        <p className="text-xs text-gray-500 mb-2">Where text sits (lower third recommended for readability)</p>
+                        <div className="flex flex-wrap gap-2">
+                          {VIDEO_TEXT_POSITIONS.map((opt) => (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              onClick={() =>
+                                setAdBuilderData({
+                                  ...adBuilderData,
+                                  onScreenText: { ...adBuilderData.onScreenText, textPosition: opt.id },
+                                })
+                              }
+                              className={`px-3 py-2 rounded-lg border-2 text-sm font-medium transition-colors ${
+                                (adBuilderData.onScreenText.textPosition ?? 'lower_third') === opt.id
+                                  ? 'border-purple-600 bg-purple-50 text-purple-700'
+                                  : 'border-gray-200 hover:border-gray-300'
+                              }`}
+                              title={opt.description}
+                            >
+                              {opt.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <label className="flex items-center gap-2">
                         <input
-                          type="text"
-                          value={adBuilderData.onScreenText.headline || ''}
+                          type="checkbox"
+                          checked={adBuilderData.onScreenText.alignBrand ?? true}
                           onChange={(e) =>
                             setAdBuilderData({
                               ...adBuilderData,
-                              onScreenText: { ...adBuilderData.onScreenText, headline: e.target.value },
+                              onScreenText: { ...adBuilderData.onScreenText, alignBrand: e.target.checked },
                             })
                           }
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                          className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
                         />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Subtext</label>
-                        <input
-                          type="text"
-                          value={adBuilderData.onScreenText.subtext || ''}
-                          onChange={(e) =>
-                            setAdBuilderData({
-                              ...adBuilderData,
-                              onScreenText: { ...adBuilderData.onScreenText, subtext: e.target.value },
-                            })
-                          }
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                        />
-                      </div>
+                        <span className="text-sm text-gray-700">Align text style with brand (fonts & colors)</span>
+                      </label>
                     </div>
                   )}
 
@@ -1653,6 +1730,12 @@ export default function VideoSessionPage() {
                 <div>
                   <h2 className="text-2xl font-bold text-gray-900 mb-2">Generate Video</h2>
                   <p className="text-gray-600">Generate your video ad</p>
+                </div>
+
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-900">
+                  If a generation glitches or looks incorrect,{' '}
+                  <Link href="/report" className="font-medium text-amber-700 underline hover:text-amber-800">send us a screenshot</Link>
+                  {' '}and we&apos;ll refund the credit. We&apos;re constantly improving the system to make it better every day.
                 </div>
 
                 <div className="bg-white rounded-lg border border-gray-200 p-6">

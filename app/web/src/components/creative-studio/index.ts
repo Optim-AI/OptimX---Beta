@@ -22,6 +22,8 @@ export {
   VIDEO_DURATIONS,
   VIDEO_PLATFORMS,
   VIDEO_ASPECT_RATIOS,
+  VIDEO_TEXT_STYLES,
+  VIDEO_TEXT_POSITIONS,
 } from './utils';
 
 // Components
