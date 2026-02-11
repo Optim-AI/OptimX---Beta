@@ -1,7 +1,7 @@
 // pages/api/billing/payments/verify.ts
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { getUserIdFromRequest } from '@/auth/request';
-import { PaymentService } from '@/lib/razorpay';
+import { PaymentService, isRazorpayConfigured } from '@/lib/razorpay';
 
 /**
  * POST /api/billing/payments/verify
@@ -10,6 +10,12 @@ import { PaymentService } from '@/lib/razorpay';
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  if (!isRazorpayConfigured()) {
+    return res.status(503).json({
+      error: 'Payments are not configured yet. Add your Razorpay API keys. See docs/RAZORPAY_SETUP.md',
+    });
   }
 
   try {

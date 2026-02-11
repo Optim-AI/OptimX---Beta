@@ -132,10 +132,9 @@ const Footer: React.FC = () => {
           {/* Logo + description */}
           <div className="col-span-2">
             <div className="flex items-center space-x-1 mb-4">
-              <img src="/images/OptimX_Logo.svg" alt="OptimX Logo" className="h-8 w-8" />
+              <img src="/images/Oli_AI_Logo.svg" alt="Oli AI Logo" className="h-8 w-8" />
               <span className="text-xl font-bold" style={{ display: 'inline-flex', gap: 0 }}>
-                <span style={{ color: colors.foreground }}>Optim</span>
-                <span style={{ color: colors.primary }}>X</span>
+                <span style={{ color: colors.foreground }}>Oli AI</span>
               </span>
             </div>
 
@@ -248,7 +247,7 @@ const Footer: React.FC = () => {
           style={{ borderTop: `1px solid ${colors.border}`, gap: 12 }}
         >
           <div style={{ color: colors.mutedForeground, fontSize: 14 }} className="mb-4 md:mb-0">
-            © {new Date().getFullYear()} OptimX. All rights reserved.
+            © {new Date().getFullYear()} Oli AI. All rights reserved.
           </div>
           <div style={{ color: colors.mutedForeground, fontSize: 14 }}>
             Made with ❤️ for small & medium businesses everywhere

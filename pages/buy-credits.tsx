@@ -6,16 +6,7 @@ import { supabase } from '@/auth/supabase/client';
 import { Zap, Image, Video, ArrowLeft, Plus, Minus } from 'lucide-react';
 import colors from '@/lib/ui/colors';
 import { authFetch } from '@/lib/utils';
-
-// PRICING CONFIGURATION - Adjust these values as needed
-const PRICING = {
-  IMAGE_CREDIT_PRICE: 5, // ₹5 per image credit
-  VIDEO_CREDIT_PRICE: 3, // ₹3 per video second
-  MIN_QUANTITY: 10,
-  MAX_QUANTITY: 1000,
-  DEFAULT_IMAGE_QUANTITY: 50,
-  DEFAULT_VIDEO_QUANTITY: 60,
-};
+import { BUY_CREDITS_PRICING, calculateTotalsInr } from '@/lib/billing/pricing';
 
 interface CreditBalance {
   imageCredits: { subscription: number; addon: number; total: number };
@@ -27,7 +18,7 @@ export default function BuyCreditsPage() {
   const [loading, setLoading] = useState(true);
   const [authenticated, setAuthenticated] = useState(false);
   const [creditType, setCreditType] = useState<'image' | 'video'>('image');
-  const [quantity, setQuantity] = useState(PRICING.DEFAULT_IMAGE_QUANTITY);
+  const [quantity, setQuantity] = useState<number>(BUY_CREDITS_PRICING.defaultImageQuantity);
   const [balance, setBalance] = useState<CreditBalance | null>(null);
   const [purchasing, setPurchasing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -46,8 +37,8 @@ export default function BuyCreditsPage() {
   useEffect(() => {
     setQuantity(
       creditType === 'image'
-        ? PRICING.DEFAULT_IMAGE_QUANTITY
-        : PRICING.DEFAULT_VIDEO_QUANTITY
+        ? BUY_CREDITS_PRICING.defaultImageQuantity
+        : BUY_CREDITS_PRICING.defaultVideoQuantity
     );
   }, [creditType]);
 
@@ -76,16 +67,12 @@ export default function BuyCreditsPage() {
     }
   }
 
-  const pricePerCredit = creditType === 'image'
-    ? PRICING.IMAGE_CREDIT_PRICE
-    : PRICING.VIDEO_CREDIT_PRICE;
-
-  const totalPrice = quantity * pricePerCredit;
+  const totals = calculateTotalsInr({ creditType, credits: quantity });
 
   function adjustQuantity(delta: number) {
     setQuantity((prev) => {
       const newValue = prev + delta;
-      return Math.max(PRICING.MIN_QUANTITY, Math.min(PRICING.MAX_QUANTITY, newValue));
+      return Math.max(BUY_CREDITS_PRICING.minQuantity, Math.min(BUY_CREDITS_PRICING.maxQuantity, newValue));
     });
   }
 
@@ -94,14 +81,13 @@ export default function BuyCreditsPage() {
     setError(null);
 
     try {
-      // Create order with custom amount
+      // Create order (amount is computed server-side and includes GST)
       const orderResponse = await authFetch('/api/billing/payments/create-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           creditType,
           credits: quantity,
-          amount: totalPrice,
         }),
       });
       const orderData = await orderResponse.json();
@@ -118,8 +104,8 @@ export default function BuyCreditsPage() {
         amount: orderData.amount,
         currency: orderData.currency,
         order_id: orderData.razorpayOrderId,
-        name: 'OptimX',
-        description: `${quantity} ${creditType === 'image' ? 'Image Credits' : 'Video Seconds'}`,
+        name: 'Oli AI',
+        description: `${quantity} ${creditType === 'image' ? 'Image Credits' : 'Video Seconds'} (incl. GST)`,
         handler: async function (response: any) {
           // Verify payment
           const verifyResponse = await authFetch('/api/billing/payments/verify', {
@@ -236,7 +222,7 @@ export default function BuyCreditsPage() {
                 <button
                   className="qty-btn"
                   onClick={() => adjustQuantity(-10)}
-                  disabled={quantity <= PRICING.MIN_QUANTITY}
+                  disabled={quantity <= BUY_CREDITS_PRICING.minQuantity}
                 >
                   <Minus size={20} />
                 </button>
@@ -246,17 +232,17 @@ export default function BuyCreditsPage() {
                   className="qty-input"
                   value={quantity}
                   onChange={(e) => {
-                    const val = parseInt(e.target.value) || PRICING.MIN_QUANTITY;
-                    setQuantity(Math.max(PRICING.MIN_QUANTITY, Math.min(PRICING.MAX_QUANTITY, val)));
+                    const val = parseInt(e.target.value) || BUY_CREDITS_PRICING.minQuantity;
+                    setQuantity(Math.max(BUY_CREDITS_PRICING.minQuantity, Math.min(BUY_CREDITS_PRICING.maxQuantity, val)));
                   }}
-                  min={PRICING.MIN_QUANTITY}
-                  max={PRICING.MAX_QUANTITY}
+                  min={BUY_CREDITS_PRICING.minQuantity}
+                  max={BUY_CREDITS_PRICING.maxQuantity}
                 />
 
                 <button
                   className="qty-btn"
                   onClick={() => adjustQuantity(10)}
-                  disabled={quantity >= PRICING.MAX_QUANTITY}
+                  disabled={quantity >= BUY_CREDITS_PRICING.maxQuantity}
                 >
                   <Plus size={20} />
                 </button>
@@ -284,24 +270,32 @@ export default function BuyCreditsPage() {
             <div className="price-summary">
               <div className="price-row">
                 <span>Price per {creditType === 'image' ? 'credit' : 'second'}:</span>
-                <span className="price-value">₹{pricePerCredit}</span>
+                <span className="price-value">₹{totals.unitPriceInr}</span>
               </div>
               <div className="price-row">
                 <span>Quantity:</span>
                 <span className="price-value">{quantity}</span>
               </div>
+              <div className="price-row">
+                <span>Subtotal:</span>
+                <span className="price-value">₹{totals.subtotalInr}</span>
+              </div>
+              <div className="price-row">
+                <span>GST ({Math.round(totals.gstRate * 100)}%):</span>
+                <span className="price-value">₹{totals.gstAmountInr}</span>
+              </div>
               <div className="price-row total">
-                <span>Total Amount:</span>
-                <span className="price-value">₹{totalPrice}</span>
+                <span>Total (incl. GST):</span>
+                <span className="price-value">₹{totals.totalInr}</span>
               </div>
             </div>
 
             <button
               className="purchase-btn"
-              disabled={purchasing || quantity < PRICING.MIN_QUANTITY}
+              disabled={purchasing || quantity < BUY_CREDITS_PRICING.minQuantity}
               onClick={handlePurchase}
             >
-              {purchasing ? 'Processing...' : `Pay ₹${totalPrice}`}
+              {purchasing ? 'Processing...' : `Pay ₹${totals.totalInr}`}
             </button>
 
             <p className="note">

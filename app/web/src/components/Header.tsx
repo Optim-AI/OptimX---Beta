@@ -56,10 +56,9 @@ const Header: React.FC = () => {
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
           <Link href="/" className="flex items-center space-x-1" style={{ color: colors.foreground }}>
-            <img src="/images/OptimX_Logo.svg" alt="OptimX Logo" className="h-10 w-auto" />
+            <img src="/images/Oli_AI_Logo.svg" alt="Oli AI Logo" className="h-10 w-auto" />
             <span className="text-xl font-bold" style={{ lineHeight: 1 }}>
-              <span style={{ color: colors.foreground }}>Optim</span>
-              <span style={{ color: colors.primary }}>X</span>
+              <span style={{ color: colors.foreground }}>Oli AI</span>
             </span>
           </Link>
 

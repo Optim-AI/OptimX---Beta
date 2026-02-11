@@ -2,7 +2,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { getUserIdFromRequest } from '@/auth/request';
 import { SubscriptionsDAO } from '@/database/models/Subscriptions.dao';
-import { SubscriptionService } from '@/lib/razorpay';
+import { SubscriptionService, isRazorpayConfigured } from '@/lib/razorpay';
 
 /**
  * POST /api/billing/subscriptions/cancel
@@ -11,6 +11,12 @@ import { SubscriptionService } from '@/lib/razorpay';
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  if (!isRazorpayConfigured()) {
+    return res.status(503).json({
+      error: 'Payments are not configured yet. Add your Razorpay API keys. See docs/RAZORPAY_SETUP.md',
+    });
   }
 
   try {

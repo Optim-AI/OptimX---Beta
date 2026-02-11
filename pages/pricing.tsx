@@ -287,7 +287,7 @@ export default function PricingPage() {
     const options = {
       key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
       subscription_id: subscriptionId,
-      name: 'OptimX',
+      name: 'Oli AI',
       description: 'Subscription Payment',
       handler: function (response: any) {
         // Payment successful, redirect
@@ -630,7 +630,7 @@ export default function PricingPage() {
             <p className="subtitle">
               {currentSubscription 
                 ? `You're currently on ${currentSubscription.planName}. Upgrade or downgrade anytime.`
-                : 'Start creating stunning ads with OptimX. Pick a plan that fits your needs.'}
+                : 'Start creating stunning ads with Oli AI. Pick a plan that fits your needs.'}
             </p>
 
             <div className="billing-toggle">
@@ -670,7 +670,7 @@ export default function PricingPage() {
                 <Sparkles size={24} color="#f59e0b" />
                 Free Trial
               </h3>
-              <p className="plan-desc">Try OptimX for 5 days</p>
+              <p className="plan-desc">Try Oli AI for 5 days</p>
               
               <div className="plan-price">
                 <span className="plan-price-currency">₹</span>0

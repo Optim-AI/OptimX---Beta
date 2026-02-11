@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ============================================================
-# OptimX Development Startup Script
+# Oli AI Development Startup Script
 # ============================================================
 # Starts Supabase local stack and Next.js dev server
 # Usage: ./scripts/dev.sh or npm run dev
@@ -21,7 +21,7 @@ PROJECT_ROOT="$( cd "$SCRIPT_DIR/.." && pwd )"
 # Change to project root
 cd "$PROJECT_ROOT"
 
-echo "🚀 OptimX Development Startup"
+echo "🚀 Oli AI Development Startup"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 

@@ -1,8 +1,9 @@
 // pages/api/billing/payments/create-order.ts
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { getUserIdFromRequest } from '@/auth/request';
-import { razorpay, RAZORPAY_KEY_ID } from '@/lib/razorpay/client';
+import { razorpay, RAZORPAY_KEY_ID, isRazorpayConfigured } from '@/lib/razorpay/client';
 import { PaymentsDAO } from '@/database/models/Payments.dao';
+import { BUY_CREDITS_PRICING, calculateTotalsInr } from '@/lib/billing/pricing';
 
 /**
  * POST /api/billing/payments/create-order
@@ -13,36 +14,52 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
+  if (!isRazorpayConfigured()) {
+    return res.status(503).json({
+      error: 'Payments are not configured yet. Add your Razorpay API keys to environment variables. See docs/RAZORPAY_SETUP.md',
+    });
+  }
+
   try {
     const userId = await getUserIdFromRequest(req);
     if (!userId) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const { creditType, credits, amount } = req.body;
+    const { creditType, credits } = req.body;
 
     // Validate inputs
     if (!creditType || (creditType !== 'image' && creditType !== 'video')) {
       return res.status(400).json({ error: 'Valid credit type (image or video) is required' });
     }
 
-    if (!credits || credits <= 0) {
-      return res.status(400).json({ error: 'Credits must be greater than 0' });
+    const creditsNum = Number(credits);
+    if (!Number.isFinite(creditsNum) || !Number.isInteger(creditsNum)) {
+      return res.status(400).json({ error: 'Credits must be a whole number' });
     }
 
-    if (!amount || amount <= 0) {
-      return res.status(400).json({ error: 'Amount must be greater than 0' });
+    if (creditsNum < BUY_CREDITS_PRICING.minQuantity || creditsNum > BUY_CREDITS_PRICING.maxQuantity) {
+      return res.status(400).json({
+        error: `Credits must be between ${BUY_CREDITS_PRICING.minQuantity} and ${BUY_CREDITS_PRICING.maxQuantity}`,
+      });
     }
+
+    // IMPORTANT: compute amount server-side (never trust client-sent amount)
+    const totals = calculateTotalsInr({ creditType, credits: creditsNum });
 
     // Create Razorpay order
     const order = await razorpay.orders.create({
-      amount: amount * 100, // Razorpay uses paise
+      amount: totals.totalInr * 100, // Razorpay uses paise
       currency: 'INR',
-      receipt: `credit_${creditType}_${credits}_${Date.now()}`,
+      receipt: `credit_${creditType}_${creditsNum}_${Date.now()}`,
       notes: {
         user_id: userId,
         credit_type: creditType,
-        credits: credits.toString(),
+        credits: creditsNum.toString(),
+        subtotal_inr: totals.subtotalInr.toString(),
+        gst_rate: totals.gstRate.toString(),
+        gst_amount_inr: totals.gstAmountInr.toString(),
+        total_inr: totals.totalInr.toString(),
       },
     });
 
@@ -52,13 +69,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       userId,
       creditPackId: null, // No pack ID for custom purchases
       razorpayOrderId: order.id,
-      amount: amount,
+      amount: totals.totalInr,
       currency: 'INR',
       status: 'created',
       paymentType,
       metadata: {
         creditType,
-        credits,
+        credits: creditsNum,
+        subtotalInr: totals.subtotalInr,
+        gstRate: totals.gstRate,
+        gstAmountInr: totals.gstAmountInr,
+        totalInr: totals.totalInr,
       },
     });
 
@@ -66,9 +87,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       success: true,
       orderId: payment.id,
       razorpayOrderId: order.id,
-      amount: amount * 100,
+      // Razorpay checkout expects amount in paise
+      amount: totals.totalInr * 100,
       currency: 'INR',
       key: RAZORPAY_KEY_ID,
+      subtotalInr: totals.subtotalInr,
+      gstRate: totals.gstRate,
+      gstAmountInr: totals.gstAmountInr,
+      totalInr: totals.totalInr,
     });
   } catch (error: any) {
     console.error('Create order error:', error);

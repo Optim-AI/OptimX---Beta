@@ -2,17 +2,27 @@
 import { NextApiRequest, NextApiResponse } from "next";
 import * as cookie from "cookie";
 
-const DEV_TOKEN = "5Oe5ETZKWYkNqoSYa-f_ww";
-const MANAGER_ID = "2185924019"; // test manager id
 const API_VERSION = "v21";
 
+function getGoogleAdsConfig() {
+  const clientId = process.env.GOOGLE_ADS_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_ADS_CLIENT_SECRET;
+  const developerToken = process.env.GOOGLE_ADS_DEVELOPER_TOKEN;
+  const managerId = process.env.GOOGLE_ADS_MANAGER_ID;
+  if (!clientId || !clientSecret || !developerToken) {
+    throw new Error("Missing GOOGLE_ADS_CLIENT_ID, GOOGLE_ADS_CLIENT_SECRET, or GOOGLE_ADS_DEVELOPER_TOKEN");
+  }
+  return { clientId, clientSecret, developerToken, managerId: managerId || "" };
+}
+
 async function refreshAccessToken(refreshToken: string): Promise<{ access_token: string; expires_in?: number }> {
+  const { clientId, clientSecret } = getGoogleAdsConfig();
   const resp = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
-      client_id: "947565254141-5mispk8fus70rj42pp1srjof4774p9ve.apps.googleusercontent.com",
-      client_secret: "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",
+      client_id: clientId,
+      client_secret: clientSecret,
       refresh_token: refreshToken,
       grant_type: "refresh_token",
     }),
@@ -117,6 +127,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       ],
     };
 
+    const { developerToken, managerId } = getGoogleAdsConfig();
+    if (!managerId) return res.status(500).json({ error: "GOOGLE_ADS_MANAGER_ID not configured" });
+
     const endpoint = `https://googleads.googleapis.com/${API_VERSION}/customers/${targetId}/googleAds:mutate`;
     console.log("runCampaign calling endpoint:", endpoint);
 
@@ -124,8 +137,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       method: "POST",
       headers: {
         Authorization: `Bearer ${accessToken}`,
-        "developer-token": DEV_TOKEN,
-        "login-customer-id": MANAGER_ID,
+        "developer-token": developerToken,
+        "login-customer-id": managerId,
         "Content-Type": "application/json",
       } as Record<string, string>,
       body: JSON.stringify(payload),

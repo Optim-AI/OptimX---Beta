@@ -1,10 +1,10 @@
 #!/bin/bash
 
-# Fix file permissions for OptimX project
+# Fix file permissions for Oli AI project
 # Run this if you encounter "permission denied" or "cannot find module" errors
 # Usage: ./scripts/fix-permissions.sh
 
-echo "🔧 Fixing file permissions for OptimX..."
+echo "🔧 Fixing file permissions for Oli AI..."
 
 # Get the directory where this script is located
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"

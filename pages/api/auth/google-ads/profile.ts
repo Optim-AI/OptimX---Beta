@@ -2,20 +2,28 @@
 import { NextApiRequest, NextApiResponse } from "next";
 import * as cookie from "cookie";
 
-const DEV_TOKEN = "5Oe5ETZKWYkNqoSYa-f_ww";
 const API_VERSION = "v21";
-const CLIENT_ID = "947565254141-5mispk8fus70rj42pp1srjof4774p9ve.apps.googleusercontent.com";
-const CLIENT_SECRET = "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";
+
+function getGoogleAdsConfig() {
+  const clientId = process.env.GOOGLE_ADS_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_ADS_CLIENT_SECRET;
+  const developerToken = process.env.GOOGLE_ADS_DEVELOPER_TOKEN;
+  if (!clientId || !clientSecret || !developerToken) {
+    throw new Error("Missing GOOGLE_ADS_CLIENT_ID, GOOGLE_ADS_CLIENT_SECRET, or GOOGLE_ADS_DEVELOPER_TOKEN");
+  }
+  return { clientId, clientSecret, developerToken };
+}
 
 type RefreshResp = { access_token: string; expires_in?: number };
 
 async function refreshAccessToken(refreshToken: string): Promise<RefreshResp> {
+  const { clientId, clientSecret } = getGoogleAdsConfig();
   const resp = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
-      client_id: CLIENT_ID,
-      client_secret: CLIENT_SECRET,
+      client_id: clientId,
+      client_secret: clientSecret,
       refresh_token: refreshToken,
       grant_type: "refresh_token",
     }),
@@ -68,11 +76,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     console.log("profile userinfo:", profile);
 
     // listAccessibleCustomers (may return manager account(s))
+    const { developerToken } = getGoogleAdsConfig();
     const listRes = await fetch(`https://googleads.googleapis.com/${API_VERSION}/customers:listAccessibleCustomers`, {
       method: "GET",
       headers: {
         Authorization: `Bearer ${accessToken}`,
-        "developer-token": DEV_TOKEN,
+        "developer-token": developerToken,
         "Content-Type": "application/json",
       },
     });

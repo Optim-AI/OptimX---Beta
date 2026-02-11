@@ -724,14 +724,11 @@ export default function SignInPage(): React.ReactElement {
               }}
             >
               <div className="brand-badge" aria-hidden style={{ background: "transparent", boxShadow: "none" }}>
-                <img src="/images/OptimX_Logo.svg" alt="OptimX" style={{ width: 56, height: 56, objectFit: "contain" }} />
+                <img src="/images/Oli_AI_Logo.svg" alt="Oli AI" style={{ width: 56, height: 56, objectFit: "contain" }} />
               </div>
 
               <h1 id="signin-title" className="brand-title">
-                Optim
-                <span className="x" style={{ color: (colors as any)?.primary ?? "#0088FF" }}>
-                  X
-                </span>
+                Oli AI
               </h1>
               <div className="brand-sub">Welcome, Please create an account.</div>
             </div>
@@ -829,7 +826,7 @@ export default function SignInPage(): React.ReactElement {
               )}
             </div>
 
-            <div style={{ marginTop: 12, fontSize: 13, color: "#8b8b8b" }}>© {new Date().getFullYear()} OptimX</div>
+            <div style={{ marginTop: 12, fontSize: 13, color: "#8b8b8b" }}>© {new Date().getFullYear()} Oli AI</div>
           </div>
         </main>
       </div>

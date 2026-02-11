@@ -1,15 +1,15 @@
-# Meta (Facebook/Instagram) Permissions Guide for OptimX
+# Meta (Facebook/Instagram) Permissions Guide for Oli AI
 
 **Document Version:** 1.0
 **Last Updated:** December 21, 2025
-**Product:** OptimX - AI-Powered Marketing Automation Platform
+**Product:** Oli AI - AI-Powered Marketing Automation Platform
 
 ---
 
 ## Table of Contents
 
 1. [Overview](#overview)
-2. [OptimX Meta Integration Features](#optimx-meta-integration-features)
+2. [Oli AI Meta Integration Features](#optimx-meta-integration-features)
 3. [Complete Permissions List](#complete-permissions-list)
 4. [Detailed Permission Explanations](#detailed-permission-explanations)
 5. [Feature-to-Permission Mapping](#feature-to-permission-mapping)
@@ -20,9 +20,9 @@
 
 ## Overview
 
-### What is OptimX?
+### What is Oli AI?
 
-OptimX is an **AI-powered social media marketing automation platform** that helps digital marketing agencies, social media managers, and businesses streamline their advertising campaigns across multiple platforms. The platform provides:
+Oli AI is an **AI-powered social media marketing automation platform** that helps digital marketing agencies, social media managers, and businesses streamline their advertising campaigns across multiple platforms. The platform provides:
 
 - **Unified dashboard** for managing Facebook Pages, Instagram Business accounts, and advertising campaigns
 - **AI-powered content generation** for captions and campaign creation
@@ -33,13 +33,13 @@ OptimX is an **AI-powered social media marketing automation platform** that help
 
 ### Why We Need Meta Permissions
 
-OptimX integrates with Meta's Graph API to enable users to manage their own Facebook Pages, Instagram Business accounts, and advertising campaigns directly from the OptimX dashboard. All permissions requested are essential for delivering our core product functionality.
+Oli AI integrates with Meta's Graph API to enable users to manage their own Facebook Pages, Instagram Business accounts, and advertising campaigns directly from the Oli AI dashboard. All permissions requested are essential for delivering our core product functionality.
 
-**Important:** OptimX only accesses data that belongs to the authenticated user. We do not access or store data from other users' accounts.
+**Important:** Oli AI only accesses data that belongs to the authenticated user. We do not access or store data from other users' accounts.
 
 ---
 
-## OptimX Meta Integration Features
+## Oli AI Meta Integration Features
 
 ### Core Features Requiring Meta Permissions
 
@@ -86,11 +86,11 @@ OptimX integrates with Meta's Graph API to enable users to manage their own Face
 
 **Permission Type:** Standard (No App Review Required)
 
-**Why OptimX Needs This:**
+**Why Oli AI Needs This:**
 - Display user's Instagram Business account information
 - Retrieve Instagram posts for the analytics dashboard
 - Show post metrics (likes, comments count, media type)
-- Enable users to view their Instagram content within OptimX
+- Enable users to view their Instagram content within Oli AI
 
 **Product Features Enabled:**
 - Instagram account connection and verification
@@ -116,11 +116,11 @@ GET /{media-id}?fields=id,caption,media_type,media_url,permalink,timestamp,like_
 
 **Permission Type:** Advanced (Requires App Review)
 
-**Why OptimX Needs This:**
-OptimX's core value proposition is **automated content distribution**. Users create content once (often using our AI caption generator) and publish it across multiple platforms from a single interface. This permission is essential for the Instagram publishing workflow.
+**Why Oli AI Needs This:**
+Oli AI's core value proposition is **automated content distribution**. Users create content once (often using our AI caption generator) and publish it across multiple platforms from a single interface. This permission is essential for the Instagram publishing workflow.
 
 **Product Features Enabled:**
-- Create Instagram posts from OptimX dashboard
+- Create Instagram posts from Oli AI dashboard
 - AI-generated caption publishing
 - Multi-platform campaign distribution (publish same content to Facebook + Instagram)
 - Scheduled post publishing (future feature)
@@ -132,10 +132,10 @@ POST /{ig-user-id}/media_publish (Publish media)
 ```
 
 **User Workflow:**
-1. User creates content in OptimX (with AI-generated caption)
+1. User creates content in Oli AI (with AI-generated caption)
 2. User previews post
 3. User clicks "Publish to Instagram"
-4. OptimX uses this permission to publish on their behalf
+4. Oli AI uses this permission to publish on their behalf
 
 **Code References:**
 - `lib/meta/instagram.ts:26-60` - `createInstagramMedia()`
@@ -143,7 +143,7 @@ POST /{ig-user-id}/media_publish (Publish media)
 - `pages/api/instagram/posts/create.ts:23-50`
 
 **App Review Justification:**
-> "OptimX is a social media marketing automation platform. Users connect their Instagram Business accounts to publish marketing content directly from our dashboard. This permission allows users to distribute AI-generated content to Instagram without leaving the OptimX interface, streamlining their workflow and reducing time spent on repetitive posting tasks."
+> "Oli AI is a social media marketing automation platform. Users connect their Instagram Business accounts to publish marketing content directly from our dashboard. This permission allows users to distribute AI-generated content to Instagram without leaving the Oli AI interface, streamlining their workflow and reducing time spent on repetitive posting tasks."
 
 ---
 
@@ -151,12 +151,12 @@ POST /{ig-user-id}/media_publish (Publish media)
 
 **Permission Type:** Advanced (Requires App Review)
 
-**Why OptimX Needs This:**
-Social media management requires **centralized engagement**. Users need to respond to customer comments across all platforms from one dashboard. This permission enables OptimX to retrieve and respond to Instagram comments on the user's behalf.
+**Why Oli AI Needs This:**
+Social media management requires **centralized engagement**. Users need to respond to customer comments across all platforms from one dashboard. This permission enables Oli AI to retrieve and respond to Instagram comments on the user's behalf.
 
 **Product Features Enabled:**
-- View all comments on Instagram posts in OptimX dashboard
-- Reply to Instagram comments directly from OptimX
+- View all comments on Instagram posts in Oli AI dashboard
+- Reply to Instagram comments directly from Oli AI
 - Comment moderation and management
 - Engagement tracking and analytics
 
@@ -167,10 +167,10 @@ POST /{media-id}/comments (Reply to comments)
 ```
 
 **User Workflow:**
-1. User views their Instagram posts in OptimX
+1. User views their Instagram posts in Oli AI
 2. User clicks "View Comments" on a post
-3. OptimX displays all comments
-4. User can reply directly from OptimX interface
+3. Oli AI displays all comments
+4. User can reply directly from Oli AI interface
 
 **Code References:**
 - `lib/meta/instagram.ts:171-188` - `getInstagramComments()`
@@ -178,7 +178,7 @@ POST /{media-id}/comments (Reply to comments)
 - `pages/api/instagram/posts/[id]/comments.ts`
 
 **App Review Justification:**
-> "OptimX provides a unified inbox for social media engagement. Users manage comments from Instagram and Facebook in one place, enabling faster response times and better customer service. This permission allows users to view and respond to Instagram comments without switching between platforms."
+> "Oli AI provides a unified inbox for social media engagement. Users manage comments from Instagram and Facebook in one place, enabling faster response times and better customer service. This permission allows users to view and respond to Instagram comments without switching between platforms."
 
 ---
 
@@ -188,12 +188,12 @@ POST /{media-id}/comments (Reply to comments)
 
 **Permission Type:** Standard (No App Review Required)
 
-**Why OptimX Needs This:**
-During the OAuth connection flow, OptimX needs to discover which Facebook Pages the user manages. This is the first step in connecting a Facebook Page to OptimX.
+**Why Oli AI Needs This:**
+During the OAuth connection flow, Oli AI needs to discover which Facebook Pages the user manages. This is the first step in connecting a Facebook Page to Oli AI.
 
 **Product Features Enabled:**
 - List all Facebook Pages user manages during setup
-- Allow user to select which Page to connect to OptimX
+- Allow user to select which Page to connect to Oli AI
 - Display Page name and basic info in account settings
 
 **API Calls Used:**
@@ -212,8 +212,8 @@ GET /{page-id}?fields=name,access_token
 
 **Permission Type:** Standard (No App Review Required)
 
-**Why OptimX Needs This:**
-OptimX's **analytics dashboard** displays Facebook Page performance metrics. Users need to see engagement data (likes, comments, shares, reach) to measure campaign effectiveness.
+**Why Oli AI Needs This:**
+Oli AI's **analytics dashboard** displays Facebook Page performance metrics. Users need to see engagement data (likes, comments, shares, reach) to measure campaign effectiveness.
 
 **Product Features Enabled:**
 - Facebook Page insights dashboard
@@ -237,8 +237,8 @@ GET /{post-id}?fields=reactions.summary(true),comments.summary(true)
 
 **Permission Type:** Standard (No App Review Required)
 
-**Why OptimX Needs This:**
-Users need to view their previously published Facebook Page posts within the OptimX dashboard to track what content they've shared and manage their content calendar.
+**Why Oli AI Needs This:**
+Users need to view their previously published Facebook Page posts within the Oli AI dashboard to track what content they've shared and manage their content calendar.
 
 **Product Features Enabled:**
 - Display list of Facebook Page posts
@@ -263,8 +263,8 @@ GET /{post-id}?fields=id,message,created_time,permalink_url
 
 **Permission Type:** Advanced (Requires App Review)
 
-**Why OptimX Needs This:**
-OptimX's primary use case is **automated content publishing** to Facebook Pages. This permission is critical for enabling users to publish marketing content from the OptimX dashboard.
+**Why Oli AI Needs This:**
+Oli AI's primary use case is **automated content publishing** to Facebook Pages. This permission is critical for enabling users to publish marketing content from the Oli AI dashboard.
 
 **Product Features Enabled:**
 - Create Facebook Page posts (text, photo, link)
@@ -280,9 +280,9 @@ DELETE /{post-id} (Delete post)
 ```
 
 **User Workflow:**
-1. User creates content in OptimX (AI-assisted)
+1. User creates content in Oli AI (AI-assisted)
 2. User selects "Publish to Facebook"
-3. OptimX publishes post to user's Facebook Page
+3. Oli AI publishes post to user's Facebook Page
 4. User can delete post later if needed
 
 **Code References:**
@@ -292,7 +292,7 @@ DELETE /{post-id} (Delete post)
 - `pages/api/facebook/posts/[id].ts`
 
 **App Review Justification:**
-> "OptimX is a marketing automation platform that enables users to publish content to their Facebook Pages directly from our interface. Users create marketing posts (often with AI-generated captions) and distribute them across Facebook and Instagram simultaneously. This permission is essential for our core product functionality of automated content publishing to Facebook Pages that the user manages."
+> "Oli AI is a marketing automation platform that enables users to publish content to their Facebook Pages directly from our interface. Users create marketing posts (often with AI-generated captions) and distribute them across Facebook and Instagram simultaneously. This permission is essential for our core product functionality of automated content publishing to Facebook Pages that the user manages."
 
 ---
 
@@ -302,8 +302,8 @@ DELETE /{post-id} (Delete post)
 
 **Permission Type:** Advanced (Requires App Review)
 
-**Why OptimX Needs This:**
-Marketing agencies and advertisers using OptimX need **centralized ad performance tracking**. This permission allows OptimX to display Facebook and Instagram ad campaign metrics alongside organic content performance.
+**Why Oli AI Needs This:**
+Marketing agencies and advertisers using Oli AI need **centralized ad performance tracking**. This permission allows Oli AI to display Facebook and Instagram ad campaign metrics alongside organic content performance.
 
 **Product Features Enabled:**
 - View ad campaigns, ad sets, and ads
@@ -328,7 +328,7 @@ GET /{campaign-id}/insights?fields=impressions,clicks,spend,reach,ctr,cpc,cpm
 - `pages/api/meta/ads/insights.ts`
 
 **App Review Justification:**
-> "OptimX provides a unified analytics dashboard for marketing professionals. Users need to view their Facebook and Instagram ad campaign performance alongside organic content metrics to make informed marketing decisions. This permission allows read-only access to ad insights for campaigns the user manages, enabling comprehensive ROI tracking and performance optimization."
+> "Oli AI provides a unified analytics dashboard for marketing professionals. Users need to view their Facebook and Instagram ad campaign performance alongside organic content metrics to make informed marketing decisions. This permission allows read-only access to ad insights for campaigns the user manages, enabling comprehensive ROI tracking and performance optimization."
 
 ---
 
@@ -336,11 +336,11 @@ GET /{campaign-id}/insights?fields=impressions,clicks,spend,reach,ctr,cpc,cpm
 
 **Permission Type:** Advanced (Requires App Review)
 
-**Why OptimX Needs This:**
-**Future feature:** OptimX will enable users to create and manage Facebook/Instagram ad campaigns directly from the dashboard. This permission is requested proactively to support upcoming campaign creation functionality.
+**Why Oli AI Needs This:**
+**Future feature:** Oli AI will enable users to create and manage Facebook/Instagram ad campaigns directly from the dashboard. This permission is requested proactively to support upcoming campaign creation functionality.
 
 **Product Features Enabled (Planned):**
-- Create ad campaigns from OptimX dashboard
+- Create ad campaigns from Oli AI dashboard
 - Pause/resume ad campaigns
 - Adjust ad budgets and targeting
 - Automated campaign optimization based on AI recommendations
@@ -354,14 +354,14 @@ POST /{campaign-id} (Update campaign status/budget)
 ```
 
 **Current Status:**
-Currently, OptimX only uses `ads_read` for displaying ad insights. The `ads_management` permission is included in the OAuth request to prepare for future ad creation features planned for Q1 2026.
+Currently, Oli AI only uses `ads_read` for displaying ad insights. The `ads_management` permission is included in the OAuth request to prepare for future ad creation features planned for Q1 2026.
 
 **Code References:**
 - `pages/api/meta/oauth/start.ts:46` (Requested in OAuth scope)
 - Future implementation planned in `lib/meta/ads.ts`
 
 **App Review Justification:**
-> "OptimX is building comprehensive ad campaign management features. While currently we only display ad insights (using ads_read), we are preparing to launch ad creation and management capabilities in Q1 2026. This will allow users to create and optimize Facebook/Instagram ad campaigns directly from OptimX, complementing our existing organic content publishing features. We request this permission now to enable seamless feature rollout without requiring users to re-authenticate."
+> "Oli AI is building comprehensive ad campaign management features. While currently we only display ad insights (using ads_read), we are preparing to launch ad creation and management capabilities in Q1 2026. This will allow users to create and optimize Facebook/Instagram ad campaigns directly from Oli AI, complementing our existing organic content publishing features. We request this permission now to enable seamless feature rollout without requiring users to re-authenticate."
 
 ---
 
@@ -371,8 +371,8 @@ Currently, OptimX only uses `ads_read` for displaying ad insights. The `ads_mana
 
 **Permission Type:** Advanced (Requires App Review)
 
-**Why OptimX Needs This:**
-Businesses running **Meta lead ads** need to access their leads quickly. OptimX provides a centralized lead management interface where users can view, export, and manage leads from their Facebook/Instagram lead ad campaigns.
+**Why Oli AI Needs This:**
+Businesses running **Meta lead ads** need to access their leads quickly. Oli AI provides a centralized lead management interface where users can view, export, and manage leads from their Facebook/Instagram lead ad campaigns.
 
 **Product Features Enabled:**
 - View all lead ad forms for connected ad accounts
@@ -387,10 +387,10 @@ GET /{form-id}/leads
 ```
 
 **User Workflow:**
-1. User runs lead ads on Facebook/Instagram (outside OptimX)
-2. User connects ad account to OptimX
-3. OptimX displays all lead forms
-4. User views and exports leads from OptimX dashboard
+1. User runs lead ads on Facebook/Instagram (outside Oli AI)
+2. User connects ad account to Oli AI
+3. Oli AI displays all lead forms
+4. User views and exports leads from Oli AI dashboard
 
 **Code References:**
 - `lib/meta/ads.ts:234-256` - `getLeadForms()`
@@ -398,7 +398,7 @@ GET /{form-id}/leads
 - `pages/api/meta/ads/leads.ts`
 
 **App Review Justification:**
-> "OptimX provides lead management for marketing professionals running Facebook and Instagram lead ad campaigns. Users need to access leads generated from their own ad campaigns to follow up with potential customers. This permission allows OptimX to retrieve leads from lead ads that belong to the authenticated user's ad accounts, enabling centralized lead management and faster response times."
+> "Oli AI provides lead management for marketing professionals running Facebook and Instagram lead ad campaigns. Users need to access leads generated from their own ad campaigns to follow up with potential customers. This permission allows Oli AI to retrieve leads from lead ads that belong to the authenticated user's ad accounts, enabling centralized lead management and faster response times."
 
 ---
 
@@ -406,7 +406,7 @@ GET /{form-id}/leads
 
 ### Quick Reference Table
 
-| OptimX Feature | Required Permissions | Permission Type |
+| Oli AI Feature | Required Permissions | Permission Type |
 |----------------|---------------------|-----------------|
 | **Connect Instagram Account** | `instagram_basic`, `pages_show_list` | Standard |
 | **View Instagram Posts** | `instagram_basic` | Standard |
@@ -455,7 +455,7 @@ Your Privacy Policy must explicitly state:
 
 Meta requires a data deletion callback URL or instructions. Add to your Privacy Policy:
 
-> "Users can request data deletion by disconnecting their Facebook/Instagram account from OptimX settings, or by emailing privacy@optimx.com. We will delete all stored data within 30 days."
+> "Users can request data deletion by disconnecting their Facebook/Instagram account from Oli AI settings, or by emailing privacy@optimx.com. We will delete all stored data within 30 days."
 
 #### 3. Step-by-Step Instructions for Reviewers
 
@@ -469,12 +469,12 @@ Test Account Credentials:
 - Password: [provided separately]
 
 Instagram Publishing Test (instagram_content_publish):
-1. Log in to OptimX at https://optimx.com
+1. Log in to Oli AI at https://optimx.com
 2. Go to "Integrations" page
 3. Click "Connect" on Meta Ads card
 4. Authorize with test Facebook account
 5. Navigate to "Content" → "Create Post"
-6. Enter caption: "Test post from OptimX"
+6. Enter caption: "Test post from Oli AI"
 7. Upload test image (any image works)
 8. Select "Instagram" as platform
 9. Click "Publish"
@@ -490,7 +490,7 @@ Comment Management Test (instagram_manage_comments):
 
 Facebook Page Posting Test (pages_manage_posts):
 1. Navigate to "Content" → "Create Post"
-2. Enter message: "Test Facebook post from OptimX"
+2. Enter message: "Test Facebook post from Oli AI"
 3. Select "Facebook" as platform
 4. Click "Publish"
 5. Verify post appears on connected Facebook Page
@@ -518,7 +518,7 @@ Prepare screen recordings for each advanced permission:
    - Show the published post on Instagram app as verification
 
 2. **instagram_manage_comments**:
-   - Show viewing comments and replying from OptimX
+   - Show viewing comments and replying from Oli AI
    - Show the reply appearing on Instagram app
    - Duration: 30-45 seconds
 
@@ -548,7 +548,7 @@ Select: **"Help people connect and share"**
 #### Detailed Description
 
 ```
-OptimX is a social media marketing automation platform that helps businesses
+Oli AI is a social media marketing automation platform that helps businesses
 and marketing agencies manage their Facebook Pages, Instagram Business accounts,
 and advertising campaigns from a unified dashboard.
 
@@ -559,10 +559,10 @@ Our users are:
 - Marketing teams running Facebook/Instagram ad campaigns
 
 Users connect their own Facebook Pages and Instagram Business accounts to
-OptimX via OAuth. We never access accounts that don't belong to the
+Oli AI via OAuth. We never access accounts that don't belong to the
 authenticated user. All permissions requested are used exclusively to
 enable users to manage their own content, engagement, and advertising
-through the OptimX interface.
+through the Oli AI interface.
 ```
 
 ### Permission-Specific Justifications
@@ -571,27 +571,27 @@ For each advanced permission, provide:
 
 **Permission:** `instagram_content_publish`
 **Use Case:** Users publish marketing content to their Instagram Business accounts
-**Justification:** OptimX automates content distribution. Users create posts (often with AI-generated captions) and publish to Instagram from our dashboard, saving time and enabling multi-platform publishing workflows.
+**Justification:** Oli AI automates content distribution. Users create posts (often with AI-generated captions) and publish to Instagram from our dashboard, saving time and enabling multi-platform publishing workflows.
 
 **Permission:** `instagram_manage_comments`
 **Use Case:** Users view and reply to Instagram comments
-**Justification:** OptimX provides centralized comment management. Users respond to customer comments across Facebook and Instagram from one inbox, improving response times and customer engagement.
+**Justification:** Oli AI provides centralized comment management. Users respond to customer comments across Facebook and Instagram from one inbox, improving response times and customer engagement.
 
 **Permission:** `pages_manage_posts`
 **Use Case:** Users publish and manage posts on their Facebook Pages
-**Justification:** Core product feature enabling automated content publishing to Facebook Pages. Users create and delete posts from the OptimX dashboard as part of their marketing workflow.
+**Justification:** Core product feature enabling automated content publishing to Facebook Pages. Users create and delete posts from the Oli AI dashboard as part of their marketing workflow.
 
 **Permission:** `ads_read`
 **Use Case:** Users view their ad campaign performance metrics
-**Justification:** OptimX analytics dashboard displays Facebook/Instagram ad insights alongside organic content metrics, enabling comprehensive ROI tracking and data-driven decision making.
+**Justification:** Oli AI analytics dashboard displays Facebook/Instagram ad insights alongside organic content metrics, enabling comprehensive ROI tracking and data-driven decision making.
 
 **Permission:** `ads_management`
 **Use Case:** Future feature for ad campaign creation and optimization
-**Justification:** Preparing for Q1 2026 feature launch that will allow users to create and manage ad campaigns from OptimX. Requesting now to avoid requiring users to re-authenticate later.
+**Justification:** Preparing for Q1 2026 feature launch that will allow users to create and manage ad campaigns from Oli AI. Requesting now to avoid requiring users to re-authenticate later.
 
 **Permission:** `leads_retrieval`
 **Use Case:** Users access leads from their Facebook/Instagram lead ad campaigns
-**Justification:** OptimX provides centralized lead management. Users running lead ads can view, export, and manage leads from the OptimX dashboard for faster follow-up.
+**Justification:** Oli AI provides centralized lead management. Users running lead ads can view, export, and manage leads from the Oli AI dashboard for faster follow-up.
 
 ---
 

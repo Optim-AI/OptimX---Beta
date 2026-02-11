@@ -85,17 +85,15 @@ const TermsAndConditions: React.FC = () => {
 
           <div>
             <div className="text-2xl font-bold leading-tight flex items-baseline gap-1">
-              <span style={{ color: colors.foreground }}>Optim</span>
-              <span style={{ color: colors.primary, fontFamily: "inherit" }}>X</span>
+              <span style={{ color: colors.foreground }}>Oli AI</span>
             </div>
             <div className="text-sm text-[14px]" style={{ color: colors.mutedForeground }}>Terms &amp; Conditions</div>
           </div> */}
 
           <Link href="/" className="flex items-center space-x-1" style={{ color: colors.foreground }}>
-                      <img src="/images/OptimX_Logo.svg" alt="OptimX Logo" className="h-10 w-auto" />
+                      <img src="/images/Oli_AI_Logo.svg" alt="Oli AI Logo" className="h-10 w-auto" />
                       <span className="text-xl font-bold" style={{ lineHeight: 1 }}>
-                        <span style={{ color: colors.foreground }}>Optim</span>
-                        <span style={{ color: colors.primary }}>X</span>
+                        <span style={{ color: colors.foreground }}>Oli AI</span>
                       </span>
                     </Link>
         </header>
@@ -109,14 +107,14 @@ const TermsAndConditions: React.FC = () => {
             </div>
 
             <article className="prose prose-invert max-w-none" style={{ color: colors.foreground }}>
-              <h2 className="font-bold">Welcome to OptimX</h2>
+              <h2 className="font-bold">Welcome to Oli AI</h2>
               <p>
-              OptimX ("Company", "we", "our", "us"). These Terms &amp; Conditions ("Terms") govern your access and use of the OptimX app, website, and all related services ("Services"). By accessing or using OptimX, you agree to these Terms. If you do not agree, do not use OptimX.
+              Oli AI ("Company", "we", "our", "us"). These Terms &amp; Conditions ("Terms") govern your access and use of the Oli AI app, website, and all related services ("Services"). By accessing or using Oli AI, you agree to these Terms. If you do not agree, do not use Oli AI.
               </p>
 
-              <h3 className="font-bold mt-8">1. About OptimX</h3>
+              <h3 className="font-bold mt-8">1. About Oli AI</h3>
               <p>
-                OptimX is an AI-powered campaign creation and marketing automation platform that helps businesses:
+                Oli AI is an AI-powered campaign creation and marketing automation platform that helps businesses:
               </p>
               <ul className="list-disc ml-4">
                 <li>generate creatives and captions</li>
@@ -126,7 +124,7 @@ const TermsAndConditions: React.FC = () => {
                 <li>receive AI insights and recommendations</li>
               </ul>
               <p>
-                OptimX integrates with third-party services including Meta, Google, and Razorpay.
+                Oli AI integrates with third-party services including Meta, Google, and Razorpay.
               </p>
 
               <h3 className="font-bold mt-8">2. Eligibility</h3>
@@ -134,12 +132,12 @@ const TermsAndConditions: React.FC = () => {
               <ul className="list-disc ml-4">
                 <li>be at least 18 years old</li>
                 <li>have legal authority to enter this agreement</li>
-                <li>use OptimX only for lawful business purposes</li>
+                <li>use Oli AI only for lawful business purposes</li>
               </ul>
 
               <h3 className="font-bold mt-8">3. Account Registration</h3>
               <p>
-                You must provide accurate information. You are responsible for safeguarding your login credentials, maintaining account security, and all actions taken through your account. If you connect Meta, Google, or other social accounts, you authorize OptimX to access the necessary data to provide services.
+                You must provide accurate information. You are responsible for safeguarding your login credentials, maintaining account security, and all actions taken through your account. If you connect Meta, Google, or other social accounts, you authorize Oli AI to access the necessary data to provide services.
               </p>
 
               <h3 className="font-bold mt-8">4. Use of Services</h3>
@@ -148,10 +146,10 @@ const TermsAndConditions: React.FC = () => {
                 <li>misuse, reverse engineer, or attempt unauthorized access</li>
                 <li>interfere with service operations</li>
                 <li>publish harmful, unlawful, misleading, or abusive content</li>
-                <li>use OptimX to violate advertising policies of Meta/Google</li>
+                <li>use Oli AI to violate advertising policies of Meta/Google</li>
                 <li>use AI-generated content for illegal or harmful purposes</li>
               </ul>
-              <p><strong>OptimX may suspend or terminate your access for violations.</strong></p>
+              <p><strong>Oli AI may suspend or terminate your access for violations.</strong></p>
 
               <h3 className="font-bold mt-8">5. Meta API &amp; Google API Compliance</h3>
               <p>By connecting Meta or Google accounts, you acknowledge:</p>
@@ -173,25 +171,25 @@ const TermsAndConditions: React.FC = () => {
 
               <p><strong>Revoking Access</strong></p>
               <p>
-                You may revoke OptimX’s access anytime through: Facebook Settings → Business Integrations or Google Account → Security → Third-party Access
+                You may revoke Oli AI’s access anytime through: Facebook Settings → Business Integrations or Google Account → Security → Third-party Access
               </p>
 
               <h3 className="font-bold mt-8">6. AI Usage</h3>
               <p>
-                OptimX uses AI to generate text, images, recommendations, and insights. You understand and agree that AI output may contain inaccuracies. You must review and approve AI-generated content. You are responsible for final published content. OptimX is not liable for errors in AI-generated output.
+                Oli AI uses AI to generate text, images, recommendations, and insights. You understand and agree that AI output may contain inaccuracies. You must review and approve AI-generated content. You are responsible for final published content. Oli AI is not liable for errors in AI-generated output.
               </p>
 
               <h4 className="font-bold">6.1 AI Training Policy</h4>
               <p>
-                OptimX may use user-generated content that you manually create, upload, or provide directly inside our platform (such as captions, prompts, uploaded images, and brand assets) to improve and fine-tune certain internal AI models. We do not use Meta API data, Instagram or Facebook insights or media, Google API data, Third-party platform data, or Social login data for any AI model training. Training data is used only with your explicit opt-in consent. You may withdraw your consent at any time, and we will exclude your data from future training datasets.
+                Oli AI may use user-generated content that you manually create, upload, or provide directly inside our platform (such as captions, prompts, uploaded images, and brand assets) to improve and fine-tune certain internal AI models. We do not use Meta API data, Instagram or Facebook insights or media, Google API data, Third-party platform data, or Social login data for any AI model training. Training data is used only with your explicit opt-in consent. You may withdraw your consent at any time, and we will exclude your data from future training datasets.
               </p>
 
               <h3 className="font-bold mt-8">7. Payments, Credits &amp; Refunds</h3>
               <p>
-                <strong>Credits:</strong> OptimX uses a credit-based system for AI generation and campaign actions. Credit consumption varies by feature.
+                <strong>Credits:</strong> Oli AI uses a credit-based system for AI generation and campaign actions. Credit consumption varies by feature.
               </p>
               <p>
-                <strong>Billing:</strong> Payments are processed via Razorpay. OptimX does not store card details.
+                <strong>Billing:</strong> Payments are processed via Razorpay. Oli AI does not store card details.
               </p>
               <p>
                 <strong>Refunds:</strong> Refunds apply ONLY to unused credits within 7 days of purchase. No refunds for used credits, subscription cycles already billed, campaigns rejected by Meta/Google, or delays caused by third-party outages.
@@ -202,12 +200,12 @@ const TermsAndConditions: React.FC = () => {
 
               <h3 className="font-bold mt-8">8. Intellectual Property</h3>
               <p>
-                All software, branding, UI, and platform assets belong to OptimX. Users own their uploaded content. AI-generated content is licensed to users for business use.
+                All software, branding, UI, and platform assets belong to Oli AI. Users own their uploaded content. AI-generated content is licensed to users for business use.
               </p>
 
               <h3 className="font-bold mt-8">9. Beta Disclaimer</h3>
               <p>
-                OptimX is currently in its MVP/Beta phase. You acknowledge that the service may contain bugs, experience outages, produce inconsistent AI results, and have incomplete features. We appreciate feedback to improve the platform.
+                Oli AI is currently in its MVP/Beta phase. You acknowledge that the service may contain bugs, experience outages, produce inconsistent AI results, and have incomplete features. We appreciate feedback to improve the platform.
               </p>
 
               <h3 className="font-bold mt-8">10. Data &amp; Analytics</h3>
@@ -222,7 +220,7 @@ const TermsAndConditions: React.FC = () => {
 
               <h3 className="font-bold mt-8">12. Limitation of Liability</h3>
               <p>
-                OptimX is provided “as is.” We are not liable for business losses, ad rejections by Meta/Google, inaccuracies in AI output, service interruptions caused by third-party APIs, or data loss due to technical issues. Total liability is limited to the amount paid in the last 3 months.
+                Oli AI is provided “as is.” We are not liable for business losses, ad rejections by Meta/Google, inaccuracies in AI output, service interruptions caused by third-party APIs, or data loss due to technical issues. Total liability is limited to the amount paid in the last 3 months.
               </p>
 
               <h3 className="font-bold mt-8">13. Governing Law</h3>
@@ -242,7 +240,7 @@ const TermsAndConditions: React.FC = () => {
             <div className="mt-8 flex justify-between items-center">
               <div className="flex items-center gap-3 text-sm" style={{ color: colors.mutedForeground }}>
                 <Sparkles className="h-4 w-4" style={{ color: colors.primary }} />
-                <span>OptimX AI — Marketing Made Simple, For Everyone.</span>
+                <span>Oli AI — Marketing Made Simple, For Everyone.</span>
               </div>
 
               <div className="flex items-center gap-3">

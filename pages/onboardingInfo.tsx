@@ -630,14 +630,14 @@ export default function OnboardingInfoPage(): JSX.Element {
               }}
             >
               <img
-                src="/images/OptimX_Logo.svg"
-                alt="OptimX logo"
+                src="/images/Oli_AI_Logo.svg"
+                alt="Oli AI logo"
                 style={{ width: 56, height: 56, objectFit: "contain", display: "block" }}
               />
 
-              {/* No space between Optim and X; X colored */}
+              {/* Oli AI brand title */}
               <div style={{ fontSize: 24, fontWeight: 800, color: "#0f172a", lineHeight: 1 }}>
-                <span>Optim</span><span style={{ color: colors.primary }}>X</span>
+                <span>Oli AI</span>
               </div>
 
               {/* This line now uses firstName derived like welcome.tsx */}

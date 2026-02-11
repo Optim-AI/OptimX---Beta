@@ -71,18 +71,16 @@ const AIUseDisclosure: React.FC = () => {
 
           <div>
             <div className="text-2xl font-bold leading-tight flex items-baseline gap-1">
-              <span style={{ color: colors.foreground }}>Optim</span>
-              <span style={{ color: colors.primary, fontFamily: "inherit" }}>X</span>
+              <span style={{ color: colors.foreground }}>Oli AI</span>
             </div>
             <div className="text-sm text-[14px]" style={{ color: colors.mutedForeground }}>AI Use Disclosure</div>
           </div> */}
 
           <Link href="/" className="flex items-center space-x-1" style={{ color: colors.foreground }}>
-                      <img src="/images/OptimX_Logo.svg" alt="OptimX Logo" className="h-10 w-auto" />
-                      <span className="text-xl font-bold" style={{ lineHeight: 1 }}>
-                        <span style={{ color: colors.foreground }}>Optim</span>
-                        <span style={{ color: colors.primary }}>X</span>
-                      </span>
+                      <img src="/images/Oli_AI_Logo.svg" alt="Oli AI Logo" className="h-10 w-auto" />
+<span className="text-xl font-bold" style={{ lineHeight: 1 }}>
+                      <span style={{ color: colors.foreground }}>Oli AI</span>
+                    </span>
                     </Link>
         </header>
 
@@ -95,7 +93,7 @@ const AIUseDisclosure: React.FC = () => {
 
             <article className="prose prose-invert max-w-none" style={{ color: colors.foreground }}>
               <p>
-                OptimX uses artificial intelligence ("AI") and machine learning technologies to provide content generation, recommendations, and analytics features. This page explains how we use AI, what data may be sent to AI providers, your choices, and our commitments to responsible AI usage.
+                Oli AI uses artificial intelligence ("AI") and machine learning technologies to provide content generation, recommendations, and analytics features. This page explains how we use AI, what data may be sent to AI providers, your choices, and our commitments to responsible AI usage.
               </p>
 
               <h3 className="font-bold mt-8">1. How we use AI</h3>
@@ -127,7 +125,7 @@ const AIUseDisclosure: React.FC = () => {
 
               <h3 className="font-bold mt-8">4. AI Training &amp; Model Improvement (Opt-in)</h3>
               <p>
-                By default, OptimX DOES NOT use your private content (uploaded images, captions, prompts, or campaign data) to train our internal AI models. We may, however, offer an explicit opt-in program where users can choose to allow anonymized examples of their content to be used to improve certain internal models. This opt-in is clearly presented and requires affirmative consent.
+                By default, Oli AI DOES NOT use your private content (uploaded images, captions, prompts, or campaign data) to train our internal AI models. We may, however, offer an explicit opt-in program where users can choose to allow anonymized examples of their content to be used to improve certain internal models. This opt-in is clearly presented and requires affirmative consent.
               </p>
 
               <p>
@@ -141,7 +139,7 @@ const AIUseDisclosure: React.FC = () => {
 
               <h3 className="font-bold mt-8">6. Quality, accuracy &amp; human review</h3>
               <p>
-                AI-generated content may be inaccurate, biased, or inappropriate. You must review and approve any AI-generated output before publishing. OptimX is not liable for damages resulting from your use of AI-generated content beyond the limits set in our Terms &amp; Conditions.
+                AI-generated content may be inaccurate, biased, or inappropriate. You must review and approve any AI-generated output before publishing. Oli AI is not liable for damages resulting from your use of AI-generated content beyond the limits set in our Terms &amp; Conditions.
               </p>
 
               <h3 className="font-bold mt-8">7. Explainability &amp; logs</h3>
@@ -173,7 +171,7 @@ const AIUseDisclosure: React.FC = () => {
             <div className="mt-8 flex justify-between items-center">
               <div className="flex items-center gap-3 text-sm" style={{ color: colors.mutedForeground }}>
                 <ShieldCheck className="h-4 w-4" style={{ color: colors.primary }} />
-                <span>OptimX — Responsible AI</span>
+                <span>Oli AI — Responsible AI</span>
               </div>
 
               <div className="flex items-center gap-3">

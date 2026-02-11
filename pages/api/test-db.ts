@@ -1,5 +1,5 @@
 // pages/api/test-db.ts
-// Test endpoint to verify database connection
+// Test endpoint to verify database connection — DEVELOPMENT ONLY
 import type { NextApiRequest, NextApiResponse } from "next";
 import { OAuthSessionDAO } from '@/database';
 
@@ -7,10 +7,13 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(404).json({ error: 'Not found' });
+  }
+
   try {
     console.log('=== DATABASE CONNECTION TEST ===');
     console.log('DATABASE_URL exists:', !!process.env.DATABASE_URL);
-    console.log('DATABASE_URL value:', process.env.DATABASE_URL?.substring(0, 30) + '...');
 
     // Test storing a session
     const testSessionId = `test_${Date.now()}`;

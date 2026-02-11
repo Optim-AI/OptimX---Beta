@@ -71,8 +71,7 @@ export default function NotFound() {
 
           <div>
             <div className="text-2xl font-bold leading-tight flex items-baseline gap-1">
-              <span style={{ color: colors.foreground }}>Optim</span>
-              <span style={{ color: colors.primary, fontFamily: "inherit" }}>X</span>
+              <span style={{ color: colors.foreground }}>Oli AI</span>
             </div>
             <div className="text-sm" style={{ color: colors.mutedForeground }}>Page not found</div>
           </div>

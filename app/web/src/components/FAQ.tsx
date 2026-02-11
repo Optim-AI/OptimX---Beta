@@ -23,7 +23,7 @@ const FAQ: React.FC = () => {
   {
     question: 'Do I need a marketing background?',
     answer:
-      "No. OptimX handles copy, design, targeting, SEO, and insights for you. You get expert-level marketing without needing experience."
+      "No. Oli AI handles copy, design, targeting, SEO, and insights for you. You get expert-level marketing without needing experience."
   },
   {
     question: 'Which platforms are supported?',
@@ -38,12 +38,12 @@ const FAQ: React.FC = () => {
   {
     question: 'Can I hire freelancers or influencers?',
     answer:
-      'Yes. OptimX has a built-in marketplace to hire vetted designers, writers, videographers, and local influencers.'
+      'Yes. Oli AI has a built-in marketplace to hire vetted designers, writers, videographers, and local influencers.'
   },
   {
     question: 'How does AI targeting work?',
     answer:
-      'OptimX analyzes your business, competitors, and past winning campaigns in your industry to target the right audience — and improves automatically.'
+      'Oli AI analyzes your business, competitors, and past winning campaigns in your industry to target the right audience — and improves automatically.'
   },
   {
     question: 'What if I want to cancel?',
@@ -53,7 +53,7 @@ const FAQ: React.FC = () => {
   {
     question: 'How much should I budget for ads?',
     answer:
-      'Start with whatever you’re comfortable with. OptimX works even with budgets as low as ₹100/day.'
+      'Start with whatever you’re comfortable with. Oli AI works even with budgets as low as ₹100/day.'
   },
   {
     question: 'Is my data secure?',
@@ -61,19 +61,19 @@ const FAQ: React.FC = () => {
       'Yes. All data is encrypted and never shared with third parties.'
   },
   {
-    question: 'Do I need marketing experience to use OptimX?',
+    question: 'Do I need marketing experience to use Oli AI?',
     answer:
-      'No. OptimX writes ads, builds audiences, launches campaigns, and generates reports for you.'
+      'No. Oli AI writes ads, builds audiences, launches campaigns, and generates reports for you.'
   },
   {
-    question: 'What makes OptimX different from Meta Ads / Google Ads / Canva / Buffer?',
+    question: 'What makes Oli AI different from Meta Ads / Google Ads / Canva / Buffer?',
     answer:
-      'Those are single tools. OptimX is the full growth system — ads, content, posting, SEO, analytics, brand voice, and influencers in one place.'
+      'Those are single tools. Oli AI is the full growth system — ads, content, posting, SEO, analytics, brand voice, and influencers in one place.'
   },
   {
     question: 'I’ve tried ads before and lost money. What makes this different?',
     answer:
-      'OptimX helps you avoid waste. It alerts you when a campaign underperforms and suggests fixes so your money goes where it works.'
+      'Oli AI helps you avoid waste. It alerts you when a campaign underperforms and suggests fixes so your money goes where it works.'
   }
 ];
 

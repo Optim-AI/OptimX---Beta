@@ -189,7 +189,7 @@ export default function ContactForPricing() {
                       className="mb-6"
                     >
                       Contact us to learn about our pricing and get started with
-                      OptimX.
+                      Oli AI.
                     </p>
 
                     <div className="space-y-3">

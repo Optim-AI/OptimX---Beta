@@ -1,4 +1,4 @@
-# Contributing to OptimX
+# Contributing to Oli AI
 
 We welcome contributions! Please follow these guidelines to ensure a smooth collaboration.
 

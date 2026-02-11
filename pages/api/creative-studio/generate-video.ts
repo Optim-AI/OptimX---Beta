@@ -2,6 +2,7 @@
 // Reference: https://ai.google.dev/gemini-api/docs/video
 import type { NextApiRequest, NextApiResponse } from "next";
 import { GoogleGenAI } from "@google/genai";
+import sharp from "sharp";
 
 export const config = {
   api: {
@@ -23,62 +24,69 @@ function parseDataUrl(dataUrl: string): { imageBytes: string; mimeType: string }
   return { mimeType: match[1], imageBytes: match[2] };
 }
 
-// Fetch image from URL and convert to base64
-async function fetchImageAsBase64(url: string): Promise<{ imageBytes: string; mimeType: string } | null> {
+// Convert any image buffer to JPEG (for consistent API input)
+async function convertToJpeg(
+  buffer: Buffer
+): Promise<{ imageBytes: string; mimeType: string } | null> {
   try {
-    // Skip if it's already a data URL
-    if (url.startsWith('data:')) {
-      return parseDataUrl(url);
-    }
-    
-    // Fetch the image
-    const response = await fetch(url, {
-      headers: {
-        'Accept': 'image/*',
-        'User-Agent': 'OptimX-VideoGenerator/1.0',
-      },
-    });
-    
-    if (!response.ok) {
-      console.warn(`Failed to fetch image from URL: ${response.status}`);
-      return null;
-    }
-    
-    const contentType = response.headers.get('content-type') || 'image/jpeg';
-    const mimeType = contentType.split(';')[0].trim();
-    
-    // Only allow supported image types
-    if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(mimeType)) {
-      console.warn(`Unsupported image type: ${mimeType}`);
-      return null;
-    }
-    
-    const arrayBuffer = await response.arrayBuffer();
-    const imageBytes = Buffer.from(arrayBuffer).toString('base64');
-    
-    // Validate the base64 is not too large (max ~10MB decoded)
-    if (imageBytes.length > 14_000_000) {
-      console.warn('Image too large, skipping');
-      return null;
-    }
-    
-    console.log(`✅ Fetched image: ${mimeType}, ${Math.round(imageBytes.length / 1024)}KB`);
-    return { imageBytes, mimeType };
+    const converted = await sharp(buffer)
+      .jpeg({ quality: 90 })
+      .toBuffer();
+    return {
+      imageBytes: converted.toString("base64"),
+      mimeType: "image/jpeg",
+    };
   } catch (error) {
-    console.warn(`Error fetching image:`, error);
+    console.warn("Error converting image to JPEG:", error);
     return null;
   }
 }
 
-// Get image data from URL or data URL
-async function getImageData(imageSource: string): Promise<{ imageBytes: string; mimeType: string } | null> {
-  if (imageSource.startsWith('data:')) {
-    return parseDataUrl(imageSource);
-  } else if (imageSource.startsWith('http://') || imageSource.startsWith('https://')) {
-    return await fetchImageAsBase64(imageSource);
+// Fetch image from URL and convert to JPEG
+async function fetchImageAsBase64(
+  url: string
+): Promise<{ imageBytes: string; mimeType: string } | null> {
+  try {
+    const response = await fetch(url);
+    if (!response.ok) {
+      console.warn(`Failed to fetch image: ${response.status}`);
+      return null;
+    }
+    const buffer = Buffer.from(await response.arrayBuffer());
+    return await convertToJpeg(buffer);
+  } catch (error) {
+    console.warn("Error fetching image:", error);
+    return null;
   }
-  console.warn('Invalid image source format');
-  return null;
+}
+
+// Get image data from URL or data URL — always normalized to JPEG before sending to API
+async function getImageData(imageSource: string): Promise<{ imageBytes: string; mimeType: string } | null> {
+  let buffer: Buffer | null = null;
+
+  if (imageSource.startsWith("data:")) {
+    const parsed = parseDataUrl(imageSource);
+    if (!parsed) return null;
+    try {
+      buffer = Buffer.from(parsed.imageBytes, "base64");
+    } catch {
+      return null;
+    }
+  } else if (imageSource.startsWith("http://") || imageSource.startsWith("https://")) {
+    try {
+      const response = await fetch(imageSource);
+      if (!response.ok) return null;
+      buffer = Buffer.from(await response.arrayBuffer());
+    } catch {
+      return null;
+    }
+  } else {
+    console.warn("Invalid image source format");
+    return null;
+  }
+
+  if (!buffer) return null;
+  return await convertToJpeg(buffer);
 }
 
 // Build a single reference image object for Veo 3.1 (referenceImages structure)
@@ -135,15 +143,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
 
     // Build reference images array (Veo 3.1 structure: referenceImages with referenceType "asset")
-    // These are the EXACT product/images from URL or upload — video must depict them precisely
+    // Order: hero/product first, then brand logo (from brand guideline when available) — all must be depicted precisely
     const referenceImagePromises: Promise<{ image: { imageBytes: string; mimeType: string }; referenceType: "asset" } | null>[] = [];
-    
+
     if (hero_image) {
-      console.log('📷 Adding hero image as reference asset...');
+      console.log('📷 Adding hero/product image as reference asset (must appear precisely in video)...');
       referenceImagePromises.push(createReferenceAsset(hero_image));
     }
     if (brand_logo) {
-      console.log('📷 Adding brand logo as reference asset...');
+      console.log('📷 Adding brand guideline logo as reference asset (use exactly as provided)...');
       referenceImagePromises.push(createReferenceAsset(brand_logo));
     }
     if (product_images && Array.isArray(product_images)) {
@@ -156,8 +164,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
     
     const referenceImageResults = await Promise.all(referenceImagePromises);
-    const referenceImages = referenceImageResults.filter((r): r is NonNullable<typeof r> => r != null);
-    
+    const allReferenceImages = referenceImageResults.filter((r): r is NonNullable<typeof r> => r != null);
+    // Veo API allows max 3 reference images
+    const referenceImages = allReferenceImages.slice(0, 3);
+
     if (referenceImages.length > 0) {
       console.log(`✅ ${referenceImages.length} reference image(s) ready — video must depict these exactly`);
     } else {
@@ -180,9 +190,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       "Luxury": { prefix: "An elegant, luxury", details: "High-end luxury aesthetic with refined visuals and sophisticated color grading." },
       "Stop Motion": { prefix: "A charming stop-motion animation style", details: "Tactile stop-motion aesthetic with creative transitions." },
       "3D Animation": { prefix: "A polished 3D animated", details: "High-quality 3D CGI animation with realistic textures." },
+      "2D Animation": { prefix: "A polished 2D animated", details: "Flat, illustrated 2D animation with clean lines and expressive character." },
       "Motion Graphics": { prefix: "A sleek motion graphics", details: "Professional motion graphics with clean transitions and dynamic typography." },
       "Bold & Energetic": { prefix: "A bold, high-energy", details: "Dynamic, fast-paced visuals with punchy edits and vibrant colors." },
+      "Whimsical": { prefix: "A whimsical, playful", details: "Playful, fantasy-inspired visuals with soft colors and charming, imaginative style." },
+      "Retro": { prefix: "A retro, vintage", details: "Vintage aesthetic with nostalgic 70s/80s influences, grain, and period-appropriate color grading." },
+      "Minimalist": { prefix: "A clean, minimalist", details: "Minimal design with simple compositions, ample negative space, and restrained visuals." },
+      "Neon": { prefix: "A neon-lit", details: "Neon and glowing visuals with bold colors, cyberpunk or nightlife atmosphere, and high contrast." },
     };
+
+    // Build on-screen text block with strict spelling, placement, and styling rules
+    const hasOnScreenText = !!(headline || subtext);
+    const onScreenTextBlock = hasOnScreenText
+      ? `
+ON-SCREEN TEXT (CRITICAL — follow exactly):
+- SPELLING: Display the headline and subtext EXACTLY as written below. Do not change, paraphrase, or introduce any spelling or typo errors. Copy the text character-for-character.
+- PLACEMENT: Place the headline prominently (e.g. center screen or lower-third). Place subtext below or beside the headline with clear spacing. Keep all text within safe margins so nothing is cut off. Ensure text is fully visible and not obscured by other elements.
+- STYLING: Use clean, professional typography. High contrast between text and background (e.g. dark text on light or light text on dark / subtle overlay) so text is always readable. Use a clear, legible font at a readable size. Avoid decorative fonts that reduce readability.
+${headline ? `Headline (display exactly): "${headline}"` : ""}
+${subtext ? `Subtext (display exactly): "${subtext}"` : ""}
+`
+      : "";
 
     if (final_video_prompt) {
       const styleConfig = styleDescriptions[style] || { prefix: "A professional", details: "" };
@@ -195,16 +223,19 @@ ${final_video_prompt}
 
 Aspect ratio: ${videoAspectRatio}
 ${voiceover_script ? `Voiceover: "${voiceover_script}"` : "No voiceover - use music/sound effects."}
-${headline ? `Display headline: "${headline}"` : ""}
-${subtext ? `Display subtext: "${subtext}"` : ""}
+${onScreenTextBlock}
 
-${referenceImages.length > 0 ? `CRITICAL — REFERENCE IMAGES: The attached reference images show the EXACT product (and/or logo) uploaded or fetched by the user. You MUST depict this product precisely in the video: same appearance, design, colors, packaging, and branding. Do not redesign, reimagine, or alter the product. The reference images are the source of truth. Generate a video ad that features this exact product.` : "Create visuals based on the description above."}`;
+${referenceImages.length > 0 ? `CRITICAL — USE REFERENCE IMAGES PRECISELY: The attached reference images are the source of truth. You MUST use them exactly as provided:
+- The product/hero image(s) must appear in the video with the SAME appearance, design, colors, and packaging — do not redesign or alter.
+- The brand logo (from brand guidelines) must appear in the video EXACTLY as shown in the reference — same logo asset, no redraw or stylization.
+Generate a video ad that features this exact product and brand logo as depicted in the reference images.` : "Create visuals based on the description above."}`;
     } else if (prompt) {
       videoPrompt = `Create a ${videoDuration}-second video ad (${videoAspectRatio} aspect ratio).
 
 ${prompt}
+${onScreenTextBlock}
 
-${referenceImages.length > 0 ? `CRITICAL: The attached reference images show the EXACT product. Depict it precisely — same look, design, and branding. Do not change or redesign the product. The video ad must feature this exact product as shown in the references.` : ''}`;
+${referenceImages.length > 0 ? `CRITICAL — USE REFERENCE IMAGES PRECISELY: Depict the product and brand logo exactly as in the attached reference images. Same look, design, and branding. Do not redesign or alter. The brand logo must appear exactly as provided.` : ''}`;
     } else {
       return res.status(400).json({ ok: false, error: "Either 'prompt' or 'final_video_prompt' is required" });
     }

@@ -1,12 +1,12 @@
 # Deployment Guide
 
-Instructions for deploying OptimX to production.
+Instructions for deploying Oli AI to production.
 
 ---
 
 ## Vercel Deployment (Recommended)
 
-OptimX is optimized for Vercel deployment.
+Oli AI is optimized for Vercel deployment.
 
 ### Initial Setup
 

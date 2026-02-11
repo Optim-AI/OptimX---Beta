@@ -1,6 +1,6 @@
 # Admin Dashboard
 
-Simple admin dashboard for managing the OptimX plan system.
+Simple admin dashboard for managing the Oli AI plan system.
 
 ## Access
 

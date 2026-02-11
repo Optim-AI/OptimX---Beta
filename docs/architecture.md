@@ -1,6 +1,6 @@
-# OptimX System Architecture
+# Oli AI System Architecture
 
-This document provides a comprehensive overview of the OptimX platform architecture, including system design, component interactions, data flows, and architectural patterns.
+This document provides a comprehensive overview of the Oli AI platform architecture, including system design, component interactions, data flows, and architectural patterns.
 
 ---
 
@@ -79,7 +79,7 @@ graph TB
 
 ### Architecture Overview
 
-OptimX uses a **hybrid Next.js architecture** combining both the Pages Router (legacy, mature) and App Router (modern, cutting-edge):
+Oli AI uses a **hybrid Next.js architecture** combining both the Pages Router (legacy, mature) and App Router (modern, cutting-edge):
 
 - **Pages Router** (`/pages`): Handles all user-facing pages and the majority of API endpoints (46 routes)
 - **App Router** (`/app`): Powers AI-driven endpoints and modern component architecture

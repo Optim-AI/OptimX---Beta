@@ -78,7 +78,7 @@ const FinalCTA: React.FC = () => {
                 color: 'transparent',
               }}
             >
-              But with OptimX.
+              But with Oli AI.
             </span>
           </h2>
 

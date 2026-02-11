@@ -26,6 +26,7 @@ export default function CreativeStudioLanding() {
   const [brand, setBrand] = useState<BrandSnapshot | null>(null);
   const [showBrandOnboarding, setShowBrandOnboarding] = useState(false);
   const [showBrandGuidelineModal, setShowBrandGuidelineModal] = useState(false);
+  const [isAnalyzingBrand, setIsAnalyzingBrand] = useState(false);
   const [onboardingMode, setOnboardingMode] = useState<'website' | 'manual'>('website');
 
   // Session naming modal state
@@ -83,16 +84,23 @@ export default function CreativeStudioLanding() {
     loadSessions();
   }, []);
 
-  // ============== Load Brand from localStorage ==============
+  // ============== Load Brand from localStorage & show entry popup ==============
 
   useEffect(() => {
     const storedBrand = localStorage.getItem('brand:snapshot');
     if (storedBrand) {
       try {
-        setBrand(JSON.parse(storedBrand));
+        const parsed = JSON.parse(storedBrand);
+        setBrand(parsed);
+        // On page entry: show brand guideline modal so user sees/edits stored guideline
+        setShowBrandGuidelineModal(true);
       } catch (e) {
         console.error('Failed to parse stored brand:', e);
+        setShowBrandOnboarding(true);
       }
+    } else {
+      // No stored brand: show onboarding so user can analyze and store brand guideline
+      setShowBrandOnboarding(true);
     }
   }, []);
 
@@ -169,7 +177,8 @@ export default function CreativeStudioLanding() {
   // ============== Brand Handlers ==============
 
   async function handleWebsiteBrandSetup(website: string) {
-    setShowBrandOnboarding(false);
+    setIsAnalyzingBrand(true);
+    // Keep onboarding modal open so user sees "Analyzing..." UI
 
     try {
       const response = await authFetch('/api/brand/fullAnalyze', {
@@ -179,34 +188,54 @@ export default function CreativeStudioLanding() {
 
       const data = await response.json();
 
-      if (data.ok && data.brand) {
+      // API returns { result: {...} } on success, { error: string } on failure
+      if (data.result) {
+        const result = data.result;
         const brandSnapshot: BrandSnapshot = {
-          name: data.brand.name || 'Unknown Brand',
-          description: data.brand.description || '',
-          audience: data.brand.audience || '',
-          offering: data.brand.offering || '',
-          tone: data.brand.tone || '',
-          logo: data.brand.logo,
-          logoUrl: data.brand.logoUrl,
-          primaryColors: data.brand.primaryColors,
-          fontStyles: data.brand.fontStyles,
-          brandVoice: data.brand.brandVoice,
-          coreValueProp: data.brand.coreValueProp,
+          name: result.facts?.company_name || 'Unknown Brand',
+          description: result.positioning?.primary_value_proposition || '',
+          audience: Array.isArray(result.facts?.who_it_is_for)
+            ? result.facts.who_it_is_for.join(', ')
+            : (result.facts?.who_it_is_for as string) || '',
+          offering: Array.isArray(result.facts?.what_they_sell)
+            ? result.facts.what_they_sell.join(', ')
+            : (result.facts?.what_they_sell as string) || '',
+          tone: result.brandVoice || result.personality || 'professional',
+          logo: result.logo,
+          logoUrl: result.logoUrl,
+          primaryColors: result.primaryColors,
+          fontStyles: result.fontStyles,
+          brandVoice: result.brandVoice,
+          coreValueProp: result.coreValueProp,
+          ctaPatterns: result.ctaPatterns,
+          productCategory: result.productCategory,
+          pricePositioning: result.pricePositioning,
+          personality: result.personality,
+          colors: result.colors
+            ? {
+                primary: result.colors.primary ?? undefined,
+                secondary: result.colors.secondary ?? undefined,
+                accent: result.colors.accent ?? undefined,
+              }
+            : undefined,
         };
 
         setBrand(brandSnapshot);
         localStorage.setItem('brand:snapshot', JSON.stringify(brandSnapshot));
-
-        // Now show the naming modal
-        setShowNameModal(true);
+        setShowBrandOnboarding(false);
+        // Show stored brand guideline in the creative studio page
+        setShowBrandGuidelineModal(true);
       } else {
-        alert('Could not analyze website. Please try manual setup.');
+        const errorMsg = data.error || 'Could not analyze website.';
         setShowBrandOnboarding(true);
+        alert(`${errorMsg} Please try manual setup.`);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Brand analysis error:', err);
-      alert('Error analyzing website. Please try manual setup.');
       setShowBrandOnboarding(true);
+      alert(`Error analyzing website: ${err?.message || 'Unknown error'}. Please try manual setup.`);
+    } finally {
+      setIsAnalyzingBrand(false);
     }
   }
 
@@ -232,9 +261,8 @@ export default function CreativeStudioLanding() {
     setBrand(brandSnapshot);
     localStorage.setItem('brand:snapshot', JSON.stringify(brandSnapshot));
     setShowBrandOnboarding(false);
-
-    // Now show the naming modal
-    setShowNameModal(true);
+    // Show stored brand guideline so user can view/edit
+    setShowBrandGuidelineModal(true);
   }
 
   function handleSkipBrandSetup() {
@@ -248,9 +276,9 @@ export default function CreativeStudioLanding() {
     };
     setBrand(minimalBrand);
     localStorage.setItem('brand:snapshot', JSON.stringify(minimalBrand));
-
-    // Now show the naming modal
-    setShowNameModal(true);
+    setShowBrandOnboarding(false);
+    // Show brand guideline so user can fill in details later
+    setShowBrandGuidelineModal(true);
   }
 
   function updateBrandGuideline(updated: BrandSnapshot) {
@@ -321,42 +349,36 @@ export default function CreativeStudioLanding() {
             {sessions.length > 0 && (
               <div className="mb-12">
                 <h2 className="text-lg font-semibold text-gray-900 mb-4">Recent Sessions</h2>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {sessions.slice(0, 6).map((session) => (
-                    <button
-                      key={session.id}
-                      onClick={() => handleSessionClick(session)}
-                      className="text-left p-4 bg-white border border-gray-200 rounded-xl hover:border-gray-300 hover:shadow-sm transition-all"
-                    >
-                      <div className="flex items-center gap-3 mb-2">
-                        <span className="text-xl">
-                          {session.sessionType === 'poster' ? '🖼️' : '🎬'}
-                        </span>
-                        <span
-                          className={`text-xs px-2 py-0.5 rounded-full ${
-                            session.sessionType === 'poster'
-                              ? 'bg-blue-100 text-blue-700'
-                              : 'bg-purple-100 text-purple-700'
-                          }`}
-                        >
-                          {session.sessionType === 'poster' ? 'Poster' : 'Video'}
-                        </span>
-                      </div>
-                      <h3 className="font-medium text-gray-900 truncate">{session.name}</h3>
-                      <p className="text-xs text-gray-500 mt-1">
-                        {formatTimestamp(session.updatedAt)}
-                      </p>
-                    </button>
-                  ))}
-                </div>
-
-                {sessions.length > 6 && (
-                  <div className="mt-4 text-center">
-                    <span className="text-sm text-gray-500">
-                      And {sessions.length - 6} more sessions...
-                    </span>
+                <div className="max-h-[420px] overflow-y-auto overflow-x-hidden rounded-xl pr-1 -mr-1">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {sessions.map((session) => (
+                      <button
+                        key={session.id}
+                        onClick={() => handleSessionClick(session)}
+                        className="text-left p-4 bg-white border border-gray-200 rounded-xl hover:border-gray-300 hover:shadow-sm transition-all"
+                      >
+                        <div className="flex items-center gap-3 mb-2">
+                          <span className="text-xl">
+                            {session.sessionType === 'poster' ? '🖼️' : '🎬'}
+                          </span>
+                          <span
+                            className={`text-xs px-2 py-0.5 rounded-full ${
+                              session.sessionType === 'poster'
+                                ? 'bg-blue-100 text-blue-700'
+                                : 'bg-purple-100 text-purple-700'
+                            }`}
+                          >
+                            {session.sessionType === 'poster' ? 'Poster' : 'Video'}
+                          </span>
+                        </div>
+                        <h3 className="font-medium text-gray-900 truncate">{session.name}</h3>
+                        <p className="text-xs text-gray-500 mt-1">
+                          {formatTimestamp(session.updatedAt)}
+                        </p>
+                      </button>
+                    ))}
                   </div>
-                )}
+                </div>
               </div>
             )}
 
@@ -457,6 +479,7 @@ export default function CreativeStudioLanding() {
             onWebsiteSubmit={handleWebsiteBrandSetup}
             onManualSubmit={handleManualBrandSetup}
             onSkip={handleSkipBrandSetup}
+            isLoading={isAnalyzingBrand}
           />
         )}
 

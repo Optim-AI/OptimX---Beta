@@ -146,7 +146,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       }}
       aria-expanded={!collapsed}
     >
-      {/* Header: logo on left, single OptimAI label (no duplicate) */}
+      {/* Header: logo on left, single Oli AI label (no duplicate) */}
       <div className="flex items-center justify-between px-4 py-3">
         <div className="flex items-center gap-3">
           {/* Logo slot (left) */}
@@ -161,15 +161,14 @@ const Sidebar: React.FC<SidebarProps> = ({
             }}
           >
             {/* Always use the static file path for the logo */}
-            <img src="/images/OptimX_Logo.svg" alt="logo" className="h-full w-full object-contain" />
+            <img src="/images/Oli_AI_Logo.svg" alt="logo" className="h-full w-full object-contain" />
           </button>
 
-          {/* Title (single OptimAI) */}
+          {/* Title (single Oli AI) */}
           {!collapsed && (
             <div>
               <span className="text-xl font-bold" style={{ lineHeight: 1 }}>
-                            <span style={{ color: colors.foreground }}>Optim</span>
-                            <span style={{ color: colors.primary }}>X</span>
+                            <span style={{ color: colors.foreground }}>Oli AI</span>
                           </span>
               <p style={{ color: sidebarFg, opacity: 0.85, fontSize: 12 }}></p>
             </div>

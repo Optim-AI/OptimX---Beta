@@ -49,26 +49,24 @@ const ApiDocs: React.FC = () => {
 
           <div>
             <div className="text-2xl font-bold leading-tight flex items-baseline gap-1">
-              <span style={{ color: colors.foreground }}>Optim</span>
-              <span style={{ color: colors.primary, fontFamily: "inherit" }}>X</span>
+              <span style={{ color: colors.foreground }}>Oli AI</span>
             </div>
             <div className="text-sm text-[14px]" style={{ color: colors.mutedForeground }}>API Documentation</div>
           </div> */}
 
           <Link href="/" className="flex items-center space-x-1" style={{ color: colors.foreground }}>
-                      <img src="/images/OptimX_Logo.svg" alt="OptimX Logo" className="h-10 w-auto" />
-                      <span className="text-xl font-bold" style={{ lineHeight: 1 }}>
-                        <span style={{ color: colors.foreground }}>Optim</span>
-                        <span style={{ color: colors.primary }}>X</span>
-                      </span>
+                      <img src="/images/Oli_AI_Logo.svg" alt="Oli AI Logo" className="h-10 w-auto" />
+<span className="text-xl font-bold" style={{ lineHeight: 1 }}>
+                      <span style={{ color: colors.foreground }}>Oli AI</span>
+                    </span>
                     </Link>
         </header>
 
         <section className="max-w-6xl mx-auto mt-6">
           <div className="p-8 rounded-2xl glass-card border" style={{ borderColor: withAlpha(colors.border, 0.6), background: colors.card }}>
             <div className="mb-6">
-              <h1 className="text-4xl font-extrabold mb-2" style={{ color: colors.foreground }}>OptimX API</h1>
-              <p className="text-lg" style={{ color: colors.mutedForeground }}>RESTful endpoints to integrate with OptimX programmatically. Use your API token (found in the dashboard) to authenticate requests.</p>
+              <h1 className="text-4xl font-extrabold mb-2" style={{ color: colors.foreground }}>Oli AI API</h1>
+              <p className="text-lg" style={{ color: colors.mutedForeground }}>RESTful endpoints to integrate with Oli AI programmatically. Use your API token (found in the dashboard) to authenticate requests.</p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
@@ -176,7 +174,7 @@ Content-Type: application/json
 
               <section>
                 <h3 style={{ color: colors.foreground }}>Webhooks</h3>
-                <p style={{ color: colors.mutedForeground }}>Register a webhook via <code>POST /v1/webhooks</code>. Events include <code>generation.completed</code>, <code>campaign.published</code>, and <code>insight.updated</code>. Verify signatures using the <code>X-OptimX-Signature</code> header.</p>
+                <p style={{ color: colors.mutedForeground }}>Register a webhook via <code>POST /v1/webhooks</code>. Events include <code>generation.completed</code>, <code>campaign.published</code>, and <code>insight.updated</code>. Verify signatures using the <code>X-OliAI-Signature</code> header.</p>
               </section>
 
               <section>
@@ -199,7 +197,7 @@ Content-Type: application/json
             <div className="mt-8 flex justify-between items-center">
               <div className="flex items-center gap-3 text-sm" style={{ color: colors.mutedForeground }}>
                 <Zap className="h-4 w-4" style={{ color: colors.primary }} />
-                <span>OptimX — API & Integrations</span>
+                <span>Oli AI — API & Integrations</span>
               </div>
 
               <div className="flex items-center gap-3">

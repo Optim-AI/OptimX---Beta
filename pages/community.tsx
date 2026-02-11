@@ -84,17 +84,15 @@ const Community: React.FC = () => {
 
           <div>
             <div className="text-2xl font-bold leading-tight flex items-baseline gap-1">
-              <span style={{ color: colors.foreground }}>Optim</span>
-              <span style={{ color: colors.primary, fontFamily: "inherit" }}>X</span>
+              <span style={{ color: colors.foreground }}>Oli AI</span>
             </div>
             <div className="text-sm text-[14px]" style={{ color: colors.mutedForeground }}>Community</div>
           </div> */}
 
           <Link href="/" className="flex items-center space-x-1" style={{ color: colors.foreground }}>
-                      <img src="/images/OptimX_Logo.svg" alt="OptimX Logo" className="h-10 w-auto" />
+                      <img src="/images/Oli_AI_Logo.svg" alt="Oli AI Logo" className="h-10 w-auto" />
                       <span className="text-xl font-bold" style={{ lineHeight: 1 }}>
-                        <span style={{ color: colors.foreground }}>Optim</span>
-                        <span style={{ color: colors.primary }}>X</span>
+<span style={{ color: colors.foreground }}>Oli AI</span>
                       </span>
                     </Link>
         </header>
@@ -102,7 +100,7 @@ const Community: React.FC = () => {
         <section className="max-w-6xl mx-auto mt-6">
           <div className="p-8 rounded-2xl glass-card border" style={{ borderColor: withAlpha(colors.border, 0.6), background: colors.card }}>
             <div className="mb-4">
-              <h1 className="text-4xl font-extrabold mb-2" style={{ color: colors.foreground }}>Join the OptimX Community</h1>
+              <h1 className="text-4xl font-extrabold mb-2" style={{ color: colors.foreground }}>Join the Oli AI Community</h1>
               <p className="text-lg" style={{ color: colors.mutedForeground }}>
                 Follow us, join discussions, get product updates, share feedback, and connect with other marketers and creators.
               </p>
@@ -170,7 +168,7 @@ const Community: React.FC = () => {
             <div className="mt-8 flex justify-between items-center">
               <div className="flex items-center gap-3 text-sm" style={{ color: colors.mutedForeground }}>
                 <Sparkles className="h-4 w-4" style={{ color: colors.primary }} />
-                <span>OptimX — Connect &amp; Share</span>
+                <span>Oli AI — Connect &amp; Share</span>
               </div>
 
               <div className="flex items-center gap-3">

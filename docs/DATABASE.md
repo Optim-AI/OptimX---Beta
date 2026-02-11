@@ -1,6 +1,6 @@
 # Database Schema
 
-OptimX uses **Drizzle ORM** with **Supabase PostgreSQL** for all data persistence.
+Oli AI uses **Drizzle ORM** with **Supabase PostgreSQL** for all data persistence.
 
 ---
 

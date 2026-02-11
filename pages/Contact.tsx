@@ -40,15 +40,15 @@ const withAlpha = (token: string | undefined, alpha: number) => {
  * Keeping it here so the SEO data exists in the module (you can move it to a server wrapper if you prefer).
  */
 export const metadata = {
-  title: "Contact OptimX - AI Marketing Automation & Campaign Management",
+  title: "Contact Oli AI - AI Marketing Automation & Campaign Management",
   description:
-    "Get in touch with OptimX for AI-powered marketing automation solutions. Contact our expert team for personalized marketing campaigns, SEO optimization, and business growth strategies.",
+    "Get in touch with Oli AI for AI-powered marketing automation solutions. Contact our expert team for personalized marketing campaigns, SEO optimization, and business growth strategies.",
   keywords:
-    "contact OptimX, AI marketing consultation, marketing automation support, campaign management contact, digital marketing help, business growth solutions, marketing strategy consultation",
+    "contact Oli AI, AI marketing consultation, marketing automation support, campaign management contact, digital marketing help, business growth solutions, marketing strategy consultation",
   openGraph: {
-    title: "Contact Optim - AI Marketing Automation Expert Support",
+    title: "Contact Oli AI - AI Marketing Automation Expert Support",
     description:
-      "Ready to transform your business with AI-powered marketing? Contact OptimX's expert team for personalized marketing automation solutions and campaign management.",
+      "Ready to transform your business with AI-powered marketing? Contact Oli AI's expert team for personalized marketing automation solutions and campaign management.",
     type: "website",
     url: "https://optim.com/contact",
   },
@@ -199,7 +199,7 @@ const Contact = () => {
                     Get Your Free Marketing Consultation
                   </CardTitle>
                   <CardDescription style={{ color: colors.mutedForeground }}>
-                    Tell us about your business needs and discover how Optim's
+                    Tell us about your business needs and discover how Oli AI's
                     AI can revolutionize your marketing strategy. Our experts
                     will respond within 24 hours.
                   </CardDescription>

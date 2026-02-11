@@ -61,6 +61,46 @@ npm install -g supabase
 supabase --version
 ```
 
+## Migrate all Supabase to local (one command)
+
+To start the local Supabase stack and apply **all** migrations (schema + seed) in one go:
+
+```bash
+npm run supabase:migrate-local
+```
+
+Or run the script directly:
+
+```bash
+chmod +x ./scripts/migrate-supabase-to-local.sh
+./scripts/migrate-supabase-to-local.sh
+```
+
+This will:
+1. Ensure Docker and Supabase CLI are available
+2. Start local Supabase (Postgres, Auth, Storage, Studio)
+3. Run `supabase db reset` so every migration in `supabase/migrations/` is applied and `seed.sql` runs
+
+Your `.env.local` should already point to local (e.g. `SUPABASE_URL=http://localhost:54321`, `DATABASE_URL=postgresql://postgres:postgres@localhost:54322/postgres`).
+
+### Pull from a remote Supabase project into local (optional)
+
+If you have a **hosted** Supabase project and want to copy its schema (or data) to local:
+
+1. Link the project (one-time):
+   ```bash
+   supabase link --project-ref YOUR_PROJECT_REF
+   ```
+   Get `YOUR_PROJECT_REF` from the project URL: `https://app.supabase.com/project/YOUR_PROJECT_REF`.
+
+2. Pull remote schema as a new migration:
+   ```bash
+   supabase db pull
+   ```
+   Then apply it locally: `supabase db reset`.
+
+3. To copy **data** from remote to local, use `pg_dump` from the remote DB and `psql` into local, or use the Supabase dashboard to export/import.
+
 ## Quick Start
 
 ### 1. Start Supabase Local Stack

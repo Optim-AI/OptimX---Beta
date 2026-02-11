@@ -1,6 +1,6 @@
 # Development Guide
 
-Complete guide for setting up and developing OptimX locally.
+Complete guide for setting up and developing Oli AI locally.
 
 ---
 

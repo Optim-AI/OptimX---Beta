@@ -1,6 +1,6 @@
 # API Reference
 
-Complete reference for all OptimX API endpoints.
+Complete reference for all Oli AI API endpoints.
 
 ---
 

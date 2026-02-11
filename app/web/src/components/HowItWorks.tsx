@@ -22,21 +22,21 @@ const HowItWorks: React.FC = () => {
       icon: LinkIcon,
       title: 'Connect your channels',
       description:
-        'Link your Google, Meta, Instagram, WhatsApp, and website once. OptimX securely pulls in your data and keeps everything in sync.'
+        'Link your Google, Meta, Instagram, WhatsApp, and website once. Oli AI securely pulls in your data and keeps everything in sync.'
     },
     {
       number: '2',
       icon: MessageSquare,
-      title: 'Tell OptimX your goal',
+      title: 'Tell Oli AI your goal',
       description:
-        "Describe what you want in simple words — like 'get more walk-ins' or 'sell 50 more products'. OptimX turns it into a clear campaign plan."
+        "Describe what you want in simple words — like 'get more walk-ins' or 'sell 50 more products'. Oli AI turns it into a clear campaign plan."
     },
     {
       number: '3',
       icon: Rocket,
       title: 'We launch, learn, and optimise',
       description:
-        'OptimX creates, launches, and tracks your ads and content across channels, then doubles down on what works so you get better results over time.'
+        'Oli AI creates, launches, and tracks your ads and content across channels, then doubles down on what works so you get better results over time.'
     }
   ];
 
@@ -76,7 +76,7 @@ const HowItWorks: React.FC = () => {
           </h2>
 
           <p className="text-lg md:text-xl leading-relaxed" style={{ color: colors.mutedForeground }}>
-            Connect your channels, set a goal, and let OptimX handle the rest.
+            Connect your channels, set a goal, and let Oli AI handle the rest.
           </p>
         </div>
 

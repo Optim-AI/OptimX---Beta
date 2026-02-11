@@ -589,8 +589,8 @@ export default function VideoSessionPage() {
         adBuilderData.voiceover.script ||
         `Create a ${adBuilderData.adSetup.duration}-second ${adBuilderData.adSetup.style.toLowerCase()} video ad for ${adBuilderData.product.product_name}.`;
 
-      // Use brand logo from product first, then from brand guideline so the logo is always used when available
-      const brandLogo = adBuilderData.product.brand_logo ?? brand?.logo ?? brand?.logoUrl ?? null;
+      // Prefer brand guideline logo when available so the fetched/configured logo is used in the video
+      const brandLogo = brand?.logo ?? brand?.logoUrl ?? adBuilderData.product.brand_logo ?? null;
 
       const response = await authFetch('/api/creative-studio/generate-video', {
         method: 'POST',

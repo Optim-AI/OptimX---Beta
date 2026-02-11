@@ -112,17 +112,15 @@ const HelpCenter: React.FC = () => {
 
           <div>
             <div className="text-2xl font-bold leading-tight flex items-baseline gap-1">
-              <span style={{ color: colors.foreground }}>Optim</span>
-              <span style={{ color: colors.primary, fontFamily: "inherit" }}>X</span>
+              <span style={{ color: colors.foreground }}>Oli AI</span>
             </div>
             <div className="text-sm text-[14px]" style={{ color: colors.mutedForeground }}>Help Center</div>
           </div> */}
 
           <Link href="/" className="flex items-center space-x-1" style={{ color: colors.foreground }}>
-                      <img src="/images/OptimX_Logo.svg" alt="OptimX Logo" className="h-10 w-auto" />
+                      <img src="/images/Oli_AI_Logo.svg" alt="Oli AI Logo" className="h-10 w-auto" />
                       <span className="text-xl font-bold" style={{ lineHeight: 1 }}>
-                        <span style={{ color: colors.foreground }}>Optim</span>
-                        <span style={{ color: colors.primary }}>X</span>
+<span style={{ color: colors.foreground }}>Oli AI</span>
                       </span>
                     </Link>
         </header>
@@ -131,7 +129,7 @@ const HelpCenter: React.FC = () => {
           <div className="p-8 rounded-2xl glass-card border" style={{ borderColor: withAlpha(colors.border, 0.6), background: colors.card }}>
             <div className="mb-6">
               <h1 className="text-4xl font-extrabold mb-2" style={{ color: colors.foreground }}>Help Center</h1>
-              <p className="text-lg" style={{ color: colors.mutedForeground }}>Find guides, FAQs, and support to get the most out of OptimX.</p>
+              <p className="text-lg" style={{ color: colors.mutedForeground }}>Find guides, FAQs, and support to get the most out of Oli AI.</p>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -265,7 +263,7 @@ const HelpCenter: React.FC = () => {
             <div className="mt-8 flex justify-between items-center">
               <div className="flex items-center gap-3 text-sm" style={{ color: colors.mutedForeground }}>
                 <Sparkles className="h-4 w-4" style={{ color: colors.primary }} />
-                <span>OptimX — Support &amp; Docs</span>
+                <span>Oli AI — Support &amp; Docs</span>
               </div>
 
               <div className="flex items-center gap-3">

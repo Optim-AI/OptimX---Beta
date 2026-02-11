@@ -158,7 +158,7 @@ export default function About() {
                   overpriced agencies and confusing tools. That's when the idea
                   for{" "}
                   <span style={{ color: colors.foreground, fontWeight: 400 }}>
-                    OptimX
+                    Oli AI
                   </span>{" "}
                   was born — a simple, AI-powered platform that puts the power
                   of marketing back into the hands of small businesses.
@@ -186,7 +186,7 @@ export default function About() {
               className="text-3xl md:text-4xl font-light mb-16 text-center"
               style={{ color: colors.foreground }}
             >
-              Behind OptimX
+              Behind Oli AI
             </h2>
             <div className="grid md:grid-cols-2 gap-12">
               <div
@@ -265,7 +265,7 @@ export default function About() {
               </div>
               <div className="space-y-6">
                 <p className="text-lg font-light leading-relaxed" style={{ color: colors.mutedForeground }}>
-                  Like many startups, OptimX began as a simple idea on paper — one dashboard for everything. Along the way, we refined our product by listening to SMB owners:
+                  Like many startups, Oli AI began as a simple idea on paper — one dashboard for everything. Along the way, we refined our product by listening to SMB owners:
                 </p>
                 <ul className="space-y-4 text-lg font-light" style={{ color: colors.mutedForeground }}>
                   <li className="flex items-start gap-3">
@@ -282,7 +282,7 @@ export default function About() {
                   </li>
                 </ul>
                 <p className="text-lg font-light leading-relaxed" style={{ color: colors.mutedForeground }}>
-                  Today, OptimX is on its way to becoming the{" "}
+                  Today, Oli AI is on its way to becoming the{" "}
                   <span style={{ color: colors.foreground, fontWeight: 400 }}>
                     go-to marketing partner for SMBs
                   </span>
@@ -342,7 +342,7 @@ export default function About() {
                   Our Vision
                 </h3>
                 <p className="text-lg font-light leading-relaxed" style={{ color: colors.mutedForeground }}>
-                  Become the <span style={{ color: colors.foreground, fontWeight: 400 }}>default marketing tool for SMBs worldwide</span> — the way Google Ads became the standard for big brands, OptimX will be for small businesses.
+                  Become the <span style={{ color: colors.foreground, fontWeight: 400 }}>default marketing tool for SMBs worldwide</span> — the way Google Ads became the standard for big brands, Oli AI will be for small businesses.
                 </p>
               </div>
             </div>

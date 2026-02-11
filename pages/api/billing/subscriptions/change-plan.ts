@@ -1,7 +1,7 @@
 // pages/api/billing/subscriptions/change-plan.ts
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { getUserIdFromRequest } from '@/auth/request';
-import { PlanChangeService } from '@/lib/razorpay/plan-change.service';
+import { PlanChangeService, isRazorpayConfigured } from '@/lib/razorpay';
 
 /**
  * POST /api/billing/subscriptions/change-plan
@@ -10,6 +10,12 @@ import { PlanChangeService } from '@/lib/razorpay/plan-change.service';
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  if (!isRazorpayConfigured()) {
+    return res.status(503).json({
+      error: 'Payments are not configured yet. Add your Razorpay API keys. See docs/RAZORPAY_SETUP.md',
+    });
   }
 
   try {

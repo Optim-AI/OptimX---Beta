@@ -27,6 +27,10 @@ async function safeFetchJson(url: string, opts?: RequestInit) {
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(404).json({ error: 'Not found' });
+  }
+
   try {
     const token = String(req.body?.access_token || req.query?.access_token || "").trim();
     const adAccountId = String(req.body?.ad_account_id || req.query?.ad_account_id || "").trim();

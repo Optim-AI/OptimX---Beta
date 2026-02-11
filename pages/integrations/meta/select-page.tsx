@@ -119,7 +119,7 @@ function SelectFacebookPageComponent() {
             Select Facebook Page
           </h1>
           <p className="text-gray-600">
-            Choose which Facebook Page to connect to OptimX
+            Choose which Facebook Page to connect to Oli AI
           </p>
           <p className="text-sm text-gray-500 mt-2">
             Found {session.pages.length} page{session.pages.length !== 1 ? "s" : ""}
