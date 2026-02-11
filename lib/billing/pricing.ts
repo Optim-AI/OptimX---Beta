@@ -6,7 +6,7 @@
 // - `gstRate` is a decimal (18% => 0.18).
 
 export const BUY_CREDITS_PRICING = {
-  imageCreditPriceInr: 10, // ₹10 per image credit
+  imageCreditPriceInr: 15, // ₹15 per image credit
   videoSecondPriceInr: 25, // ₹25 per video second
   minQuantity: 10,
   maxQuantity: 1000,
@@ -23,7 +23,7 @@ export function getUnitPriceInr(creditType: 'image' | 'video'): number {
 
 /**
  * Calculates subtotal + GST + total.
- * We round GST to the nearest rupee because our `payments.amount` is stored as an integer INR value.
+ * We round GST to the nearest rupee because our `payments.amount` is stored as an integer INR value in rupee.
  */
 export function calculateTotalsInr(params: { creditType: 'image' | 'video'; credits: number }) {
   const { creditType, credits } = params;
