@@ -455,7 +455,7 @@ export const DEFAULT_AD_BUILDER_DATA = {
   product: null,
   adSetup: {
     style: "Cinematic" as const,
-    duration: 6 as const,
+    duration: 8 as const,
     platform: "Instagram Reels / TikTok" as const,
     aspect_ratio: "9:16" as const,
   },
@@ -527,7 +527,7 @@ export const VIDEO_STYLES = [
 /**
  * Video durations
  */
-export const VIDEO_DURATIONS = [4, 6, 8] as const;
+export const VIDEO_DURATIONS = [8] as const;
 
 /**
  * Video platforms

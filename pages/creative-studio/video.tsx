@@ -1057,7 +1057,7 @@ export default function VideoSessionPage() {
                       ))}
                     </div>
                     <p className="mt-2 text-xs text-gray-500">
-                      Available lengths: 4 s, 6 s, and 8 s.
+                      Standard length: 8 s.
                     </p>
                   </div>
 

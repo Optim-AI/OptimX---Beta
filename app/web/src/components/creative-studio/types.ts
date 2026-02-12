@@ -71,7 +71,7 @@ export type AdSetup = {
     | "Whimsical"
     | "Retro"
     | "Neon";
-  duration: 4 | 6 | 8;
+  duration: 8;
   platform: "Instagram Reels / TikTok" | "YouTube Shorts" | "Instagram Feed" | "YouTube Ad";
   aspect_ratio: "9:16" | "1:1" | "16:9" | "4:5";
   quality?: "standard" | "high"; // "standard" = 720p, "high" = 1080p
