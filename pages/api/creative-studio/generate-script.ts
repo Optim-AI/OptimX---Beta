@@ -101,7 +101,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     if (!GEMINI_API_KEY) {
-      return res.status(500).json({ ok: false, error: "GEMINI_API_KEY is not configured" });
+      console.error("GEMINI_API_KEY and GEMINI_VEO_API_KEY are not configured in this environment");
+      return res.status(500).json({
+        ok: false,
+        error: "AI service not configured. Please add GEMINI_API_KEY or GEMINI_VEO_API_KEY to your deployment environment variables (e.g. Vercel Project Settings > Environment Variables), then redeploy.",
+      });
     }
 
     // ========================================
