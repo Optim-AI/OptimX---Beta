@@ -14,7 +14,10 @@ export const config = {
   maxDuration: 300, // 5 minutes max (Vercel hobby plan limit)
 };
 
-const GEMINI_VEO_API_KEY = process.env.GEMINI_VEO_API_KEY;
+// Read at request time (not module load) — fixes production env loading in Vercel/serverless
+function getGeminiVeoApiKey(): string | undefined {
+  return process.env.GEMINI_VEO_API_KEY || process.env.GEMINI_API_KEY;
+}
 
 // Parse data URL to get image bytes and mime type
 function parseDataUrl(dataUrl: string): { imageBytes: string; mimeType: string } | null {
@@ -149,12 +152,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ ok: false, error: "Method not allowed" });
   }
 
-  if (!GEMINI_VEO_API_KEY) {
-    return res.status(500).json({ ok: false, error: "GEMINI_VEO_API_KEY is not configured" });
+  const apiKey = getGeminiVeoApiKey();
+  if (!apiKey) {
+    return res.status(500).json({
+      ok: false,
+      error: "GEMINI_VEO_API_KEY is not configured. Add GEMINI_VEO_API_KEY (or GEMINI_API_KEY) in your host's Environment Variables (e.g. Vercel → Settings → Environment Variables), ensure it's enabled for Production, then redeploy.",
+    });
   }
 
   try {
-    const ai = new GoogleGenAI({ apiKey: GEMINI_VEO_API_KEY });
+    const ai = new GoogleGenAI({ apiKey });
     
     const { 
       prompt,
@@ -354,7 +361,7 @@ ${reference_images.length > 0 ? `CRITICAL — USE REFERENCE IMAGES PRECISELY: De
 
     let videoUrl: string;
     try {
-      videoUrl = await videoToDataUrl(finalVideo, GEMINI_VEO_API_KEY!);
+      videoUrl = await videoToDataUrl(finalVideo, apiKey);
     } catch (e) {
       console.error('Failed to resolve video:', e);
       return res.status(500).json({ ok: false, error: "No video data available in response" });
