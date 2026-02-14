@@ -38,7 +38,9 @@ const BuiltFor: React.FC = () => {
     if (!api) return;
     const onSelect = () => setCurrent(api.selectedScrollSnap());
     api.on('select', onSelect);
-    return () => api.off('select', onSelect);
+    return () => {
+      api.off('select', onSelect);
+    };
   }, [api]);
 
   useEffect(() => {
