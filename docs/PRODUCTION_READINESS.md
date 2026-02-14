@@ -36,9 +36,18 @@ This document summarizes the production readiness audit and what must be done be
 3. **Security — Debug/test endpoints**  
    - `pages/api/test-db.ts`: Returns 404 in production (no DB probing or URL logging).
    - `pages/api/debugger.ts`: Returns 404 in production.
+   - `pages/api/debug/saveTest.ts`: Returns 404 in production; no longer leaks `details` or `stack` in error response.
+   - `pages/api/meta/debug/pages.ts`: Returns 404 in production.
 
-4. **Test APIs**  
-   - `/api/testing/*` (create-test-subscription, add-test-credits, etc.) already return 403 in production. No change needed.
+4. **Security — API error responses**  
+   - `pages/api/integrations/metrics.ts` and `auth/facebook/summaryMetrics.ts`: Removed `stack` from 500 JSON responses to avoid leaking internal paths.
+
+5. **Security headers**  
+   - Added X-Frame-Options, X-Content-Type-Options, Referrer-Policy to `next.config.ts`.
+
+6. **Test APIs**  
+   - `/api/testing/*` (create-test-subscription, add-test-credits, etc.) return 403 in production.
+   - `pages/test-billing.tsx` redirects to `/` in production.
 
 ---
 
@@ -65,7 +74,7 @@ This document summarizes the production readiness audit and what must be done be
 
 ### 4. Optional hardening
 
-- [ ] **Security headers:** Add `next.config.ts` headers (e.g. X-Frame-Options, X-Content-Type-Options, CSP) if required by policy.
+- [x] **Security headers:** X-Frame-Options, X-Content-Type-Options, Referrer-Policy added to `next.config.ts`.
 - [ ] **TLS:** If `NODE_TLS_REJECT_UNAUTHORIZED=0` is set anywhere (e.g. in a script or env), remove it for production.
 - [ ] **Test pages:** Consider hiding or removing the “Test billing” link on the pricing page in production (e.g. `process.env.NODE_ENV !== 'production'`), or leave as-is (test APIs already return 403 in prod).
 

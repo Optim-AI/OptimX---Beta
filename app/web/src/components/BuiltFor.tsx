@@ -80,8 +80,16 @@ const BuiltFor: React.FC = () => {
                   <CarouselItem key={index} className="pl-4 md:pl-6 basis-full">
                     <div
                       className="p-8 rounded-[20px] transition-all duration-500 h-full w-full max-w-md mx-auto"
-                      onMouseEnter={() => setIsPaused(true)}
-                      onMouseLeave={() => setIsPaused(false)}
+                      onMouseEnter={(e) => {
+                        setIsPaused(true);
+                        e.currentTarget.style.transform = 'translateY(-4px)';
+                        e.currentTarget.style.boxShadow = '0 16px 48px rgba(0,0,0,0.2)';
+                      }}
+                      onMouseLeave={(e) => {
+                        setIsPaused(false);
+                        e.currentTarget.style.transform = cardsVisible ? 'translateY(0)' : 'translateY(20px)';
+                        e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+                      }}
                       style={{
                         opacity: cardsVisible ? 1 : 0,
                         transform: cardsVisible ? 'translateY(0)' : 'translateY(20px)',
@@ -91,14 +99,6 @@ const BuiltFor: React.FC = () => {
                         WebkitBackdropFilter: 'blur(20px)',
                         border: '1px solid rgba(255,255,255,0.06)',
                         boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.transform = 'translateY(-4px)';
-                        e.currentTarget.style.boxShadow = '0 16px 48px rgba(0,0,0,0.2)';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.transform = cardsVisible ? 'translateY(0)' : 'translateY(20px)';
-                        e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
                       }}
                     >
                       <div className="w-12 h-12 rounded-xl flex items-center justify-center mb-6" style={{ backgroundColor: 'hsl(213 100% 55% / 0.12)' }}>

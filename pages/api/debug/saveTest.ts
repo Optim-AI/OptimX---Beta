@@ -1,8 +1,12 @@
 // pages/api/debug/saveTest.ts
+// Development-only debug endpoint
 import type { NextApiRequest, NextApiResponse } from "next";
 import { saveIntegration } from '@/integrations/store';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(404).json({ error: 'Not found' });
+  }
   const sample = {
     createdAt: new Date().toISOString(),
     userAccessToken: "TEST_USER_TOKEN",
@@ -16,7 +20,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const data = await saveIntegration(sample, { provider: "meta", userId: null });
     res.status(200).json({ ok: true, data });
   } catch (err: any) {
-    // return the error object (it will also be in server logs)
-    res.status(500).json({ ok: false, error: err?.message ?? err, details: err });
+    console.error('Debug saveTest error:', err);
+    res.status(500).json({ ok: false, error: err?.message ?? String(err) });
   }
 }

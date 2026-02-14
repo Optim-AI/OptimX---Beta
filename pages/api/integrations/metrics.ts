@@ -252,6 +252,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(200).json(response);
   } catch (err: any) {
     console.error("integrations/metrics error:", err);
-    return res.status(500).json({ ok: false, error: err?.message ?? String(err), stack: err?.stack ?? null });
+    return res.status(500).json({ ok: false, error: err?.message ?? String(err) });
   }
 }

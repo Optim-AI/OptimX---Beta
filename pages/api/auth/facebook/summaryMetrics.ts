@@ -208,6 +208,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(200).json(response);
   } catch (err: any) {
     console.error("summaryMetrics error:", err);
-    return res.status(500).json({ error: err?.message ?? String(err), stack: err?.stack ?? null });
+    return res.status(500).json({ error: err?.message ?? String(err) });
   }
 }
