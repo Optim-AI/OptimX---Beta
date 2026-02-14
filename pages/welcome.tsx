@@ -96,7 +96,7 @@ export default function Welcome(): React.ReactElement {
 
           if (!subData.hasSubscription) {
             // Plans are enabled but user hasn't selected one
-            router.replace('/pricing?redirect=/welcome');
+            router.replace('/#pricing');
             return;
           }
         }

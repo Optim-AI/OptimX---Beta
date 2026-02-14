@@ -157,24 +157,21 @@ const Contact = () => {
             <h1
               className="text-4xl md:text-5xl font-bold mb-6"
               style={{
-                // keep gradient-text intent as fallback
                 backgroundImage: colors.gradientPrimary ?? undefined,
                 WebkitBackgroundClip: "text" as any,
                 backgroundClip: "text" as any,
-                color: "transparent", // <- must be transparent to reveal the clipped background
-                WebkitTextFillColor: "transparent", // <- webkit fallback
+                color: "transparent",
+                WebkitTextFillColor: "transparent",
               }}
             >
-              Contact Our AI Marketing Experts
+              Talk to Sales
             </h1>
 
             <p
               className="text-xl max-w-2xl mx-auto"
               style={{ color: colors.mutedForeground }}
             >
-              Ready to transform your business with AI-powered marketing
-              automation? Get personalized consultation and start optimizing
-              your campaigns today.
+              Enterprise plans, custom integrations, or questions about scaling your marketing with Oli AI? Our team will respond within 24 hours.
             </p>
           </div>
         </section>
@@ -196,12 +193,10 @@ const Contact = () => {
                     className="text-2xl"
                     style={{ color: colors.foreground }}
                   >
-                    Get Your Free Marketing Consultation
+                    Get in Touch
                   </CardTitle>
                   <CardDescription style={{ color: colors.mutedForeground }}>
-                    Tell us about your business needs and discover how Oli AI's
-                    AI can revolutionize your marketing strategy. Our experts
-                    will respond within 24 hours.
+                    Share your business needs and how Oli AI can help you create, launch, and optimize ads without expanding headcount.
                   </CardDescription>
                 </CardHeader>
 
@@ -333,7 +328,7 @@ const Contact = () => {
                         border: `1px solid ${withAlpha(colors.primary, 0.9)}`,
                       }}
                     >
-                      {isSubmitting ? "Sending..." : "Get Free Consultation"}
+                      {isSubmitting ? "Sending..." : "Send Message"}
                     </Button>
                   </form>
                 </CardContent>

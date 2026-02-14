@@ -11,24 +11,30 @@ import "../styles/globals.css";
  */
 
 const Header = dynamic(() => import("../app/web/src/components/Header"), { ssr: false });
+const ParallaxBackground = dynamic(() => import("../app/web/src/components/ParallaxBackground"), { ssr: false });
 const Hero = dynamic(() => import("../app/web/src/components/Hero"), { ssr: false });
 const Problem = dynamic(() => import("../app/web/src/components/Problem"), { ssr: false });
-const Features = dynamic(() => import("../app/web/src/components/Features"), { ssr: false });
-const HowItWorks = dynamic(() => import("../app/web/src/components/HowItWorks"), { ssr: false });
-const ContactForPricing = dynamic(() => import("../app/web/src/components/ContactForPricing"), { ssr: false });
+const MeetAITeam = dynamic(() => import("../app/web/src/components/MeetAITeam"), { ssr: false });
+const ScaleWithoutHiring = dynamic(() => import("../app/web/src/components/ScaleWithoutHiring"), { ssr: false });
+const BuiltFor = dynamic(() => import("../app/web/src/components/BuiltFor"), { ssr: false });
+const PricingPreview = dynamic(() => import("../app/web/src/components/PricingPreview"), { ssr: false });
+const HowCreditsWork = dynamic(() => import("../app/web/src/components/HowCreditsWork"), { ssr: false });
 const FAQ = dynamic(() => import("../app/web/src/components/FAQ"), { ssr: false });
 const FinalCTA = dynamic(() => import("../app/web/src/components/FinalCTA"), { ssr: false });
 const Footer = dynamic(() => import("../app/web/src/components/Footer"), { ssr: false });
 
 const Home: React.FC = () => (
-  <div className="min-h-screen">
+  <div className="min-h-screen relative" style={{ backgroundColor: '#121212' }}>
+    <ParallaxBackground />
     <Header />
-    <main>
+    <main className="relative z-10">
       <Hero />
       <Problem />
-      <Features />
-      <HowItWorks />
-      <ContactForPricing />
+      <MeetAITeam />
+      <ScaleWithoutHiring />
+      <BuiltFor />
+      <PricingPreview />
+      <HowCreditsWork />
       <FAQ />
       <FinalCTA />
     </main>

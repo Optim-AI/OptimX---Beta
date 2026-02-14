@@ -6,6 +6,7 @@ import { cva } from "class-variance-authority"
 import { ChevronDown } from "lucide-react"
 
 import { cn } from "../../../../../lib/utils"
+import colors from "@/lib/ui/colors"
 
 const NavigationMenu = React.forwardRef<
   React.ElementRef<typeof NavigationMenuPrimitive.Root>,
@@ -54,9 +55,9 @@ const NavigationMenuTrigger = React.forwardRef<
     ref={ref}
     className={cn(navigationMenuTriggerStyle(), "group", className)}
     style={{
-      background: "hsl(0 0% 99%)", // background
-      color: "hsl(0 0% 10%)", // foreground
-      outlineColor: "hsl(213 100% 62%)", // ring
+      background: colors.background,
+      color: colors.foreground,
+      outlineColor: colors.ring,
       ...(style as React.CSSProperties),
     }}
     {...props}

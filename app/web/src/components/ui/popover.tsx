@@ -4,6 +4,7 @@ import * as React from "react"
 import * as PopoverPrimitive from "@radix-ui/react-popover"
 
 import { cn } from "../../../../../lib/utils"
+import colors from "@/lib/ui/colors"
 
 const Popover = PopoverPrimitive.Root
 
@@ -24,7 +25,7 @@ const PopoverContent = React.forwardRef<
       )}
       // Inline colors from your tokens (hardcoded HSL)
       style={{
-        background: "hsl(0 0% 100%)", // popover background
+        background: colors.popover,
         color: "hsl(0 0% 10%)", // popover foreground
         borderColor: "hsl(220 13% 91%)", // border
         boxShadow: "0 4px 16px hsl(213 100% 62% / 0.12)", // shadowMedium

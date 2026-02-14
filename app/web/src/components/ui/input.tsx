@@ -16,8 +16,7 @@ const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input">>(
           className
         )}
         style={{
-          // background and text
-          background: colors.background,
+          background: colors.card,
           color: colors.foreground,
           // borders and ring offsets
           borderColor: colors.input,

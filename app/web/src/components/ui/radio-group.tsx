@@ -5,6 +5,7 @@ import * as RadioGroupPrimitive from "@radix-ui/react-radio-group"
 import { Circle } from "lucide-react"
 
 import { cn } from "../../../../../lib/utils"
+import colors from "@/lib/ui/colors"
 
 const RadioGroup = React.forwardRef<
   React.ElementRef<typeof RadioGroupPrimitive.Root>,
@@ -34,7 +35,7 @@ const RadioGroupItem = React.forwardRef<
       style={{
         borderColor: "hsl(213 100% 50%)", // primary
         color: "hsl(213 100% 50%)", // text-primary
-        background: "hsl(0 0% 99%)", // background
+        background: colors.background,
         outlineColor: "hsl(213 100% 62%)", // ring
         ...(style as React.CSSProperties),
       }}

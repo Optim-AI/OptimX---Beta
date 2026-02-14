@@ -101,10 +101,11 @@ const AccordionContent = React.forwardRef<
 >(({ className, children, ...props }, ref) => (
   <AccordionPrimitive.Content
     ref={ref}
-    className={cn(
-      'overflow-hidden text-sm transition-all data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down',
-      className
-    )}
+      data-accordion-content
+      className={cn(
+        'overflow-hidden text-sm',
+        className
+      )}
     // apply inline text color and (optionally) a slightly muted color for content
     style={{ color: colors.mutedForeground }}
     {...props}

@@ -7,8 +7,6 @@ import { Button } from './ui/button';
 import { Menu, X } from 'lucide-react';
 import colors from '@/lib/ui/colors';
 
-const optimLogo = '/lovable-uploads/97baedae-c6f2-422c-95ad-b5efa06f182e.png';
-
 const Header: React.FC = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const pathname = usePathname();
@@ -17,10 +15,11 @@ const Header: React.FC = () => {
   const navItems = [
     { name: 'Home', href: '/', type: 'route' },
     { name: 'About', href: '/About', type: 'route' },
-    { name: 'Features', href: '/#features', type: 'section' },
-    { name: 'How it Works', href: '/#how-it-works', type: 'section' },
+    { name: 'Product', href: '/product', type: 'route' },
     { name: 'Pricing', href: '/#pricing', type: 'section' },
-    { name: 'Careers', href: '/Careers', type: 'route' },
+    { name: 'Use Cases', href: '/use-cases', type: 'route' },
+    { name: 'Blog', href: '/blog', type: 'route' },
+    { name: 'FAQ', href: '/#faq', type: 'section' },
     { name: 'Contact', href: '/Contact', type: 'route' },
   ];
 
@@ -44,19 +43,16 @@ const Header: React.FC = () => {
 
   return (
     <header
-      className="fixed top-0 w-full glass-header z-50 shadow-glow"
+      className="fixed top-0 w-full z-50 backdrop-blur-md"
       style={{
-        // color-only changes: use tokens for glass background and border
-        background: "hsl(0 0% 99% / 2)",
+        background: "hsl(0 0% 7% / 0.85)",
         borderBottom: `1px solid ${colors.border}`,
         color: colors.foreground,
       }}
     >
       <div className="container mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
-          {/* Logo */}
           <Link href="/" className="flex items-center space-x-1" style={{ color: colors.foreground }}>
-            <img src="/images/Oli_AI_Logo.svg" alt="Oli AI Logo" className="h-10 w-auto" />
             <span className="text-xl font-bold" style={{ lineHeight: 1 }}>
               <span style={{ color: colors.foreground }}>Oli AI</span>
             </span>
@@ -119,8 +115,17 @@ const Header: React.FC = () => {
 
           {/* Desktop Actions */}
           <div className="hidden lg:flex items-center space-x-4">
-            <Link href="/auth/signin">
-              <Button variant="cta">Get Started Free</Button>
+            <Link
+              href="/auth/signin"
+              className="text-sm font-medium transition-colors"
+              style={{ color: colors.mutedForeground }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = colors.primary; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = colors.mutedForeground; }}
+            >
+              Sign In
+            </Link>
+            <Link href="/auth/signup">
+              <Button variant="cta">Start Free</Button>
             </Link>
           </div>
 
@@ -206,10 +211,11 @@ const Header: React.FC = () => {
               })}
 
               <div className="flex flex-col space-y-2 pt-4">
-                <Link href="/auth/signin" onClick={() => setIsMenuOpen(false)}>
-                  <Button variant="cta" className="justify-start w-full">
-                    Get Started Free
-                  </Button>
+                <Link href="/auth/signin" onClick={() => setIsMenuOpen(false)} className="text-sm font-medium px-3 py-2" style={{ color: colors.mutedForeground }}>
+                  Sign In
+                </Link>
+                <Link href="/auth/signup" onClick={() => setIsMenuOpen(false)}>
+                  <Button variant="cta" className="justify-start w-full">Start Free</Button>
                 </Link>
               </div>
             </div>

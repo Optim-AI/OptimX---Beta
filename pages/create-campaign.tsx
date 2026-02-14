@@ -2099,7 +2099,7 @@ const showAcknowledgement =
                 >
                   Go to Dashboard
                 </Button>
-                <Button variant="outline" onClick={() => router.push("/pricing")}>
+                <Button variant="outline" onClick={() => router.push("/#pricing")}>
                   View Pricing
                 </Button>
               </div>

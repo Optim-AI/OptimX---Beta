@@ -239,7 +239,7 @@ const HelpCenter: React.FC = () => {
                   <ul className="mt-3 space-y-2 text-sm" style={{ color: colors.mutedForeground }}>
                     <li><a href="/status">System Status</a></li>
                     <li><a href="/docs/api">API Docs</a></li>
-                    <li><a href="/pricing">Pricing</a></li>
+                    <li><a href="/#pricing">Pricing</a></li>
                     <li><a href="/community">Community</a></li>
                   </ul>
                 </div>

@@ -1,18 +1,28 @@
 "use client";
 
-import React, { useRef, useState, useEffect } from "react";
+import React, { useState, useCallback, useRef, useEffect } from "react";
 import { Button } from "./ui/button";
 import {
-  ArrowRight,
-  Sparkles,
-  CheckCircle2,
-  TrendingUp,
-  Zap,
-  User,
-} from "lucide-react";
-import colors from '@/lib/ui/colors';
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "./ui/dialog";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerDescription,
+} from "./ui/drawer";
+import { Sparkles, Loader2, Check } from "lucide-react";
+import { useRouter } from "next/router";
+import Link from "next/link";
+import colors from "@/lib/ui/colors";
+import { useIsMobile } from "../hooks/use-mobile";
+import { ParallaxLayer } from "./ParallaxLayer";
 
-/** Convert "hsl(H S% L%)" -> "hsla(H, S%, L%, a)" for inline usage */
 function withAlpha(token: string, alpha: number) {
   const hslMatch = token.match(
     /hsl\(\s*([\d.]+)\s+([\d.]+)%\s+([\d.]+)%\s*\)/i
@@ -21,612 +31,335 @@ function withAlpha(token: string, alpha: number) {
     const [, h, s, l] = hslMatch;
     return `hsla(${h}, ${s}%, ${l}%, ${alpha})`;
   }
-  if (/rgba?\(|hsla?\(/i.test(token)) return token;
   return token;
 }
 
+type TabType = "Campaign Strategy" | "Ad Creatives" | "Social Posts";
+const TABS: TabType[] = ["Campaign Strategy", "Ad Creatives", "Social Posts"];
+const PLATFORMS = [
+  { id: "meta", label: "Meta" },
+  { id: "google", label: "Google" },
+  { id: "linkedin", label: "LinkedIn" },
+];
+const PROGRESS_STEPS = [
+  "Analyzing website...",
+  "Identifying target audience...",
+  "Creating campaign angles...",
+  "Generating creatives...",
+];
+
+function AuthModalButtons({
+  onGoogle,
+  onEmail,
+}: {
+  onGoogle: () => void;
+  onEmail: () => void;
+}) {
+  return (
+    <div className="flex flex-col gap-3 pt-4">
+      <Button
+        variant="outline"
+        className="h-12 rounded-xl w-full font-medium flex items-center justify-center gap-2"
+        onClick={onGoogle}
+        style={{ borderColor: colors.border, color: colors.foreground }}
+      >
+        <svg className="h-5 w-5" viewBox="0 0 24 24">
+          <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+          <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+          <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+          <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+        </svg>
+        Continue with Google
+      </Button>
+      <Button
+        variant="outline"
+        className="h-12 rounded-xl w-full font-medium"
+        onClick={onEmail}
+        style={{ borderColor: colors.border, color: colors.foreground }}
+      >
+        Continue with Email
+      </Button>
+    </div>
+  );
+}
+
+const MOCK_CAMPAIGN_ANGLES = [
+  { title: "Problem-Solution Angle", desc: "Lead with the pain point your product solves. Create urgency with limited-time framing." },
+  { title: "Social Proof Angle", desc: "Feature testimonials, case studies, or user metrics. Trust signals drive conversions." },
+  { title: "Aspirational Angle", desc: "Paint the outcome—how life improves after using your product. Emotion-first hook." },
+];
+
 const Hero: React.FC = () => {
-  const heroRef = useRef<HTMLElement | null>(null);
-  const badgeRef = useRef<HTMLDivElement | null>(null);
-  const buttonRef = useRef<HTMLAnchorElement | null>(null);
-  const illustrationRef = useRef<HTMLDivElement | null>(null);
+  const router = useRouter();
+  const isMobile = useIsMobile();
+  const [url, setUrl] = useState("");
+  const [activeTab, setActiveTab] = useState<TabType>("Campaign Strategy");
+  const [platforms, setPlatforms] = useState<Set<string>>(new Set(["meta"]));
+  const [phase, setPhase] = useState<"idle" | "generating" | "results">("idle");
+  const [progressStep, setProgressStep] = useState(0);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [inputError, setInputError] = useState<string | null>(null);
+  const [pillBounce, setPillBounce] = useState<string | null>(null);
+  const [parallax, setParallax] = useState({ x: 0, y: 0 });
+  const sectionRef = useRef<HTMLElement | null>(null);
 
-  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
-
-  // Track mouse position relative to hero section
   useEffect(() => {
-    const heroElement = heroRef.current;
-    if (!heroElement) return;
-
-    const handleMouseMove = (e: MouseEvent) => {
-      const rect = heroElement.getBoundingClientRect();
-      setMousePosition({
-        x: e.clientX - rect.left,
-        y: e.clientY - rect.top,
+    const el = sectionRef.current;
+    if (!el) return;
+    const handleMove = (e: MouseEvent) => {
+      const rect = el.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const dy = (e.clientY - rect.top - rect.height / 2) / rect.height;
+      setParallax({
+        x: Math.max(-1, Math.min(1, (e.clientX - cx) / rect.width)) * 8,
+        y: Math.max(-1, Math.min(1, dy)) * 8,
       });
     };
-
-    heroElement.addEventListener("mousemove", handleMouseMove);
-    return () => heroElement.removeEventListener("mousemove", handleMouseMove);
+    const handleLeave = () => {
+      setParallax({ x: 0, y: 0 });
+    };
+    el.addEventListener("mousemove", handleMove);
+    el.addEventListener("mouseleave", handleLeave);
+    return () => {
+      el.removeEventListener("mousemove", handleMove);
+      el.removeEventListener("mouseleave", handleLeave);
+    };
   }, []);
 
-  // Magnetic movement effect: returns style to apply
-  const getMagneticStyle = (
-    element: HTMLElement | null,
-    strength: number = 0.15
-  ): React.CSSProperties => {
-    if (!element || !heroRef.current) return {};
+  const togglePlatform = useCallback((id: string) => {
+    setPillBounce(id);
+    setTimeout(() => setPillBounce(null), 400);
+    setPlatforms((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
 
-    const rect = element.getBoundingClientRect();
-    const heroRect = heroRef.current.getBoundingClientRect();
-    const elementCenterX = rect.left + rect.width / 2 - heroRect.left;
-    const elementCenterY = rect.top + rect.height / 2 - heroRect.top;
+  const handleTabClick = useCallback((tab: TabType) => {
+    setPillBounce(tab);
+    setTimeout(() => setPillBounce(null), 400);
+    setActiveTab(tab);
+  }, []);
 
-    const distanceX = mousePosition.x - elementCenterX;
-    const distanceY = mousePosition.y - elementCenterY;
-    const distance = Math.sqrt(distanceX ** 2 + distanceY ** 2);
-    const maxDistance = 200;
+  const scrollToSection = (id: string) => {
+    const el = document.getElementById(id);
+    if (el) el.scrollIntoView({ behavior: "smooth" });
+    else router.push(`/#${id}`);
+  };
 
-    if (distance < maxDistance) {
-      const factor = (1 - distance / maxDistance) * strength;
-      return {
-        transform: `translate(${distanceX * factor}px, ${
-          distanceY * factor
-        }px)`,
-        transition: "transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1)",
-        willChange: "transform",
-      };
+  const runGenerate = useCallback(async () => {
+    const trimmed = url.trim();
+    if (!trimmed) {
+      setInputError("Enter a valid input to generate");
+      return;
     }
+    setInputError(null);
+    setPhase("generating");
+    setProgressStep(0);
+    for (let i = 0; i < PROGRESS_STEPS.length; i++) {
+      setProgressStep(i);
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    setProgressStep(PROGRESS_STEPS.length);
+    await new Promise((r) => setTimeout(r, 300));
+    setPhase("results");
+    await new Promise((r) => setTimeout(r, 2200));
+    setAuthModalOpen(true);
+  }, [url]);
 
-    return {
-      transform: "translate(0px, 0px)",
-      transition: "transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1)",
-      willChange: "transform",
-    };
+  const handleContinueWithGoogle = async () => {
+    try {
+      const { supabase } = await import("@/auth/supabase/client");
+      const redirectTo = typeof window !== "undefined" ? `${window.location.origin}/welcome` : `${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"}/welcome`;
+      const { error } = await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo } });
+      if (error) throw error;
+    } catch (e) {
+      router.push("/auth/signin");
+    }
+  };
+
+  const handleContinueWithEmail = () => {
+    setAuthModalOpen(false);
+    router.push("/auth/signin");
   };
 
   return (
     <section
-      ref={heroRef}
+      ref={sectionRef}
       id="home"
-      className="pt-32 pb-24 min-h-screen flex items-center relative overflow-hidden"
-      style={{
-        backgroundColor: colors.background,
-        color: colors.foreground,
-      }}
+      className="pt-28 pb-20 min-h-screen flex flex-col items-center justify-center relative overflow-hidden"
+      style={{ backgroundColor: '#121212', color: colors.foreground, isolation: 'isolate' }}
     >
-      {/* Scoped styles to power the left→right reveal + floats */}
       <style jsx>{`
-        /* container fade-in */
-        .animation-fade-in {
-          opacity: 0;
-          transform: translateX(-10px);
-          animation: fadeIn 0.65s ease forwards;
-        }
-        @keyframes fadeIn {
-          to {
-            opacity: 1;
-            transform: translateX(0);
-          }
-        }
-
-        /* left-to-right reveal using scaleX (transform-origin: left) */
-        .reveal-left {
-          display: inline-block;
-          transform-origin: left;
-          transform: scaleX(0);
-          opacity: 0;
-          animation: revealLeft 0.8s cubic-bezier(0.2, 0.9, 0.2, 1) forwards;
-        }
-        @keyframes revealLeft {
-          from {
-            transform: scaleX(0);
-            opacity: 0;
-          }
-          to {
-            transform: scaleX(1);
-            opacity: 1;
-          }
-        }
-
-        /* subtle float for orbs */
-        .animation-float {
-          animation: floatY 6s ease-in-out infinite alternate;
-        }
-        @keyframes floatY {
-          from {
-            transform: translateY(-8px);
-          }
-          to {
-            transform: translateY(8px);
-          }
-        }
-
-        /* icon pulse */
-        .icon-pulse {
-          animation: iconPulse 1.8s ease-in-out infinite;
-        }
-        @keyframes iconPulse {
-          0% {
-            transform: scale(1);
-            opacity: 1;
-          }
-          50% {
-            transform: scale(1.06);
-            opacity: 0.86;
-          }
-          100% {
-            transform: scale(1);
-            opacity: 1;
-          }
-        }
-
-        /* CTA arrow hover */
-        .cta-arrow {
-          transition: transform 0.22s ease;
-        }
-        a.group:hover .cta-arrow {
-          transform: translateX(6px);
-        }
-
-        /* gradient text helper */
-        .gradient-text {
-          display: inline-block;
-        }
-
-        /* radiant animated glow behind headline */
-        .hero-radiance {
-          pointer-events: none;
-          animation: heroGlow 6s ease-in-out infinite alternate;
-        }
-        @keyframes heroGlow {
-          0% {
-            transform: translateY(-6px) scale(0.98);
-            opacity: 0.55;
-          }
-          100% {
-            transform: translateY(6px) scale(1.04);
-            opacity: 0.95;
-          }
-        }
+        .hero-card { border-radius: 20px; backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+          box-shadow: 0 1px 2px hsl(0 0% 0% / 0.04), 0 4px 12px hsl(0 0% 0% / 0.04), 0 12px 40px hsl(0 0% 0% / 0.06);
+          transition: transform 0.5s cubic-bezier(0.4,0,0.2,1), box-shadow 0.5s cubic-bezier(0.4,0,0.2,1); }
+        .hero-card-expanded { transform: scale(1.01); box-shadow: 0 1px 2px hsl(0 0% 0% / 0.04), 0 8px 24px hsl(0 0% 0% / 0.05), 0 24px 64px hsl(0 0% 0% / 0.08); }
+        .hero-input-wrap { transition: transform 0.3s, box-shadow 0.3s; }
+        .hero-input-wrap:focus-within { transform: scale(1.01); box-shadow: 0 0 0 1px hsl(213 100% 62% / 0.2), 0 0 24px hsl(213 100% 62% / 0.12); }
+        .hero-pill { transition: transform 0.25s, box-shadow 0.25s; }
+        .hero-pill:hover { transform: translateY(-2px); box-shadow: 0 4px 12px hsl(0 0% 0% / 0.08); }
+        .hero-pill-bounce { animation: pillBounce 0.4s cubic-bezier(0.34,1.56,0.64,1) forwards; }
+        @keyframes pillBounce { 0%{transform:scale(1)} 40%{transform:scale(1.08)} 100%{transform:scale(1)} }
+        .hero-btn-generate { position: relative; overflow: hidden; transition: all 0.3s; }
+        .hero-btn-generate::before { content: ""; position: absolute; inset: 0;
+          background: linear-gradient(110deg, transparent 0%, hsl(0 0% 100% / 0.2) 25%, transparent 50%, hsl(0 0% 100% / 0.15) 75%, transparent 100%);
+          background-size: 200% 100%; animation: btnSweep 3s ease-in-out infinite; }
+        .hero-btn-generate:hover { transform: translateY(-1px); box-shadow: 0 4px 20px hsl(213 100% 62% / 0.35); }
+        @keyframes btnSweep { 0%,100%{background-position:200% 0} 50%{background-position:-200% 0} }
+        @keyframes checkPop { 0%{transform:scale(0);opacity:0} 60%{transform:scale(1.15);opacity:1} 100%{transform:scale(1);opacity:1} }
       `}</style>
 
-      {/* Background Layers */}
-      <div
-        className="absolute inset-0"
-        style={{
-          backgroundImage: `linear-gradient(135deg, ${
-            colors.background
-          } 0%, ${withAlpha("hsl(213 90% 96%)", 0.3)} 50%, ${
-            colors.background
-          } 100%)`,
-        }}
-      />
-      <div
-        className="absolute inset-0 mesh-gradient"
-        style={{
-          background: colors.gradientMesh,
-          opacity: 0.4,
-        }}
-      />
+      <div className="absolute inset-0 z-0" style={{ backgroundColor: '#121212' }} />
+      <div className="absolute inset-0 pointer-events-none opacity-[0.012] z-[1]" style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")` }} />
 
-      {/* Animated Orbs */}
-      <div
-        className="absolute top-20 left-10 w-72 h-72 rounded-full blur-3xl animation-float"
-        style={{ backgroundColor: withAlpha(colors.primary, 0.3) }}
-      />
-      <div
-        className="absolute bottom-20 right-10 w-96 h-96 rounded-full blur-3xl animation-float"
-        style={{
-          backgroundColor: withAlpha(colors.primary, 0.2),
-          animationDelay: "2s",
-        }}
-      />
-      <div
-        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full blur-3xl animation-float"
-        style={{
-          backgroundImage: `linear-gradient(90deg, ${withAlpha(
-            colors.primary,
-            0.1
-          )} 0%, ${withAlpha(
-            colors.primaryGlow ?? colors.primary,
-            0.08
-          )} 100%)`,
-          animationDelay: "4s",
-        }}
-      />
+      <ParallaxLayer speed={0.08} className="relative" style={{ zIndex: 10 }}>
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10 w-full max-w-4xl">
+        {/* Headline - PRD */}
+        <div className="text-center mb-4 mx-auto max-w-2xl animate-[fadeUp_0.7s_cubic-bezier(0.16,1,0.3,1)_both" style={{ animationDelay: "0.1s" }}>
+          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold leading-tight tracking-tight" style={{ color: colors.foreground, marginLeft: '-223px', marginRight: '-223px' }}>
+            An AI Marketing Team, Without Expanding Headcount.
+          </h1>
+        </div>
+        <p className="text-center text-lg md:text-xl mb-8 max-w-2xl mx-auto animate-[fadeUp_0.7s_cubic-bezier(0.16,1,0.3,1)_both" style={{ color: colors.mutedForeground, animationDelay: "0.25s" }}>
+        Create, launch, and optimise campaigns, all from one dashboard.
+        </p>
 
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-        <div className="grid lg:grid-cols-2 gap-12 items-center max-w-7xl mx-auto">
-          {/* LEFT COLUMN */}
-          <div className="text-center lg:text-left animation-fade-in">
-            {/* Premium Badge */}
-            <div
-              ref={badgeRef}
-              className="inline-flex items-center space-x-2 mb-6 px-5 py-2.5 rounded-full shadow-glow"
-              style={{
-                ...(getMagneticStyle(badgeRef.current, 0.2) as any),
-                background: colors.glassBg,
-                border: `1px solid ${withAlpha(colors.primary, 0.3)}`,
-                boxShadow: colors.shadowGlow,
-                color: colors.primary,
-              }}
-            >
-              <Sparkles
-                className="h-4 w-4 icon-pulse"
-                style={{ color: colors.primary }}
-              />
-              <span
-                style={{ color: colors.primary, fontWeight: 600, fontSize: 14 }}
-              >
-                AI-Powered Marketing Platform
-              </span>
-            </div>
+        {/* CTAs - PRD */}
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-4 animate-[fadeUp_0.7s_cubic-bezier(0.16,1,0.3,1)_both" style={{ animationDelay: "0.35s" }}>
+          <Button
+            variant="hero"
+            size="lg"
+            className="px-8 py-6 text-lg w-full sm:w-auto"
+            asChild
+            style={{ background: colors.gradientPrimary, color: colors.primaryForeground, boxShadow: colors.shadowGlow }}
+          >
+            <Link href="/auth/signup">Start Free</Link>
+          </Button>
+          <Button
+            variant="outline"
+            size="lg"
+            className="px-8 py-6 text-lg w-full sm:w-auto"
+            onClick={() => scrollToSection("system")}
+            style={{ borderColor: colors.border, color: colors.foreground }}
+          >
+            See How It Works
+          </Button>
+        </div>
+        <p className="text-center text-sm mb-12" style={{ color: colors.mutedForeground }}>
+          Agency-level output. Software-level speed.
+        </p>
 
-            {/* Headline + radiant animated graphics */}
-            <div className="relative inline-block text-center lg:text-left mb-6">
-              {/* Radiant glow behind the text */}
-              <div
-                className="absolute -inset-x-10 -inset-y-6 blur-3xl hero-radiance"
-                style={{
-                  backgroundImage: `radial-gradient(circle at 20% 0%, ${withAlpha(
-                    colors.primaryGlow ?? colors.primary,
-                    0.55
-                  )} 0, transparent 55%), radial-gradient(circle at 80% 100%, ${withAlpha(
-                    colors.primary,
-                    0.45
-                  )} 0, transparent 60%)`,
-                  zIndex: 0,
-                }}
-              />
-
-              <h1 className="relative z-10 text-5xl md:text-6xl lg:text-5xl font-bold leading-[1.10] text-center lg:text-left">
-                <span
-                  className="reveal-left"
+        {/* Product Preview UI - interactive mock */}
+        <div className={`hero-card p-6 sm:p-8 mb-8 transition-transform duration-800 ${phase === "idle" ? "animate-float-subtle" : ""} ${phase !== "idle" ? "hero-card-expanded" : ""}`} style={{ background: `linear-gradient(135deg, ${withAlpha(colors.card, 0.85)} 0%, ${withAlpha(colors.card, 0.92)} 100%)`, border: '1px solid rgba(97, 97, 97, 1)' }}>
+          {phase === "idle" && (
+            <div className="space-y-5 animate-[fadeUp_0.5s_cubic-bezier(0.4,0,0.2,1)_forwards]">
+              <div className="hero-input-wrap rounded-[18px]">
+                <input
+                  type="text"
+                  placeholder="Paste your website URL or describe your product..."
+                  value={url}
+                  onChange={(e) => {
+                    setUrl(e.target.value);
+                    setInputError(null);
+                  }}
+                  className="w-full h-12 rounded-[18px] px-4 text-base outline-none"
                   style={{
-                    animationDelay: "0.18s",
+                    backgroundColor: colors.card,
+                    border: `1px solid ${inputError ? "hsl(0 84% 60%)" : colors.input}`,
                     color: colors.foreground,
                   }}
-                >
-                  Do marketing like the big brands,{" "}
-                </span>
-
-                <span
-                  className="reveal-left text-left"
-                  style={{
-                    animationDelay: "0.38s",
-                    backgroundImage: colors.gradientHero,
-                    WebkitBackgroundClip: "text",
-                    WebkitTextFillColor: "transparent",
-                    backgroundClip: "text",
-                    color: "transparent",
-                    display: "block",
-                  }}
-                >
-                  without the big budget or team.
-                </span>
-              </h1>
+                />
+                {inputError && (
+                  <p className="mt-1.5 text-sm" style={{ color: "hsl(0 84% 60%)" }}>
+                    {inputError}
+                  </p>
+                )}
+              </div>
+              <div>
+                <div className="text-xs font-medium mb-2.5 uppercase tracking-wider" style={{ color: colors.mutedForeground }}>Output type</div>
+                <div className="flex flex-wrap gap-2">
+                  {TABS.map((tab) => (
+                    <button key={tab} type="button" onClick={() => handleTabClick(tab)} className={`hero-pill px-4 py-2.5 rounded-full text-sm font-medium ${pillBounce === tab ? "hero-pill-bounce" : ""}`} style={activeTab === tab ? { background: colors.primary, color: colors.primaryForeground, boxShadow: colors.shadowSoft } : { background: colors.muted, color: colors.mutedForeground }}>
+                      {tab}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs font-medium mb-2.5 uppercase tracking-wider" style={{ color: colors.mutedForeground }}>Platforms</div>
+                <div className="flex gap-2 overflow-x-auto [&::-webkit-scrollbar]:hidden">
+                  {PLATFORMS.map((p) => (
+                    <button key={p.id} type="button" onClick={() => togglePlatform(p.id)} className={`hero-pill px-4 py-2.5 rounded-full text-sm font-medium whitespace-nowrap flex-shrink-0 flex items-center gap-2 ${pillBounce === p.id ? "hero-pill-bounce" : ""}`} style={platforms.has(p.id) ? { background: withAlpha(colors.primary, 0.12), color: colors.primary, border: `1.5px solid ${withAlpha(colors.primary, 0.4)}` } : { background: colors.muted, color: colors.mutedForeground, border: "1.5px solid transparent" }}>
+                      {platforms.has(p.id) && <Check className="h-4 w-4" />}{p.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <Button variant="hero" size="lg" className="hero-btn-generate w-full h-12 rounded-[18px] text-base font-semibold" onClick={runGenerate} style={{ background: colors.gradientPrimary, color: colors.primaryForeground, boxShadow: colors.shadowGlow }}>
+                <Sparkles className="h-5 w-5" /> Generate
+              </Button>
             </div>
-
-            {/* Subheadline */}
-            <p
-              className="text-lg md:text-xl mb-8 max-w-2xl mx-auto lg:mx-0 leading-relaxed"
-              style={{ color: colors.mutedForeground }}
-            >
-              Launch campaigns across Google, Meta(Facebook), Instagram & WhatsApp in
-              minutes.{" "}
-              <span style={{ fontWeight: 600, color: colors.foreground }}>
-                No agencies. No complexity.
-              </span>{" "}
-              Just results.
-            </p>
-
-            {/* Quick Benefits */}
-            <div className="flex flex-wrap gap-4 mb-8 justify-center lg:justify-start">
-              {[
-                "Setup in 5 minutes",
-                "Cancel it anytime",
-                "7 days free trial",
-              ].map((text, i) => (
-                <div
-                  key={i}
-                  className="flex items-center gap-2 text-sm"
-                  style={{ color: colors.foreground }}
-                >
-                  <CheckCircle2
-                    className="h-5 w-5"
-                    style={{ color: colors.primary }}
-                  />
-                  <span>{text}</span>
+          )}
+          {phase === "generating" && (
+            <div className="space-y-6 animate-[fadeUp_0.4s_cubic-bezier(0.4,0,0.2,1)_forwards]">
+              {PROGRESS_STEPS.map((step, i) => (
+                <div key={i} className="flex items-center gap-4" style={{ opacity: i <= progressStep ? 1 : 0.4 }}>
+                  <div className="w-6 h-6 rounded-full flex items-center justify-center" style={{ background: i < progressStep ? "hsl(142 76% 36%)" : "hsl(213 100% 55% / 0.2)" }}>
+                    {i < progressStep ? <Check className="h-3.5 w-3.5" style={{ color: "white" }} /> : i === progressStep ? <Loader2 className="h-3.5 w-3.5 animate-spin" style={{ color: colors.primary }} /> : null}
+                  </div>
+                  <span className="text-sm font-medium" style={{ color: colors.foreground }}>{step}</span>
                 </div>
               ))}
             </div>
-
-            {/* CTA Buttons */}
-            <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-4 mb-10">
-              <Button
-                variant="hero"
-                size="lg"
-                className="px-8 py-6 text-lg shadow-glow group w-full sm:w-auto"
-                asChild
-                style={{
-                  background: colors.gradientPrimary,
-                  color: colors.primaryForeground,
-                  boxShadow: colors.shadowGlow,
-                }}
-              >
-                <a
-                  ref={buttonRef}
-                  className="group"
-                  style={getMagneticStyle(buttonRef.current, 0.25)}
-                  href="/auth/signin"
-                >
-                  Start Free Trial
-                  <ArrowRight className="ml-2 h-5 w-5 cta-arrow" />
-                </a>
-              </Button>
-
-              <Button
-                variant="outline"
-                size="lg"
-                className="px-8 py-6 text-lg glass border-primary/30 hover:bg-primary/5 w-full sm:w-auto"
-                asChild
-              >
-                <a href="/#features">See How It Works</a>
-              </Button>
+          )}
+          {phase === "results" && (
+            <div className="space-y-4 animate-[fadeUp_0.5s_cubic-bezier(0.4,0,0.2,1)_forwards]">
+              <div className="flex items-center gap-2 mb-4">
+                <Check className="h-5 w-5" style={{ color: "hsl(142 76% 36%)" }} />
+                <span className="text-sm font-semibold" style={{ color: colors.foreground }}>Campaign angles ready</span>
+              </div>
+              {MOCK_CAMPAIGN_ANGLES.map((a, i) => (
+                <div key={i} className="p-4 rounded-[16px]" style={{ background: withAlpha(colors.primary, 0.05), border: `1px solid ${withAlpha(colors.primary, 0.12)}` }}>
+                  <div className="font-semibold text-sm mb-1" style={{ color: colors.foreground }}>{a.title}</div>
+                  <div className="text-xs" style={{ color: colors.mutedForeground }}>{a.desc}</div>
+                </div>
+              ))}
+              <div className="mt-4 p-4 rounded-[16px] blur-sm select-none pointer-events-none" style={{ background: colors.muted, opacity: 0.65 }} />
+              <button type="button" onClick={() => setPhase("idle")} className="text-sm font-medium" style={{ color: colors.primary }}>Generate again</button>
             </div>
-
-            {/* Social Proof */}
-            <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-6 text-sm">
-              <div className="flex items-center gap-2">
-                <div className="flex -space-x-2">
-                  {[0, 1, 2].map((_, i) => (
-                    <div
-                      key={i}
-                      className="w-8 h-8 rounded-full border-2 flex items-center justify-center"
-                      style={{
-                        backgroundColor: withAlpha(colors.primary, 0.2),
-                        borderColor: colors.background,
-                      }}
-                    >
-                      <User
-                        className="h-4 w-4"
-                        style={{ color: colors.primary }}
-                      />
-                    </div>
-                  ))}
-                </div>
-                <span style={{ color: colors.foreground, fontWeight: 600 }}>
-                  Many businesses growing
-                </span>
-              </div>
-
-              <div className="flex items-center gap-1.5">
-                <div className="flex">
-                  {[...Array(5)].map((_, i) => (
-                    <Sparkles
-                      key={i}
-                      className="h-4 w-4"
-                      style={{ color: colors.primary }}
-                    />
-                  ))}
-                </div>
-                <span style={{ color: colors.foreground, fontWeight: 600 }}>
-                  4.9/5 rating
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* RIGHT COLUMN */}
-          <div
-            ref={illustrationRef}
-            className="hidden lg:block relative animation-fade-in"
-            style={getMagneticStyle(illustrationRef.current, 0.1)}
-          >
-            <div className="relative h-[600px]">
-              {/* Card 1 */}
-              <div
-                className="absolute top-0 right-0 w-80 p-6 rounded-2xl transform rotate-3 hover:rotate-0 transition-all duration-500"
-                style={{
-                  background: colors.gradientCard,
-                  color: colors.cardForeground,
-                  border: `1px solid ${colors.border}`,
-                  boxShadow: colors.shadowStrong,
-                }}
-              >
-                <div className="flex items-center gap-3 mb-4">
-                  <div
-                    className="w-12 h-12 rounded-xl flex items-center justify-center"
-                    style={{ backgroundColor: withAlpha(colors.primary, 0.2) }}
-                  >
-                    <TrendingUp
-                      className="h-6 w-6"
-                      style={{ color: colors.primary }}
-                    />
-                  </div>
-                  <div>
-                    <div
-                      style={{ color: colors.mutedForeground, fontSize: 12 }}
-                    >
-                      Campaign Performance
-                    </div>
-                    <div
-                      style={{
-                        color: colors.foreground,
-                        fontSize: 20,
-                        fontWeight: 700,
-                      }}
-                    >
-                      +245%
-                    </div>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <div
-                    className="h-2 rounded-full overflow-hidden"
-                    style={{ backgroundColor: withAlpha(colors.primary, 0.2) }}
-                  >
-                    <div
-                      className="h-full rounded-full"
-                      style={{ backgroundColor: colors.primary, width: "80%" }}
-                    />
-                  </div>
-                  <div
-                    className="h-2 rounded-full overflow-hidden"
-                    style={{ backgroundColor: withAlpha(colors.primary, 0.2) }}
-                  >
-                    <div
-                      className="h-full rounded-full"
-                      style={{
-                        backgroundColor: colors.primaryGlow,
-                        width: "60%",
-                      }}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Card 2 */}
-              <div
-                className="absolute top-32 left-0 w-80 p-6 rounded-2xl transform -rotate-2 hover:rotate-0 transition-all duration-500"
-                style={{
-                  background: colors.card,
-                  color: colors.cardForeground,
-                  border: `1px solid ${colors.border}`,
-                  boxShadow: colors.shadowStrong,
-                }}
-              >
-                <div className="flex items-center gap-3 mb-4">
-                  <div
-                    className="w-12 h-12 rounded-xl flex items-center justify-center"
-                    style={{ backgroundColor: withAlpha(colors.primary, 0.2) }}
-                  >
-                    <Zap
-                      className="h-6 w-6"
-                      style={{ color: colors.primary }}
-                    />
-                  </div>
-                  <div>
-                    <div
-                      style={{ color: colors.mutedForeground, fontSize: 12 }}
-                    >
-                      Active Campaigns
-                    </div>
-                    <div
-                      style={{
-                        color: colors.foreground,
-                        fontSize: 20,
-                        fontWeight: 700,
-                      }}
-                    >
-                      12
-                    </div>
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <div
-                    className="flex-1 h-20 rounded-lg p-3"
-                    style={{ backgroundColor: withAlpha(colors.primary, 0.1) }}
-                  >
-                    <div
-                      style={{
-                        color: colors.mutedForeground,
-                        fontSize: 12,
-                        marginBottom: 6,
-                      }}
-                    >
-                      Google
-                    </div>
-                    <div
-                      style={{
-                        color: colors.foreground,
-                        fontSize: 18,
-                        fontWeight: 700,
-                      }}
-                    >
-                      3.2K
-                    </div>
-                  </div>
-                  <div
-                    className="flex-1 h-20 rounded-lg p-3"
-                    style={{ backgroundColor: withAlpha(colors.primary, 0.08) }}
-                  >
-                    <div
-                      style={{
-                        color: colors.mutedForeground,
-                        fontSize: 12,
-                        marginBottom: 6,
-                      }}
-                    >
-                      Meta
-                    </div>
-                    <div
-                      style={{
-                        color: colors.foreground,
-                        fontSize: 18,
-                        fontWeight: 700,
-                      }}
-                    >
-                      5.8K
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Card 3 */}
-              <div
-                className="absolute bottom-0 right-12 w-80 p-6 rounded-2xl transform rotate-1 hover:rotate-0 transition-all duration-500"
-                style={{
-                  background: colors.card,
-                  color: colors.cardForeground,
-                  border: `1px solid ${colors.border}`,
-                  boxShadow: colors.shadowStrong,
-                }}
-              >
-                <div className="flex items-center gap-3 mb-4">
-                  <div
-                    className="w-12 h-12 rounded-xl flex items-center justify-center"
-                    style={{ backgroundColor: withAlpha(colors.primary, 0.2) }}
-                  >
-                    <Sparkles
-                      className="h-6 w-6"
-                      style={{ color: colors.primary }}
-                    />
-                  </div>
-                  <div>
-                    <div
-                      style={{ color: colors.mutedForeground, fontSize: 12 }}
-                    >
-                      AI Suggestions
-                    </div>
-                    <div
-                      style={{
-                        color: colors.foreground,
-                        fontSize: 16,
-                        fontWeight: 700,
-                      }}
-                    >
-                      New campaign ready
-                    </div>
-                  </div>
-                </div>
-                <div style={{ color: colors.mutedForeground, fontSize: 13 }}>
-                  "Holiday sale campaign optimized for your audience"
-                </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="mt-3 w-full glass hover:bg-primary/5 border-primary/30"
-                  asChild
-                >
-                  <a href="/#features">Review Now</a>
-                </Button>
-              </div>
-            </div>
-          </div>
+          )}
         </div>
-      </div>
+        </div>
+      </ParallaxLayer>
+
+      {isMobile ? (
+        <Drawer open={authModalOpen} onOpenChange={setAuthModalOpen}>
+          <DrawerContent className="max-h-[85vh] rounded-t-2xl">
+            <div className="p-6 pb-8">
+              <DrawerHeader>
+                <DrawerTitle className="text-xl font-bold text-center">Unlock Your Full Campaign</DrawerTitle>
+                <DrawerDescription className="text-center pt-1">Sign up to generate and launch instantly.</DrawerDescription>
+              </DrawerHeader>
+              <AuthModalButtons onGoogle={handleContinueWithGoogle} onEmail={handleContinueWithEmail} />
+              <p className="text-center text-xs pt-2" style={{ color: colors.mutedForeground }}>Takes 10 seconds.</p>
+            </div>
+          </DrawerContent>
+        </Drawer>
+      ) : (
+        <Dialog open={authModalOpen} onOpenChange={setAuthModalOpen}>
+          <DialogContent className="w-[95vw] max-w-[420px] rounded-2xl p-6 sm:p-8">
+            <DialogHeader>
+              <DialogTitle className="text-xl font-bold text-center">Unlock Your Full Campaign</DialogTitle>
+              <DialogDescription className="text-center pt-1">Sign up to generate and launch instantly.</DialogDescription>
+            </DialogHeader>
+            <AuthModalButtons onGoogle={handleContinueWithGoogle} onEmail={handleContinueWithEmail} />
+            <p className="text-center text-xs pt-2" style={{ color: colors.mutedForeground }}>Takes 10 seconds.</p>
+          </DialogContent>
+        </Dialog>
+      )}
     </section>
   );
 };

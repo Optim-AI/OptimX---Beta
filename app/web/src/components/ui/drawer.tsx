@@ -52,8 +52,8 @@ const DrawerContent = React.forwardRef<
       )}
       style={
         {
-          background: colors.background,
-          color: colors.foreground,
+          background: colors.card,
+          color: colors.cardForeground,
           borderColor: colors.border,
           // optional: use your shadow token if you want the content to cast a shadow
           boxShadow: colors.shadowStrong,

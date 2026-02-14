@@ -281,9 +281,9 @@ export default function SignInPage(): React.ReactElement {
       <style jsx global>{`
         :root {
           --optim-blue: #0088ff;
-          --border: #c2c2c2;
-          --link-color: #0a66ff;
-          --muted: #6f6f6f;
+          --border: hsl(0 0% 22%);
+          --link-color: #5ba3ff;
+          --muted: hsl(0 0% 60%);
         }
         * {
           box-sizing: border-box;
@@ -357,12 +357,12 @@ export default function SignInPage(): React.ReactElement {
         /* CARD + LAYOUT - reduced size to make inputs less large */
         .auth-card {
           z-index: 3;
-          width: 500px; /* reduced further from 560px -> 480px */
-          border-radius: 18px; /* slightly smaller radius */
+          width: 500px;
+          border-radius: 18px;
           backdrop-filter: blur(6px);
-          padding: 20px; /* reduced padding */
-          box-shadow: 0 20px 80px rgba(2, 6, 23, 0.12);
-          border: 1px solid rgba(226, 232, 240, 0.6);
+          padding: 20px;
+          box-shadow: 0 20px 80px rgba(0, 0, 0, 0.4);
+          border: 1px solid rgba(255, 255, 255, 0.08);
           display: flex;
           flex-direction: column;
           align-items: center;
@@ -399,12 +399,12 @@ export default function SignInPage(): React.ReactElement {
           font-weight: 700;
           font-size: 32px;
           line-height: 40px;
-          color: #1e1e1e;
+          color: hsl(0 0% 95%);
           text-align: center;
-        } /* reduced size */
+        }
         .brand-sub {
           margin-top: 4px;
-          color: #5f6b73;
+          color: hsl(0 0% 60%);
           font-weight: 500;
           font-size: 13px;
           text-align: center;
@@ -423,7 +423,7 @@ export default function SignInPage(): React.ReactElement {
           align-items: center;
           justify-content: flex-start;
           gap: 12px;
-          background: #fff;
+          background: hsl(0 0% 18%);
           border: 1px solid var(--border);
           border-radius: 12px;
           padding: 10px 12px;
@@ -441,17 +441,18 @@ export default function SignInPage(): React.ReactElement {
 
         .segmented {
           display: flex;
-          background: #fafafa;
+          background: hsl(0 0% 18%);
           padding: 6px;
           border-radius: 12px;
           gap: 8px;
-          border: 1px solid #f0f0f0;
+          border: 1px solid var(--border);
         }
         .segmented button {
           border-radius: 9999px;
           padding: 8px 14px;
           border: 1px solid transparent;
           background: transparent;
+          color: var(--muted);
           cursor: pointer;
           font-weight: 700;
           min-width: 88px;
@@ -472,7 +473,7 @@ export default function SignInPage(): React.ReactElement {
         label {
           font-size: 12px;
           font-weight: 500;
-          color: #1e1e1e;
+          color: hsl(0 0% 95%);
           margin-bottom: 6px;
           display: block;
         }
@@ -482,9 +483,13 @@ export default function SignInPage(): React.ReactElement {
           border: 1px solid var(--border);
           padding: 10px 12px;
           font-size: 15px;
-          background: #fff;
+          background: hsl(0 0% 15%);
+          color: hsl(0 0% 95%);
           width: 100%;
           display: block;
+        }
+        .input::placeholder {
+          color: hsl(0 0% 50%);
         }
         .pw-wrap {
           position: relative;
@@ -517,7 +522,7 @@ export default function SignInPage(): React.ReactElement {
         .policy {
           font-size: 12px;
           text-align: center;
-          color: #7e7e7e;
+          color: var(--muted);
           margin-top: 10px;
         }
         .policy a {
@@ -546,7 +551,7 @@ export default function SignInPage(): React.ReactElement {
           font-weight: 600;
         }
         .helper-row a.secondary {
-          color: #6f6f6f;
+          color: var(--muted);
           font-weight: 600;
           text-decoration: underline;
         }

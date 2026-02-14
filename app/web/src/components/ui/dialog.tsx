@@ -49,8 +49,8 @@ const DialogContent = React.forwardRef<
       // base colors + border coming from your color tokens
       style={
         {
-          background: colors.background,
-          color: colors.foreground,
+          background: colors.card,
+          color: colors.cardForeground,
           borderColor: colors.border,
           boxShadow: colors.shadowStrong, // optional: uses your shadow token
         } as React.CSSProperties

@@ -264,7 +264,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       {currentPlan && (
         <div className={`px-3 py-3 border-t ${!(onBrandGuideline || showChatHistory) ? 'mt-auto' : ''}`} style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
           <Link
-            href="/pricing"
+            href="/#pricing"
             className={`flex items-center gap-3 w-full rounded-lg px-3 py-2.5 transition-all duration-200 ${collapsed ? 'justify-center' : ''}`}
             style={{
               backgroundColor: PLAN_STYLES[currentPlan.name]?.bgColor || 'rgba(100, 116, 139, 0.15)',
