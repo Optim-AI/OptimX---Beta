@@ -1,4 +1,4 @@
-# Contributing to Oli AI
+# Contributing to SkalX AI
 
 We welcome contributions! Please follow these guidelines to ensure a smooth collaboration.
 

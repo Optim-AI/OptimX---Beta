@@ -55,8 +55,8 @@ const Footer: React.FC = () => {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
           <div className="col-span-2 md:col-span-1">
             <div className="flex items-center space-x-1 mb-4">
-              <img src="/images/Oli_AI_Logo.svg" alt="Oli AI Logo" className="h-8 w-8" />
-              <span className="text-xl font-bold" style={{ color: colors.foreground }}>Oli AI</span>
+              <img src="/images/Oli_AI_Logo.svg" alt="SkalX AI Logo" className="h-8 w-8" />
+              <span className="text-xl font-bold" style={{ color: colors.foreground }}>SkalX AI</span>
             </div>
             <p className="text-sm leading-relaxed mb-4" style={{ color: colors.mutedForeground }}>
               An AI Marketing Team — Without Expanding Headcount.
@@ -135,7 +135,7 @@ const Footer: React.FC = () => {
           style={{ borderTop: `1px solid ${colors.border}`, gap: 12 }}
         >
           <div style={{ color: colors.mutedForeground, fontSize: 14 }}>
-            © {new Date().getFullYear()} Oli AI. All rights reserved.
+            © {new Date().getFullYear()} SkalX AI. All rights reserved.
           </div>
         </div>
       </div>

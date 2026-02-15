@@ -60,7 +60,7 @@ const ScaleWithoutHiring: React.FC = () => {
               boxShadow: '0 0 40px hsl(213 100% 55% / 0.08)',
             }}
           >
-            <h3 className="text-xl font-semibold mb-6" style={{ color: colors.foreground }}>Oli AI</h3>
+            <h3 className="text-xl font-semibold mb-6" style={{ color: colors.foreground }}>SkalX AI</h3>
             <ul className="space-y-3">
               {RIGHT_ITEMS.map((item, i) => (
                 <li key={i} className="flex items-center gap-3" style={{ color: colors.foreground }}>

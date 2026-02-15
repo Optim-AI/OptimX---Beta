@@ -54,9 +54,9 @@ const Blog: React.FC = () => {
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
         <header className="flex items-center gap-3 py-6">
           <Link href="/" className="flex items-center space-x-1" style={{ color: colors.foreground }}>
-            <img src="/images/Oli_AI_Logo.svg" alt="Oli AI Logo" className="h-10 w-auto" />
+            <img src="/images/Oli_AI_Logo.svg" alt="SkalX AI Logo" className="h-10 w-auto" />
             <span className="text-xl font-bold" style={{ lineHeight: 1 }}>
-              <span style={{ color: colors.foreground }}>Oli AI</span>
+              <span style={{ color: colors.foreground }}>SkalX AI</span>
             </span>
           </Link>
         </header>
@@ -79,7 +79,7 @@ const Blog: React.FC = () => {
 
             <div className="mt-6 text-sm" style={{ color: colors.mutedForeground }}>
               <Sparkles className="inline-block mr-2" style={{ color: colors.primary }} />
-              <span>Oli AI — Insights, tutorials, and product news coming soon.</span>
+              <span>SkalX AI — Insights, tutorials, and product news coming soon.</span>
             </div>
 
             <div className="mt-8">

@@ -1,4 +1,4 @@
-# Oli AI Payment & Billing System - Architecture Document
+# SkalX AI Payment & Billing System - Architecture Document
 
 > **Version:** 1.0  
 > **Last Updated:** February 3, 2026  
@@ -27,7 +27,7 @@
 
 ### 1.1 Objective
 
-Enable Oli AI users to subscribe to paid plans via Razorpay, with:
+Enable SkalX AI users to subscribe to paid plans via Razorpay, with:
 - Monthly and 3-Month billing cycles
 - Separate image and video credit tracking
 - One-time credit top-up purchases
@@ -52,7 +52,7 @@ Enable Oli AI users to subscribe to paid plans via Razorpay, with:
 - Annual plans
 - Coupon codes
 - Automatic refunds
-- Custom email notifications from Oli AI
+- Custom email notifications from SkalX AI
 
 ---
 
@@ -303,7 +303,7 @@ All gatable features have a unique key:
 |-------------|----------|-------------|
 | `image_generation` | generation | Create image/poster ads |
 | `video_generation` | generation | Create video ads |
-| `no_watermark` | generation | Remove Oli AI watermark |
+| `no_watermark` | generation | Remove SkalX AI watermark |
 | `fast_generation` | generation | Standard speed processing |
 | `priority_generation` | generation | Priority queue processing |
 | `basic_analytics` | analytics | Basic campaign insights |

@@ -68,15 +68,15 @@ const CookiePolicy: React.FC = () => {
             </svg>
           </div> */}
           <Link href="/" className="flex items-center space-x-1" style={{ color: colors.foreground }}>
-                      <img src="/images/Oli_AI_Logo.svg" alt="Oli AI Logo" className="h-10 w-auto" />
+                      <img src="/images/Oli_AI_Logo.svg" alt="SkalX AI Logo" className="h-10 w-auto" />
                       <span className="text-xl font-bold" style={{ lineHeight: 1 }}>
-                        <span style={{ color: colors.foreground }}>Oli AI</span>
+                        <span style={{ color: colors.foreground }}>SkalX AI</span>
                       </span>
                     </Link>
 
           {/* <div>
             <div className="text-2xl font-bold leading-tight flex items-baseline gap-1">
-              <span style={{ color: colors.foreground }}>Oli AI</span>
+              <span style={{ color: colors.foreground }}>SkalX AI</span>
             </div>
             <div className="text-sm text-[14px]" style={{ color: colors.mutedForeground }}>Cookie Policy</div>              
           </div> */}
@@ -92,7 +92,7 @@ const CookiePolicy: React.FC = () => {
 
             <article className="prose prose-invert max-w-none" style={{ color: colors.foreground }}>
               <p>
-                This Cookie Policy explains how Oli AI ("we", "our", "us") uses cookies and similar tracking technologies on our website and services. By using Oli AI, you consent to cookies as described here. If you do not agree, please manage your cookie settings or discontinue use.
+                This Cookie Policy explains how SkalX AI ("we", "our", "us") uses cookies and similar tracking technologies on our website and services. By using SkalX AI, you consent to cookies as described here. If you do not agree, please manage your cookie settings or discontinue use.
               </p>
 
               <h3 className="font-bold mt-8">1. What are cookies?</h3>
@@ -100,7 +100,7 @@ const CookiePolicy: React.FC = () => {
 
               <h3 className="font-bold mt-8">2. Types of cookies we use</h3>
               <ul className="list-disc ml-4">
-                <li><strong>Strictly necessary:</strong> Required for core platform operations (authentication, security, session management). These cannot be disabled if you wish to use Oli AI.</li>
+                <li><strong>Strictly necessary:</strong> Required for core platform operations (authentication, security, session management). These cannot be disabled if you wish to use SkalX AI.</li>
                 <li><strong>Preferences:</strong> Remember choices you make (language, display preferences).</li>
                 <li><strong>Analytics:</strong> Help us understand how the site is used (page views, events) so we can improve the product.</li>
                 <li><strong>Marketing:</strong> Used to deliver and measure ads and retargeting (e.g., Meta pixel). These are only used for campaign delivery and reporting within your account and not for external profiling.</li>
@@ -125,7 +125,7 @@ const CookiePolicy: React.FC = () => {
               </ul>
 
               <h3 className="font-bold mt-8">5. Consent &amp; managing cookies</h3>
-              <p>When you first visit Oli AI, we show a cookie consent banner (where applicable). You can manage cookies via your browser settings or via the banner controls. Disabling non-essential cookies may reduce functionality.</p>
+              <p>When you first visit SkalX AI, we show a cookie consent banner (where applicable). You can manage cookies via your browser settings or via the banner controls. Disabling non-essential cookies may reduce functionality.</p>
 
               <h3 className="font-bold mt-8">6. Do we use cookies for training AI?</h3>
               <p>No. We do not use Meta/Google API data or cookie-derived personal data to train our internal AI models unless you explicitly opt in as described in our AI Training Policy.</p>
@@ -150,14 +150,14 @@ const CookiePolicy: React.FC = () => {
               <p>
                 For questions about cookies or data practices, email us at <strong>info@optimx.app</strong> or write to:
                 <br />
-                Oli AI, Thiruvanmiyur, Chennai, India
+                SkalX AI, Thiruvanmiyur, Chennai, India
               </p>
             </article>
 
             <div className="mt-8 flex justify-between items-center">
               <div className="flex items-center gap-3 text-sm" style={{ color: colors.mutedForeground }}>
                 <Sparkles className="h-4 w-4" style={{ color: colors.primary }} />
-                <span>Oli AI — Cookie &amp; Tracking</span>
+                <span>SkalX AI — Cookie &amp; Tracking</span>
               </div>
 
               <div className="flex items-center gap-3">

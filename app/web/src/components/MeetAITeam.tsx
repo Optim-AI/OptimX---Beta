@@ -31,7 +31,7 @@ const MeetAITeam: React.FC = () => {
             Meet Your AI Marketing Team
           </h2>
           <p className="text-lg md:text-xl" style={{ color: colors.mutedForeground }}>
-            Oli AI combines creative, execution, and analytics into one unified system.
+            SkalX AI combines creative, execution, and analytics into one unified system.
           </p>
         </div>
 

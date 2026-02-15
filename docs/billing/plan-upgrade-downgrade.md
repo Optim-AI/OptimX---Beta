@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document outlines the implementation and best practices for handling subscription plan upgrades and downgrades in Oli AI.
+This document outlines the implementation and best practices for handling subscription plan upgrades and downgrades in SkalX AI.
 
 ## Architecture
 

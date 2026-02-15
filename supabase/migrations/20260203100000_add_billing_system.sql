@@ -175,7 +175,7 @@ ON CONFLICT (id) DO NOTHING;
 INSERT INTO public.feature_keys (id, name, description, category) VALUES
 ('image_generation', 'Image Generation', 'Create image/poster ads', 'generation'),
 ('video_generation', 'Video Generation', 'Create video ads', 'generation'),
-('no_watermark', 'No Watermark', 'Remove Oli AI watermark from outputs', 'generation'),
+('no_watermark', 'No Watermark', 'Remove SkalX AI watermark from outputs', 'generation'),
 ('fast_generation', 'Fast Generation', 'Standard speed processing', 'generation'),
 ('priority_generation', 'Priority Generation', 'Priority queue processing', 'generation'),
 ('basic_analytics', 'Basic Analytics', 'Basic campaign insights', 'analytics'),

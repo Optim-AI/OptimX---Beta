@@ -1,6 +1,6 @@
 # Development Guide
 
-Complete guide for setting up and developing Oli AI locally.
+Complete guide for setting up and developing SkalX AI locally.
 
 ---
 

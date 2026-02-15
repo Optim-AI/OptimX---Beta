@@ -1,6 +1,6 @@
 # Database Schema
 
-Oli AI uses **Drizzle ORM** with **Supabase PostgreSQL** for all data persistence.
+SkalX AI uses **Drizzle ORM** with **Supabase PostgreSQL** for all data persistence.
 
 ---
 

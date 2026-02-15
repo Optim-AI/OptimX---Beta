@@ -198,7 +198,7 @@ export class SubscriptionService {
     return {
       key: RAZORPAY_KEY_ID,
       subscription_id: subscription.razorpaySubscriptionId,
-      name: 'Oli AI',
+      name: 'SkalX AI',
       description: 'Subscription Payment',
       prefill: {},
     };

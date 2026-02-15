@@ -101,7 +101,11 @@ const Hero: React.FC = () => {
   const [inputError, setInputError] = useState<string | null>(null);
   const [pillBounce, setPillBounce] = useState<string | null>(null);
   const [parallax, setParallax] = useState({ x: 0, y: 0 });
+  const [sparkles, setSparkles] = useState<Array<{ id: number; x: number; y: number }>>([]);
   const sectionRef = useRef<HTMLElement | null>(null);
+  const mouseRef = useRef({ x: 0, y: 0, inSection: false });
+  const rafRef = useRef<number | null>(null);
+  const sparkleIdRef = useRef(0);
 
   useEffect(() => {
     const el = sectionRef.current;
@@ -114,15 +118,40 @@ const Hero: React.FC = () => {
         x: Math.max(-1, Math.min(1, (e.clientX - cx) / rect.width)) * 8,
         y: Math.max(-1, Math.min(1, dy)) * 8,
       });
+      mouseRef.current = {
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top,
+        inSection: true,
+      };
     };
     const handleLeave = () => {
       setParallax({ x: 0, y: 0 });
+      mouseRef.current = { x: 0, y: 0, inSection: false };
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
     };
+    let lastX = 0;
+    let lastY = 0;
+    const loop = () => {
+      rafRef.current = requestAnimationFrame(loop);
+      const { x, y, inSection } = mouseRef.current;
+      if (inSection && (x !== lastX || y !== lastY)) {
+        lastX = x;
+        lastY = y;
+        sparkleIdRef.current += 1;
+        setSparkles((prev) => {
+          const next = [...prev, { id: sparkleIdRef.current, x, y }];
+          return next.slice(-38);
+        });
+      }
+    };
+    rafRef.current = requestAnimationFrame(loop);
     el.addEventListener("mousemove", handleMove);
     el.addEventListener("mouseleave", handleLeave);
     return () => {
       el.removeEventListener("mousemove", handleMove);
       el.removeEventListener("mouseleave", handleLeave);
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
   }, []);
 
@@ -210,10 +239,32 @@ const Hero: React.FC = () => {
         .hero-btn-generate:hover { transform: translateY(-1px); box-shadow: 0 4px 20px hsl(213 100% 62% / 0.35); }
         @keyframes btnSweep { 0%,100%{background-position:200% 0} 50%{background-position:-200% 0} }
         @keyframes checkPop { 0%{transform:scale(0);opacity:0} 60%{transform:scale(1.15);opacity:1} 100%{transform:scale(1);opacity:1} }
+        @keyframes heroSparkle { from{opacity:0.7} to{opacity:0} }
+        .hero-sparkle { animation: heroSparkle 2s cubic-bezier(0.4,0,0.2,1) forwards; pointer-events: none; }
       `}</style>
 
       <div className="absolute inset-0 z-0" style={{ backgroundColor: '#121212' }} />
       <div className="absolute inset-0 pointer-events-none opacity-[0.012] z-[1]" style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")` }} />
+
+      {/* Warm light yellow sparkles on hover - Hero only */}
+      {!isMobile && sparkles.map((s) => (
+        <div
+          key={s.id}
+          className="hero-sparkle absolute z-[5]"
+          style={{
+            left: s.x - 14,
+            top: s.y - 14,
+            width: 28,
+            height: 28,
+            borderRadius: '50%',
+            background: 'radial-gradient(circle at center, hsl(210 100% 85% / 0.55) 0%, hsl(210 95% 75% / 0.3) 45%, hsl(213 90% 70% / 0.08) 75%, transparent 100%)',
+            boxShadow: '0 0 12px hsl(210 100% 80% / 0.35)',
+            filter: 'blur(1px)',
+            WebkitFilter: 'blur(1px)',
+          }}
+          aria-hidden
+        />
+      ))}
 
       <ParallaxLayer speed={0.08} className="relative" style={{ zIndex: 10 }}>
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10 w-full max-w-4xl">

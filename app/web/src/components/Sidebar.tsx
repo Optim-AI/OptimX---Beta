@@ -152,7 +152,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       }}
       aria-expanded={!collapsed}
     >
-      {/* Header: logo on left, single Oli AI label (no duplicate) */}
+      {/* Header: logo on left, single SkalX AI label (no duplicate) */}
       <div className="flex items-center justify-between px-4 py-3">
         <div className="flex items-center gap-3">
           {/* Logo slot (left) */}
@@ -170,11 +170,11 @@ const Sidebar: React.FC<SidebarProps> = ({
             <img src="/images/Oli_AI_Logo.svg" alt="logo" className="h-full w-full object-contain" />
           </button>
 
-          {/* Title (single Oli AI) */}
+          {/* Title (single SkalX AI) */}
           {!collapsed && (
             <div>
               <span className="text-xl font-bold" style={{ lineHeight: 1 }}>
-                            <span style={{ color: colors.foreground }}>Oli AI</span>
+                            <span style={{ color: colors.foreground }}>SkalX AI</span>
                           </span>
               <p style={{ color: sidebarFg, opacity: 0.85, fontSize: 12 }}></p>
             </div>

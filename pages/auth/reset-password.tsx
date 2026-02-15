@@ -268,7 +268,7 @@ export default function ResetPasswordPage(): React.ReactElement {
         >
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
             <div className="brand-badge" aria-hidden style={{ background: 'transparent', boxShadow: 'none' }}>
-              <img src="/images/Oli_AI_Logo.svg" alt="Oli AI" style={{ width: 56, height: 56, objectFit: 'contain' }} />
+              <img src="/images/Oli_AI_Logo.svg" alt="SkalX AI" style={{ width: 56, height: 56, objectFit: 'contain' }} />
             </div>
 
             <h1 id="reset-title" className="brand-title">Set a new password</h1>

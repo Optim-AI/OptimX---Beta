@@ -123,7 +123,7 @@ const Tutorials: React.FC = () => {
 
           <div>
             <div className="text-2xl font-bold leading-tight flex items-baseline gap-1">
-              <span style={{ color: colors.foreground }}>Oli AI</span>
+              <span style={{ color: colors.foreground }}>SkalX AI</span>
             </div>
             <div className="text-sm text-[14px]" style={{ color: colors.mutedForeground }}>
               Tutorials
@@ -131,9 +131,9 @@ const Tutorials: React.FC = () => {
           </div> */}
 
           <Link href="/" className="flex items-center space-x-1" style={{ color: colors.foreground }}>
-                      <img src="/images/Oli_AI_Logo.svg" alt="Oli AI Logo" className="h-10 w-auto" />
+                      <img src="/images/Oli_AI_Logo.svg" alt="SkalX AI Logo" className="h-10 w-auto" />
                       <span className="text-xl font-bold" style={{ lineHeight: 1 }}>
-<span style={{ color: colors.foreground }}>Oli AI</span>
+<span style={{ color: colors.foreground }}>SkalX AI</span>
                       </span>
                     </Link>
         </header>
@@ -145,7 +145,7 @@ const Tutorials: React.FC = () => {
                 Tutorials & Guides
               </h1>
               <p className="text-lg" style={{ color: colors.mutedForeground }}>
-                Step-by-step videos and written guides to help you get the most from Oli AI.
+                Step-by-step videos and written guides to help you get the most from SkalX AI.
               </p>
             </div>
 
@@ -230,7 +230,7 @@ const Tutorials: React.FC = () => {
             <div className="mt-8 flex justify-between items-center">
               <div className="flex items-center gap-3 text-sm" style={{ color: colors.mutedForeground }}>
                 <Sparkles className="h-4 w-4" style={{ color: colors.primary }} />
-                <span>Oli AI — Learn &amp; Grow</span>
+                <span>SkalX AI — Learn &amp; Grow</span>
               </div>
 
               <div className="flex items-center gap-3">

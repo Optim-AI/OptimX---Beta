@@ -1,4 +1,4 @@
-# Oli AI - AI-Powered Marketing Automation Platform
+# SkalX AI - AI-Powered Marketing Automation Platform
 
 **Version:** 0.2.0 (Beta)
 
@@ -6,7 +6,7 @@
 
 ## Overview
 
-Oli AI is a comprehensive social media marketing automation platform that leverages AI to streamline campaign creation, management, and optimization across multiple advertising platforms. Built with modern web technologies, Oli AI provides a unified interface for managing Google Ads, Meta (Facebook/Instagram), and other major advertising platforms.
+SkalX AI is a comprehensive social media marketing automation platform that leverages AI to streamline campaign creation, management, and optimization across multiple advertising platforms. Built with modern web technologies, SkalX AI provides a unified interface for managing Google Ads, Meta (Facebook/Instagram), and other major advertising platforms.
 
 ### Key Features
 
@@ -234,7 +234,7 @@ See [Development Guide](./docs/DEVELOPMENT.md) for detailed instructions.
 
 ## Deployment
 
-Oli AI is optimized for Vercel deployment:
+SkalX AI is optimized for Vercel deployment:
 
 ```bash
 # Install Vercel CLI
@@ -309,4 +309,4 @@ Built with amazing open-source technologies:
 
 ---
 
-**Oli AI** - Automate smarter, market better.
+**SkalX AI** - Automate smarter, market better.

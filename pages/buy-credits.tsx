@@ -104,7 +104,7 @@ export default function BuyCreditsPage() {
         amount: orderData.amount,
         currency: orderData.currency,
         order_id: orderData.razorpayOrderId,
-        name: 'Oli AI',
+        name: 'SkalX AI',
         description: `${quantity} ${creditType === 'image' ? 'Image Credits' : 'Video Seconds'} (incl. GST)`,
         handler: async function (response: any) {
           // Verify payment

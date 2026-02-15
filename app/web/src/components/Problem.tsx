@@ -81,7 +81,7 @@ const Problem: React.FC = () => {
         </div>
 
         <p className="text-center text-xl font-medium" style={{ color: colors.foreground }}>
-          Oli AI brings everything together — intelligently.
+          SkalX AI brings everything together — intelligently.
         </p>
       </div>
     </section>

@@ -631,13 +631,13 @@ export default function OnboardingInfoPage(): JSX.Element {
             >
               <img
                 src="/images/Oli_AI_Logo.svg"
-                alt="Oli AI logo"
+                alt="SkalX AI logo"
                 style={{ width: 56, height: 56, objectFit: "contain", display: "block" }}
               />
 
-              {/* Oli AI brand title */}
+              {/* SkalX AI brand title */}
               <div style={{ fontSize: 24, fontWeight: 800, color: "#0f172a", lineHeight: 1 }}>
-                <span>Oli AI</span>
+                <span>SkalX AI</span>
               </div>
 
               {/* This line now uses firstName derived like welcome.tsx */}

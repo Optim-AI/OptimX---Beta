@@ -81,15 +81,15 @@ export const CursorFlow: React.FC = () => {
     width: SPOT_RADIUS * 2,
     height: SPOT_RADIUS * 2,
     borderRadius: '50%',
-    background: 'radial-gradient(circle at center, hsl(213 100% 65% / 0.32) 0%, hsl(213 100% 55% / 0.16) 40%, hsl(240 100% 60% / 0.06) 65%, transparent 85%)',
-    filter: 'blur(20px)',
-    WebkitFilter: 'blur(20px)',
+    background: 'radial-gradient(circle at center, hsl(213 100% 72% / 0.55) 0%, hsl(213 100% 68% / 0.35) 40%, hsl(220 100% 70% / 0.15) 65%, transparent 85%)',
+    filter: 'blur(18px)',
+    WebkitFilter: 'blur(18px)',
   } as const;
 
   return (
     <>
       <style jsx global>{`
-        @keyframes cursorFlowTrailFade { from{opacity:0.35} to{opacity:0} }
+        @keyframes cursorFlowTrailFade { from{opacity:0.6} to{opacity:0} }
         .cursor-flow-trail { animation: cursorFlowTrailFade 2.2s cubic-bezier(0.4,0,0.2,1) forwards; }
       `}</style>
       {cursorTrail.map((t) => (
@@ -113,8 +113,8 @@ export const CursorFlow: React.FC = () => {
             left: cursorSpot.x - SPOT_RADIUS,
             top: cursorSpot.y - SPOT_RADIUS,
             zIndex: 9998,
-            filter: 'blur(14px)',
-            WebkitFilter: 'blur(14px)',
+            filter: 'blur(12px)',
+            WebkitFilter: 'blur(12px)',
             willChange: 'left, top',
             transition: 'left 15ms cubic-bezier(0.25, 0.1, 0.25, 1), top 15ms cubic-bezier(0.25, 0.1, 0.25, 1)',
           }}

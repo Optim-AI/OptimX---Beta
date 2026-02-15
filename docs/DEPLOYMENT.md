@@ -1,12 +1,12 @@
 # Deployment Guide
 
-Instructions for deploying Oli AI to production.
+Instructions for deploying SkalX AI to production.
 
 ---
 
 ## Vercel Deployment (Recommended)
 
-Oli AI is optimized for Vercel deployment.
+SkalX AI is optimized for Vercel deployment.
 
 ### Initial Setup
 

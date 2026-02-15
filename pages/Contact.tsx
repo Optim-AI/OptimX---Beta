@@ -40,15 +40,15 @@ const withAlpha = (token: string | undefined, alpha: number) => {
  * Keeping it here so the SEO data exists in the module (you can move it to a server wrapper if you prefer).
  */
 export const metadata = {
-  title: "Contact Oli AI - AI Marketing Automation & Campaign Management",
+  title: "Contact SkalX AI - AI Marketing Automation & Campaign Management",
   description:
-    "Get in touch with Oli AI for AI-powered marketing automation solutions. Contact our expert team for personalized marketing campaigns, SEO optimization, and business growth strategies.",
+    "Get in touch with SkalX AI for AI-powered marketing automation solutions. Contact our expert team for personalized marketing campaigns, SEO optimization, and business growth strategies.",
   keywords:
-    "contact Oli AI, AI marketing consultation, marketing automation support, campaign management contact, digital marketing help, business growth solutions, marketing strategy consultation",
+    "contact SkalX AI, AI marketing consultation, marketing automation support, campaign management contact, digital marketing help, business growth solutions, marketing strategy consultation",
   openGraph: {
-    title: "Contact Oli AI - AI Marketing Automation Expert Support",
+    title: "Contact SkalX AI - AI Marketing Automation Expert Support",
     description:
-      "Ready to transform your business with AI-powered marketing? Contact Oli AI's expert team for personalized marketing automation solutions and campaign management.",
+      "Ready to transform your business with AI-powered marketing? Contact SkalX AI's expert team for personalized marketing automation solutions and campaign management.",
     type: "website",
     url: "https://optim.com/contact",
   },
@@ -171,7 +171,7 @@ const Contact = () => {
               className="text-xl max-w-2xl mx-auto"
               style={{ color: colors.mutedForeground }}
             >
-              Enterprise plans, custom integrations, or questions about scaling your marketing with Oli AI? Our team will respond within 24 hours.
+              Enterprise plans, custom integrations, or questions about scaling your marketing with SkalX AI? Our team will respond within 24 hours.
             </p>
           </div>
         </section>
@@ -196,7 +196,7 @@ const Contact = () => {
                     Get in Touch
                   </CardTitle>
                   <CardDescription style={{ color: colors.mutedForeground }}>
-                    Share your business needs and how Oli AI can help you create, launch, and optimize ads without expanding headcount.
+                    Share your business needs and how SkalX AI can help you create, launch, and optimize ads without expanding headcount.
                   </CardDescription>
                 </CardHeader>
 

@@ -84,15 +84,15 @@ const PrivacyPolicy: React.FC = () => {
 
           <div>
             <div className="text-2xl font-bold leading-tight flex items-baseline gap-1">
-              <span style={{ color: colors.foreground }}>Oli AI</span>
+              <span style={{ color: colors.foreground }}>SkalX AI</span>
             </div>
             <div className="text-sm text-[14px]" style={{ color: colors.mutedForeground }}>Privacy Policy</div>
           </div> */}
 
           <Link href="/" className="flex items-center space-x-1" style={{ color: colors.foreground }}>
-                      <img src="/images/Oli_AI_Logo.svg" alt="Oli AI Logo" className="h-10 w-auto" />
+                      <img src="/images/Oli_AI_Logo.svg" alt="SkalX AI Logo" className="h-10 w-auto" />
                       <span className="text-xl font-bold" style={{ lineHeight: 1 }}>
-<span style={{ color: colors.foreground }}>Oli AI</span>
+<span style={{ color: colors.foreground }}>SkalX AI</span>
                       </span>
                     </Link>
         </header>
@@ -107,7 +107,7 @@ const PrivacyPolicy: React.FC = () => {
 
             <article className="prose prose-invert max-w-none" style={{ color: colors.foreground }}>
               <p>
-                This Privacy Policy explains how Oli AI ("we", "our", "us") collects, uses, stores, and protects your information when you use our website, app, and related services ("Services"). By using Oli AI, you agree to the practices described here.
+                This Privacy Policy explains how SkalX AI ("we", "our", "us") collects, uses, stores, and protects your information when you use our website, app, and related services ("Services"). By using SkalX AI, you agree to the practices described here.
               </p>
 
               <h3 className="font-bold mt-8">1. Information We Collect</h3>
@@ -153,7 +153,7 @@ const PrivacyPolicy: React.FC = () => {
 
               <h3 className="font-bold mt-8">3. Meta API Data Usage (Mandatory Disclosure)</h3>
               <p>To comply with Meta Platform Policies:</p>
-              <p>Oli AI only uses Facebook/Instagram data to:</p>
+              <p>SkalX AI only uses Facebook/Instagram data to:</p>
               <ul className="list-disc ml-4">
                 <li>publish posts or ads on your behalf</li>
                 <li>fetch insights/performance data</li>
@@ -161,7 +161,7 @@ const PrivacyPolicy: React.FC = () => {
                 <li>display analytics to you</li>
               </ul>
 
-              <p>Oli AI does NOT:</p>
+              <p>SkalX AI does NOT:</p>
               <ul className="list-disc ml-4">
                 <li>sell, rent, or share your Meta data</li>
                 <li>use Meta data to build user profiles</li>
@@ -189,16 +189,16 @@ const PrivacyPolicy: React.FC = () => {
 
               <h3 className="font-bold mt-8">5. AI Data Processing</h3>
               <p>
-                Oli AI uses AI providers (e.g., OpenAI) for generating captions, images, videos, analyzing post performance, and generating insights. We send only the minimum necessary information required for generation. We do not use personal data for training internal AI models. You are responsible for reviewing AI output before publishing.
+                SkalX AI uses AI providers (e.g., OpenAI) for generating captions, images, videos, analyzing post performance, and generating insights. We send only the minimum necessary information required for generation. We do not use personal data for training internal AI models. You are responsible for reviewing AI output before publishing.
               </p>
 
               <h4>5.1 AI Training Policy</h4>
               <p>
-                Oli AI may use user-generated content that you manually create, upload, or provide directly inside our platform (such as captions, prompts, uploaded images, and brand assets) to improve and fine-tune certain internal AI models. We do not use Meta API data, Instagram or Facebook insights or media, Google API data, Third-party platform data, or Social login data for any AI model training. Training data is used only with your explicit opt-in consent. You may withdraw your consent at any time, and we will exclude your data from future training datasets.
+                SkalX AI may use user-generated content that you manually create, upload, or provide directly inside our platform (such as captions, prompts, uploaded images, and brand assets) to improve and fine-tune certain internal AI models. We do not use Meta API data, Instagram or Facebook insights or media, Google API data, Third-party platform data, or Social login data for any AI model training. Training data is used only with your explicit opt-in consent. You may withdraw your consent at any time, and we will exclude your data from future training datasets.
               </p>
 
               <h3 className="font-bold mt-8">6. Payments</h3>
-              <p>Payments are processed securely by Razorpay. Oli AI does not store card numbers or CVV.</p>
+              <p>Payments are processed securely by Razorpay. SkalX AI does not store card numbers or CVV.</p>
 
               <h3 className="font-bold mt-8">7. Data Sharing</h3>
               <p>We only share data with:</p>
@@ -230,7 +230,7 @@ const PrivacyPolicy: React.FC = () => {
               <p>Depending on your region, you may have rights to access, correct, delete, restrict processing, revoke consent, or request account closure. Email: info@optimx.app</p>
 
               <h3 className="font-bold mt-8">11. Children’s Privacy</h3>
-              <p>Oli AI is not intended for users under 18.</p>
+              <p>SkalX AI is not intended for users under 18.</p>
 
               <h3 className="font-bold mt-8">12. Beta Disclaimer</h3>
               <p>During the MVP/Beta phase: features may be incomplete, data accuracy may fluctuate, analytics may vary, outages may occur. Feedback is welcome to improve the platform.</p>
@@ -249,7 +249,7 @@ const PrivacyPolicy: React.FC = () => {
             <div className="mt-8 flex justify-between items-center">
               <div className="flex items-center gap-3 text-sm" style={{ color: colors.mutedForeground }}>
                 <Sparkles className="h-4 w-4" style={{ color: colors.primary }} />
-                <span>Oli AI — Privacy & Trust</span>
+                <span>SkalX AI — Privacy & Trust</span>
               </div>
 
               <div className="flex items-center gap-3">

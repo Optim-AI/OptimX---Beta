@@ -51,7 +51,7 @@ export default function AdminLoginPage() {
           <div className="header">
             <Shield size={48} color={colors.primary} />
             <h1>Admin Login</h1>
-            <p>Oli AI Admin Dashboard</p>
+            <p>SkalX AI Admin Dashboard</p>
           </div>
 
           {error && <div className="error-msg">{error}</div>}

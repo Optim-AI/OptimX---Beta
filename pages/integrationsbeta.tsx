@@ -165,16 +165,16 @@ export default function IntegrationsBetaPage(): React.ReactElement {
 
       <main className="flex-1 px-6 py-8 md:px-10 md:py-10">
         <div className="max-w-4xl mx-auto space-y-8">
-          {/* Logo + Oli AI brand */}
+          {/* Logo + SkalX AI brand */}
           <header className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-3">
               <img
                 src="/images/Oli_AI_Logo.svg"
-                alt="Oli AI logo"
+                alt="SkalX AI logo"
                 className="w-10 h-10 md:w-12 md:h-12 object-contain"
               />
               <div className="text-2xl font-extrabold tracking-tight">
-                <span>Oli AI</span>
+                <span>SkalX AI</span>
               </div>
             </div>
 
@@ -312,7 +312,7 @@ export default function IntegrationsBetaPage(): React.ReactElement {
                     <div className="flex items-center justify-between mt-6 flex-wrap gap-3">
                       <div className="text-xs text-slate-500 max-w-xs">
                         During beta, our activation team uses these details to set up
-                        your test access inside Oli AI. You don&apos;t have to do
+                        your test access inside SkalX AI. You don&apos;t have to do
                         anything else.
                       </div>
 

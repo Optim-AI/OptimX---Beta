@@ -28,7 +28,7 @@ const Features: React.FC = () => {
     { icon: Search, title: 'SEO & Content Engine', description: 'Optimize your website, blog, and landing pages for Google without a content team.' },
     { icon: Palette, title: 'AI Brand Voice & Messaging', description: 'Lock in your brand tone, slogans, and messaging in minutes — keep everything consistent everywhere.', highlight: true },
     { icon: Star, title: 'Reputation & Review Intelligence', description: 'Monitor reviews and mentions online with AI-guided replies and escalation alerts.' },
-    { icon: Users, title: 'Influencer & Freelancer Marketplace', description: 'Hire designers, writers, or local influencers directly from Oli AI.' },
+    { icon: Users, title: 'Influencer & Freelancer Marketplace', description: 'Hire designers, writers, or local influencers directly from SkalX AI.' },
     { icon: Calendar, title: 'Multi-Channel Posting', description: 'Schedule and auto-publish posts on Meta(Facebook), Instagram, LinkedIn, WhatsApp and more.' },
     { icon: TrendingUp, title: 'Insights & Growth Analytics', description: 'View real-time ROI, performance breakdowns, and AI recommendations on what to improve next.' },
   ];
@@ -65,7 +65,7 @@ const Features: React.FC = () => {
             in one platform
           </h2>
           <p className="text-xl" style={{ color: colors.mutedForeground }}>
-            Stop juggling multiple tools. Oli AI brings together everything you need to grow your business online.
+            Stop juggling multiple tools. SkalX AI brings together everything you need to grow your business online.
           </p>
         </div>
 

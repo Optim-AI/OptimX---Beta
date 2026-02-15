@@ -114,7 +114,7 @@ export default function ContactForPricing() {
                       Ready to get started?
                     </h4>
                     <p className="mb-6" style={{ color: colors.mutedForeground }}>
-                      Contact us to learn about our pricing and get started with Oli AI.
+                      Contact us to learn about our pricing and get started with SkalX AI.
                     </p>
 
                     <div className="space-y-3">

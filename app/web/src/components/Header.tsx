@@ -54,7 +54,7 @@ const Header: React.FC = () => {
         <div className="flex items-center justify-between h-16">
           <Link href="/" className="flex items-center space-x-1" style={{ color: colors.foreground }}>
             <span className="text-xl font-bold" style={{ lineHeight: 1 }}>
-              <span style={{ color: colors.foreground }}>Oli AI</span>
+              <span style={{ color: colors.foreground }}>SkalX AI</span>
             </span>
           </Link>
 

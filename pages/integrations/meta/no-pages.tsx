@@ -17,7 +17,7 @@ export default function NoFacebookPages() {
     >
       <div className="space-y-4">
         <p className="text-center text-gray-700">
-          Oli AI needs a Facebook Page to publish content and manage your
+          SkalX AI needs a Facebook Page to publish content and manage your
           Instagram Business account.
         </p>
 

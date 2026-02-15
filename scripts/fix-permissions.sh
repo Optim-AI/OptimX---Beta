@@ -1,10 +1,10 @@
 #!/bin/bash
 
-# Fix file permissions for Oli AI project
+# Fix file permissions for SkalX AI project
 # Run this if you encounter "permission denied" or "cannot find module" errors
 # Usage: ./scripts/fix-permissions.sh
 
-echo "🔧 Fixing file permissions for Oli AI..."
+echo "🔧 Fixing file permissions for SkalX AI..."
 
 # Get the directory where this script is located
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"

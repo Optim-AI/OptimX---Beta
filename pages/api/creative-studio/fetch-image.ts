@@ -16,7 +16,7 @@ async function scrapeProductImage(url: string): Promise<string | null> {
   try {
     const resp = await fetch(url, {
       redirect: "follow",
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; Oli AI/1.0)" },
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; SkalX AI/1.0)" },
     });
     
     if (!resp.ok) {
@@ -129,7 +129,7 @@ export default async function handler(
 
     const response = await fetch(imageUrl, {
       headers: {
-        "User-Agent": "Mozilla/5.0 (compatible; Oli AI/1.0)",
+        "User-Agent": "Mozilla/5.0 (compatible; SkalX AI/1.0)",
         "Accept": "image/*",
       },
       signal: controller.signal,

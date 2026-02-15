@@ -2,14 +2,8 @@
 import "../styles/globals.css";
 import type { AppProps } from "next/app";
 import * as React from "react";
-import dynamic from "next/dynamic";
 import Router from "next/router";
 import { Poppins } from "next/font/google";
-
-const CursorFlow = dynamic(
-  () => import("@/app/web/src/components/CursorFlow").then((m) => m.CursorFlow),
-  { ssr: false }
-);
 
 const poppins = Poppins({
   subsets: ["latin"],
@@ -123,9 +117,6 @@ export default function MyApp({ Component, pageProps }: AppProps) {
           <div className="loader" />
         </div>
       )}
-
-      {/* Global cursor flow (excluded: Header, Footer, /product) */}
-      <CursorFlow />
 
       {/* App content */}
       <main className={poppins.className}>

@@ -19,14 +19,14 @@ function withAlpha(token: string, alpha: number) {
 const pressReleases = [
   {
     id: "2025-11-14-launch",
-    title: "Oli AI launches AI-powered campaign automation (MVP)",
+    title: "SkalX AI launches AI-powered campaign automation (MVP)",
     date: "November 14, 2025",
     excerpt: "Public Beta with Google and Meta integrations, AI creative generation, and credit-based billing.",
     href: "/press/optimx-launch-2025",
   },
   {
     id: "2025-09-partnership",
-    title: "Oli AI announces partnership with Razorpay for payments",
+    title: "SkalX AI announces partnership with Razorpay for payments",
     date: "September 3, 2025",
     excerpt: "Streamlined billing and credits via Razorpay — secure payments for Indian businesses.",
     href: "/press/razorpay-partnership",
@@ -66,15 +66,15 @@ const Press: React.FC = () => {
 
           <div>
             <div className="text-2xl font-bold leading-tight flex items-baseline gap-1">
-              <span style={{ color: colors.foreground }}>Oli AI</span>
+              <span style={{ color: colors.foreground }}>SkalX AI</span>
             </div>
             <div className="text-sm text-[14px]" style={{ color: colors.mutedForeground }}>Press & Media</div>
           </div> */}
 
           <Link href="/" className="flex items-center space-x-1" style={{ color: colors.foreground }}>
-                      <img src="/images/Oli_AI_Logo.svg" alt="Oli AI Logo" className="h-10 w-auto" />
+                      <img src="/images/Oli_AI_Logo.svg" alt="SkalX AI Logo" className="h-10 w-auto" />
 <span className="text-xl font-bold" style={{ lineHeight: 1 }}>
-                      <span style={{ color: colors.foreground }}>Oli AI</span>
+                      <span style={{ color: colors.foreground }}>SkalX AI</span>
                     </span>
                     </Link>
         </header>
@@ -141,7 +141,7 @@ const Press: React.FC = () => {
                 <div className="mt-6">
                   <div style={{ color: colors.foreground, fontWeight: 700 }}>Company</div>
                   <div style={{ color: colors.mutedForeground, fontSize: 13, marginTop: 6 }}>
-                    Oli AI
+                    SkalX AI
                     <br />Thiruvanmiyur, Chennai, India
                   </div>
                 </div>
@@ -173,7 +173,7 @@ const Press: React.FC = () => {
             <div className="mt-6 flex justify-between items-center">
               <div className="flex items-center gap-3 text-sm" style={{ color: colors.mutedForeground }}>
                 <Sparkles className="h-4 w-4" style={{ color: colors.primary }} />
-                <span>Oli AI — Press & Media</span>
+                <span>SkalX AI — Press & Media</span>
               </div>
 
               <div className="flex items-center gap-3">

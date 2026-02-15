@@ -1,4 +1,4 @@
-# Production Readiness Checklist — OptimX / Oli AI
+# Production Readiness Checklist — OptimX / SkalX AI
 
 This document summarizes the production readiness audit and what must be done before go-live.
 

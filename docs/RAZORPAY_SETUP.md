@@ -1,6 +1,6 @@
 # Razorpay payment integration – setup guide
 
-This guide is for **RazorPay Intergration**. It explains how to connect Oli AI to Razorpay so payments and subscriptions work. Follow the steps in order.
+This guide is for **RazorPay Intergration**. It explains how to connect SkalX AI to Razorpay so payments and subscriptions work. Follow the steps in order.
 
 ---
 

@@ -17,9 +17,9 @@ const HowItWorks: React.FC = () => {
   const { elementRef: stepsRef, isVisible: stepsVisible } = useScrollAnimation({ threshold: 0.1 });
 
   const steps: Step[] = [
-    { number: '1', icon: LinkIcon, title: 'Connect your channels', description: 'Link your Google, Meta, Instagram, WhatsApp, and website once. Oli AI securely pulls in your data and keeps everything in sync.' },
-    { number: '2', icon: MessageSquare, title: 'Tell Oli AI your goal', description: "Describe what you want in simple words — like 'get more walk-ins' or 'sell 50 more products'. Oli AI turns it into a clear campaign plan." },
-    { number: '3', icon: Rocket, title: 'We launch, learn, and optimise', description: 'Oli AI creates, launches, and tracks your ads and content across channels, then doubles down on what works so you get better results over time.' },
+    { number: '1', icon: LinkIcon, title: 'Connect your channels', description: 'Link your Google, Meta, Instagram, WhatsApp, and website once. SkalX AI securely pulls in your data and keeps everything in sync.' },
+    { number: '2', icon: MessageSquare, title: 'Tell SkalX AI your goal', description: "Describe what you want in simple words — like 'get more walk-ins' or 'sell 50 more products'. SkalX AI turns it into a clear campaign plan." },
+    { number: '3', icon: Rocket, title: 'We launch, learn, and optimise', description: 'SkalX AI creates, launches, and tracks your ads and content across channels, then doubles down on what works so you get better results over time.' },
   ];
 
   return (
@@ -52,7 +52,7 @@ const HowItWorks: React.FC = () => {
             </span>
           </h2>
           <p className="text-lg md:text-xl leading-relaxed" style={{ color: colors.mutedForeground }}>
-            Connect your channels, set a goal, and let Oli AI handle the rest.
+            Connect your channels, set a goal, and let SkalX AI handle the rest.
           </p>
         </div>
 

@@ -15,21 +15,21 @@ const USE_CASES = [
     icon: User,
     title: 'Solo Founders',
     pain: 'No time or budget for a full marketing team.',
-    solution: 'Oli AI acts as your marketing department.',
+    solution: 'SkalX AI acts as your marketing department.',
     benefits: ['Run ads without hiring', 'Generate creatives on demand', 'Optimize spend automatically'],
   },
   {
     icon: Store,
     title: 'D2C Brands',
     pain: 'Scaling creatives and campaigns across channels is slow and costly.',
-    solution: 'Oli AI unifies creative production and campaign execution.',
+    solution: 'SkalX AI unifies creative production and campaign execution.',
     benefits: ['Multi-channel campaigns in minutes', 'Consistent brand voice', 'Real-time performance insights'],
   },
   {
     icon: Users,
     title: 'In-House Marketing Teams',
     pain: 'Manual workflows and fragmented tools slow down experimentation.',
-    solution: 'Oli AI automates execution so you focus on strategy.',
+    solution: 'SkalX AI automates execution so you focus on strategy.',
     benefits: ['Faster campaign launches', 'AI-driven optimization', 'Reduced dashboard overload'],
   },
 ];
@@ -45,7 +45,7 @@ export default function UseCasesPage() {
               Use Cases
             </h1>
             <p className="text-xl max-w-2xl mx-auto" style={{ color: colors.mutedForeground }}>
-              See how Oli AI helps different teams scale marketing smarter.
+              See how SkalX AI helps different teams scale marketing smarter.
             </p>
           </div>
         </section>

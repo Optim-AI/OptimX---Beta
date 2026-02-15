@@ -291,7 +291,7 @@ export default function AdminDashboard() {
           <Shield size={32} color={colors.primary} />
           <div>
             <h1>Admin Dashboard</h1>
-            <p>Oli AI Plan Management</p>
+            <p>SkalX AI Plan Management</p>
           </div>
         </div>
         <div className="header-right">

@@ -17,7 +17,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 echo -e "${BLUE}================================================${NC}"
-echo -e "${BLUE}  Oli AI Billing Test CLI                       ${NC}"
+echo -e "${BLUE}  SkalX AI Billing Test CLI                       ${NC}"
 echo -e "${BLUE}  Base URL: $BASE_URL                          ${NC}"
 echo -e "${BLUE}================================================${NC}"
 echo ""
