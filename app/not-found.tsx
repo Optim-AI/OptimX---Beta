@@ -58,15 +58,10 @@ export default function NotFound() {
       <div className="relative z-10 max-w-4xl w-full">
         <div className="flex items-center gap-3 mb-6">
           <div
-            className="w-12 h-12 rounded-md flex items-center justify-center glass-card"
+            className="w-12 h-12 rounded-md flex items-center justify-center glass-card overflow-hidden"
             style={{ background: colors.card, border: `1px solid ${colors.border}`, boxShadow: colors.shadowStrong }}
           >
-            {/* Simple logo square */}
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
-              <rect x="2" y="2" width="20" height="20" rx="6" fill={colors.primary} />
-              <path d="M7 12h10" stroke="white" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-              <path d="M7 8h10" stroke={withAlpha("white", 0.85)} strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
+            <img src="/images/SkalX_Logo.png" alt="SkalX AI Logo" className="h-full w-full object-contain p-1" />
           </div>
 
           <div>

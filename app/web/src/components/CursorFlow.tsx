@@ -4,18 +4,23 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { useIsMobile } from '../hooks/use-mobile';
 
-const SPOT_RADIUS = 50;
-const MAX_TRAIL = 100;
-const HEADER_HEIGHT = 64; // h-16
+const BLOB_SIZE = 140;
+const LERP = 0.18;
+const HEADER_HEIGHT = 64;
+
+const DISABLED = true;
 
 export const CursorFlow: React.FC = () => {
+  if (DISABLED) return null;
   const router = useRouter();
   const isMobile = useIsMobile();
-  const [cursorSpot, setCursorSpot] = useState<{ x: number; y: number } | null>(null);
-  const [cursorTrail, setCursorTrail] = useState<Array<{ id: number; x: number; y: number }>>([]);
-  const mouseRef = useRef({ x: 0, y: 0, excluded: false });
+  const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null);
+  const [fadingOut, setFadingOut] = useState(false);
+  const mouseRef = useRef({ x: 0, y: 0, visible: false });
+  const smoothRef = useRef({ x: 0, y: 0 });
+  const blobRef = useRef<HTMLDivElement>(null);
   const rafRef = useRef<number | null>(null);
-  const trailIdRef = useRef(0);
+  const fadeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isExcluded = (clientX: number, clientY: number): boolean => {
     if (router.pathname === '/product') return true;
@@ -33,34 +38,46 @@ export const CursorFlow: React.FC = () => {
 
     const handleMove = (e: MouseEvent) => {
       const excluded = isExcluded(e.clientX, e.clientY);
-      mouseRef.current = { x: e.clientX, y: e.clientY, excluded };
+      mouseRef.current = { x: e.clientX, y: e.clientY, visible: !excluded };
 
       if (excluded) {
-        setCursorSpot(null);
+        setCursorPos(null);
+        setFadingOut(true);
+        if (fadeTimeoutRef.current) clearTimeout(fadeTimeoutRef.current);
+        fadeTimeoutRef.current = setTimeout(() => setFadingOut(false), 500);
         return;
       }
 
-      setCursorSpot({ x: e.clientX, y: e.clientY });
+      smoothRef.current = { x: e.clientX, y: e.clientY };
+      setCursorPos({ x: e.clientX, y: e.clientY });
+      setFadingOut(false);
     };
 
     const handleLeave = () => {
-      mouseRef.current = { x: 0, y: 0, excluded: true };
-      setCursorSpot(null);
+      mouseRef.current = { x: 0, y: 0, visible: false };
+      setCursorPos(null);
+      setFadingOut(true);
+      if (fadeTimeoutRef.current) clearTimeout(fadeTimeoutRef.current);
+      fadeTimeoutRef.current = setTimeout(() => setFadingOut(false), 500);
     };
 
-    let lastX = 0;
-    let lastY = 0;
     const loop = () => {
       rafRef.current = requestAnimationFrame(loop);
-      const { x, y, excluded } = mouseRef.current;
-      if (!excluded && (x !== lastX || y !== lastY)) {
-        lastX = x;
-        lastY = y;
-        trailIdRef.current += 1;
-        setCursorTrail((prev) => {
-          const next = [...prev, { id: trailIdRef.current, x, y }];
-          return next.slice(-MAX_TRAIL);
-        });
+      const { x, y, visible } = mouseRef.current;
+      const s = smoothRef.current;
+      if (visible) {
+        smoothRef.current = {
+          x: s.x + (x - s.x) * LERP,
+          y: s.y + (y - s.y) * LERP,
+        };
+      }
+      if (blobRef.current) {
+        const { x: sx, y: sy } = smoothRef.current;
+        blobRef.current.style.transform = `
+          translate3d(${sx}px, ${sy}px, 0)
+          translate(-50%, -50%)
+          scale(${visible ? 1.1 : 1})
+        `;
       }
     };
     rafRef.current = requestAnimationFrame(loop);
@@ -71,52 +88,57 @@ export const CursorFlow: React.FC = () => {
       document.removeEventListener('mousemove', handleMove);
       document.removeEventListener('mouseleave', handleLeave);
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
-      rafRef.current = null;
+      if (fadeTimeoutRef.current) clearTimeout(fadeTimeoutRef.current);
     };
   }, [router.pathname]);
 
   if (isMobile || router.pathname === '/product') return null;
 
-  const trailStyle = {
-    width: SPOT_RADIUS * 2,
-    height: SPOT_RADIUS * 2,
-    borderRadius: '50%',
-    background: 'radial-gradient(circle at center, hsl(213 100% 72% / 0.55) 0%, hsl(213 100% 68% / 0.35) 40%, hsl(220 100% 70% / 0.15) 65%, transparent 85%)',
-    filter: 'blur(18px)',
-    WebkitFilter: 'blur(18px)',
-  } as const;
-
   return (
     <>
       <style jsx global>{`
-        @keyframes cursorFlowTrailFade { from{opacity:0.6} to{opacity:0} }
-        .cursor-flow-trail { animation: cursorFlowTrailFade 2.2s cubic-bezier(0.4,0,0.2,1) forwards; }
+        .cursor-flow-liquid {
+          position: fixed;
+          top: 0;
+          left: 0;
+          pointer-events: none;
+          will-change: transform, opacity;
+          animation: cursorBlobMorph 7s ease-in-out infinite;
+          transition: opacity 0.4s ease;
+        }
+        .cursor-flow-liquid::after {
+          content: '';
+          position: absolute;
+          inset: 0;
+          border-radius: inherit;
+          background: radial-gradient(ellipse 80% 80% at 20% 20%, rgba(255,255,255,0.4) 0%, transparent 60%);
+          opacity: 0.1;
+          pointer-events: none;
+        }
+        @keyframes cursorBlobMorph {
+          0%, 100% { border-radius: 60% 40% 55% 45% / 50% 60% 40% 50%; }
+          25% { border-radius: 45% 55% 50% 50% / 55% 45% 55% 45%; }
+          50% { border-radius: 50% 50% 40% 60% / 45% 55% 45% 55%; }
+          75% { border-radius: 55% 45% 60% 40% / 50% 50% 55% 45%; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .cursor-flow-liquid { animation: none; }
+        }
       `}</style>
-      {cursorTrail.map((t) => (
+      {(cursorPos !== null || fadingOut) && (
         <div
-          key={t.id}
-          className="cursor-flow-trail fixed pointer-events-none"
+          ref={blobRef}
+          className="cursor-flow-liquid"
           style={{
-            ...trailStyle,
-            left: t.x - SPOT_RADIUS,
-            top: t.y - SPOT_RADIUS,
+            width: BLOB_SIZE,
+            height: BLOB_SIZE,
             zIndex: 9998,
-          }}
-          aria-hidden
-        />
-      ))}
-      {cursorSpot && (
-        <div
-          className="fixed pointer-events-none"
-          style={{
-            ...trailStyle,
-            left: cursorSpot.x - SPOT_RADIUS,
-            top: cursorSpot.y - SPOT_RADIUS,
-            zIndex: 9998,
-            filter: 'blur(12px)',
-            WebkitFilter: 'blur(12px)',
-            willChange: 'left, top',
-            transition: 'left 15ms cubic-bezier(0.25, 0.1, 0.25, 1), top 15ms cubic-bezier(0.25, 0.1, 0.25, 1)',
+            borderRadius: '60% 40% 55% 45% / 50% 60% 40% 50%',
+            background: 'rgba(255,255,255,0.015)',
+            border: '1px solid rgba(255,255,255,0.06)',
+            boxShadow: '0 0 60px rgba(255,255,255,0.04), inset 0 1px 0 rgba(255,255,255,0.03)',
+            opacity: cursorPos !== null ? 1 : 0,
+            filter: 'url(#liquid)',
           }}
           aria-hidden
         />

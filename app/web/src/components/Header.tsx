@@ -52,7 +52,8 @@ const Header: React.FC = () => {
     >
       <div className="container mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
-          <Link href="/" className="flex items-center space-x-1" style={{ color: colors.foreground }}>
+          <Link href="/" className="flex items-center space-x-2" style={{ color: colors.foreground }}>
+            <img src="/images/SkalX_Logo.png" alt="SkalX AI Logo" className="h-8 w-auto object-contain" />
             <span className="text-xl font-bold" style={{ lineHeight: 1 }}>
               <span style={{ color: colors.foreground }}>SkalX AI</span>
             </span>

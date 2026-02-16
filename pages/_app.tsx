@@ -2,8 +2,11 @@
 import "../styles/globals.css";
 import type { AppProps } from "next/app";
 import * as React from "react";
+import dynamic from "next/dynamic";
 import Router from "next/router";
 import { Poppins } from "next/font/google";
+
+const LiquidGlassAnimator = dynamic(() => import("../app/web/src/components/LiquidGlassAnimator").then((m) => m.default), { ssr: false });
 
 const poppins = Poppins({
   subsets: ["latin"],
@@ -50,6 +53,26 @@ export default function MyApp({ Component, pageProps }: AppProps) {
 
   return (
     <>
+      {/* Liquid glass SVG filter - refraction + magnifying lens effect */}
+      <svg aria-hidden width="0" height="0" style={{ position: 'absolute', left: 0, top: 0, overflow: 'hidden', pointerEvents: 'none' }}>
+        <defs>
+          <filter id="liquid" x="-25%" y="-25%" width="150%" height="150%" colorInterpolationFilters="sRGB">
+            <feTurbulence id="liquid-turbulence" type="fractalNoise" baseFrequency="0.006" numOctaves="5" result="noise" seed="15" />
+            <feGaussianBlur in="noise" stdDeviation="0.5" result="smoothNoise" />
+            <feGaussianBlur in="SourceGraphic" stdDeviation="0.08" result="blur" />
+            {/* Water refraction */}
+            <feDisplacementMap in="blur" in2="smoothNoise" scale="45" xChannelSelector="R" yChannelSelector="G" result="refracted">
+              <animate attributeName="scale" from="45" to="58" dur="0.3s" begin="hero-liquid-trigger.mouseover" fill="freeze" />
+              <animate attributeName="scale" from="58" to="45" dur="0.3s" begin="hero-liquid-trigger.mouseout" fill="freeze" />
+            </feDisplacementMap>
+            {/* Magnifying lens - radial bulge */}
+            <feImage href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Cdefs%3E%3CradialGradient id='g' cx='50%25' cy='50%25' r='50%25'%3E%3Cstop offset='0%25' stop-color='%23808080'/%3E%3Cstop offset='100%25' stop-color='%23737373'/%3E%3C/radialGradient%3E%3C/defs%3E%3Crect width='100' height='100' fill='url(%23g)'/%3E%3C/svg%3E" result="magMap" x="0" y="0" width="1" height="1" preserveAspectRatio="none" />
+            <feDisplacementMap in="refracted" in2="magMap" scale="8" xChannelSelector="R" yChannelSelector="G" />
+          </filter>
+        </defs>
+      </svg>
+      <LiquidGlassAnimator />
+
       {/* Inline global styles: font-family + loader CSS */}
       <style jsx global>{`
         /* Apply Poppins globally */

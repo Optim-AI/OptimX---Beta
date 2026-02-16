@@ -5,91 +5,81 @@ import Link from 'next/link';
 import { Button } from './ui/button';
 import { useScrollAnimation } from '../hooks/use-scroll-animation';
 import colors from '@/lib/ui/colors';
-import { Check, X, Sparkles } from 'lucide-react';
+import { Check, X } from 'lucide-react';
 
-type BillingMode = 'monthly' | '3months' | 'payg';
+type BillingMode = 'monthly' | '3months';
 
-// Exact pricing from pricing document – DO NOT modify numbers
-const SUBSCRIPTION_PLANS = [
+// Pay As You Go + Growth Lite + Growth Pro
+const PLANS = [
   {
-    key: 'free_trial',
-    name: 'Free trial',
-    priceMonthly: 0,
-    priceQuarterly: 0,
-    duration: '5 days',
-    imageCredits: 5,
-    videoCredits: '6 seconds',
-    watermark: true,
+    key: 'payg',
+    name: 'Pay As You Go',
+    type: 'payg' as const,
+    priceMonthly: null,
+    priceQuarterly: null,
+    effectivePerMonth: null,
+    imageCredits: '10 credits = ₹99',
+    videoCredits: '8 sec = ₹199',
+    freeIncluded: '5 images, 8 sec video',
+    noWatermark: true,
+    crossPlatformPosting: false,
     automation: false,
     analytics: false,
     scheduling: false,
-    brandInsights: false,
+    competitorAnalysis: false,
+    yourBrand: false,
     priorityProcessing: false,
-    monthlyReset: 'N/A',
-    cta: 'Explore now',
+    monthlyReset: 'No',
+    cta: 'Start Free Trial',
     ctaHref: '/auth/signup',
     popular: false,
     comingSoon: false,
   },
   {
-    key: 'starter',
-    name: 'Starter',
-    priceMonthly: 1499,
-    priceQuarterly: 4197,
-    effectivePerMonth: 1399,
-    duration: 'Ongoing',
-    imageCredits: 20,
-    videoCredits: '30 seconds',
-    watermark: false,
-    automation: false,
-    analytics: false,
-    scheduling: false,
-    brandInsights: false,
-    priorityProcessing: false,
-    monthlyReset: 'Yes',
-    cta: 'Subscribe',
-    ctaHref: '/auth/signup',
-    popular: true,
-    comingSoon: false,
-  },
-  {
-    key: 'lite_growth',
-    name: 'Lite Growth',
+    key: 'growth_lite',
+    name: 'Growth Lite',
+    type: 'subscription' as const,
     priceMonthly: 599,
     priceQuarterly: 1749,
     effectivePerMonth: 583,
-    duration: 'Ongoing',
-    imageCredits: 30,
-    videoCredits: '20 seconds',
-    watermark: false,
+    imageCredits: '30/mo',
+    videoCredits: '20 sec/mo',
+    freeIncluded: '5 images, 6 sec video',
+    noWatermark: true,
+    crossPlatformPosting: true,
     automation: false,
     analytics: true,
-    scheduling: true,
-    brandInsights: false,
+    scheduling: false,
+    competitorAnalysis: false,
+    yourBrand: false,
     priorityProcessing: false,
     monthlyReset: 'Yes',
     cta: 'Coming Soon',
-    ctaHref: '/auth/signup',
-    popular: false,
+    ctaHref: '#',
+    popular: true,
     comingSoon: true,
   },
   {
     key: 'growth_pro',
     name: 'Growth Pro',
+    type: 'subscription' as const,
     priceMonthly: 2199,
     priceQuarterly: 6399,
-    duration: 'Ongoing',
-    imageCredits: 30,
-    videoCredits: '50 seconds',
-    watermark: false,
+    effectivePerMonth: 733,
+    imageCredits: '50/mo',
+    videoCredits: '50 sec/mo',
+    freeIncluded: '5 images, 6 sec video',
+    noWatermark: true,
+    crossPlatformPosting: true,
     automation: true,
     analytics: true,
     scheduling: true,
-    brandInsights: true,
+    competitorAnalysis: true,
+    yourBrand: true,
     priorityProcessing: true,
     monthlyReset: 'Yes',
     cta: 'Coming Soon',
-    ctaHref: '/auth/signup',
+    ctaHref: '#',
     popular: false,
     comingSoon: true,
   },
@@ -99,8 +89,6 @@ const PricingPreview: React.FC = () => {
   const [billingMode, setBillingMode] = useState<BillingMode>('monthly');
   const { elementRef: titleRef, isVisible: titleVisible } = useScrollAnimation();
   const { elementRef: contentRef, isVisible: contentVisible } = useScrollAnimation({ threshold: 0.1 });
-
-  const isSubscription = billingMode === 'monthly' || billingMode === '3months';
 
   return (
     <section id="pricing" className="py-24 relative overflow-hidden section-solid">
@@ -113,18 +101,18 @@ const PricingPreview: React.FC = () => {
           className="text-center max-w-3xl mx-auto mb-10 transition-all duration-700"
           style={{ opacity: titleVisible ? 1 : 0, transform: titleVisible ? 'translateY(0)' : 'translateY(20px)', transitionTimingFunction: 'cubic-bezier(0.16, 1, 0.3, 1)' }}
         >
-          <h2 className="text-4xl md:text-5xl font-bold mb-4 leading-tight" style={{ color: colors.foreground }}>
-            Flexible Pricing for Lean Marketing Teams
+          <h2 className="text-4xl md:text-[46px] font-normal mb-4 leading-tight" style={{ color: colors.foreground }}>
+            Simple Pricing for Lean Marketing Teams
           </h2>
-          <p className="text-lg" style={{ color: colors.mutedForeground }}>
-            Choose a subscription or pay as you go. Upgrade anytime.
+          <p className="text-lg font-extralight" style={{ color: colors.mutedForeground }}>
+            Pay as you go for images & video, or subscribe to Growth Lite or Growth Pro.
           </p>
         </div>
 
-        {/* Billing Toggle Controls */}
+        {/* Billing Toggle (subscription plans only) */}
         <div
           ref={contentRef}
-          className="flex justify-center mb-8 transition-all duration-700"
+          className="flex justify-center mb-6 transition-all duration-700"
           style={{ opacity: contentVisible ? 1 : 0, transform: contentVisible ? 'translateY(0)' : 'translateY(20px)', transitionTimingFunction: 'cubic-bezier(0.16, 1, 0.3, 1)' }}
         >
           <div
@@ -152,187 +140,124 @@ const PricingPreview: React.FC = () => {
               3 Months
               <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(34,197,94,0.25)', color: '#22c55e' }}>Save More</span>
             </button>
-            <button
-              onClick={() => setBillingMode('payg')}
-              className="px-5 py-2.5 rounded-lg font-semibold text-sm transition-all duration-200"
-              style={{
-                background: billingMode === 'payg' ? colors.primary : 'transparent',
-                color: billingMode === 'payg' ? colors.primaryForeground : colors.mutedForeground,
-              }}
-            >
-              Pay As You Go
-            </button>
           </div>
         </div>
 
-        {/* Subscription Mode: Comparison Table */}
-        {isSubscription && (
+        {/* Comparison Table: Pay As You Go | Growth Lite | Growth Pro */}
+        <div
+          className="max-w-5xl mx-auto mb-8 transition-all duration-500 overflow-x-auto"
+          style={{ opacity: contentVisible ? 1 : 0 }}
+        >
           <div
-            className="max-w-6xl mx-auto mb-8 transition-all duration-500 overflow-x-auto"
-            style={{ opacity: contentVisible ? 1 : 0 }}
+            className="rounded-2xl overflow-hidden"
+            style={{ background: 'hsl(0 0% 14% / 0.7)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,0.06)' }}
           >
-            <div
-              className="rounded-2xl overflow-hidden"
-              style={{ background: 'hsl(0 0% 14% / 0.7)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,0.06)' }}
-            >
-              <div className="grid grid-cols-5 gap-0 min-w-[800px]">
-                {/* Header row */}
-                <div className="p-4 border-b border-r" style={{ borderColor: 'rgba(255,255,255,0.06)' }} />
-                {SUBSCRIPTION_PLANS.map((p) => (
-                  <div
-                    key={p.key}
-                    className="p-4 md:p-5 border-b border-r text-center last:border-r-0"
-                    style={{
-                      borderColor: 'rgba(255,255,255,0.06)',
-                      background: p.popular ? 'hsl(213 100% 55% / 0.08)' : undefined,
-                    }}
-                  >
-                    <div className="flex flex-col items-center justify-center gap-1 mb-1">
-                      <div className="flex items-center gap-2">
-                        {p.key === 'free_trial' && <Sparkles size={18} style={{ color: '#f59e0b' }} />}
-                        <span className="font-bold text-base md:text-lg" style={{ color: colors.foreground }}>{p.name}</span>
-                      </div>
-                      {p.comingSoon && (
-                        <span className="text-xs font-medium px-2 py-0.5 rounded-full" style={{ background: 'rgba(251,191,36,0.2)', color: '#f59e0b' }}>Coming Soon</span>
-                      )}
-                    </div>
-                    {p.popular && (
-                      <span className="inline-block text-xs font-semibold px-2 py-0.5 rounded-full mb-2" style={{ background: colors.primary, color: colors.primaryForeground }}>Most Popular</span>
+            <div className="grid grid-cols-4 gap-0 min-w-[720px]">
+              {/* Header row */}
+              <div className="p-4 border-b border-r" style={{ borderColor: 'rgba(255,255,255,0.06)' }} />
+              {PLANS.map((p) => (
+                <div
+                  key={p.key}
+                  className="p-4 md:p-5 border-b border-r text-center last:border-r-0"
+                  style={{
+                    borderColor: 'rgba(255,255,255,0.06)',
+                    background: p.popular ? 'hsl(213 100% 55% / 0.08)' : undefined,
+                  }}
+                >
+                  <span className="font-bold text-base md:text-lg" style={{ color: colors.foreground }}>{p.name}</span>
+                  {p.popular && (
+                    <span className="inline-block text-xs font-semibold px-2 py-0.5 rounded-full mt-2" style={{ background: colors.primary, color: colors.primaryForeground }}>Most Popular</span>
+                  )}
+                  <div className="font-bold text-lg md:text-xl mt-2" style={{ color: colors.foreground }}>
+                    {p.type === 'payg' ? (
+                      <span className="text-sm font-normal" style={{ color: colors.mutedForeground }}>No subscription</span>
+                    ) : billingMode === 'monthly' ? (
+                      <>
+                        ₹{p.priceMonthly!.toLocaleString()}<span className="text-sm font-normal" style={{ color: colors.mutedForeground }}>/mo</span>
+                        <span className="block text-xs font-normal mt-0.5" style={{ color: colors.mutedForeground }}>(excl tax)</span>
+                      </>
+                    ) : (
+                      <>
+                        ₹{p.priceQuarterly!.toLocaleString()}
+                        <span className="text-xs font-normal block mt-0.5" style={{ color: colors.mutedForeground }}>₹{p.effectivePerMonth!.toLocaleString()}/mo effective</span>
+                        <span className="block text-xs font-normal mt-0.5" style={{ color: colors.mutedForeground }}>(excl tax)</span>
+                      </>
                     )}
-                    <div className="font-bold text-xl md:text-2xl" style={{ color: colors.foreground }}>
-                      {p.priceMonthly === 0 ? (
-                        'Free'
-                      ) : billingMode === 'monthly' ? (
-                        <>₹{p.priceMonthly.toLocaleString()}<span className="text-sm font-normal" style={{ color: colors.mutedForeground }}>/mo</span></>
-                      ) : (
-                        <>
-                          ₹{p.priceQuarterly.toLocaleString()}
-                          <span className="text-xs font-normal block mt-0.5" style={{ color: colors.mutedForeground }}>₹{(p as { effectivePerMonth?: number }).effectivePerMonth?.toLocaleString() || Math.round(p.priceQuarterly / 3).toLocaleString()}/mo effective</span>
-                        </>
-                      )}
-                    </div>
                   </div>
-                ))}
+                </div>
+              ))}
 
-                {/* Feature rows */}
-                {[
-                  { label: 'Duration', values: SUBSCRIPTION_PLANS.map((p) => p.duration) },
-                  { label: 'Image Credits', values: SUBSCRIPTION_PLANS.map((p) => String(p.imageCredits)) },
-                  { label: 'Video Credits', values: SUBSCRIPTION_PLANS.map((p) => p.videoCredits) },
-                  { label: 'Watermark', values: SUBSCRIPTION_PLANS.map((p) => p.watermark) },
-                  { label: 'Automation', values: SUBSCRIPTION_PLANS.map((p) => p.automation) },
-                  { label: 'Analytics', values: SUBSCRIPTION_PLANS.map((p) => p.analytics) },
-                  { label: 'Scheduling', values: SUBSCRIPTION_PLANS.map((p) => p.scheduling) },
-                  { label: 'Brand & Competitor Insights', values: SUBSCRIPTION_PLANS.map((p) => p.brandInsights) },
-                  { label: 'Priority Processing', values: SUBSCRIPTION_PLANS.map((p) => p.priorityProcessing) },
-                  { label: 'Monthly Reset Rule', values: SUBSCRIPTION_PLANS.map((p) => p.monthlyReset) },
-                ].map((row, i) => (
-                  <div key={i} className="grid grid-cols-5 gap-0 col-span-5">
-                    <div className="p-3 md:p-4 border-b border-r text-sm" style={{ borderColor: 'rgba(255,255,255,0.06)', color: colors.mutedForeground }}>{row.label}</div>
-                    {row.values.map((val, cellIdx) => (
-                      <div
-                        key={cellIdx}
-                        className={`p-3 md:p-4 border-b border-r flex items-center justify-center ${cellIdx === SUBSCRIPTION_PLANS.length - 1 ? 'last:border-r-0' : ''}`}
-                        style={{
-                          borderColor: 'rgba(255,255,255,0.06)',
-                          background: SUBSCRIPTION_PLANS[cellIdx].popular ? 'hsl(213 100% 55% / 0.04)' : undefined,
-                        }}
-                      >
-                        {typeof val === 'boolean' ? (
-                          val ? <Check size={18} style={{ color: '#22c55e' }} /> : <X size={18} style={{ color: '#ef4444' }} />
-                        ) : (
-                          <span className="text-sm" style={{ color: colors.foreground }}>{val}</span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                ))}
-
-                {/* CTA row */}
-                <div className="col-span-5 grid grid-cols-5 gap-0">
-                  <div className="p-4 border-r" style={{ borderColor: 'rgba(255,255,255,0.06)' }} />
-                  {SUBSCRIPTION_PLANS.map((p) => (
-                    <div key={p.key} className="p-4 border-r last:border-r-0 flex flex-col items-center" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-                      {p.comingSoon ? (
-                        <span
-                          className="w-full py-3 rounded-lg font-semibold text-center text-sm"
-                          style={{ background: 'rgba(255,255,255,0.08)', color: colors.mutedForeground }}
-                        >
-                          Coming Soon
-                        </span>
+              {/* Feature rows */}
+              {[
+                { label: 'Limited Free Trial', values: PLANS.map((p) => p.freeIncluded) },
+                { label: 'Image Credits', values: PLANS.map((p) => p.imageCredits) },
+                { label: 'Video Credits', values: PLANS.map((p) => p.videoCredits) },
+                { label: 'No Watermark', values: PLANS.map((p) => p.noWatermark) },
+                { label: 'Cross Platform Posting', values: PLANS.map((p) => p.crossPlatformPosting) },
+                { label: 'Smart AI Automation', values: PLANS.map((p) => p.automation) },
+                { label: 'AI Analytics', values: PLANS.map((p) => p.analytics) },
+                { label: 'Scheduling', values: PLANS.map((p) => p.scheduling) },
+                { label: 'Competitor Analysis', values: PLANS.map((p) => p.competitorAnalysis) },
+                { label: 'Your Brand', values: PLANS.map((p) => p.yourBrand) },
+                { label: 'Priority Processing', values: PLANS.map((p) => p.priorityProcessing) },
+                { label: 'Monthly Reset', values: PLANS.map((p) => p.monthlyReset) },
+              ].map((row, i) => (
+                <div key={i} className="grid grid-cols-4 gap-0 col-span-4" style={row.label === 'Limited Free Trial' ? { background: 'rgba(34,197,94,0.12)' } : undefined}>
+                  <div className="p-3 md:p-4 border-b border-r text-sm" style={{ borderColor: 'rgba(255,255,255,0.06)', color: row.label === 'Limited Free Trial' ? colors.foreground : colors.mutedForeground, fontWeight: row.label === 'Limited Free Trial' ? 600 : undefined }}>{row.label}</div>
+                  {row.values.map((val, cellIdx) => (
+                    <div
+                      key={cellIdx}
+                      className={`p-3 md:p-4 border-b border-r flex items-center justify-center ${cellIdx === PLANS.length - 1 ? 'last:border-r-0' : ''}`}
+                      style={{
+                        borderColor: 'rgba(255,255,255,0.06)',
+                        background: row.label === 'Limited Free Trial' ? 'rgba(34,197,94,0.16)' : PLANS[cellIdx].popular ? 'hsl(213 100% 55% / 0.04)' : undefined,
+                      }}
+                    >
+                      {typeof val === 'boolean' ? (
+                        val ? <Check size={18} style={{ color: '#22c55e' }} /> : <X size={18} style={{ color: '#ef4444' }} />
                       ) : (
-                        <Button
-                          variant={p.popular ? 'hero' : 'outline'}
-                          size="lg"
-                          className="w-full"
-                          asChild
-                          style={p.popular ? { background: colors.gradientPrimary, color: colors.primaryForeground, boxShadow: colors.shadowGlow } : {}}
-                        >
-                          <Link href={p.ctaHref}>{p.cta}</Link>
-                        </Button>
+                        <span className="text-sm" style={{ color: colors.foreground }}>{val}</span>
                       )}
                     </div>
                   ))}
                 </div>
+              ))}
+
+              {/* CTA row */}
+              <div className="col-span-4 grid grid-cols-4 gap-0">
+                <div className="p-4 border-r" style={{ borderColor: 'rgba(255,255,255,0.06)' }} />
+                {PLANS.map((p) => (
+                  <div key={p.key} className="p-4 border-r last:border-r-0 flex flex-col items-center" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+                    {p.comingSoon ? (
+                      <Button
+                        variant="outline"
+                        size="lg"
+                        className="w-full cursor-not-allowed"
+                        disabled
+                        style={{ background: 'rgba(255,255,255,0.08)', color: colors.mutedForeground, borderColor: colors.border }}
+                      >
+                        {p.cta}
+                      </Button>
+                    ) : (
+                      <Button
+                        variant={p.popular ? 'hero' : 'outline'}
+                        size="lg"
+                        className="w-full"
+                        asChild
+                        style={p.popular ? { background: colors.gradientPrimary, color: colors.primaryForeground, boxShadow: colors.shadowGlow } : {}}
+                      >
+                        <Link href={p.ctaHref}>{p.cta}</Link>
+                      </Button>
+                    )}
+                  </div>
+                ))}
               </div>
             </div>
-
-            <p className="text-center text-sm mt-4" style={{ color: colors.mutedForeground }}>
-              Subscription credits reset monthly. Unused credits do not roll over.
-            </p>
           </div>
-        )}
 
-        {/* Pay-As-You-Go Mode */}
-        {billingMode === 'payg' && (
-          <div
-            className="max-w-2xl mx-auto mb-8 transition-all duration-500"
-            style={{ opacity: contentVisible ? 1 : 0 }}
-          >
-            <h3 className="text-xl font-bold mb-6 text-center" style={{ color: colors.foreground }}>
-              Pay as you go
-            </h3>
-
-            <div className="grid md:grid-cols-2 gap-6 mb-6">
-              <div
-                className="p-6 rounded-2xl"
-                style={{ background: 'hsl(0 0% 14% / 0.7)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,0.06)' }}
-              >
-                <h4 className="font-semibold mb-4 text-base" style={{ color: colors.foreground }}>Image Credits</h4>
-                <div className="flex justify-between items-center py-2">
-                  <span style={{ color: colors.mutedForeground }}>10 credits</span>
-                  <span className="font-semibold" style={{ color: colors.foreground }}>₹100</span>
-                </div>
-                <Button variant="outline" size="lg" className="w-full mt-4" asChild>
-                  <Link href="/buy-credits">Buy Image Credits</Link>
-                </Button>
-              </div>
-              <div
-                className="p-6 rounded-2xl"
-                style={{ background: 'hsl(0 0% 14% / 0.7)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,0.06)' }}
-              >
-                <h4 className="font-semibold mb-4 text-base" style={{ color: colors.foreground }}>Video Credits</h4>
-                <div className="flex justify-between items-center py-2">
-                  <span style={{ color: colors.mutedForeground }}>10 seconds</span>
-                  <span className="font-semibold" style={{ color: colors.foreground }}>₹249</span>
-                </div>
-                <Button variant="outline" size="lg" className="w-full mt-4" asChild>
-                  <Link href="/buy-credits">Buy Video Credits</Link>
-                </Button>
-              </div>
-            </div>
-
-            <ul className="text-sm space-y-1 mb-6" style={{ color: colors.mutedForeground }}>
-              <li>• No subscription required.</li>
-              <li>• No expiry.</li>
-              <li>• No monthly reset.</li>
-              <li>• No automation or analytics included.</li>
-            </ul>
-          </div>
-        )}
-
-        <div className="text-center">
-          <Link href="/#pricing" className="text-base font-medium" style={{ color: colors.primary }}>View Full Pricing →</Link>
+          <p className="text-center text-sm mt-4" style={{ color: colors.mutedForeground }}>
+            Pay As You Go: no expiry, no monthly reset. Subscription credits reset monthly.
+          </p>
         </div>
       </div>
     </section>

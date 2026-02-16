@@ -1,5 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  async redirects() {
+    return [
+      { source: '/signin', destination: '/auth/signin', permanent: true },
+    ];
+  },
   experimental: {
     // Ensures pages/api works in production when app/ also exists
     manualClientBasePath: true,

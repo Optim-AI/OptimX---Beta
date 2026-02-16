@@ -167,7 +167,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             }}
           >
             {/* Always use the static file path for the logo */}
-            <img src="/images/Oli_AI_Logo.svg" alt="logo" className="h-full w-full object-contain" />
+            <img src="/images/SkalX_Logo.png" alt="SkalX AI logo" className="h-full w-full object-contain" />
           </button>
 
           {/* Title (single SkalX AI) */}

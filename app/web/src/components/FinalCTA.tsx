@@ -19,10 +19,10 @@ const FinalCTA: React.FC = () => {
           className="text-center max-w-4xl mx-auto transition-all duration-700"
           style={{ opacity: ctaVisible ? 1 : 0, transform: ctaVisible ? 'translateY(0)' : 'translateY(20px)', transitionTimingFunction: 'cubic-bezier(0.16, 1, 0.3, 1)' }}
         >
-          <h2 className="text-4xl md:text-5xl lg:text-6xl font-bold mb-6 leading-tight" style={{ color: colors.foreground }}>
+          <h2 className="text-4xl md:text-5xl lg:text-[46px] font-normal mb-6 leading-tight" style={{ color: colors.foreground }}>
             Ready to Scale Marketing Smarter?
           </h2>
-          <p className="text-xl mb-10 max-w-2xl mx-auto" style={{ color: colors.mutedForeground }}>
+          <p className="text-xl mb-10 max-w-2xl mx-auto font-extralight" style={{ color: colors.mutedForeground }}>
             Launch, automate, and optimize campaigns — without expanding your team.
           </p>
 

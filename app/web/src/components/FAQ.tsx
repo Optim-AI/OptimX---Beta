@@ -44,7 +44,7 @@ const FAQ: React.FC = () => {
             transitionTimingFunction: 'cubic-bezier(0.16, 1, 0.3, 1)',
           }}
         >
-          <h2 className="text-4xl md:text-5xl font-bold mb-6" style={{ color: colors.foreground }}>
+          <h2 className="text-4xl md:text-[46px] font-normal mb-6" style={{ color: colors.foreground }}>
             Frequently Asked{' '}
             <span
               className="gradient-text"
@@ -59,7 +59,7 @@ const FAQ: React.FC = () => {
               Questions
             </span>
           </h2>
-          <p className="text-xl" style={{ color: colors.mutedForeground }}>
+          <p className="text-xl font-extralight" style={{ color: colors.mutedForeground }}>
             Got questions? We&apos;ve got answers. If you can&apos;t find what you&apos;re looking for, reach out at info@optimx.app.
           </p>
         </div>
@@ -90,7 +90,7 @@ const FAQ: React.FC = () => {
                 }}
               >
                 <AccordionTrigger
-                  className="text-left py-6 text-lg font-semibold hover:no-underline [&[data-state=open]>svg]:rotate-180"
+                  className="text-left py-6 text-lg font-normal hover:no-underline [&[data-state=open]>svg]:rotate-180"
                   style={{ color: colors.foreground }}
                 >
                   {faq.question}

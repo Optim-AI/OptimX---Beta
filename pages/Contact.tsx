@@ -40,15 +40,15 @@ const withAlpha = (token: string | undefined, alpha: number) => {
  * Keeping it here so the SEO data exists in the module (you can move it to a server wrapper if you prefer).
  */
 export const metadata = {
-  title: "Contact SkalX AI - AI Marketing Automation & Campaign Management",
+  title: "Contact Oli AI - AI Marketing Automation & Campaign Management",
   description:
-    "Get in touch with SkalX AI for AI-powered marketing automation solutions. Contact our expert team for personalized marketing campaigns, SEO optimization, and business growth strategies.",
+    "Get in touch with Oli AI for AI-powered marketing automation solutions. Contact our expert team for personalized marketing campaigns, SEO optimization, and business growth strategies.",
   keywords:
-    "contact SkalX AI, AI marketing consultation, marketing automation support, campaign management contact, digital marketing help, business growth solutions, marketing strategy consultation",
+    "contact Oli AI, AI marketing consultation, marketing automation support, campaign management contact, digital marketing help, business growth solutions, marketing strategy consultation",
   openGraph: {
-    title: "Contact SkalX AI - AI Marketing Automation Expert Support",
+    title: "Contact Oli AI - AI Marketing Automation Expert Support",
     description:
-      "Ready to transform your business with AI-powered marketing? Contact SkalX AI's expert team for personalized marketing automation solutions and campaign management.",
+      "Ready to transform your business with AI-powered marketing? Contact Oli AI's expert team for personalized marketing automation solutions and campaign management.",
     type: "website",
     url: "https://optim.com/contact",
   },
@@ -157,21 +157,24 @@ const Contact = () => {
             <h1
               className="text-4xl md:text-5xl font-bold mb-6"
               style={{
+                // keep gradient-text intent as fallback
                 backgroundImage: colors.gradientPrimary ?? undefined,
                 WebkitBackgroundClip: "text" as any,
                 backgroundClip: "text" as any,
-                color: "transparent",
-                WebkitTextFillColor: "transparent",
+                color: "transparent", // <- must be transparent to reveal the clipped background
+                WebkitTextFillColor: "transparent", // <- webkit fallback
               }}
             >
-              Talk to Sales
+              Contact Our AI Marketing Experts
             </h1>
 
             <p
               className="text-xl max-w-2xl mx-auto"
               style={{ color: colors.mutedForeground }}
             >
-              Enterprise plans, custom integrations, or questions about scaling your marketing with SkalX AI? Our team will respond within 24 hours.
+              Ready to transform your business with AI-powered marketing
+              automation? Get personalized consultation and start optimizing
+              your campaigns today.
             </p>
           </div>
         </section>
@@ -193,10 +196,12 @@ const Contact = () => {
                     className="text-2xl"
                     style={{ color: colors.foreground }}
                   >
-                    Get in Touch
+                    Get Your Free Marketing Consultation
                   </CardTitle>
                   <CardDescription style={{ color: colors.mutedForeground }}>
-                    Share your business needs and how SkalX AI can help you create, launch, and optimize ads without expanding headcount.
+                    Tell us about your business needs and discover how Oli AI's
+                    AI can revolutionize your marketing strategy. Our experts
+                    will respond within 24 hours.
                   </CardDescription>
                 </CardHeader>
 
@@ -328,7 +333,7 @@ const Contact = () => {
                         border: `1px solid ${withAlpha(colors.primary, 0.9)}`,
                       }}
                     >
-                      {isSubmitting ? "Sending..." : "Send Message"}
+                      {isSubmitting ? "Sending..." : "Get Free Consultation"}
                     </Button>
                   </form>
                 </CardContent>

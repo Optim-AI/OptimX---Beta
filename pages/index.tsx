@@ -13,9 +13,7 @@ import "../styles/globals.css";
 const Header = dynamic(() => import("../app/web/src/components/Header"), { ssr: false });
 const ParallaxBackground = dynamic(() => import("../app/web/src/components/ParallaxBackground"), { ssr: false });
 const Hero = dynamic(() => import("../app/web/src/components/Hero"), { ssr: false });
-const Problem = dynamic(() => import("../app/web/src/components/Problem"), { ssr: false });
-const MeetAITeam = dynamic(() => import("../app/web/src/components/MeetAITeam"), { ssr: false });
-const ScaleWithoutHiring = dynamic(() => import("../app/web/src/components/ScaleWithoutHiring"), { ssr: false });
+const ComparisonSection = dynamic(() => import("../app/web/src/components/ComparisonSection"), { ssr: false });
 const BuiltFor = dynamic(() => import("../app/web/src/components/BuiltFor"), { ssr: false });
 const PricingPreview = dynamic(() => import("../app/web/src/components/PricingPreview"), { ssr: false });
 const HowCreditsWork = dynamic(() => import("../app/web/src/components/HowCreditsWork"), { ssr: false });
@@ -29,12 +27,10 @@ const Home: React.FC = () => (
     <Header />
     <main className="relative z-10">
       <Hero />
-      <Problem />
-      <MeetAITeam />
-      <ScaleWithoutHiring />
+      <ComparisonSection />
+      <HowCreditsWork />
       <BuiltFor />
       <PricingPreview />
-      <HowCreditsWork />
       <FAQ />
       <FinalCTA />
     </main>

@@ -62,7 +62,7 @@ const BuiltFor: React.FC = () => {
           className="text-center mb-16 transition-all duration-700"
           style={{ opacity: titleVisible ? 1 : 0, transform: titleVisible ? 'translateY(0)' : 'translateY(20px)', transitionTimingFunction: 'cubic-bezier(0.16, 1, 0.3, 1)' }}
         >
-          <h2 className="text-4xl md:text-5xl font-bold leading-tight" style={{ color: colors.foreground }}>
+          <h2 className="text-4xl md:text-[46px] font-normal leading-tight" style={{ color: colors.foreground }}>
             Built for Growing Brands
           </h2>
         </div>

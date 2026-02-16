@@ -54,8 +54,8 @@ const Footer: React.FC = () => {
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-16">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
           <div className="col-span-2 md:col-span-1">
-            <div className="flex items-center space-x-1 mb-4">
-              <img src="/images/Oli_AI_Logo.svg" alt="SkalX AI Logo" className="h-8 w-8" />
+            <div className="flex items-center space-x-2 mb-4">
+              <img src="/images/SkalX_Logo.png" alt="SkalX AI Logo" className="h-8 w-auto object-contain" />
               <span className="text-xl font-bold" style={{ color: colors.foreground }}>SkalX AI</span>
             </div>
             <p className="text-sm leading-relaxed mb-4" style={{ color: colors.mutedForeground }}>

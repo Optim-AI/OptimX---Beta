@@ -101,16 +101,21 @@ const Hero: React.FC = () => {
   const [inputError, setInputError] = useState<string | null>(null);
   const [pillBounce, setPillBounce] = useState<string | null>(null);
   const [parallax, setParallax] = useState({ x: 0, y: 0 });
-  const [sparkles, setSparkles] = useState<Array<{ id: number; x: number; y: number }>>([]);
+  const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null);
+  const [smoothPos, setSmoothPos] = useState({ x: 0, y: 0 });
+  const [fadingOut, setFadingOut] = useState(false);
   const sectionRef = useRef<HTMLElement | null>(null);
-  const mouseRef = useRef({ x: 0, y: 0, inSection: false });
+  const mouseRef = useRef({ x: 0, y: 0, clientX: 0, clientY: 0, inSection: false });
   const rafRef = useRef<number | null>(null);
-  const sparkleIdRef = useRef(0);
+  const smoothRef = useRef({ x: 0, y: 0 });
+  const fadeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const el = sectionRef.current;
     if (!el) return;
+    const LERP = 0.2;
     const handleMove = (e: MouseEvent) => {
+      // Use clientX/clientY only — viewport coords. Never pageX/pageY or +scrollY.
       const rect = el.getBoundingClientRect();
       const cx = rect.left + rect.width / 2;
       const dy = (e.clientY - rect.top - rect.height / 2) / rect.height;
@@ -118,32 +123,32 @@ const Hero: React.FC = () => {
         x: Math.max(-1, Math.min(1, (e.clientX - cx) / rect.width)) * 8,
         y: Math.max(-1, Math.min(1, dy)) * 8,
       });
-      mouseRef.current = {
-        x: e.clientX - rect.left,
-        y: e.clientY - rect.top,
-        inSection: true,
-      };
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      mouseRef.current = { x: mx, y: my, clientX: e.clientX, clientY: e.clientY, inSection: true };
+      smoothRef.current = { x: e.clientX, y: e.clientY };
+      setCursorPos({ x: mx, y: my });
+      setSmoothPos({ x: e.clientX, y: e.clientY });
+      setFadingOut(false);
     };
     const handleLeave = () => {
       setParallax({ x: 0, y: 0 });
-      mouseRef.current = { x: 0, y: 0, inSection: false };
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
-      rafRef.current = null;
+      mouseRef.current = { x: 0, y: 0, clientX: 0, clientY: 0, inSection: false };
+      setCursorPos(null);
+      setFadingOut(true);
+      if (fadeTimeoutRef.current) clearTimeout(fadeTimeoutRef.current);
+      fadeTimeoutRef.current = setTimeout(() => setFadingOut(false), 500);
     };
-    let lastX = 0;
-    let lastY = 0;
     const loop = () => {
       rafRef.current = requestAnimationFrame(loop);
-      const { x, y, inSection } = mouseRef.current;
-      if (inSection && (x !== lastX || y !== lastY)) {
-        lastX = x;
-        lastY = y;
-        sparkleIdRef.current += 1;
-        setSparkles((prev) => {
-          const next = [...prev, { id: sparkleIdRef.current, x, y }];
-          return next.slice(-38);
-        });
-      }
+      const { clientX, clientY, inSection } = mouseRef.current;
+      if (!inSection) return;
+      const s = smoothRef.current;
+      smoothRef.current = {
+        x: s.x + (clientX - s.x) * LERP,
+        y: s.y + (clientY - s.y) * LERP,
+      };
+      setSmoothPos(smoothRef.current);
     };
     rafRef.current = requestAnimationFrame(loop);
     el.addEventListener("mousemove", handleMove);
@@ -152,6 +157,7 @@ const Hero: React.FC = () => {
       el.removeEventListener("mousemove", handleMove);
       el.removeEventListener("mouseleave", handleLeave);
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      if (fadeTimeoutRef.current) clearTimeout(fadeTimeoutRef.current);
     };
   }, []);
 
@@ -217,10 +223,11 @@ const Hero: React.FC = () => {
   return (
     <section
       ref={sectionRef}
-      id="home"
+      id="hero-liquid-trigger"
       className="pt-28 pb-20 min-h-screen flex flex-col items-center justify-center relative overflow-hidden"
       style={{ backgroundColor: '#121212', color: colors.foreground, isolation: 'isolate' }}
     >
+      <a id="home" className="absolute top-0 left-0 block w-px h-px invisible" aria-hidden />
       <style jsx>{`
         .hero-card { border-radius: 20px; backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
           box-shadow: 0 1px 2px hsl(0 0% 0% / 0.04), 0 4px 12px hsl(0 0% 0% / 0.04), 0 12px 40px hsl(0 0% 0% / 0.06);
@@ -239,42 +246,74 @@ const Hero: React.FC = () => {
         .hero-btn-generate:hover { transform: translateY(-1px); box-shadow: 0 4px 20px hsl(213 100% 62% / 0.35); }
         @keyframes btnSweep { 0%,100%{background-position:200% 0} 50%{background-position:-200% 0} }
         @keyframes checkPop { 0%{transform:scale(0);opacity:0} 60%{transform:scale(1.15);opacity:1} 100%{transform:scale(1);opacity:1} }
-        @keyframes heroSparkle { from{opacity:0.7} to{opacity:0} }
-        .hero-sparkle { animation: heroSparkle 2s cubic-bezier(0.4,0,0.2,1) forwards; pointer-events: none; }
+        .liquid-glass-blob {
+          position: relative;
+          pointer-events: none;
+          will-change: transform, opacity;
+          transform-origin: center;
+          animation: liquidBlobMorph 7s ease-in-out infinite;
+          transition: opacity 0.4s ease, transform 0.4s ease;
+        }
+        .liquid-glass-blob.scale-up { transform: scale(1.1); }
+        .liquid-glass-blob::after {
+          content: '';
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          border-radius: inherit;
+          background: radial-gradient(ellipse 70% 70% at 15% 15%, rgba(255,255,255,0.35) 0%, transparent 60%);
+          opacity: 0.08;
+          pointer-events: none;
+        }
+        @keyframes liquidBlobMorph {
+          0%, 100% { border-radius: 60% 40% 55% 45% / 50% 60% 40% 50%; }
+          25% { border-radius: 45% 55% 50% 50% / 55% 45% 55% 45%; }
+          50% { border-radius: 50% 50% 40% 60% / 45% 55% 45% 55%; }
+          75% { border-radius: 55% 45% 60% 40% / 50% 50% 55% 45%; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .liquid-glass-blob { animation: none; }
+        }
       `}</style>
 
       <div className="absolute inset-0 z-0" style={{ backgroundColor: '#121212' }} />
       <div className="absolute inset-0 pointer-events-none opacity-[0.012] z-[1]" style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")` }} />
 
-      {/* Warm light yellow sparkles on hover - Hero only */}
-      {!isMobile && sparkles.map((s) => (
+      {/* Glass lens: disabled — uncomment condition below to re-enable */}
+      {false && !isMobile && (cursorPos !== null || fadingOut) && (
         <div
-          key={s.id}
-          className="hero-sparkle absolute z-[5]"
+          className="liquid-glass-blob fixed pointer-events-none z-[40]"
           style={{
-            left: s.x - 14,
-            top: s.y - 14,
-            width: 28,
-            height: 28,
-            borderRadius: '50%',
-            background: 'radial-gradient(circle at center, hsl(210 100% 85% / 0.55) 0%, hsl(210 95% 75% / 0.3) 45%, hsl(213 90% 70% / 0.08) 75%, transparent 100%)',
-            boxShadow: '0 0 12px hsl(210 100% 80% / 0.35)',
-            filter: 'blur(1px)',
-            WebkitFilter: 'blur(1px)',
+            left: smoothPos.x,
+            top: smoothPos.y,
+            width: 140,
+            height: 140,
+            transform: "translate(-50%, -50%)",
+            borderRadius: "50%",
+            animation: "none",
+            backdropFilter: "blur(18px)",
+            WebkitBackdropFilter: "blur(18px)",
+            background: "rgba(255,255,255,0.02)",
+            border: "1px solid rgba(255,255,255,0.08)",
+            boxShadow: "0 0 60px rgba(255,255,255,0.05)",
+            opacity: cursorPos !== null ? 1 : 0,
+            transition: "opacity 0.4s ease",
           }}
           aria-hidden
         />
-      ))}
+      )}
 
       <ParallaxLayer speed={0.08} className="relative" style={{ zIndex: 10 }}>
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10 w-full max-w-4xl">
         {/* Headline - PRD */}
         <div className="text-center mb-4 mx-auto max-w-2xl animate-[fadeUp_0.7s_cubic-bezier(0.16,1,0.3,1)_both" style={{ animationDelay: "0.1s" }}>
-          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold leading-tight tracking-tight" style={{ color: colors.foreground, marginLeft: '-223px', marginRight: '-223px' }}>
+          <h1 className="text-4xl sm:text-[46px] font-normal leading-tight tracking-tight" style={{ color: colors.foreground, marginLeft: '-223px', marginRight: '-223px', width: '1182px' }}>
             An AI Marketing Team, Without Expanding Headcount.
           </h1>
         </div>
-        <p className="text-center text-lg md:text-xl mb-8 max-w-2xl mx-auto animate-[fadeUp_0.7s_cubic-bezier(0.16,1,0.3,1)_both" style={{ color: colors.mutedForeground, animationDelay: "0.25s" }}>
+        <p className="text-center text-xl mb-8 max-w-2xl mx-auto font-extralight animate-[fadeUp_0.7s_cubic-bezier(0.16,1,0.3,1)_both" style={{ color: colors.mutedForeground, animationDelay: "0.25s" }}>
         Create, launch, and optimise campaigns, all from one dashboard.
         </p>
 
@@ -293,7 +332,7 @@ const Hero: React.FC = () => {
             variant="outline"
             size="lg"
             className="px-8 py-6 text-lg w-full sm:w-auto"
-            onClick={() => scrollToSection("system")}
+            onClick={() => scrollToSection("how-it-works")}
             style={{ borderColor: colors.border, color: colors.foreground }}
           >
             See How It Works
