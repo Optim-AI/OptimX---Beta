@@ -1818,15 +1818,15 @@ function PosterPromptInput({
     <div className="flex gap-4 max-w-3xl ml-auto">
       <div className="flex-shrink-0 w-8" />
       <form onSubmit={(e) => { e.preventDefault(); onSubmit(); }} className="flex-1">
-        <div className="border-2 border-gray-200 rounded-xl p-6 bg-white hover:border-gray-300 shadow-sm">
-          <label className="block text-sm font-medium text-gray-700 mb-3">
+        <div className="border-2 border-gray-700 rounded-xl p-6 bg-gray-800 hover:border-gray-600 shadow-sm">
+          <label className="block text-sm font-medium text-gray-300 mb-3">
             Describe the poster you want
           </label>
           <textarea
             value={prompt}
             onChange={(e) => onPromptChange(e.target.value)}
             placeholder="e.g., A vibrant poster highlighting the product with bold text and modern design..."
-            className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+            className="w-full border border-gray-600 rounded-lg px-4 py-3 text-sm bg-gray-700 text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
             rows={4}
             onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { onSubmit(); } }}
           />

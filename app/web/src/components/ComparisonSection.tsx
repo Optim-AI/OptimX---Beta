@@ -58,6 +58,8 @@ const ComparisonSection: React.FC = () => {
   const sectionRef = useRef<HTMLElement | null>(null);
   const [activeSlide, setActiveSlide] = useState(0);
   const [isMobile, setIsMobile] = useState(false);
+  const [isAutoPlaying, setIsAutoPlaying] = useState(true);
+  const autoPlayRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 768);
@@ -66,46 +68,30 @@ const ComparisonSection: React.FC = () => {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
+  // Auto-play functionality for desktop
   useEffect(() => {
-    if (isMobile) return;
+    if (isMobile || !isAutoPlaying) return;
 
-    let ticking = false;
-    const handleScroll = () => {
-      if (ticking) return;
-      ticking = true;
-      requestAnimationFrame(() => {
-        ticking = false;
-        const section = sectionRef.current;
-        if (!section) return;
+    autoPlayRef.current = setInterval(() => {
+      setActiveSlide((prev) => (prev + 1) % COMPARISON_ROWS.length);
+    }, 4000);
 
-        const rect = section.getBoundingClientRect();
-        const scrollHeight = section.offsetHeight;
-        const viewportHeight = window.innerHeight;
-
-        if (rect.top > viewportHeight || rect.bottom < 0) return;
-
-        const scrollableDistance = scrollHeight - viewportHeight;
-        if (scrollableDistance <= 0) {
-          setActiveSlide(0);
-          return;
-        }
-
-        const scrolled = -rect.top;
-        const progress = Math.max(0, Math.min(1, scrolled / scrollableDistance));
-        const segment = Math.floor(progress * 4);
-        const slideIndex = Math.min(segment, 3);
-        setActiveSlide((prev) => (prev !== slideIndex ? slideIndex : prev));
-      });
-    };
-
-    handleScroll();
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    window.addEventListener('resize', handleScroll);
     return () => {
-      window.removeEventListener('scroll', handleScroll);
-      window.removeEventListener('resize', handleScroll);
+      if (autoPlayRef.current) {
+        clearInterval(autoPlayRef.current);
+      }
     };
-  }, [isMobile]);
+  }, [isMobile, isAutoPlaying]);
+
+  const handleSlideClick = (index: number) => {
+    setActiveSlide(index);
+    setIsAutoPlaying(false);
+    // Resume auto-play after 10 seconds of inactivity
+    if (autoPlayRef.current) {
+      clearInterval(autoPlayRef.current);
+    }
+    setTimeout(() => setIsAutoPlaying(true), 10000);
+  };
 
   if (isMobile) {
     return (
@@ -176,181 +162,104 @@ const ComparisonSection: React.FC = () => {
     );
   }
 
+  const currentRow = COMPARISON_ROWS[activeSlide];
+  const ProblemIcon = currentRow.problem.icon;
+  const SolutionIcon = currentRow.solution.icon;
+
   return (
     <section
       id="system"
       ref={sectionRef}
       className="relative section-solid comparison-section"
-      style={{ height: '400vh', background: '#121212', overflow: 'visible' }}
+      style={{ background: '#121212', paddingTop: 100, paddingBottom: 100, overflow: 'hidden' }}
     >
       <style jsx>{`
-        .comparison-sticky {
-          position: sticky;
-          top: 0;
-          height: 100vh;
-          display: flex;
-          align-items: center;
-          justify-content: center;
+        .comparison-container {
+          position: relative;
+          max-width: 1100px;
+          margin: 0 auto;
           padding: 0 1.5rem;
-          overflow: hidden;
-        }
-        .comparison-slide {
-          position: absolute;
-          inset: 0;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: 0 1.5rem;
-          pointer-events: none;
-        }
-        .comparison-slide.active {
-          pointer-events: auto;
         }
         .comparison-slide-grid {
           display: grid;
           grid-template-columns: 1fr auto 1fr;
           gap: 40px;
           align-items: center;
-          max-width: 1100px;
-          width: 100%;
+          min-height: 280px;
         }
         .comparison-card {
           padding: 28px;
           border-radius: 16px;
-          will-change: transform, opacity;
         }
         .comparison-glow {
           position: absolute;
           inset: 0;
           pointer-events: none;
-          opacity: 0;
-          transition: opacity 0.5s ease-out;
+          background: radial-gradient(ellipse 60% 40% at 50% 50%, rgba(79,140,255,0.08) 0%, transparent 70%);
+          filter: blur(100px);
         }
-        .comparison-slide.active .comparison-glow {
+        .nav-dot {
+          width: 12px;
+          height: 12px;
+          border-radius: 50%;
+          background: rgba(255,255,255,0.15);
+          border: none;
+          cursor: pointer;
+          transition: all 0.3s ease;
+          position: relative;
+        }
+        .nav-dot:hover {
+          background: rgba(255,255,255,0.3);
+        }
+        .nav-dot.active {
+          background: #4F8CFF;
+        }
+        .nav-dot.active::after {
+          content: '';
+          position: absolute;
+          inset: -4px;
+          border-radius: 50%;
+          border: 2px solid rgba(79,140,255,0.4);
+        }
+        .nav-label {
+          position: absolute;
+          top: 24px;
+          left: 50%;
+          transform: translateX(-50%);
+          white-space: nowrap;
+          font-size: 11px;
+          color: rgba(255,255,255,0.5);
+          opacity: 0;
+          transition: opacity 0.2s ease;
+          pointer-events: none;
+        }
+        .nav-dot:hover .nav-label,
+        .nav-dot.active .nav-label {
           opacity: 1;
         }
-        .progress-track {
-          position: absolute;
-          left: 24px;
-          top: 50%;
-          transform: translateY(-50%);
-          width: 2px;
-          height: 80px;
-          background: rgba(255,255,255,0.1);
-          border-radius: 2px;
-          overflow: hidden;
+        .nav-dot.active .nav-label {
+          color: rgba(79,140,255,0.9);
         }
-        .progress-fill {
-          width: 100%;
-          height: 0%;
+        .progress-bar {
+          position: absolute;
+          bottom: -2px;
+          left: 0;
+          height: 2px;
           background: rgba(79,140,255,0.6);
           border-radius: 2px;
-          transition: height 0.2s ease-out;
+          transition: width 0.1s linear;
         }
-        @media (max-width: 767px) {
-          .progress-track { display: none; }
+        @keyframes progressFill {
+          from { width: 0%; }
+          to { width: 100%; }
         }
       `}</style>
       <div className="grain-overlay" />
+      <div className="comparison-glow" />
 
-      <div className="comparison-sticky">
-        <div className="progress-track">
-          <div
-            className="progress-fill"
-            style={{ height: `${((activeSlide + 0.25) / 4) * 100}%` }}
-          />
-        </div>
-        {COMPARISON_ROWS.map((row, index) => {
-          const ProblemIcon = row.problem.icon;
-          const SolutionIcon = row.solution.icon;
-          const isActive = activeSlide === index;
-
-          return (
-            <div
-              key={index}
-              className={`comparison-slide ${isActive ? 'active' : ''}`}
-              style={{
-                opacity: isActive ? 1 : 0,
-                transition: 'opacity 0.4s ease-out',
-              }}
-            >
-              <div
-                className="comparison-glow"
-                style={{
-                  background: 'radial-gradient(ellipse 60% 40% at 50% 50%, rgba(79,140,255,0.08) 0%, transparent 70%)',
-                  filter: 'blur(100px)',
-                }}
-              />
-              <div className="comparison-slide-grid">
-                <div
-                  className="comparison-card relative"
-                  style={{
-                    background: 'rgba(255,255,255,0.03)',
-                    border: '1px solid rgba(255,255,255,0.06)',
-                    transform: isActive ? 'translateX(0)' : 'translateX(-30px)',
-                    opacity: isActive ? 1 : 0,
-                    transition: 'transform 0.7s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.7s ease-out',
-                  }}
-                >
-                  <div className="absolute top-4 right-4 w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(239,68,68,0.2)' }}>
-                    <X className="w-4 h-4" style={{ color: '#ef4444' }} strokeWidth={2.5} />
-                  </div>
-                  <div
-                    className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 mb-4"
-                    style={{ background: 'rgba(255,255,255,0.05)' }}
-                  >
-                    <ProblemIcon className="w-6 h-6" style={{ color: 'rgba(255,255,255,0.4)' }} />
-                  </div>
-                  <h3 className="font-semibold text-xl mb-2" style={{ color: 'rgba(255,255,255,0.75)' }}>
-                    {row.problem.title}
-                  </h3>
-                  <p className="text-base leading-relaxed" style={{ color: 'rgba(255,255,255,0.55)' }}>
-                    {row.problem.text}
-                  </p>
-                </div>
-
-                <div className="flex items-center justify-center flex-shrink-0" style={{ color: 'rgba(255,255,255,0.25)' }}>
-                  <ArrowRight className="w-8 h-8" strokeWidth={2} />
-                </div>
-
-                <div
-                  className="comparison-card relative"
-                  style={{
-                    background: 'rgba(79,140,255,0.08)',
-                    border: '1px solid rgba(79,140,255,0.25)',
-                    boxShadow: '0 0 40px rgba(79,140,255,0.15)',
-                    transform: isActive ? 'translateX(0)' : 'translateX(30px)',
-                    opacity: isActive ? 1 : 0,
-                    transition: 'transform 0.7s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.7s ease-out',
-                  }}
-                >
-                  <div className="absolute top-4 right-4 w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(34,197,94,0.2)' }}>
-                    <Check className="w-4 h-4" style={{ color: '#22c55e' }} strokeWidth={2.5} />
-                  </div>
-                  <div
-                    className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 mb-4"
-                    style={{ background: 'rgba(79,140,255,0.2)' }}
-                  >
-                    <SolutionIcon className="w-6 h-6" style={{ color: '#4F8CFF' }} />
-                  </div>
-                  <h3 className="font-semibold text-xl mb-2" style={{ color: 'rgba(255,255,255,0.95)' }}>
-                    {row.solution.title}
-                  </h3>
-                  <p className="text-base leading-relaxed" style={{ color: 'rgba(255,255,255,0.75)' }}>
-                    {row.solution.text}
-                  </p>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-        <div
-          className="absolute left-0 right-0 text-center px-4"
-          style={{
-            top: '12vh',
-            pointerEvents: 'none',
-          }}
-        >
+      <div className="comparison-container">
+        {/* Header */}
+        <div className="text-center mb-16">
           <h2
             className="text-3xl md:text-4xl leading-tight mb-3"
             style={{ color: 'rgba(255,255,255,0.95)', fontWeight: 200 }}
@@ -363,6 +272,99 @@ const ComparisonSection: React.FC = () => {
           >
             Creative, execution, and optimization — unified into one intelligent system.
           </p>
+        </div>
+
+        {/* Navigation Tabs */}
+        <div className="flex justify-center gap-8 mb-12">
+          {COMPARISON_ROWS.map((row, index) => (
+            <button
+              key={index}
+              onClick={() => handleSlideClick(index)}
+              className={`nav-dot ${activeSlide === index ? 'active' : ''}`}
+              aria-label={`View ${row.problem.title}`}
+            >
+              <span className="nav-label">{row.problem.title}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* Comparison Cards */}
+        <div className="comparison-slide-grid">
+          <div
+            className="comparison-card relative"
+            style={{
+              background: 'rgba(255,255,255,0.03)',
+              border: '1px solid rgba(255,255,255,0.06)',
+              transform: 'translateX(0)',
+              opacity: 1,
+              transition: 'all 0.5s cubic-bezier(0.16, 1, 0.3, 1)',
+            }}
+            key={`problem-${activeSlide}`}
+          >
+            <div className="absolute top-4 right-4 w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(239,68,68,0.2)' }}>
+              <X className="w-4 h-4" style={{ color: '#ef4444' }} strokeWidth={2.5} />
+            </div>
+            <div
+              className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 mb-4"
+              style={{ background: 'rgba(255,255,255,0.05)' }}
+            >
+              <ProblemIcon className="w-6 h-6" style={{ color: 'rgba(255,255,255,0.4)' }} />
+            </div>
+            <h3 className="font-semibold text-xl mb-2" style={{ color: 'rgba(255,255,255,0.75)' }}>
+              {currentRow.problem.title}
+            </h3>
+            <p className="text-base leading-relaxed" style={{ color: 'rgba(255,255,255,0.55)' }}>
+              {currentRow.problem.text}
+            </p>
+          </div>
+
+          <div className="flex items-center justify-center flex-shrink-0" style={{ color: 'rgba(255,255,255,0.25)' }}>
+            <ArrowRight className="w-8 h-8" strokeWidth={2} />
+          </div>
+
+          <div
+            className="comparison-card relative"
+            style={{
+              background: 'rgba(79,140,255,0.08)',
+              border: '1px solid rgba(79,140,255,0.25)',
+              boxShadow: '0 0 40px rgba(79,140,255,0.15)',
+              transform: 'translateX(0)',
+              opacity: 1,
+              transition: 'all 0.5s cubic-bezier(0.16, 1, 0.3, 1)',
+            }}
+            key={`solution-${activeSlide}`}
+          >
+            <div className="absolute top-4 right-4 w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(34,197,94,0.2)' }}>
+              <Check className="w-4 h-4" style={{ color: '#22c55e' }} strokeWidth={2.5} />
+            </div>
+            <div
+              className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 mb-4"
+              style={{ background: 'rgba(79,140,255,0.2)' }}
+            >
+              <SolutionIcon className="w-6 h-6" style={{ color: '#4F8CFF' }} />
+            </div>
+            <h3 className="font-semibold text-xl mb-2" style={{ color: 'rgba(255,255,255,0.95)' }}>
+              {currentRow.solution.title}
+            </h3>
+            <p className="text-base leading-relaxed" style={{ color: 'rgba(255,255,255,0.75)' }}>
+              {currentRow.solution.text}
+            </p>
+          </div>
+        </div>
+
+        {/* Auto-play indicator */}
+        <div className="flex justify-center mt-8">
+          <div className="relative" style={{ width: 120, height: 4, background: 'rgba(255,255,255,0.1)', borderRadius: 2 }}>
+            {isAutoPlaying && (
+              <div
+                className="progress-bar"
+                style={{
+                  width: '100%',
+                  animation: 'progressFill 4s linear infinite',
+                }}
+              />
+            )}
+          </div>
         </div>
       </div>
     </section>

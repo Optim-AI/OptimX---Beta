@@ -77,13 +77,13 @@ const HEARD_FROM_OPTIONS = [
   "Other"
 ];
 
-/* ---------- Color tokens used by the background/orbs ---------- */
+/* ---------- Color tokens - Dark Theme ---------- */
 const colors = {
-  background: "hsl(212 55% 96%)",
-  primary: "hsl(213 90% 56%)",
-  primaryGlow: "hsl(205 95% 60%)",
+  background: "#121212",
+  primary: "hsl(213 100% 55%)",
+  primaryGlow: "hsl(213 100% 65%)",
   gradientMesh:
-    "radial-gradient(closest-side at 20% 10%, rgba(99,102,241,0.08), transparent 20%), radial-gradient(closest-side at 80% 90%, rgba(14,165,233,0.06), transparent 18%)",
+    "radial-gradient(at 40% 20%, hsl(213 100% 50% / 0.12) 0px, transparent 50%), radial-gradient(at 80% 0%, hsl(240 100% 50% / 0.08) 0px, transparent 50%), radial-gradient(at 0% 50%, hsl(213 100% 60% / 0.06) 0px, transparent 50%)",
 };
 
 function withAlpha(token: string, alpha: number) {
@@ -148,9 +148,8 @@ export default function OnboardingInfoPage(): JSX.Element {
   const orbInnerRef = useRef<HTMLDivElement | null>(null);
   const cardRef = useRef<HTMLDivElement | null>(null);
 
-  const BLACK = "#000000";
-  const COLOR_A = "#3b82f6";
-  const COLOR_B = "#0ea5e9";
+  const COLOR_PRIMARY = "#0088ff";
+  const COLOR_SECONDARY = "#0ea5e9";
 
   // Load user + profile
   useEffect(() => {
@@ -283,7 +282,7 @@ export default function OnboardingInfoPage(): JSX.Element {
 
       const result = await profileClient.upsert(payload);
       if (!result.success) throw new Error(result.error || "Profile update failed");
-      router.push("/integrationsbeta");
+      router.push("/creative-studio");
     } catch (e: any) {
       setError(e?.message ?? String(e));
     } finally {
@@ -339,7 +338,7 @@ export default function OnboardingInfoPage(): JSX.Element {
   }, []); // refs are stable, empty deps are fine
 
 
-  if (loading) return <div style={{ padding: 24 }}>Loading…</div>;
+  if (loading) return <div style={{ padding: 24, background: "#121212", minHeight: "100vh", color: "hsl(0 0% 95%)" }}>Loading…</div>;
 
   return (
     <div
@@ -457,11 +456,12 @@ export default function OnboardingInfoPage(): JSX.Element {
             maxWidth: 980,
             borderRadius: 24,
             padding: 36,
-            boxShadow: "0 28px 90px rgba(8,32,80,0.12)",
+            boxShadow: "0 28px 90px rgba(0,0,0,0.4)",
             overflow: "hidden",
             background:
-              "linear-gradient(180deg, rgba(255,255,255,0.92), rgba(255,255,255,0.80))",
+              "linear-gradient(145deg, hsl(0 0% 16%) 0%, hsl(0 0% 12%) 100%)",
             backdropFilter: "saturate(140%) blur(10px)",
+            border: "1px solid rgba(255, 255, 255, 0.08)",
             position: "relative",
             zIndex: 2,
             transform: "translateZ(0)",
@@ -480,18 +480,21 @@ export default function OnboardingInfoPage(): JSX.Element {
               height: 36,
               width: 36,
               borderRadius: 10,
-              border: "none",
+              border: "1px solid rgba(255,255,255,0.1)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              background: "rgba(255,255,255,0.6)",
-              boxShadow: "0 6px 20px rgba(8,32,80,0.06)",
+              background: "rgba(255,255,255,0.05)",
+              boxShadow: "0 6px 20px rgba(0,0,0,0.2)",
               cursor: "pointer",
               padding: 6,
+              transition: "background 0.2s ease",
             }}
+            onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.1)")}
+            onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.05)")}
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
-              <path d="M15 19l-7-7 7-7" stroke="#0f172a" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M15 19l-7-7 7-7" stroke="hsl(0 0% 95%)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           </button>
 
@@ -594,7 +597,7 @@ export default function OnboardingInfoPage(): JSX.Element {
                 maxWidth: 720,
                 height: 12,
                 margin: "0 auto 16px",
-                background: "#f1f5f9",
+                background: "hsl(0 0% 20%)",
                 borderRadius: 12,
                 overflow: "hidden",
                 position: "relative",
@@ -604,7 +607,7 @@ export default function OnboardingInfoPage(): JSX.Element {
                 style={{
                   height: "100%",
                   width: `${progressPercent}%`,
-                  background: `linear-gradient(90deg,${COLOR_A},${COLOR_B})`,
+                  background: `linear-gradient(90deg,${COLOR_PRIMARY},${COLOR_SECONDARY})`,
                   borderRadius: 12,
                   transition: "width 0.4s ease",
                   position: "relative",
@@ -636,13 +639,13 @@ export default function OnboardingInfoPage(): JSX.Element {
               />
 
               {/* SkalX AI brand title */}
-              <div style={{ fontSize: 24, fontWeight: 800, color: "#0f172a", lineHeight: 1 }}>
+              <div style={{ fontSize: 24, fontWeight: 800, color: "hsl(0 0% 95%)", lineHeight: 1 }}>
                 <span>SkalX AI</span>
               </div>
 
               {/* This line now uses firstName derived like welcome.tsx */}
-              <div style={{ fontSize: 18, color: "#111827", fontWeight: 600 }}>
-                Hello <span style={{ color: COLOR_B }}>{firstName}</span> — Let’s get to know your business
+              <div style={{ fontSize: 18, color: "hsl(0 0% 85%)", fontWeight: 600 }}>
+                Hello <span style={{ color: COLOR_SECONDARY }}>{firstName}</span> — Let's get to know your business
               </div>
             </div>
 
@@ -680,11 +683,11 @@ export default function OnboardingInfoPage(): JSX.Element {
                     <div
                       style={{
                         width: "80%",
-                        border: "2px dashed rgba(229,231,235,0.9)",
+                        border: "2px dashed rgba(255,255,255,0.15)",
                         borderRadius: 16,
                         padding: 24,
                         textAlign: "center",
-                        background: "linear-gradient(180deg, rgba(250,250,250,0.7), rgba(255,255,255,0.45))",
+                        background: "rgba(255,255,255,0.03)",
                         transition: "transform 180ms ease",
                       }}
                     >
@@ -699,14 +702,14 @@ export default function OnboardingInfoPage(): JSX.Element {
                           }}
                         />
                       ) : (
-                        <div style={{ color: "#6b7280", marginBottom: 12 }}>
+                        <div style={{ color: "hsl(0 0% 65%)", marginBottom: 12 }}>
                           Upload your logo
                         </div>
                       )}
                       <label
                         style={{
                           display: "inline-block",
-                          background: BLACK,
+                          background: "linear-gradient(180deg, #0088ff, #0073e6)",
                           color: "white",
                           borderRadius: 8,
                           padding: "10px 22px",
@@ -760,7 +763,7 @@ export default function OnboardingInfoPage(): JSX.Element {
               {/* Step 2 */}
               {step === 2 && (
                 <div>
-                  <h2 style={{ textAlign: "center", fontWeight: 600, marginBottom: 24, fontSize: 20 }}>
+                  <h2 style={{ textAlign: "center", fontWeight: 600, marginBottom: 24, fontSize: 20, color: "hsl(0 0% 95%)" }}>
                     Choose your Industry
                   </h2>
                   <div
@@ -779,14 +782,15 @@ export default function OnboardingInfoPage(): JSX.Element {
                           borderRadius: 12,
                           border:
                             businessType === bt
-                              ? `2px solid ${BLACK}`
-                              : "1px solid #e5e7eb",
+                              ? `2px solid ${COLOR_PRIMARY}`
+                              : "1px solid hsl(0 0% 22%)",
                           background:
-                            businessType === bt ? "rgba(0,0,0,0.03)" : "white",
+                            businessType === bt ? "rgba(0,136,255,0.1)" : "hsl(0 0% 18%)",
+                          color: businessType === bt ? "hsl(0 0% 95%)" : "hsl(0 0% 85%)",
                           cursor: "pointer",
                           fontWeight: 500,
                           transition: "transform 160ms ease, box-shadow 160ms ease",
-                          boxShadow: businessType === bt ? "0 6px 30px rgba(16,24,40,0.06)" : "none",
+                          boxShadow: businessType === bt ? "0 6px 30px rgba(0,136,255,0.2)" : "none",
                         }}
                       >
                         {bt}
@@ -804,7 +808,7 @@ export default function OnboardingInfoPage(): JSX.Element {
               {/* Step 3 */}
               {step === 3 && (
                 <div>
-                  <h2 style={{ textAlign: "center", fontWeight: 600, marginBottom: 24, fontSize: 20 }}>
+                  <h2 style={{ textAlign: "center", fontWeight: 600, marginBottom: 24, fontSize: 20, color: "hsl(0 0% 95%)" }}>
                     What is your core use case?
                   </h2>
                   <div
@@ -829,11 +833,12 @@ export default function OnboardingInfoPage(): JSX.Element {
                           padding: 12,
                           height: 64,
                           border: useCase.includes(opt)
-                            ? `2px solid ${BLACK}`
-                            : "1px solid #e5e7eb",
+                            ? `2px solid ${COLOR_PRIMARY}`
+                            : "1px solid hsl(0 0% 22%)",
                           background: useCase.includes(opt)
-                            ? "rgba(0,0,0,0.03)"
-                            : "white",
+                            ? "rgba(0,136,255,0.1)"
+                            : "hsl(0 0% 18%)",
+                          color: useCase.includes(opt) ? "hsl(0 0% 95%)" : "hsl(0 0% 85%)",
                           cursor: "pointer",
                           transition: "transform 140ms ease",
                           transform: useCase.includes(opt) ? "translateY(-4px)" : "",
@@ -854,7 +859,7 @@ export default function OnboardingInfoPage(): JSX.Element {
               {/* Step 4 */}
               {step === 4 && (
                 <div>
-                  <h2 style={{ textAlign: "center", fontWeight: 600, marginBottom: 24, fontSize: 20 }}>
+                  <h2 style={{ textAlign: "center", fontWeight: 600, marginBottom: 24, fontSize: 20, color: "hsl(0 0% 95%)" }}>
                     Choose the size of your business
                   </h2>
                   <div
@@ -874,10 +879,11 @@ export default function OnboardingInfoPage(): JSX.Element {
                           borderRadius: 12,
                           border:
                             businessSize === sz
-                              ? `2px solid ${BLACK}`
-                              : "1px solid #e5e7eb",
+                              ? `2px solid ${COLOR_PRIMARY}`
+                              : "1px solid hsl(0 0% 22%)",
                           background:
-                            businessSize === sz ? "rgba(0,0,0,0.03)" : "white",
+                            businessSize === sz ? "rgba(0,136,255,0.1)" : "hsl(0 0% 18%)",
+                          color: businessSize === sz ? "hsl(0 0% 95%)" : "hsl(0 0% 85%)",
                           cursor: "pointer",
                           transition: "transform 140ms ease",
                           transform: businessSize === sz ? "translateY(-4px)" : "",
@@ -905,7 +911,7 @@ export default function OnboardingInfoPage(): JSX.Element {
               )}
 
               {error && (
-                <div style={{ color: "red", marginTop: 16, textAlign: "center" }}>
+                <div style={{ color: "#ef4444", marginTop: 16, textAlign: "center" }}>
                   {error}
                 </div>
               )}
@@ -991,15 +997,17 @@ const inputStyle: React.CSSProperties = {
   height: 48,
   width: "80%",
   borderRadius: 12,
-  border: "1px solid #e5e7eb",
+  border: "1px solid hsl(0 0% 22%)",
   padding: "0 16px",
   outline: "none",
-  transition: "box-shadow 160ms ease, transform 120ms ease",
+  transition: "box-shadow 160ms ease, transform 120ms ease, border-color 160ms ease",
   boxShadow: "inset 0 0 0 rgba(0,0,0,0)",
+  background: "hsl(0 0% 15%)",
+  color: "hsl(0 0% 95%)",
 };
 const buttonStyle: React.CSSProperties = {
   marginTop: 28,
-  background: "#000000",
+  background: "linear-gradient(180deg, #0088ff, #0073e6)",
   color: "white",
   border: "none",
   borderRadius: 12,
@@ -1008,4 +1016,5 @@ const buttonStyle: React.CSSProperties = {
   fontWeight: 600,
   cursor: "pointer",
   transition: "transform 160ms ease, box-shadow 160ms ease",
+  boxShadow: "0 10px 30px rgba(0, 136, 255, 0.3)",
 };
