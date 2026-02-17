@@ -1,5 +1,5 @@
 // lib/razorpay/client.ts
-// Razorpay SDK Client Singleton
+// Razorpay SDK Client Singleton — lazy init so build does not require keys.
 
 import Razorpay from 'razorpay';
 
@@ -21,7 +21,6 @@ export function isRazorpayConfigured(): boolean {
   if (!keyId || !keySecret) return false;
   const lower = `${keyId} ${keySecret}`.toLowerCase();
   if (PLACEHOLDER_MARKERS.some((m) => lower.includes(m))) return false;
-  // Real test keys start with rzp_test_, live with rzp_live_
   if (keyId.startsWith('rzp_test_') || keyId.startsWith('rzp_live_')) return true;
   return false;
 }
@@ -40,11 +39,21 @@ function createRazorpayClient(): Razorpay {
   });
 }
 
-export const razorpay = globalForRazorpay.razorpay ?? createRazorpayClient();
-
-if (process.env.NODE_ENV !== 'production') {
-  globalForRazorpay.razorpay = razorpay;
+function getRazorpayClient(): Razorpay {
+  if (globalForRazorpay.razorpay) return globalForRazorpay.razorpay;
+  const client = createRazorpayClient();
+  if (process.env.NODE_ENV !== 'production') {
+    globalForRazorpay.razorpay = client;
+  }
+  return client;
 }
+
+/** Lazy: only creates client when first used (avoids build failure when keys not set). */
+export const razorpay = new Proxy({} as Razorpay, {
+  get(_, prop) {
+    return (getRazorpayClient() as unknown as Record<string | symbol, unknown>)[prop];
+  },
+});
 
 export const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || '';
 export const RAZORPAY_WEBHOOK_SECRET = process.env.RAZORPAY_WEBHOOK_SECRET || '';

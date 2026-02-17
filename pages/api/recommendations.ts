@@ -1,12 +1,20 @@
 // pages/api/recommendations.ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
-const SUPABASE_URL = process.env.SUPABASE_URL!;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const NEXT_PUBLIC_BASE_URL = process.env.NEXT_PUBLIC_BASE_URL ?? "http://localhost:3000";
 
-const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+let _supabaseAdmin: SupabaseClient | null = null;
+function getSupabaseAdmin(): SupabaseClient {
+  if (_supabaseAdmin) return _supabaseAdmin;
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) {
+    throw new Error("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set for recommendations API");
+  }
+  _supabaseAdmin = createClient(url, key);
+  return _supabaseAdmin;
+}
 
 // ------------------------------
 // Types
@@ -182,7 +190,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const token = auth.split(" ")[1];
 
     // Get user from Supabase
-    const { data: userData, error: userErr } = await supabaseAdmin.auth.getUser(token);
+    const { data: userData, error: userErr } = await getSupabaseAdmin().auth.getUser(token);
     if (userErr || !userData?.user) {
       return res.status(401).json({ ok: false, error: "Invalid token" });
     }
@@ -191,7 +199,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const userId = user.id;
 
     // Get campaigns (user-specific)
-    const { data: campaignsData } = await supabaseAdmin
+    const { data: campaignsData } = await getSupabaseAdmin()
       .from("campaigns")
       .select("*")
       .eq("user_id", userId)
@@ -246,7 +254,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }));
 
     if (insertPayload.length > 0) {
-      await supabaseAdmin.from("recommendations").insert(insertPayload);
+      await getSupabaseAdmin().from("recommendations").insert(insertPayload);
     }
 
     // Send small response to avoid 4MB limit

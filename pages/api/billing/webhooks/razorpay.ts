@@ -1,6 +1,6 @@
 // pages/api/billing/webhooks/razorpay.ts
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { WebhookService } from '@/lib/razorpay';
+import { WebhookService, RAZORPAY_WEBHOOK_SECRET } from '@/lib/razorpay';
 
 // Disable body parsing - we need the raw body for signature verification
 export const config = {
@@ -16,6 +16,12 @@ export const config = {
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  // In production, refuse to process webhooks if secret is not set (avoid accepting unsigned)
+  if (process.env.NODE_ENV === 'production' && (!RAZORPAY_WEBHOOK_SECRET || !RAZORPAY_WEBHOOK_SECRET.trim())) {
+    console.error('Razorpay webhook: RAZORPAY_WEBHOOK_SECRET not set in production');
+    return res.status(503).json({ error: 'Webhook not configured' });
   }
 
   try {

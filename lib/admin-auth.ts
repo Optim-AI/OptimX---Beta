@@ -1,9 +1,26 @@
 // lib/admin-auth.ts
 // Simple admin authentication using environment variables
 
+function getAdminCredentials() {
+  const username = process.env.ADMIN_USERNAME || 'admin';
+  const password = process.env.ADMIN_PASSWORD;
+  // In production, require explicit ADMIN_PASSWORD to avoid default credentials
+  if (process.env.NODE_ENV === 'production' && (!password || password === 'admin123')) {
+    throw new Error('ADMIN_PASSWORD must be set to a secure value in production');
+  }
+  return {
+    username,
+    password: password || 'admin123',
+  };
+}
+
 export const ADMIN_CREDENTIALS = {
-  username: process.env.ADMIN_USERNAME || 'admin',
-  password: process.env.ADMIN_PASSWORD || 'admin123', // Change this in production!
+  get username() {
+    return getAdminCredentials().username;
+  },
+  get password() {
+    return getAdminCredentials().password;
+  },
 };
 
 /**
