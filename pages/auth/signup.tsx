@@ -224,16 +224,11 @@ export default function SignUpPage(): React.ReactElement {
   return (
     <>
       <style jsx global>{`
-        :root { --optim-blue: #0088FF; --border: #C2C2C2; --link-color:#0a66ff; --muted:#6F6F6F; }
+        :root { --optim-blue: hsl(213 100% 55%); --border: hsl(0 0% 22%); --link-color: hsl(213 100% 65%); --muted: hsl(0 0% 60%); }
         *{box-sizing:border-box}
         html,body,#__next{height:100%;margin:0}
         body{font-family:Poppins,Inter,system-ui;-webkit-font-smoothing:antialiased}
-        .page-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden}
-        .bg-shape{position:absolute;border-radius:9999px;pointer-events:none;filter:blur(120px);opacity:.95;z-index:0}
-        .bg-shape.left{width:520px;height:520px;left:-140px;top:-80px}
-        .bg-shape.mid{width:380px;height:380px;left:420px;top:120px}
-        .bg-shape.right{width:600px;height:600px;right:-160px;bottom:-60px}
-        .mesh-gradient{mix-blend-mode:overlay}
+        .page-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;background-color:#121212}
         .animation-float{ animation: float 8s ease-in-out infinite; transform-origin:center; }
         @keyframes float {
           0% { transform: translateY(0) translateX(0) scale(1); opacity: .9; }
@@ -241,15 +236,15 @@ export default function SignUpPage(): React.ReactElement {
           100% { transform: translateY(0) translateX(0) scale(1); opacity: .9; }
         }
 
-        /* CARD + LAYOUT - match SignIn adjustments */
         .auth-card{
           z-index:3;
-          width:480px;
-          border-radius:18px;
-          backdrop-filter:blur(6px);
-          padding:20px;
-          box-shadow:0 20px 80px rgba(2,6,23,.12);
-          border:1px solid rgba(226,232,240,.6);
+          width:500px;
+          border-radius:20px;
+          backdrop-filter:blur(20px);
+          -webkit-backdrop-filter:blur(20px);
+          padding:24px;
+          box-shadow:0 1px 2px hsl(0 0% 0% / 0.04), 0 4px 12px hsl(0 0% 0% / 0.04), 0 12px 40px hsl(0 0% 0% / 0.06);
+          border:1px solid rgba(255, 255, 255, 0.08);
           display:flex;
           flex-direction:column;
           align-items:center;
@@ -259,27 +254,28 @@ export default function SignUpPage(): React.ReactElement {
         .card-bg{ position:absolute; inset:0; pointer-events:none; z-index:0; }
         .auth-content{ position:relative; z-index:2; width:100%; display:flex; flex-direction:column;align-items:center }
 
-        .brand-badge{width:64px;height:64px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:linear-gradient(180deg,#36A7FF,#0F62FF);box-shadow:0 0 9.65px rgba(188,215,255,.24)}
-        .brand-title{margin-top:8px;font-weight:700;font-size:32px;line-height:40px;color:#1E1E1E;text-align:center}
-        .brand-sub{margin-top:4px;color:#5f6b73;font-weight:500;font-size:13px;text-align:center;margin-bottom:12px}
+        .brand-badge{width:64px;height:64px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg, hsl(213 100% 55%) 0%, hsl(213 100% 65%) 100%);box-shadow:0 0 24px hsl(213 100% 55% / 0.2)}
+        .brand-title{margin-top:8px;font-weight:700;font-size:32px;line-height:40px;color:hsl(0 0% 95%);text-align:center}
+        .brand-sub{margin-top:4px;color:hsl(0 0% 60%);font-weight:500;font-size:13px;text-align:center;margin-bottom:12px}
 
         .oauth-row{margin-top:28px;width:100%;display:grid;grid-template-columns:1fr 1fr;gap:10px}
-        .oauth-btn{display:flex;align-items:center;justify-content:flex-start;gap:12px;background:#fff;border:1px solid var(--border);border-radius:12px;padding:10px 12px;cursor:pointer;font-weight:600;height:44px;width:100%}
+        .oauth-btn{display:flex;align-items:center;justify-content:flex-start;gap:12px;background:hsl(0 0% 15%);border:1px solid var(--border);border-radius:12px;padding:10px 12px;cursor:pointer;font-weight:600;height:44px;width:100%;color:hsl(0 0% 95%)}
         .oauth-btn img, .oauth-btn svg{flex:0 0 20px;height:20px;width:20px}
 
         .form{margin-top:12px;width:100%;display:flex;flex-direction:column;gap:10px}
-        label{font-size:12px;font-weight:500;color:#1E1E1E;margin-bottom:6px;display:block}
-        .input{height:44px;border-radius:10px;border:1px solid var(--border);padding:10px 12px;font-size:15px;background:#fff;width:100%;display:block}
+        label{font-size:12px;font-weight:500;color:hsl(0 0% 95%);margin-bottom:6px;display:block}
+        .input{height:44px;border-radius:10px;border:1px solid var(--border);padding:10px 12px;font-size:15px;background:hsl(0 0% 15%);color:hsl(0 0% 95%);width:100%;display:block}
+        .input::placeholder{color:hsl(0 0% 50%)}
         .pw-wrap{position:relative;width:100%}
         .pw-toggle{position:absolute;right:12px;top:10px;height:28px;width:36px;border:none;background:transparent;cursor:pointer}
-        .cta{margin-top:6px;height:44px;border-radius:12px;background:var(--optim-blue);color:white;display:flex;align-items:center;justify-content:center;font-weight:800;border:none;font-size:15px;width:100%}
-        .policy{font-size:12px;text-align:center;color:#7E7E7E;margin-top:10px}
+        .cta{margin-top:6px;height:44px;border-radius:12px;background:linear-gradient(135deg, hsl(213 100% 55%) 0%, hsl(213 100% 65%) 100%);color:white;display:flex;align-items:center;justify-content:center;font-weight:800;border:none;font-size:15px;width:100%;box-shadow:0 0 24px hsl(213 100% 55% / 0.2)}
+        .policy{font-size:12px;text-align:center;color:var(--muted);margin-top:10px}
         .policy a{color:var(--link-color);text-decoration:underline;font-weight:600}
         .msg{margin-top:8px;font-size:13px;text-align:center}
 
         .helper-row{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:8px}
         .helper-row a{font-size:13px;color:var(--link-color);text-decoration:none;font-weight:600}
-        .helper-row a.secondary{color:#6f6f6f;font-weight:600;text-decoration:underline}
+        .helper-row a.secondary{color:var(--muted);font-weight:600;text-decoration:underline}
 
         @media (max-width:820px){
           .auth-card{width:calc(100% - 40px);padding:16px;border-radius:14px}
@@ -288,122 +284,17 @@ export default function SignUpPage(): React.ReactElement {
         }
       `}</style>
 
-      <div className="page-wrap" role="region" aria-label="Sign up page">
-        <div
-          className="absolute inset-0"
-          style={{
-            backgroundImage: `linear-gradient(135deg, ${(colors as any)?.background ?? '#ffffff'} 0%, ${withAlpha((colors as any)?.primary ?? 'hsl(213 90% 96%)', 0.3)} 50%, ${(colors as any)?.background ?? '#ffffff'} 100%)`,
-            zIndex: 0,
-          }}
-        />
-        <div
-          className="absolute inset-0 mesh-gradient"
-          style={{
-            background: (colors as any)?.gradientMesh ?? 'linear-gradient(180deg,#f0f8ff00,#ffffff00)',
-            opacity: 0.4,
-            zIndex: 0,
-          }}
-        />
-
-        <div
-          className="absolute top-20 left-10 w-72 h-72 rounded-full blur-3xl animation-float"
-          style={{ backgroundColor: withAlpha((colors as any)?.primary ?? 'hsl(213 90% 50%)', 0.3), zIndex: 0 }}
-        />
-        <div
-          className="absolute bottom-20 right-10 w-96 h-96 rounded-full blur-3xl animation-float"
-          style={{
-            backgroundColor: withAlpha((colors as any)?.primary ?? 'hsl(213 90% 50%)', 0.2),
-            animationDelay: '2s',
-            zIndex: 0,
-          }}
-        />
-        <div
-          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full blur-3xl animation-float"
-          style={{
-            backgroundImage: `linear-gradient(90deg, ${withAlpha((colors as any)?.primary ?? 'hsl(213 90% 50%)', 0.1)} 0%, ${withAlpha(((colors as any)?.primaryGlow ?? (colors as any)?.primary) ?? 'hsl(213 90% 50%)', 0.08)} 100%)`,
-            animationDelay: '4s',
-            zIndex: 0,
-          }}
-        />
-
+      <div className="page-wrap" role="region" aria-label="Sign up page" style={{ backgroundColor: colors.background }}>
         <main
           className="auth-card"
           role="main"
           aria-labelledby="signup-title"
           style={{
-            background:
-              ((colors as any)?.gradientCard
-                ? (colors as any)?.gradientCard
-                : `linear-gradient(180deg, ${withAlpha((colors as any)?.background ?? '#ffffff', 0.12)}, ${withAlpha((colors as any)?.primary ?? 'hsl(213 90% 96%)', 0.04)})`),
+            background: `linear-gradient(135deg, ${withAlpha(colors.card, 0.85)} 0%, ${withAlpha(colors.card, 0.92)} 100%)`,
+            border: "1px solid rgba(97, 97, 97, 1)",
           }}
         >
-          <div className="card-bg" aria-hidden>
-            <div
-              style={{
-                position: 'absolute',
-                inset: 0,
-                zIndex: 0,
-                opacity: 1,
-                pointerEvents: 'none',
-                overflow: 'hidden',
-              }}
-            >
-              <div
-                style={{
-                  position: 'absolute',
-                  inset: 0,
-                  background: (colors as any)?.gradientMesh ?? 'linear-gradient(180deg,#f0f8ff00,#ffffff00)',
-                  mixBlendMode: 'overlay',
-                  opacity: 0.5,
-                }}
-              />
-              <div
-                style={{
-                  position: 'absolute',
-                  top: 12,
-                  left: 12,
-                  width: 220,
-                  height: 220,
-                  borderRadius: 9999,
-                  filter: 'blur(84px)',
-                  transformOrigin: 'center',
-                  animation: 'float 8s ease-in-out infinite',
-                  backgroundColor: withAlpha((colors as any)?.primary ?? 'hsl(213 90% 50%)', 0.28),
-                }}
-              />
-              <div
-                style={{
-                  position: 'absolute',
-                  bottom: 10,
-                  right: 20,
-                  width: 300,
-                  height: 300,
-                  borderRadius: 9999,
-                  filter: 'blur(84px)',
-                  transformOrigin: 'center',
-                  animation: 'float 8s ease-in-out infinite',
-                  animationDelay: '2s',
-                  backgroundColor: withAlpha((colors as any)?.primary ?? 'hsl(213 90% 50%)', 0.18),
-                }}
-              />
-              <div
-                style={{
-                  position: 'absolute',
-                  top: '50%',
-                  left: '50%',
-                  width: 420,
-                  height: 420,
-                  borderRadius: 9999,
-                  transform: 'translate(-50%,-50%)',
-                  filter: 'blur(84px)',
-                  transformOrigin: 'center',
-                  animation: 'float 8s ease-in-out infinite',
-                  animationDelay: '4s',
-                  backgroundImage: `linear-gradient(90deg, ${withAlpha((colors as any)?.primary ?? 'hsl(213 90% 50%)', 0.1)} 0%, ${withAlpha(((colors as any)?.primaryGlow ?? (colors as any)?.primary) ?? 'hsl(213 90% 50%)', 0.06)} 100%)`,
-                }}
-              />
-            </div>
-          </div>
+          <div className="card-bg" aria-hidden />
 
           <div className="auth-content" role="region" aria-label="Sign up form">
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
@@ -447,9 +338,9 @@ export default function SignUpPage(): React.ReactElement {
             </div>
 
             <div style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, marginTop: 32 }}>
-              <div style={{ flex: 1, height: 1, background: '#E6E6E6' }} />
-              <div style={{ color: '#9aa0a6', fontSize: 13 }}>Or sign up with email</div>
-              <div style={{ flex: 1, height: 1, background: '#E6E6E6' }} />
+              <div style={{ flex: 1, height: 1, background: colors.border }} />
+              <div style={{ color: colors.mutedForeground, fontSize: 13 }}>Or sign up with email</div>
+              <div style={{ flex: 1, height: 1, background: colors.border }} />
             </div>
 
             <form className="form" aria-labelledby="signup-title" onSubmit={handleSignUp}>
@@ -479,8 +370,8 @@ export default function SignUpPage(): React.ReactElement {
               </div>
 
               <div className="helper-row" style={{ marginTop: 6 }}>
-                <a href="/signin" onClick={(e) => { e.preventDefault(); router.push('/signin'); }}>Already have an account? Sign in</a>
-                <a href="/help" className="secondary" onClick={(e) => { e.preventDefault(); router.push('/help'); }}>Need help?</a>
+                <a href="/auth/signin" onClick={(e) => { e.preventDefault(); router.push('/auth/signin'); }}>Already have an account? Sign in</a>
+                <a href="/help-center" className="secondary" onClick={(e) => { e.preventDefault(); router.push('/help-center'); }}>Need help?</a>
               </div>
 
               {error && <div className="msg" style={{ color: '#d9534f' }}>{error}</div>}
@@ -493,7 +384,7 @@ export default function SignUpPage(): React.ReactElement {
               <button className="cta" type="submit" disabled={loading}>{loading ? 'Creating...' : 'Create account'}</button>
             </form>
 
-            <div style={{ marginTop: 12, fontSize: 13, color: '#8b8b8b' }}>© {new Date().getFullYear()} SkalX AI</div>
+            <div style={{ marginTop: 12, fontSize: 13, color: colors.mutedForeground }}>© {new Date().getFullYear()} SkalX AI</div>
           </div>
         </main>
       </div>

@@ -2056,7 +2056,7 @@ const showAcknowledgement =
   // const showAcknowledgement = typeof credits === "number" && credits <= 0;
 
   return (
-    <div className="min-h-screen flex bg-slate-50">
+    <div className="min-h-screen flex app-page">
       {/* Left: canonical Sidebar (we portal chats into it) */}
       <Sidebar
         logoUrl={"/brand/logo.png"}

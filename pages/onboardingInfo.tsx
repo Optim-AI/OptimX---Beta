@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { supabase } from '@/auth/supabase/client';
 import { profileClient } from '@/database/client-helpers';
 import { storageClient } from '@/lib/storage/client';
+import designColors from '@/lib/ui/colors';
 import type { JSX } from "react"; 
 
 type ProfileRow = {
@@ -77,13 +78,15 @@ const HEARD_FROM_OPTIONS = [
   "Other"
 ];
 
-/* ---------- Color tokens used by the background/orbs ---------- */
 const colors = {
-  background: "hsl(212 55% 96%)",
-  primary: "hsl(213 90% 56%)",
-  primaryGlow: "hsl(205 95% 60%)",
-  gradientMesh:
-    "radial-gradient(closest-side at 20% 10%, rgba(99,102,241,0.08), transparent 20%), radial-gradient(closest-side at 80% 90%, rgba(14,165,233,0.06), transparent 18%)",
+  background: designColors.background,
+  primary: designColors.primary,
+  primaryGlow: designColors.primaryGlow ?? designColors.primary,
+  gradientMesh: designColors.gradientMesh,
+  card: designColors.card,
+  foreground: designColors.foreground,
+  mutedForeground: designColors.mutedForeground,
+  border: designColors.border,
 };
 
 function withAlpha(token: string, alpha: number) {
@@ -148,9 +151,6 @@ export default function OnboardingInfoPage(): JSX.Element {
   const orbInnerRef = useRef<HTMLDivElement | null>(null);
   const cardRef = useRef<HTMLDivElement | null>(null);
 
-  const BLACK = "#000000";
-  const COLOR_A = "#3b82f6";
-  const COLOR_B = "#0ea5e9";
 
   // Load user + profile
   useEffect(() => {
@@ -339,11 +339,12 @@ export default function OnboardingInfoPage(): JSX.Element {
   }, []); // refs are stable, empty deps are fine
 
 
-  if (loading) return <div style={{ padding: 24 }}>Loading…</div>;
+  if (loading) return <div className="app-page" style={{ padding: 24, minHeight: '100vh', color: colors.foreground }}>Loading…</div>;
 
   return (
     <div
       ref={containerRef}
+      className="app-page"
       style={{ minHeight: "100vh", position: "relative", overflow: "hidden" }}
     >
       {/* Background Layers */}
@@ -457,11 +458,11 @@ export default function OnboardingInfoPage(): JSX.Element {
             maxWidth: 980,
             borderRadius: 24,
             padding: 36,
-            boxShadow: "0 28px 90px rgba(8,32,80,0.12)",
+            boxShadow: "0 1px 2px hsl(0 0% 0% / 0.04), 0 4px 12px hsl(0 0% 0% / 0.04), 0 12px 40px hsl(0 0% 0% / 0.06)",
             overflow: "hidden",
-            background:
-              "linear-gradient(180deg, rgba(255,255,255,0.92), rgba(255,255,255,0.80))",
-            backdropFilter: "saturate(140%) blur(10px)",
+            background: `linear-gradient(135deg, ${withAlpha(colors.card, 0.9)} 0%, ${withAlpha(colors.card, 0.95)} 100%)`,
+            border: `1px solid ${colors.border}`,
+            backdropFilter: "blur(20px)",
             position: "relative",
             zIndex: 2,
             transform: "translateZ(0)",
@@ -484,14 +485,14 @@ export default function OnboardingInfoPage(): JSX.Element {
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              background: "rgba(255,255,255,0.6)",
-              boxShadow: "0 6px 20px rgba(8,32,80,0.06)",
+              background: colors.muted,
+              boxShadow: "0 4px 12px hsl(0 0% 0% / 0.2)",
               cursor: "pointer",
               padding: 6,
             }}
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
-              <path d="M15 19l-7-7 7-7" stroke="#0f172a" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M15 19l-7-7 7-7" stroke={colors.foreground} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           </button>
 
@@ -594,7 +595,7 @@ export default function OnboardingInfoPage(): JSX.Element {
                 maxWidth: 720,
                 height: 12,
                 margin: "0 auto 16px",
-                background: "#f1f5f9",
+                background: colors.muted,
                 borderRadius: 12,
                 overflow: "hidden",
                 position: "relative",
@@ -604,7 +605,7 @@ export default function OnboardingInfoPage(): JSX.Element {
                 style={{
                   height: "100%",
                   width: `${progressPercent}%`,
-                  background: `linear-gradient(90deg,${COLOR_A},${COLOR_B})`,
+                  background: `linear-gradient(135deg, ${colors.primary} 0%, ${colors.primaryGlow} 100%)`,
                   borderRadius: 12,
                   transition: "width 0.4s ease",
                   position: "relative",
@@ -636,7 +637,7 @@ export default function OnboardingInfoPage(): JSX.Element {
               />
 
               {/* SkalX AI brand title */}
-              <div style={{ fontSize: 24, fontWeight: 800, color: "#0f172a", lineHeight: 1 }}>
+              <div style={{ fontSize: 24, fontWeight: 800, color: colors.foreground, lineHeight: 1 }}>
                 <span>SkalX AI</span>
               </div>
 
@@ -680,11 +681,11 @@ export default function OnboardingInfoPage(): JSX.Element {
                     <div
                       style={{
                         width: "80%",
-                        border: "2px dashed rgba(229,231,235,0.9)",
+                        border: `2px dashed ${colors.border}`,
                         borderRadius: 16,
                         padding: 24,
                         textAlign: "center",
-                        background: "linear-gradient(180deg, rgba(250,250,250,0.7), rgba(255,255,255,0.45))",
+                        background: colors.muted,
                         transition: "transform 180ms ease",
                       }}
                     >
@@ -699,14 +700,14 @@ export default function OnboardingInfoPage(): JSX.Element {
                           }}
                         />
                       ) : (
-                        <div style={{ color: "#6b7280", marginBottom: 12 }}>
+                        <div style={{ color: colors.mutedForeground, marginBottom: 12 }}>
                           Upload your logo
                         </div>
                       )}
                       <label
                         style={{
                           display: "inline-block",
-                          background: BLACK,
+                          background: colors.primary,
                           color: "white",
                           borderRadius: 8,
                           padding: "10px 22px",
@@ -760,7 +761,7 @@ export default function OnboardingInfoPage(): JSX.Element {
               {/* Step 2 */}
               {step === 2 && (
                 <div>
-                  <h2 style={{ textAlign: "center", fontWeight: 600, marginBottom: 24, fontSize: 20 }}>
+                  <h2 style={{ textAlign: "center", fontWeight: 600, marginBottom: 24, fontSize: 20, color: colors.foreground }}>
                     Choose your Industry
                   </h2>
                   <div
@@ -779,10 +780,11 @@ export default function OnboardingInfoPage(): JSX.Element {
                           borderRadius: 12,
                           border:
                             businessType === bt
-                              ? `2px solid ${BLACK}`
-                              : "1px solid #e5e7eb",
+                              ? `2px solid ${colors.primary}`
+                              : `1px solid ${colors.border}`,
                           background:
-                            businessType === bt ? "rgba(0,0,0,0.03)" : "white",
+                            businessType === bt ? withAlpha(colors.primary, 0.12) : colors.card,
+                          color: colors.foreground,
                           cursor: "pointer",
                           fontWeight: 500,
                           transition: "transform 160ms ease, box-shadow 160ms ease",
@@ -804,7 +806,7 @@ export default function OnboardingInfoPage(): JSX.Element {
               {/* Step 3 */}
               {step === 3 && (
                 <div>
-                  <h2 style={{ textAlign: "center", fontWeight: 600, marginBottom: 24, fontSize: 20 }}>
+                  <h2 style={{ textAlign: "center", fontWeight: 600, marginBottom: 24, fontSize: 20, color: colors.foreground }}>
                     What is your core use case?
                   </h2>
                   <div
@@ -829,12 +831,13 @@ export default function OnboardingInfoPage(): JSX.Element {
                           padding: 12,
                           height: 64,
                           border: useCase.includes(opt)
-                            ? `2px solid ${BLACK}`
-                            : "1px solid #e5e7eb",
+                            ? `2px solid ${colors.primary}`
+                            : `1px solid ${colors.border}`,
                           background: useCase.includes(opt)
-                            ? "rgba(0,0,0,0.03)"
-                            : "white",
+                            ? withAlpha(colors.primary, 0.12)
+                            : colors.card,
                           cursor: "pointer",
+                          color: colors.foreground,
                           transition: "transform 140ms ease",
                           transform: useCase.includes(opt) ? "translateY(-4px)" : "",
                         }}
@@ -854,7 +857,7 @@ export default function OnboardingInfoPage(): JSX.Element {
               {/* Step 4 */}
               {step === 4 && (
                 <div>
-                  <h2 style={{ textAlign: "center", fontWeight: 600, marginBottom: 24, fontSize: 20 }}>
+                  <h2 style={{ textAlign: "center", fontWeight: 600, marginBottom: 24, fontSize: 20, color: colors.foreground }}>
                     Choose the size of your business
                   </h2>
                   <div
@@ -874,11 +877,12 @@ export default function OnboardingInfoPage(): JSX.Element {
                           borderRadius: 12,
                           border:
                             businessSize === sz
-                              ? `2px solid ${BLACK}`
-                              : "1px solid #e5e7eb",
+                              ? `2px solid ${colors.primary}`
+                              : `1px solid ${colors.border}`,
                           background:
-                            businessSize === sz ? "rgba(0,0,0,0.03)" : "white",
+                            businessSize === sz ? withAlpha(colors.primary, 0.12) : colors.card,
                           cursor: "pointer",
+                          color: colors.foreground,
                           transition: "transform 140ms ease",
                           transform: businessSize === sz ? "translateY(-4px)" : "",
                         }}
@@ -991,7 +995,9 @@ const inputStyle: React.CSSProperties = {
   height: 48,
   width: "80%",
   borderRadius: 12,
-  border: "1px solid #e5e7eb",
+  border: `1px solid ${colors.border}`,
+  background: colors.card,
+  color: colors.foreground,
   padding: "0 16px",
   outline: "none",
   transition: "box-shadow 160ms ease, transform 120ms ease",
@@ -999,7 +1005,7 @@ const inputStyle: React.CSSProperties = {
 };
 const buttonStyle: React.CSSProperties = {
   marginTop: 28,
-  background: "#000000",
+  background: `linear-gradient(135deg, ${colors.primary} 0%, ${colors.primaryGlow} 100%)`,
   color: "white",
   border: "none",
   borderRadius: 12,
@@ -1007,5 +1013,6 @@ const buttonStyle: React.CSSProperties = {
   fontSize: 16,
   fontWeight: 600,
   cursor: "pointer",
+  boxShadow: "0 0 24px hsl(213 100% 55% / 0.2)",
   transition: "transform 160ms ease, box-shadow 160ms ease",
 };

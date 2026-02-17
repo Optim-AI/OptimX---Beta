@@ -57,13 +57,23 @@ const COMPARISON_ROWS = [
 const ComparisonSection: React.FC = () => {
   const sectionRef = useRef<HTMLElement | null>(null);
   const [activeSlide, setActiveSlide] = useState(0);
+  const [scrollProgress, setScrollProgress] = useState(0);
   const [isMobile, setIsMobile] = useState(false);
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
 
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 768);
     checkMobile();
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    setPrefersReducedMotion(mq.matches);
+    const handler = () => setPrefersReducedMotion(mq.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
   }, []);
 
   useEffect(() => {
@@ -94,6 +104,7 @@ const ComparisonSection: React.FC = () => {
         const progress = Math.max(0, Math.min(1, scrolled / scrollableDistance));
         const segment = Math.floor(progress * 4);
         const slideIndex = Math.min(segment, 3);
+        setScrollProgress(progress);
         setActiveSlide((prev) => (prev !== slideIndex ? slideIndex : prev));
       });
     };
@@ -193,18 +204,38 @@ const ComparisonSection: React.FC = () => {
           justify-content: center;
           padding: 0 1.5rem;
           overflow: hidden;
+          perspective: 1600px;
         }
-        .comparison-slide {
-          position: absolute;
-          inset: 0;
+        .comparison-cube-scene {
+          width: 100%;
+          max-width: 1100px;
+          height: 360px;
+          position: relative;
           display: flex;
           align-items: center;
           justify-content: center;
-          padding: 0 1.5rem;
-          pointer-events: none;
+          perspective-origin: 50% 50%;
+          overflow: hidden;
         }
-        .comparison-slide.active {
-          pointer-events: auto;
+        .comparison-cube {
+          position: relative;
+          width: 100%;
+          height: 100%;
+          transform-style: preserve-3d;
+          will-change: transform;
+        }
+        .comparison-cube-face {
+          position: absolute;
+          width: 100%;
+          height: 100%;
+          top: 0;
+          left: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          backface-visibility: hidden;
+          -webkit-backface-visibility: hidden;
+          transform-style: preserve-3d;
         }
         .comparison-slide-grid {
           display: grid;
@@ -217,17 +248,14 @@ const ComparisonSection: React.FC = () => {
         .comparison-card {
           padding: 28px;
           border-radius: 16px;
-          will-change: transform, opacity;
         }
         .comparison-glow {
           position: absolute;
           inset: 0;
           pointer-events: none;
-          opacity: 0;
-          transition: opacity 0.5s ease-out;
-        }
-        .comparison-slide.active .comparison-glow {
-          opacity: 1;
+          opacity: 0.15;
+          background: radial-gradient(ellipse 60% 40% at 50% 50%, rgba(79,140,255,0.2) 0%, transparent 70%);
+          filter: blur(80px);
         }
         .progress-track {
           position: absolute;
@@ -260,95 +288,99 @@ const ComparisonSection: React.FC = () => {
             style={{ height: `${((activeSlide + 0.25) / 4) * 100}%` }}
           />
         </div>
-        {COMPARISON_ROWS.map((row, index) => {
-          const ProblemIcon = row.problem.icon;
-          const SolutionIcon = row.solution.icon;
-          const isActive = activeSlide === index;
+        <div className="comparison-cube-scene">
+          <div
+            className="comparison-cube"
+            style={{
+              transform: prefersReducedMotion ? `rotateX(${activeSlide * 90}deg)` : `rotateX(${scrollProgress * 360}deg)`,
+              transition: prefersReducedMotion ? 'transform 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94)' : 'none',
+            }}
+          >
+            {COMPARISON_ROWS.map((row, index) => {
+              const ProblemIcon = row.problem.icon;
+              const SolutionIcon = row.solution.icon;
+              const depth = 550;
+              const angle = (index / 4) * 360;
 
-          return (
-            <div
-              key={index}
-              className={`comparison-slide ${isActive ? 'active' : ''}`}
-              style={{
-                opacity: isActive ? 1 : 0,
-                transition: 'opacity 0.4s ease-out',
-              }}
-            >
-              <div
-                className="comparison-glow"
-                style={{
-                  background: 'radial-gradient(ellipse 60% 40% at 50% 50%, rgba(79,140,255,0.08) 0%, transparent 70%)',
-                  filter: 'blur(100px)',
-                }}
-              />
-              <div className="comparison-slide-grid">
+              return (
                 <div
-                  className="comparison-card relative"
+                  key={index}
+                  className="comparison-cube-face"
                   style={{
-                    background: 'rgba(255,255,255,0.03)',
-                    border: '1px solid rgba(255,255,255,0.06)',
-                    transform: isActive ? 'translateX(0)' : 'translateX(-30px)',
-                    opacity: isActive ? 1 : 0,
-                    transition: 'transform 0.7s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.7s ease-out',
+                    transform: `rotateX(${angle}deg) translateZ(${depth}px)`,
                   }}
                 >
-                  <div className="absolute top-4 right-4 w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(239,68,68,0.2)' }}>
-                    <X className="w-4 h-4" style={{ color: '#ef4444' }} strokeWidth={2.5} />
-                  </div>
-                  <div
-                    className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 mb-4"
-                    style={{ background: 'rgba(255,255,255,0.05)' }}
-                  >
-                    <ProblemIcon className="w-6 h-6" style={{ color: 'rgba(255,255,255,0.4)' }} />
-                  </div>
-                  <h3 className="font-semibold text-xl mb-2" style={{ color: 'rgba(255,255,255,0.75)' }}>
-                    {row.problem.title}
-                  </h3>
-                  <p className="text-base leading-relaxed" style={{ color: 'rgba(255,255,255,0.55)' }}>
-                    {row.problem.text}
-                  </p>
-                </div>
+                  <div className="comparison-glow" />
+                  <div className="comparison-slide-grid">
+                    <div
+                      className="comparison-card relative"
+                      style={{
+                        background: 'rgba(255,255,255,0.03)',
+                        border: '1px solid rgba(255,255,255,0.06)',
+                      }}
+                    >
+                      <div className="absolute top-4 right-4 w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(239,68,68,0.2)' }}>
+                        <X className="w-4 h-4" style={{ color: '#ef4444' }} strokeWidth={2.5} />
+                      </div>
+                      <div
+                        className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 mb-4"
+                        style={{ background: 'rgba(255,255,255,0.05)' }}
+                      >
+                        <ProblemIcon className="w-6 h-6" style={{ color: 'rgba(255,255,255,0.4)' }} />
+                      </div>
+                      <h3 className="font-semibold text-xl mb-2" style={{ color: 'rgba(255,255,255,0.75)' }}>
+                        {row.problem.title}
+                      </h3>
+                      <p className="text-base leading-relaxed" style={{ color: 'rgba(255,255,255,0.55)' }}>
+                        {row.problem.text}
+                      </p>
+                    </div>
 
-                <div className="flex items-center justify-center flex-shrink-0" style={{ color: 'rgba(255,255,255,0.25)' }}>
-                  <ArrowRight className="w-8 h-8" strokeWidth={2} />
-                </div>
+                    <div className="flex items-center justify-center flex-shrink-0" style={{ color: 'rgba(255,255,255,0.25)' }}>
+                      <ArrowRight className="w-8 h-8" strokeWidth={2} />
+                    </div>
 
-                <div
-                  className="comparison-card relative"
-                  style={{
-                    background: 'rgba(79,140,255,0.08)',
-                    border: '1px solid rgba(79,140,255,0.25)',
-                    boxShadow: '0 0 40px rgba(79,140,255,0.15)',
-                    transform: isActive ? 'translateX(0)' : 'translateX(30px)',
-                    opacity: isActive ? 1 : 0,
-                    transition: 'transform 0.7s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.7s ease-out',
-                  }}
-                >
-                  <div className="absolute top-4 right-4 w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(34,197,94,0.2)' }}>
-                    <Check className="w-4 h-4" style={{ color: '#22c55e' }} strokeWidth={2.5} />
+                    <div
+                      className="comparison-card relative"
+                      style={{
+                        background: 'rgba(79,140,255,0.08)',
+                        border: '1px solid rgba(79,140,255,0.25)',
+                        boxShadow: '0 0 40px rgba(79,140,255,0.15)',
+                      }}
+                    >
+                      <div className="absolute top-4 right-4 w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(34,197,94,0.2)' }}>
+                        <Check className="w-4 h-4" style={{ color: '#22c55e' }} strokeWidth={2.5} />
+                      </div>
+                      <div
+                        className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 mb-4"
+                        style={{ background: 'rgba(79,140,255,0.2)' }}
+                      >
+                        <SolutionIcon className="w-6 h-6" style={{ color: '#4F8CFF' }} />
+                      </div>
+                      <h3 className="font-semibold text-xl mb-2" style={{ color: 'rgba(255,255,255,0.95)' }}>
+                        {row.solution.title}
+                      </h3>
+                      <p className="text-base leading-relaxed" style={{ color: 'rgba(255,255,255,0.75)' }}>
+                        {row.solution.text}
+                      </p>
+                    </div>
                   </div>
-                  <div
-                    className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 mb-4"
-                    style={{ background: 'rgba(79,140,255,0.2)' }}
-                  >
-                    <SolutionIcon className="w-6 h-6" style={{ color: '#4F8CFF' }} />
-                  </div>
-                  <h3 className="font-semibold text-xl mb-2" style={{ color: 'rgba(255,255,255,0.95)' }}>
-                    {row.solution.title}
-                  </h3>
-                  <p className="text-base leading-relaxed" style={{ color: 'rgba(255,255,255,0.75)' }}>
-                    {row.solution.text}
-                  </p>
                 </div>
-              </div>
-            </div>
-          );
-        })}
+              );
+            })}
+          </div>
+        </div>
         <div
           className="absolute left-0 right-0 text-center px-4"
           style={{
-            top: '12vh',
+            top: 0,
+            left: 0,
+            right: 0,
             pointerEvents: 'none',
+            zIndex: 5,
+            paddingTop: '15vh',
+            paddingBottom: 0,
+            background: '#121212',
           }}
         >
           <h2
@@ -359,9 +391,9 @@ const ComparisonSection: React.FC = () => {
           </h2>
           <p
             className="text-base md:text-lg max-w-2xl mx-auto"
-            style={{ color: 'rgba(255,255,255,0.7)', fontWeight: 300 }}
+            style={{ color: 'rgba(255,255,255,0.7)', fontWeight: 300, marginBottom: 0 }}
           >
-            Creative, execution, and optimization — unified into one intelligent system.
+            Creative, execution, and optimisation unified into one intelligent system.
           </p>
         </div>
       </div>

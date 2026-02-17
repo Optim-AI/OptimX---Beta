@@ -13,6 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "../app/web/src/compone
 import { Button } from "../app/web/src/components/ui/button";
 
 import { BarChart3, Share2 } from "lucide-react";
+import colors from '@/lib/ui/colors';
 
 import {
   ResponsiveContainer,
@@ -749,9 +750,9 @@ export default function Analytics(): JSX.Element {
   // Loading state while checking feature access
   if (checkingFeature) {
     return (
-      <div className="min-h-screen flex bg-slate-50">
+      <div className="min-h-screen flex app-page">
         <Sidebar />
-        <main className="flex-1 p-8 flex items-center justify-center">
+        <main className="flex-1 p-8 flex items-center justify-center" style={{ color: colors.foreground }}>
           <div>Loading...</div>
         </main>
       </div>
@@ -761,27 +762,27 @@ export default function Analytics(): JSX.Element {
   // If feature is not enabled or is coming soon, show overlay
   if (!featureAccess?.enabled || featureAccess?.comingSoon) {
     return (
-      <div className="min-h-screen flex bg-slate-50">
+      <div className="min-h-screen flex app-page">
         <Sidebar />
         <main className="flex-1 relative">
           <ComingSoonOverlay featureKey="basic_analytics">
             <div className="p-8">
               <div className="flex items-center justify-between mb-6">
                 <div>
-                  <h2 className="text-2xl font-bold text-slate-800">AI Analytics</h2>
-                  <p className="text-sm text-slate-500">Deep insights across your connected platforms</p>
+                  <h2 className="text-2xl font-bold" style={{ color: colors.foreground }}>AI Analytics</h2>
+                  <p className="text-sm" style={{ color: colors.mutedForeground }}>Deep insights across your connected platforms</p>
                 </div>
               </div>
               {/* Placeholder content for visual effect */}
               <div className="space-y-4">
                 <div className="grid grid-cols-6 gap-4">
                   {[1, 2, 3, 4, 5, 6].map((i) => (
-                    <div key={i} className="p-4 bg-white rounded-xl h-24" />
+                    <div key={i} className="p-4 rounded-xl h-24" style={{ backgroundColor: colors.card, border: `1px solid ${colors.border}` }} />
                   ))}
                 </div>
                 <div className="grid grid-cols-2 gap-6">
                   {[1, 2, 3, 4].map((i) => (
-                    <div key={i} className="p-6 bg-white rounded-xl h-64" />
+                    <div key={i} className="p-6 rounded-xl h-64" style={{ backgroundColor: colors.card, border: `1px solid ${colors.border}` }} />
                   ))}
                 </div>
               </div>
@@ -793,20 +794,20 @@ export default function Analytics(): JSX.Element {
   }
 
   return (
-    <div className="min-h-screen flex bg-slate-50">
+    <div className="min-h-screen flex app-page">
       <Sidebar />
 
-      <main className="flex-1 p-8">
+      <main className="flex-1 p-8" style={{ color: colors.foreground }}>
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h2 className="text-2xl font-bold text-slate-800">AI Analytics</h2>
-            <p className="text-sm text-slate-500">Deep insights across your connected platforms</p>
+            <h2 className="text-2xl font-bold" style={{ color: colors.foreground }}>AI Analytics</h2>
+            <p className="text-sm" style={{ color: colors.mutedForeground }}>Deep insights across your connected platforms</p>
           </div>
 
           <div className="flex items-center gap-3">
             <div className="text-right mr-4">
-              <div className="text-sm text-slate-500">Total Spend (All platforms)</div>
-              <div className="text-xl font-semibold text-slate-900">{fmtMoneyINR(metaSpend)}</div>
+              <div className="text-sm" style={{ color: colors.mutedForeground }}>Total Spend (All platforms)</div>
+              <div className="text-xl font-semibold" style={{ color: colors.foreground }}>{fmtMoneyINR(metaSpend)}</div>
             </div>
 
             <button
@@ -815,7 +816,8 @@ export default function Analytics(): JSX.Element {
                 fetchStatuses();
                 fetchMetrics({ range: selectedRange });
               }}
-              className="px-3 py-2 text-sm rounded-lg border border-slate-300 hover:bg-slate-100"
+              className="px-3 py-2 text-sm rounded-lg border"
+              style={{ borderColor: colors.border, backgroundColor: colors.card, color: colors.foreground }}
             >
               Refresh
             </button>
@@ -831,22 +833,22 @@ export default function Analytics(): JSX.Element {
           </div>
         </div>
 
-        <h3 className="text-lg font-semibold text-slate-700 mb-3">Overview</h3>
+        <h3 className="text-lg font-semibold mb-3" style={{ color: colors.foreground }}>Overview</h3>
 
         <div className="space-y-4 mb-8">
           {/* Time Range Card */}
-          <div className="p-4 bg-white rounded-xl shadow">
+          <div className="p-4 rounded-xl shadow" style={{ backgroundColor: colors.card, border: `1px solid ${colors.border}` }}>
             <div className="flex justify-between items-center mb-4">
               <div className="flex items-center gap-3">
-                <BarChart3 className="w-5 h-5 text-slate-600" />
+                <BarChart3 className="w-5 h-5" style={{ color: colors.mutedForeground }} />
                 <div>
-                  <div className="text-sm text-slate-500">Meta (Facebook & Instagram)</div>
-                  <div className="text-lg font-semibold">Live account metrics</div>
+                  <div className="text-sm" style={{ color: colors.mutedForeground }}>Meta (Facebook & Instagram)</div>
+                  <div className="text-lg font-semibold" style={{ color: colors.foreground }}>Live account metrics</div>
                 </div>
               </div>
 
               <div className="flex items-center gap-2">
-                <div className="text-sm text-gray-500">
+                <div className="text-sm" style={{ color: colors.mutedForeground }}>
                   Period:{" "}
                   {selectedRange === "custom"
                     ? customStart && customEnd
@@ -860,11 +862,10 @@ export default function Analytics(): JSX.Element {
                     <button
                       key={r}
                       onClick={() => handleRangeClick(r)}
-                      className={`text-xs px-2 py-1 rounded ${
-                        selectedRange === r
-                          ? "bg-blue-600 text-white"
-                          : "border border-slate-200 bg-white"
-                      }`}
+                      className="text-xs px-2 py-1 rounded"
+                      style={selectedRange === r
+                        ? { backgroundColor: colors.primary, color: colors.primaryForeground }
+                        : { border: `1px solid ${colors.border}`, backgroundColor: colors.card, color: colors.foreground }}
                     >
                       {r}
                     </button>
@@ -874,36 +875,36 @@ export default function Analytics(): JSX.Element {
             </div>
 
             {statusLoading ? (
-              <div>Checking connection status…</div>
+              <div style={{ color: colors.mutedForeground }}>Checking connection status…</div>
             ) : !metaConnected ? (
               <div className="p-6 text-center">
-                <div className="text-lg font-semibold text-slate-800">Please connect Meta</div>
-                <div className="text-sm text-slate-600 mt-2">
+                <div className="text-lg font-semibold" style={{ color: colors.foreground }}>Please connect Meta</div>
+                <div className="text-sm mt-2" style={{ color: colors.mutedForeground }}>
                   No connected Facebook / Instagram account found.
                 </div>
                 <div className="mt-4">
                   <button
                     onClick={() => goToIntegrations()}
-                    className="px-4 py-2 rounded bg-blue-600 text-white"
+                    className="px-4 py-2 rounded text-white"
+                    style={{ backgroundColor: colors.primary }}
                   >
                     Connect Meta
                   </button>
                 </div>
               </div>
             ) : loadingMeta ? (
-              <div>Loading Meta metrics…</div>
+              <div style={{ color: colors.mutedForeground }}>Loading Meta metrics…</div>
             ) : (
               // Always show overview — if metrics empty we set zeros in state
               <div>
                 <div className="grid grid-cols-6 gap-4">
                   {overallMetrics.map((m, i) => (
-                    <div key={i} className="p-4 bg-gray-50 rounded">
-                      <div className="text-sm text-slate-500">{m.label}</div>
-                      <div className="text-xl font-bold text-slate-800">{m.value}</div>
+                    <div key={i} className="p-4 rounded" style={{ backgroundColor: colors.muted, border: `1px solid ${colors.border}` }}>
+                      <div className="text-sm" style={{ color: colors.mutedForeground }}>{m.label}</div>
+                      <div className="text-xl font-bold" style={{ color: colors.foreground }}>{m.value}</div>
                       <div
-                        className={`text-xs mt-1 ${
-                          m.trend === "up" ? "text-green-600" : "text-red-600"
-                        }`}
+                        className="text-xs mt-1"
+                        style={{ color: m.trend === "up" ? colors.green600 : colors.destructive }}
                       >
                         {m.change}
                       </div>
@@ -913,7 +914,7 @@ export default function Analytics(): JSX.Element {
 
                 {/* NEW: show global no-data message under Overview when all metrics empty */}
                 {noDataInSelectedRange && (
-                  <div className="text-center text-sm text-red-600 mt-3">
+                  <div className="text-center text-sm mt-3" style={{ color: colors.destructive }}>
                     No data in the selected time range.
                   </div>
                 )}
@@ -923,13 +924,14 @@ export default function Analytics(): JSX.Element {
 
           {/* CHARTS */}
           {!metaConnected ? (
-            <div className="p-6 bg-white rounded-xl shadow text-center">
-              <div className="text-lg font-semibold mb-2">Connect Meta to view charts</div>
-              <div className="text-sm text-slate-500 mb-4">Charts & deeper insights require a connection to Meta.</div>
+            <div className="p-6 rounded-xl shadow text-center" style={{ backgroundColor: colors.card, border: `1px solid ${colors.border}` }}>
+              <div className="text-lg font-semibold mb-2" style={{ color: colors.foreground }}>Connect Meta to view charts</div>
+              <div className="text-sm mb-4" style={{ color: colors.mutedForeground }}>Charts & deeper insights require a connection to Meta.</div>
               <div>
                 <button
                   onClick={() => goToIntegrations()}
-                  className="px-4 py-2 rounded bg-blue-600 text-white"
+                  className="px-4 py-2 rounded text-white"
+                  style={{ backgroundColor: colors.primary }}
                 >
                   Connect Meta
                 </button>
@@ -1144,20 +1146,20 @@ export default function Analytics(): JSX.Element {
 
               {/* NEW: show small alert when all metrics empty and series is empty */}
               {noDataInSelectedRange && (
-                <div className="text-center text-sm text-red-600 mt-2">
+                <div className="text-center text-sm mt-2" style={{ color: colors.destructive }}>
                   No data in the selected time range.
                 </div>
               )}
             </div>
           )}
 
-          <div className="text-center text-sm text-slate-500 mt-3">
+          <div className="text-center text-sm mt-3" style={{ color: colors.mutedForeground }}>
             {dateRangeLabel}
           </div>
         </div>
 
         {/* Campaign List */}
-        <h3 className="text-lg font-semibold text-slate-700 mb-3 mt-6">Campaigns</h3>
+        <h3 className="text-lg font-semibold mb-3 mt-6" style={{ color: colors.foreground }}>Campaigns</h3>
 
         <div className="space-y-3">
           <div className="flex gap-4 mb-3">
@@ -1166,6 +1168,7 @@ export default function Analytics(): JSX.Element {
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search campaigns..."
               className="flex-1 px-3 py-2 border rounded-lg"
+              style={{ backgroundColor: colors.input, borderColor: colors.border, color: colors.foreground }}
             />
             <Button variant="outline" onClick={fetchCampaigns}>
               Refresh
@@ -1173,27 +1176,28 @@ export default function Analytics(): JSX.Element {
           </div>
 
           {campaignsLoading ? (
-            <div>Loading campaigns…</div>
+            <div style={{ color: colors.mutedForeground }}>Loading campaigns…</div>
           ) : filteredCampaigns.length === 0 ? (
-            <div className="text-sm text-slate-500">No campaigns found.</div>
+            <div className="text-sm" style={{ color: colors.mutedForeground }}>No campaigns found.</div>
           ) : null}
 
           <div className="grid grid-cols-1 gap-3">
             {filteredCampaigns.map((c) => (
               <Card
                 key={c.id}
-                className={`p-4 ${selectedCampaignId === c.id ? "ring-2 ring-blue-500" : ""}`}
+                className={`p-4 ${selectedCampaignId === c.id ? "ring-2" : ""}`}
+                style={selectedCampaignId === c.id ? { borderColor: colors.primary } : undefined}
                 onClick={() => setSelectedCampaignId(c.id)}
               >
                 <CardContent className="flex items-center justify-between">
                   <div>
-                    <div className="font-semibold">{c.name}</div>
-                    <div className="text-sm text-slate-500">
+                    <div className="font-semibold" style={{ color: colors.foreground }}>{c.name}</div>
+                    <div className="text-sm" style={{ color: colors.mutedForeground }}>
                       {c.campaign_type ?? c.platform ?? "Meta"}
                     </div>
                   </div>
 
-                  <div className="text-sm text-slate-400">
+                  <div className="text-sm" style={{ color: colors.mutedForeground }}>
                     {c.created_at ? new Date(c.created_at).toLocaleString() : "—"}
                   </div>
                 </CardContent>
@@ -1204,22 +1208,22 @@ export default function Analytics(): JSX.Element {
       </main>
 
       {/* Right Insights Panel */}
-      <aside className="w-[360px] bg-white p-6 space-y-6">
+      <aside className="w-[360px] p-6 space-y-6" style={{ backgroundColor: colors.card, borderLeft: `1px solid ${colors.border}` }}>
         <div>
-          <h3 className="text-lg font-bold">Recommendations</h3>
-          <p className="text-sm text-slate-500">
+          <h3 className="text-lg font-bold" style={{ color: colors.foreground }}>Recommendations</h3>
+          <p className="text-sm" style={{ color: colors.mutedForeground }}>
             Dynamic suggestions based on account & campaigns (user-specific)
           </p>
         </div>
 
         {!metaConnected && recsRequested ? (
-          <div className="text-sm text-slate-500">
+          <div className="text-sm" style={{ color: colors.mutedForeground }}>
             Please connect Meta to generate recommendations.
           </div>
         ) : recLoading && recsRequested ? (
-          <div className="text-sm text-slate-500">Generating recommendations…</div>
+          <div className="text-sm" style={{ color: colors.mutedForeground }}>Generating recommendations…</div>
         ) : !recsRequested ? (
-          <div className="text-sm text-slate-500">
+          <div className="text-sm" style={{ color: colors.mutedForeground }}>
             No recommendations yet. Click "Get Recommendations".
           </div>
         ) : rightPanelRecs.length > 0 ? (
@@ -1227,14 +1231,15 @@ export default function Analytics(): JSX.Element {
             {rightPanelRecs.map((r) => (
               <div
                 key={r.id}
-                className={`p-4 rounded-lg shadow-md bg-white ${r.resolved ? "opacity-60" : ""}`}
+                className={`p-4 rounded-lg shadow-md ${r.resolved ? "opacity-60" : ""}`}
+                style={{ backgroundColor: colors.background, border: `1px solid ${colors.border}` }}
               >
                 <div className="flex justify-between items-start">
                   <div className="pr-3">
-                    <div className="font-semibold text-slate-800">{r.title}</div>
+                    <div className="font-semibold" style={{ color: colors.foreground }}>{r.title}</div>
 
                     {r.actions && r.actions.length > 0 && (
-                      <ul className="list-disc ml-5 mt-3 text-sm space-y-1">
+                      <ul className="list-disc ml-5 mt-3 text-sm space-y-1" style={{ color: colors.mutedForeground }}>
                         {r.actions.map((a, i) => (
                           <li key={i}>{a}</li>
                         ))}
@@ -1242,19 +1247,21 @@ export default function Analytics(): JSX.Element {
                     )}
 
                     {r.reason && (
-                      <div className="text-xs text-slate-500 mt-2">{r.reason}</div>
+                      <div className="text-xs mt-2" style={{ color: colors.mutedForeground }}>{r.reason}</div>
                     )}
                   </div>
 
                   <div className="text-right flex flex-col items-end gap-2">
                     <div
-                      className={`text-xs px-2 py-1 rounded ${
-                        r.impact === "High"
-                          ? "bg-red-500 text-white"
-                          : r.impact === "Medium"
-                          ? "bg-orange-400 text-white"
-                          : "bg-gray-400 text-white"
-                      }`}
+                      className="text-xs px-2 py-1 rounded text-white"
+                      style={{
+                        backgroundColor:
+                          r.impact === "High"
+                            ? colors.destructive
+                            : r.impact === "Medium"
+                            ? "hsl(25 95% 53%)"
+                            : colors.mutedForeground,
+                      }}
                     >
                       {r.impact ?? "—"}
                     </div>
@@ -1262,7 +1269,8 @@ export default function Analytics(): JSX.Element {
                     <div>
                       <button
                         onClick={() => resolveRecommendation(r.id)}
-                        className="px-3 py-1 text-sm rounded bg-green-600 text-white hover:bg-green-700"
+                        className="px-3 py-1 text-sm rounded text-white"
+                        style={{ backgroundColor: colors.green600 }}
                       >
                         Resolve
                       </button>
@@ -1273,7 +1281,7 @@ export default function Analytics(): JSX.Element {
             ))}
           </div>
         ) : (
-          <div className="text-sm text-slate-500">
+          <div className="text-sm" style={{ color: colors.mutedForeground }}>
             {recError ?? "No recommendations found for the selected scope."}
           </div>
         )}

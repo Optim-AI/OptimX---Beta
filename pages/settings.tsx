@@ -292,7 +292,7 @@ export default function SettingsPage(): JSX.Element {
   if (loading) return <div className="p-8">Loading profile…</div>;
 
   return (
-    <div className="min-h-screen flex bg-slate-50">
+    <div className="min-h-screen flex app-page">
       <Sidebar />
 
       <main className="flex-1 p-8">

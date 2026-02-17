@@ -190,11 +190,11 @@ export default function ResetPasswordPage(): React.ReactElement {
   return (
     <>
       <style jsx global>{`
-        :root { --optim-blue: #0088FF; --border: #C2C2C2; --link-color:#0a66ff; --muted:#6F6F6F; }
+        :root { --optim-blue: hsl(213 100% 55%); --border: hsl(0 0% 22%); --link-color: hsl(213 100% 65%); --muted: hsl(0 0% 60%); }
         *{box-sizing:border-box}
         html,body,#__next{height:100%;margin:0}
         body{font-family:Poppins,Inter,system-ui;-webkit-font-smoothing:antialiased}
-        .page-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden}
+        .page-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;background-color:#121212}
         .animation-float{ animation: float 8s ease-in-out infinite; transform-origin:center; }
         @keyframes float {
           0% { transform: translateY(0) translateX(0) scale(1); opacity: .9; }
@@ -205,11 +205,12 @@ export default function ResetPasswordPage(): React.ReactElement {
         .auth-card{
           z-index:3;
           width:480px;
-          border-radius:18px;
-          backdrop-filter:blur(6px);
-          padding:20px;
-          box-shadow:0 20px 80px rgba(2,6,23,.12);
-          border:1px solid rgba(226,232,240,.6);
+          border-radius:20px;
+          backdrop-filter:blur(20px);
+          -webkit-backdrop-filter:blur(20px);
+          padding:24px;
+          box-shadow:0 1px 2px hsl(0 0% 0% / 0.04), 0 4px 12px hsl(0 0% 0% / 0.04), 0 12px 40px hsl(0 0% 0% / 0.06);
+          border:1px solid rgba(255, 255, 255, 0.08);
           display:flex;
           flex-direction:column;
           align-items:center;
@@ -217,18 +218,19 @@ export default function ResetPasswordPage(): React.ReactElement {
           overflow:hidden;
         }
 
-        .brand-badge{width:64px;height:64px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:linear-gradient(180deg,#36A7FF,#0F62FF);box-shadow:0 0 9.65px rgba(188,215,255,.24)}
-        .brand-title{margin-top:8px;font-weight:700;font-size:32px;line-height:40px;color:#1E1E1E;text-align:center}
-        .brand-sub{margin-top:4px;color:#5f6b73;font-weight:500;font-size:13px;text-align:center;margin-bottom:12px}
+        .brand-badge{width:64px;height:64px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg, hsl(213 100% 55%) 0%, hsl(213 100% 65%) 100%);box-shadow:0 0 24px hsl(213 100% 55% / 0.2)}
+        .brand-title{margin-top:8px;font-weight:700;font-size:32px;line-height:40px;color:hsl(0 0% 95%);text-align:center}
+        .brand-sub{margin-top:4px;color:hsl(0 0% 60%);font-weight:500;font-size:13px;text-align:center;margin-bottom:12px}
 
         .form{margin-top:12px;width:100%;display:flex;flex-direction:column;gap:10px}
-        label{font-size:12px;font-weight:500;color:#1E1E1E;margin-bottom:6px;display:block}
-        .input{height:44px;border-radius:10px;border:1px solid var(--border);padding:10px 12px;font-size:15px;background:#fff;width:100%;display:block}
+        label{font-size:12px;font-weight:500;color:hsl(0 0% 95%);margin-bottom:6px;display:block}
+        .input{height:44px;border-radius:10px;border:1px solid var(--border);padding:10px 12px;font-size:15px;background:hsl(0 0% 15%);color:hsl(0 0% 95%);width:100%;display:block}
+        .input::placeholder{color:hsl(0 0% 50%)}
         .pw-wrap{position:relative;width:100%}
         .pw-toggle{position:absolute;right:12px;top:10px;height:28px;width:36px;border:none;background:transparent;cursor:pointer}
-        .cta{margin-top:6px;height:44px;border-radius:12px;background:var(--optim-blue);color:white;display:flex;align-items:center;justify-content:center;font-weight:800;border:none;font-size:15px;width:100%}
+        .cta{margin-top:6px;height:44px;border-radius:12px;background:linear-gradient(135deg, hsl(213 100% 55%) 0%, hsl(213 100% 65%) 100%);color:white;display:flex;align-items:center;justify-content:center;font-weight:800;border:none;font-size:15px;width:100%;box-shadow:0 0 24px hsl(213 100% 55% / 0.2)}
         .msg{margin-top:8px;font-size:13px;text-align:center}
-        .policy{font-size:12px;text-align:center;color:#7E7E7E;margin-top:10px}
+        .policy{font-size:12px;text-align:center;color:var(--muted);margin-top:10px}
         .policy a{color:var(--link-color);text-decoration:underline;font-weight:600}
 
         @media (max-width:820px){
@@ -237,33 +239,11 @@ export default function ResetPasswordPage(): React.ReactElement {
         }
       `}</style>
 
-      <div className="page-wrap" role="region" aria-label="Reset password page">
-        <div
-          className="absolute inset-0"
-          style={{
-            backgroundImage: `linear-gradient(135deg, ${(colors as any)?.background ?? '#ffffff'} 0%, ${withAlpha((colors as any)?.primary ?? 'hsl(213 90% 96%)', 0.3)} 50%, ${(colors as any)?.background ?? '#ffffff'} 100%)`,
-            zIndex: 0,
-          }}
-        />
-        <div
-          className="absolute top-20 left-10 w-72 h-72 rounded-full blur-3xl animation-float"
-          style={{ backgroundColor: withAlpha((colors as any)?.primary ?? 'hsl(213 90% 50%)', 0.3), zIndex: 0 }}
-        />
-        <div
-          className="absolute bottom-20 right-10 w-96 h-96 rounded-full blur-3xl animation-float"
-          style={{ backgroundColor: withAlpha((colors as any)?.primary ?? 'hsl(213 90% 50%)', 0.18), zIndex: 0, animationDelay: '2s' }}
-        />
-        <div
-          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full blur-3xl animation-float"
-          style={{ backgroundImage: `linear-gradient(90deg, ${withAlpha((colors as any)?.primary ?? 'hsl(213 90% 50%)', 0.1)} 0%, ${withAlpha(((colors as any)?.primaryGlow ?? (colors as any)?.primary) ?? 'hsl(213 90% 50%)', 0.06)} 100%)`, zIndex: 0, animationDelay: '4s' }}
-        />
-
+      <div className="page-wrap" role="region" aria-label="Reset password page" style={{ backgroundColor: colors.background }}>
         <main className="auth-card" role="main" aria-labelledby="reset-title"
           style={{
-            background:
-              ((colors as any)?.gradientCard
-                ? (colors as any)?.gradientCard
-                : `linear-gradient(180deg, ${withAlpha((colors as any)?.background ?? '#ffffff', 0.12)}, ${withAlpha((colors as any)?.primary ?? 'hsl(213 90% 96%)', 0.04)})`),
+            background: `linear-gradient(135deg, ${withAlpha(colors.card, 0.85)} 0%, ${withAlpha(colors.card, 0.92)} 100%)`,
+            border: "1px solid rgba(97, 97, 97, 1)",
           }}
         >
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
@@ -302,8 +282,8 @@ export default function ResetPasswordPage(): React.ReactElement {
             </button>
           </form>
 
-          <div style={{ marginTop: 12, fontSize: 13, color: '#8b8b8b' }}>
-            <a href="/signin" onClick={(e) => { e.preventDefault(); router.push('/signin'); }} style={{ color: (colors as any)?.primary ?? '#0088FF', textDecoration: 'none', fontWeight: 700 }}>Back to sign in</a>
+          <div style={{ marginTop: 12, fontSize: 13, color: colors.mutedForeground }}>
+            <a href="/auth/signin" onClick={(e) => { e.preventDefault(); router.push('/auth/signin'); }} style={{ color: colors.primary, textDecoration: 'none', fontWeight: 700 }}>Back to sign in</a>
           </div>
         </main>
       </div>

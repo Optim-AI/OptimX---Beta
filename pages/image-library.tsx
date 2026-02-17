@@ -655,7 +655,7 @@ export default function ImageLibraryPage(): JSX.Element {
   /* -------------------- UI rendering -------------------- */
 
   return (
-    <div className="min-h-screen flex bg-slate-50">
+    <div className="min-h-screen flex app-page">
       <Sidebar logoUrl="/brand/logo.png" onLogoClick={() => {}} />
 
       <div className="flex-1" style={{ marginLeft: 0 }}>

@@ -5,6 +5,7 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
 import Sidebar from '@/app/web/src/components/Sidebar';
+import colors from '@/lib/ui/colors';
 import {
   type BrandSnapshot,
   type SessionListItem,
@@ -296,7 +297,7 @@ export default function CreativeStudioLanding() {
   // ============== Render ==============
 
   return (
-    <div className="h-screen bg-gray-50 flex overflow-hidden">
+    <div className="h-screen flex overflow-hidden app-page">
       {/* Sidebar - Without chat history */}
       <div className="flex-shrink-0 h-full">
         <Sidebar
@@ -305,37 +306,37 @@ export default function CreativeStudioLanding() {
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 bg-white flex flex-col h-full overflow-hidden">
+      <div className="flex-1 flex flex-col h-full overflow-hidden" style={{ backgroundColor: colors.card, borderLeft: `1px solid ${colors.border}` }}>
         {/* Header */}
-        <div className="border-b border-gray-200 bg-white flex-shrink-0">
+        <div className="border-b flex-shrink-0" style={{ borderColor: colors.border, backgroundColor: colors.card }}>
           <div className="max-w-4xl mx-auto px-6 py-4">
             <div className="flex items-center justify-between">
               <div>
-                <h1 className="text-2xl font-semibold text-gray-900">Creative Studio</h1>
-                <p className="text-gray-500 text-sm mt-1">
+                <h1 className="text-2xl font-semibold" style={{ color: colors.foreground }}>Creative Studio</h1>
+                <p className="text-sm mt-1" style={{ color: colors.mutedForeground }}>
                   Create poster-ready creatives and video-first ad concepts
                 </p>
               </div>
               <div className="flex items-center gap-3">
                 {/* Image Credits */}
                 {imageCredits !== null && (
-                  <div className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg">
-                    <svg className="w-5 h-5 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <div className="flex items-center gap-2 px-4 py-2 rounded-lg" style={{ background: 'hsl(213 100% 55% / 0.15)', border: '1px solid hsl(213 100% 55% / 0.35)' }}>
+                    <svg className="w-5 h-5" style={{ color: colors.primary }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                     </svg>
-                    <span className="font-semibold text-blue-700">{imageCredits}</span>
-                    <span className="text-blue-600 text-sm">images</span>
+                    <span className="font-semibold" style={{ color: colors.primary }}>{imageCredits}</span>
+                    <span className="text-sm" style={{ color: colors.primary }}>images</span>
                   </div>
                 )}
 
                 {/* Video Credits */}
                 {videoCredits !== null && (
-                  <div className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-50 to-pink-50 border border-purple-200 rounded-lg">
-                    <svg className="w-5 h-5 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <div className="flex items-center gap-2 px-4 py-2 rounded-lg" style={{ background: 'hsl(270 80% 55% / 0.15)', border: '1px solid hsl(270 80% 55% / 0.3)' }}>
+                    <svg className="w-5 h-5" style={{ color: 'hsl(270 80% 65%)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                     </svg>
-                    <span className="font-semibold text-purple-700">{videoCredits}s</span>
-                    <span className="text-purple-600 text-sm">video</span>
+                    <span className="font-semibold" style={{ color: 'hsl(270 80% 70%)' }}>{videoCredits}s</span>
+                    <span className="text-sm" style={{ color: 'hsl(270 80% 65%)' }}>video</span>
                   </div>
                 )}
               </div>
@@ -347,10 +348,10 @@ export default function CreativeStudioLanding() {
         <div className="flex-1 overflow-y-auto">
           <div className="max-w-4xl mx-auto px-6 py-8">
             {/* AI disclaimer note */}
-            <div className="mb-8 p-4 bg-amber-50 border border-amber-200 rounded-xl">
-              <p className="text-sm text-amber-900">
-                <strong>Note:</strong> If a generation glitches or looks incorrect,{' '}
-                <Link href="/report" className="font-medium text-amber-700 underline hover:text-amber-800">
+            <div className="mb-8 p-4 rounded-xl relative z-10" style={{ backgroundColor: 'hsl(30 60% 22%)', border: '1px solid hsl(30 50% 40%)' }}>
+              <p className="text-sm leading-relaxed" style={{ color: '#FAFAFA' }}>
+                <strong style={{ color: '#FAFAFA' }}>Note:</strong> If a generation glitches or looks incorrect,{' '}
+                <Link href="/report" className="font-medium underline" style={{ color: 'hsl(38 92% 65%)' }}>
                   send us a screenshot
                 </Link>
                 {' '}and we&apos;ll refund the credit as an apology. We&apos;re continuously improving the system to deliver better results every day.
@@ -360,31 +361,29 @@ export default function CreativeStudioLanding() {
             {/* Recent Sessions */}
             {sessions.length > 0 && (
               <div className="mb-12">
-                <h2 className="text-lg font-semibold text-gray-900 mb-4">Recent Sessions</h2>
+                <h2 className="text-lg font-semibold mb-4" style={{ color: colors.foreground }}>Recent Sessions</h2>
                 <div className="max-h-[420px] overflow-y-auto overflow-x-hidden rounded-xl pr-1 -mr-1">
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                     {sessions.map((session) => (
                       <button
                         key={session.id}
                         onClick={() => handleSessionClick(session)}
-                        className="text-left p-4 bg-white border border-gray-200 rounded-xl hover:border-gray-300 hover:shadow-sm transition-all"
+                        className="text-left p-4 rounded-xl hover:shadow-sm transition-all"
+                        style={{ backgroundColor: colors.background, border: `1px solid ${colors.border}` }}
                       >
                         <div className="flex items-center gap-3 mb-2">
                           <span className="text-xl">
                             {session.sessionType === 'poster' ? '🖼️' : '🎬'}
                           </span>
                           <span
-                            className={`text-xs px-2 py-0.5 rounded-full ${
-                              session.sessionType === 'poster'
-                                ? 'bg-blue-100 text-blue-700'
-                                : 'bg-purple-100 text-purple-700'
-                            }`}
+                            className="text-xs px-2 py-0.5 rounded-full"
+                            style={session.sessionType === 'poster' ? { background: 'hsl(213 100% 55% / 0.2)', color: colors.primary } : { background: 'hsl(270 80% 55% / 0.2)', color: 'hsl(270 80% 70%)' }}
                           >
                             {session.sessionType === 'poster' ? 'Poster' : 'Video'}
                           </span>
                         </div>
-                        <h3 className="font-medium text-gray-900 truncate">{session.name}</h3>
-                        <p className="text-xs text-gray-500 mt-1">
+                        <h3 className="font-medium truncate" style={{ color: colors.foreground }}>{session.name}</h3>
+                        <p className="text-xs mt-1" style={{ color: colors.mutedForeground }}>
                           {formatTimestamp(session.updatedAt)}
                         </p>
                       </button>
@@ -398,29 +397,31 @@ export default function CreativeStudioLanding() {
             {brand && (
               <div className="mb-12">
                 <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-semibold text-gray-900">Brand Guideline</h2>
+                  <h2 className="text-lg font-semibold" style={{ color: colors.foreground }}>Brand Guideline</h2>
                   <button
                     onClick={() => setShowBrandGuidelineModal(true)}
-                    className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+                    className="text-sm font-medium"
+                    style={{ color: colors.primary }}
                   >
                     View / Edit
                   </button>
                 </div>
-                <div className="p-4 bg-gray-50 border border-gray-200 rounded-xl">
+                <div className="p-4 rounded-xl" style={{ backgroundColor: colors.muted, border: `1px solid ${colors.border}` }}>
                   <div className="flex items-center gap-4">
                     {brand.logo && (
                       <img
                         src={brand.logo}
                         alt={brand.name}
-                        className="h-12 w-12 object-contain rounded-lg border border-gray-200 bg-white p-1"
+                        className="h-12 w-12 object-contain rounded-lg p-1"
+                        style={{ border: `1px solid ${colors.border}`, backgroundColor: colors.card }}
                         onError={(e) => {
                           (e.target as HTMLImageElement).style.display = 'none';
                         }}
                       />
                     )}
                     <div>
-                      <h3 className="font-semibold text-gray-900">{brand.name}</h3>
-                      <p className="text-sm text-gray-500">{brand.offering || brand.description}</p>
+                      <h3 className="font-semibold" style={{ color: colors.foreground }}>{brand.name}</h3>
+                      <p className="text-sm" style={{ color: colors.mutedForeground }}>{brand.offering || brand.description}</p>
                     </div>
                   </div>
                 </div>
@@ -429,7 +430,7 @@ export default function CreativeStudioLanding() {
 
             {/* Create New Section */}
             <div>
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">
+              <h2 className="text-lg font-semibold mb-4" style={{ color: colors.foreground }}>
                 What do you want to create?
               </h2>
 
@@ -437,13 +438,14 @@ export default function CreativeStudioLanding() {
                 {/* Poster Generation Card */}
                 <button
                   onClick={handleStartPosterSession}
-                  className="group relative aspect-square rounded-2xl border-2 border-gray-200 bg-white shadow-sm hover:shadow-md hover:border-blue-500 transition-all flex flex-col items-center justify-center p-6 text-center"
+                  className="group relative aspect-square rounded-2xl border-2 shadow-sm transition-all flex flex-col items-center justify-center p-6 text-center"
+                  style={{ borderColor: colors.border, backgroundColor: colors.background }}
                 >
-                  <div className="flex items-center justify-center w-16 h-16 rounded-xl bg-blue-50 text-blue-600 mb-4 group-hover:scale-110 transition-transform">
+                  <div className="flex items-center justify-center w-16 h-16 rounded-xl mb-4 group-hover:scale-110 transition-transform" style={{ backgroundColor: 'hsl(213 100% 55% / 0.2)', color: colors.primary }}>
                     <span className="text-3xl">🖼️</span>
                   </div>
-                  <div className="text-base font-semibold text-gray-900">Poster Generation</div>
-                  <p className="mt-2 text-sm text-gray-500 max-w-xs">
+                  <div className="text-base font-semibold" style={{ color: colors.foreground }}>Poster Generation</div>
+                  <p className="mt-2 text-sm max-w-xs" style={{ color: colors.mutedForeground }}>
                     Chat with AI to create high-conversion marketing posters.
                   </p>
                 </button>
@@ -451,13 +453,14 @@ export default function CreativeStudioLanding() {
                 {/* Video Generation Card */}
                 <button
                   onClick={handleStartVideoSession}
-                  className="group relative aspect-square rounded-2xl border-2 border-gray-200 bg-white shadow-sm hover:shadow-md hover:border-purple-500 transition-all flex flex-col items-center justify-center p-6 text-center"
+                  className="group relative aspect-square rounded-2xl border-2 shadow-sm transition-all flex flex-col items-center justify-center p-6 text-center"
+                  style={{ borderColor: colors.border, backgroundColor: colors.background }}
                 >
-                  <div className="flex items-center justify-center w-16 h-16 rounded-xl bg-purple-50 text-purple-600 mb-4 group-hover:scale-110 transition-transform">
+                  <div className="flex items-center justify-center w-16 h-16 rounded-xl mb-4 group-hover:scale-110 transition-transform" style={{ backgroundColor: 'hsl(270 80% 55% / 0.2)', color: 'hsl(270 80% 70%)' }}>
                     <span className="text-3xl">🎬</span>
                   </div>
-                  <div className="text-base font-semibold text-gray-900">Video Generation</div>
-                  <p className="mt-2 text-sm text-gray-500 max-w-xs">
+                  <div className="text-base font-semibold" style={{ color: colors.foreground }}>Video Generation</div>
+                  <p className="mt-2 text-sm max-w-xs" style={{ color: colors.mutedForeground }}>
                     Plan and generate video-first ad concepts and storyboards.
                   </p>
                 </button>
@@ -466,7 +469,7 @@ export default function CreativeStudioLanding() {
 
             {/* Loading State */}
             {isLoadingSessions && (
-              <div className="mt-8 flex items-center justify-center text-gray-500">
+              <div className="mt-8 flex items-center justify-center" style={{ color: colors.mutedForeground }}>
                 <div className="animate-spin rounded-full h-5 w-5 border-2 border-gray-300 border-t-gray-600 mr-2" />
                 Loading sessions...
               </div>

@@ -469,7 +469,7 @@ export default function IntegrationsPage() {
 
   /* ---------- ui ---------- */
   return (
-    <div className="min-h-screen flex bg-slate-50">
+    <div className="min-h-screen flex app-page">
       <Sidebar />
 
       <main className="flex-1 p-8">
@@ -598,18 +598,18 @@ export default function IntegrationsPage() {
                             Reconnect Required
                           </Badge>
                         ) : metaStatus.healthStatus === 'expires_soon' ? (
-                          <Badge variant="outline" className="flex items-center gap-1 bg-yellow-50 border-yellow-300 text-yellow-700">
+                          <Badge variant="outline" className="flex items-center gap-1" style={{ background: 'hsl(45 93% 47% / 0.15)', borderColor: 'hsl(45 93% 47% / 0.4)', color: 'hsl(45 93% 60%)' }}>
                             <Clock className="w-3 h-3" />
                             Token Expires Soon
                           </Badge>
                         ) : (
-                          <Badge variant="outline" className="flex items-center gap-1 bg-green-50 border-green-300 text-green-700">
+                          <Badge variant="outline" className="flex items-center gap-1" style={{ background: 'hsl(142 76% 36% / 0.15)', borderColor: 'hsl(142 76% 36% / 0.4)', color: '#22c55e' }}>
                             <Check className="w-3 h-3" />
                             Healthy
                           </Badge>
                         )}
                         {metaStatus.healthMessage && (
-                          <p className="text-xs text-slate-600">{metaStatus.healthMessage}</p>
+                          <p className="text-xs" style={{ color: colors.mutedForeground }}>{metaStatus.healthMessage}</p>
                         )}
                       </div>
                     )}
@@ -630,10 +630,10 @@ export default function IntegrationsPage() {
           </div>
         </div>
 
-        <div className="mt-4 text-sm text-slate-500">
+        <div className="mt-4 text-sm" style={{ color: colors.mutedForeground }}>
           {loading ? "checking integration status..." : "status synced."}
           {message && (
-            <div className="mt-2 text-sm text-green-700">{message}</div>
+            <div className="mt-2 text-sm" style={{ color: '#22c55e' }}>{message}</div>
           )}
         </div>
       </main>

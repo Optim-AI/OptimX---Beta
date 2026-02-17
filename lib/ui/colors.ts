@@ -29,6 +29,11 @@ const colors = {
   accent: "hsl(213 80% 18%)",
   accentForeground: "hsl(213 100% 70%)",
   destructive: "hsl(0 84% 55%)",
+
+  // Status (for integrations, badges)
+  green100: "hsl(142 76% 36% / 0.15)",
+  green600: "#22c55e",
+  green900: "hsl(142 76% 30%)",
   destructiveForeground: "hsl(0 0% 100%)",
 
   // Inputs / borders / ring

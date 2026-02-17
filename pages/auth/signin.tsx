@@ -280,9 +280,9 @@ export default function SignInPage(): React.ReactElement {
     <>
       <style jsx global>{`
         :root {
-          --optim-blue: #0088ff;
+          --optim-blue: hsl(213 100% 55%);
           --border: hsl(0 0% 22%);
-          --link-color: #5ba3ff;
+          --link-color: hsl(213 100% 65%);
           --muted: hsl(0 0% 60%);
         }
         * {
@@ -305,35 +305,7 @@ export default function SignInPage(): React.ReactElement {
           justify-content: center;
           position: relative;
           overflow: hidden;
-        }
-        .bg-shape {
-          position: absolute;
-          border-radius: 9999px;
-          pointer-events: none;
-          filter: blur(120px);
-          opacity: 0.95;
-          z-index: 0;
-        }
-        .bg-shape.left {
-          width: 520px;
-          height: 520px;
-          left: -140px;
-          top: -80px;
-        }
-        .bg-shape.mid {
-          width: 380px;
-          height: 380px;
-          left: 420px;
-          top: 120px;
-        }
-        .bg-shape.right {
-          width: 600px;
-          height: 600px;
-          right: -160px;
-          bottom: -60px;
-        }
-        .mesh-gradient {
-          mix-blend-mode: overlay;
+          background-color: #121212;
         }
         .animation-float {
           animation: float 8s ease-in-out infinite;
@@ -354,14 +326,14 @@ export default function SignInPage(): React.ReactElement {
           }
         }
 
-        /* CARD + LAYOUT - reduced size to make inputs less large */
         .auth-card {
           z-index: 3;
           width: 500px;
-          border-radius: 18px;
-          backdrop-filter: blur(6px);
-          padding: 20px;
-          box-shadow: 0 20px 80px rgba(0, 0, 0, 0.4);
+          border-radius: 20px;
+          backdrop-filter: blur(20px);
+          -webkit-backdrop-filter: blur(20px);
+          padding: 24px;
+          box-shadow: 0 1px 2px hsl(0 0% 0% / 0.04), 0 4px 12px hsl(0 0% 0% / 0.04), 0 12px 40px hsl(0 0% 0% / 0.06);
           border: 1px solid rgba(255, 255, 255, 0.08);
           display: flex;
           flex-direction: column;
@@ -391,8 +363,8 @@ export default function SignInPage(): React.ReactElement {
           display: flex;
           align-items: center;
           justify-content: center;
-          background: linear-gradient(180deg, #36a7ff, #0f62ff);
-          box-shadow: 0 0 9.65px rgba(188, 215, 255, 0.24);
+          background: linear-gradient(135deg, hsl(213 100% 55%) 0%, hsl(213 100% 65%) 100%);
+          box-shadow: 0 0 24px hsl(213 100% 55% / 0.2);
         }
         .brand-title {
           margin-top: 8px;
@@ -423,7 +395,7 @@ export default function SignInPage(): React.ReactElement {
           align-items: center;
           justify-content: flex-start;
           gap: 12px;
-          background: hsl(0 0% 18%);
+          background: hsl(0 0% 15%);
           border: 1px solid var(--border);
           border-radius: 12px;
           padding: 10px 12px;
@@ -431,6 +403,7 @@ export default function SignInPage(): React.ReactElement {
           font-weight: 600;
           height: 44px;
           width: 100%;
+          color: hsl(0 0% 95%);
         }
         .oauth-btn img,
         .oauth-btn svg {
@@ -458,9 +431,9 @@ export default function SignInPage(): React.ReactElement {
           min-width: 88px;
         }
         .segmented .active {
-          background: linear-gradient(180deg, var(--optim-blue), #0a7df0);
+          background: linear-gradient(135deg, hsl(213 100% 55%) 0%, hsl(213 100% 65%) 100%);
           color: white;
-          box-shadow: 0 10px 30px rgba(8, 136, 255, 0.18);
+          box-shadow: 0 0 24px hsl(213 100% 55% / 0.2);
         }
 
         .form {
@@ -509,7 +482,7 @@ export default function SignInPage(): React.ReactElement {
           margin-top: 6px;
           height: 44px;
           border-radius: 12px;
-          background: var(--optim-blue);
+          background: linear-gradient(135deg, hsl(213 100% 55%) 0%, hsl(213 100% 65%) 100%);
           color: white;
           display: flex;
           align-items: center;
@@ -518,6 +491,7 @@ export default function SignInPage(): React.ReactElement {
           border: none;
           font-size: 15px;
           width: 100%;
+          box-shadow: 0 0 24px hsl(213 100% 55% / 0.2);
         }
         .policy {
           font-size: 12px;
@@ -536,7 +510,6 @@ export default function SignInPage(): React.ReactElement {
           text-align: center;
         }
 
-        /* helper row added for password mode (new user / forgot password) */
         .helper-row {
           display: flex;
           justify-content: space-between;
@@ -576,149 +549,17 @@ export default function SignInPage(): React.ReactElement {
         }
       `}</style>
 
-      <div className="page-wrap" role="region" aria-label="Sign in page">
-        <div
-          className="absolute inset-0"
-          style={{
-            backgroundImage: `linear-gradient(135deg, ${
-              (colors as any)?.background ?? "#ffffff"
-            } 0%, ${withAlpha(
-              (colors as any)?.primary ?? "hsl(213 90% 96%)",
-              0.3
-            )} 50%, ${(colors as any)?.background ?? "#ffffff"} 100%)`,
-            zIndex: 0,
-          }}
-        />
-        <div
-          className="absolute inset-0 mesh-gradient"
-          style={{
-            background:
-              (colors as any)?.gradientMesh ?? "linear-gradient(180deg,#f0f8ff00,#ffffff00)",
-            opacity: 0.4,
-            zIndex: 0,
-          }}
-        />
-
-        <div
-          className="absolute top-20 left-10 w-72 h-72 rounded-full blur-3xl animation-float"
-          style={{
-            backgroundColor: withAlpha(
-              (colors as any)?.primary ?? "hsl(213 90% 50%)",
-              0.3
-            ),
-            zIndex: 0,
-          }}
-        />
-        <div
-          className="absolute bottom-20 right-10 w-96 h-96 rounded-full blur-3xl animation-float"
-          style={{
-            backgroundColor: withAlpha(
-              (colors as any)?.primary ?? "hsl(213 90% 50%)",
-              0.2
-            ),
-            animationDelay: "2s",
-            zIndex: 0,
-          }}
-        />
-        <div
-          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full blur-3xl animation-float"
-          style={{
-            backgroundImage: `linear-gradient(90deg, ${withAlpha(
-              (colors as any)?.primary ?? "hsl(213 90% 50%)",
-              0.1
-            )} 0%, ${withAlpha(
-              (colors as any)?.primaryGlow ?? (colors as any)?.primary ?? "hsl(213 90% 50%)",
-              0.08
-            )} 100%)`,
-            animationDelay: "4s",
-            zIndex: 0,
-          }}
-        />
-
+      <div className="page-wrap" role="region" aria-label="Sign in page" style={{ backgroundColor: colors.background }}>
         <main
           className="auth-card"
           role="main"
           aria-labelledby="signin-title"
           style={{
-            background: (colors as any)?.gradientCard
-              ? (colors as any)?.gradientCard
-              : `linear-gradient(180deg, ${withAlpha(
-                  (colors as any)?.background ?? "#ffffff",
-                  0.12
-                )}, ${withAlpha(
-                  (colors as any)?.primary ?? "hsl(213 90% 96%)",
-                  0.04
-                )})`,
+            background: `linear-gradient(135deg, ${withAlpha(colors.card, 0.85)} 0%, ${withAlpha(colors.card, 0.92)} 100%)`,
+            border: "1px solid rgba(97, 97, 97, 1)",
           }}
         >
-          <div className="card-bg" aria-hidden>
-            <div
-              style={{
-                position: "absolute",
-                inset: 0,
-                zIndex: 0,
-                opacity: 1,
-                pointerEvents: "none",
-                overflow: "hidden",
-              }}
-            >
-              <div
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  background:
-                    (colors as any)?.gradientMesh ?? "linear-gradient(180deg,#f0f8ff00,#ffffff00)",
-                  mixBlendMode: "overlay",
-                  opacity: 0.5,
-                }}
-              />
-              <div
-                style={{
-                  position: "absolute",
-                  top: 12,
-                  left: 12,
-                  width: 220,
-                  height: 220,
-                  borderRadius: 9999,
-                  filter: "blur(84px)",
-                  transformOrigin: "center",
-                  animation: "float 8s ease-in-out infinite",
-                  backgroundColor: withAlpha((colors as any)?.primary ?? "hsl(213 90% 50%)", 0.28),
-                }}
-              />
-              <div
-                style={{
-                  position: "absolute",
-                  bottom: 10,
-                  right: 20,
-                  width: 300,
-                  height: 300,
-                  borderRadius: 9999,
-                  filter: "blur(84px)",
-                  transformOrigin: "center",
-                  animation: "float 8s ease-in-out infinite",
-                  animationDelay: "2s",
-                  backgroundColor: withAlpha((colors as any)?.primary ?? "hsl(213 90% 50%)", 0.18),
-                }}
-              />
-              <div
-                style={{
-                  position: "absolute",
-                  top: "50%",
-                  left: "50%",
-                  width: 420,
-                  height: 420,
-                  borderRadius: 9999,
-                  transform: "translate(-50%,-50%)",
-                  filter: "blur(84px)",
-                  transformOrigin: "center",
-                  animation: "float 8s ease-in-out infinite",
-                  animationDelay: "4s",
-                  backgroundImage: `linear-gradient(90deg, ${withAlpha((colors as any)?.primary ?? "hsl(213 90% 50%)", 0.1)} 0%, ${withAlpha((colors as any)?.primaryGlow ?? (colors as any)?.primary ?? "hsl(213 90% 50%)", 0.06)} 100%)`,
-                }}
-              />
-            </div>
-          </div>
+          <div className="card-bg" aria-hidden />
 
           <div className="auth-content" role="region" aria-label="Sign in form">
             <div
@@ -759,9 +600,9 @@ export default function SignInPage(): React.ReactElement {
             </div>
 
             <div style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, marginTop: 32 }}>
-              <div style={{ flex: 1, height: 1, background: "#E6E6E6" }} />
-              <div style={{ color: "#9aa0a6", fontSize: 13 }}>Or continue with</div>
-              <div style={{ flex: 1, height: 1, background: "#E6E6E6" }} />
+              <div style={{ flex: 1, height: 1, background: colors.border }} />
+              <div style={{ color: colors.mutedForeground, fontSize: 13 }}>Or continue with</div>
+              <div style={{ flex: 1, height: 1, background: colors.border }} />
             </div>
 
             <div style={{ width: "100%", display: "flex", justifyContent: "center", marginTop: 26 }}>
@@ -804,7 +645,7 @@ export default function SignInPage(): React.ReactElement {
                 </div>
               )}
 
-              <div style={{ fontSize: 11, textAlign: "center", color: "#6F6F6F", marginTop: 6 }}>we will send you a magic link for password free sign in</div>
+              <div style={{ fontSize: 11, textAlign: "center", color: colors.mutedForeground, marginTop: 6 }}>we will send you a magic link for password free sign in</div>
 
               {error && <div className="msg" style={{ color: "#d9534f" }}>{error}</div>}
               {info && <div className="msg" style={{ color: "#2f855a" }}>{info}</div>}
@@ -831,7 +672,7 @@ export default function SignInPage(): React.ReactElement {
               )}
             </div>
 
-            <div style={{ marginTop: 12, fontSize: 13, color: "#8b8b8b" }}>© {new Date().getFullYear()} SkalX AI</div>
+            <div style={{ marginTop: 12, fontSize: 13, color: colors.mutedForeground }}>© {new Date().getFullYear()} SkalX AI</div>
           </div>
         </main>
       </div>

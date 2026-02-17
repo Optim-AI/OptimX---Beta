@@ -169,7 +169,7 @@ export default function Insights() {
   }
 
   return (
-    <div className="min-h-screen flex bg-slate-50">
+    <div className="min-h-screen flex app-page">
       <Sidebar />
 
       <main className="flex-1 p-8">

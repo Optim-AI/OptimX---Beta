@@ -91,7 +91,7 @@ const PricingPreview: React.FC = () => {
   const { elementRef: contentRef, isVisible: contentVisible } = useScrollAnimation({ threshold: 0.1 });
 
   return (
-    <section id="pricing" className="py-24 relative overflow-hidden section-solid">
+    <section id="pricing" className="py-24 relative overflow-hidden section-solid" style={{ backgroundColor: colors.background }}>
       <div className="grain-overlay" />
 
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10">

@@ -132,7 +132,7 @@ export default function IntegrationsGoogle() {
   }
 
   return (
-    <div className="min-h-screen p-8 bg-slate-50">
+    <div className="min-h-screen p-8 app-page">
       <div className="max-w-3xl mx-auto bg-white shadow rounded p-6">
         <h2 className="text-xl font-semibold mb-4">Connected Google Ads</h2>
 

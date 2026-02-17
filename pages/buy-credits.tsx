@@ -150,7 +150,7 @@ export default function BuyCreditsPage() {
 
   if (loading) {
     return (
-      <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center' }}>
+      <div className="app-page" style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', color: colors.foreground }}>
         Loading...
       </div>
     );
@@ -161,7 +161,7 @@ export default function BuyCreditsPage() {
       {/* Load Razorpay Script */}
       <script src="https://checkout.razorpay.com/v1/checkout.js" async />
 
-      <div className="page">
+      <div className="page app-page">
         <div className="container">
           <button className="back-btn" onClick={() => router.back()}>
             <ArrowLeft size={20} />
@@ -308,9 +308,10 @@ export default function BuyCreditsPage() {
       <style jsx>{`
         .page {
           min-height: 100vh;
-          background: linear-gradient(135deg, #f8fafc 0%, #e0e7ff 50%, #f8fafc 100%);
+          background: ${colors.background};
           padding: 40px 20px;
           font-family: Poppins, Inter, system-ui;
+          color: ${colors.foreground};
         }
         .container {
           max-width: 600px;
@@ -320,8 +321,9 @@ export default function BuyCreditsPage() {
           display: flex;
           align-items: center;
           gap: 8px;
-          background: white;
-          border: 1px solid #e2e8f0;
+          background: ${colors.card};
+          border: 1px solid ${colors.border};
+          color: ${colors.foreground};
           padding: 10px 16px;
           border-radius: 8px;
           cursor: pointer;
@@ -330,7 +332,7 @@ export default function BuyCreditsPage() {
           transition: all 200ms;
         }
         .back-btn:hover {
-          background: #f8fafc;
+          background: ${colors.muted};
         }
         .header {
           text-align: center;
@@ -340,21 +342,22 @@ export default function BuyCreditsPage() {
           font-size: 36px;
           font-weight: 800;
           margin: 16px 0 8px;
-          color: #0f172a;
+          color: ${colors.foreground};
         }
         .header p {
-          color: #64748b;
+          color: ${colors.mutedForeground};
           font-size: 16px;
         }
         .balance-card {
-          background: white;
+          background: ${colors.card};
+          border: 1px solid ${colors.border};
           border-radius: 16px;
           padding: 24px;
           display: flex;
           gap: 32px;
           justify-content: center;
           margin-bottom: 32px;
-          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+          box-shadow: ${colors.shadowSoft};
         }
         .balance-item {
           display: flex;
@@ -363,13 +366,13 @@ export default function BuyCreditsPage() {
         }
         .balance-label {
           font-size: 14px;
-          color: #64748b;
+          color: ${colors.mutedForeground};
           font-weight: 500;
         }
         .balance-value {
           font-size: 28px;
           font-weight: 800;
-          color: #0f172a;
+          color: ${colors.foreground};
         }
         .type-toggle {
           display: flex;
@@ -384,8 +387,9 @@ export default function BuyCreditsPage() {
           gap: 8px;
           padding: 14px 28px;
           border-radius: 10px;
-          border: 2px solid #e2e8f0;
-          background: white;
+          border: 2px solid ${colors.border};
+          background: ${colors.card};
+          color: ${colors.foreground};
           cursor: pointer;
           font-weight: 700;
           font-size: 15px;
@@ -397,16 +401,17 @@ export default function BuyCreditsPage() {
           color: white;
         }
         .purchase-section {
-          background: white;
+          background: ${colors.card};
+          border: 1px solid ${colors.border};
           border-radius: 16px;
           padding: 32px;
-          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+          box-shadow: ${colors.shadowSoft};
         }
         .quantity-selector label {
           display: block;
           font-size: 16px;
           font-weight: 600;
-          color: #0f172a;
+          color: ${colors.foreground};
           margin-bottom: 16px;
         }
         .quantity-controls {
@@ -419,8 +424,9 @@ export default function BuyCreditsPage() {
           width: 44px;
           height: 44px;
           border-radius: 8px;
-          border: 2px solid #e2e8f0;
-          background: white;
+          border: 2px solid ${colors.border};
+          background: ${colors.card};
+          color: ${colors.foreground};
           display: flex;
           align-items: center;
           justify-content: center;
@@ -429,7 +435,7 @@ export default function BuyCreditsPage() {
         }
         .qty-btn:hover:not(:disabled) {
           border-color: ${colors.primary};
-          background: ${colors.primary}10;
+          background: hsl(213 100% 55% / 0.15);
         }
         .qty-btn:disabled {
           opacity: 0.4;
@@ -439,12 +445,13 @@ export default function BuyCreditsPage() {
           flex: 1;
           height: 44px;
           border-radius: 8px;
-          border: 2px solid #e2e8f0;
+          border: 2px solid ${colors.border};
+          background: ${colors.input};
           padding: 0 16px;
           font-size: 18px;
           font-weight: 700;
           text-align: center;
-          color: #0f172a;
+          color: ${colors.foreground};
         }
         .qty-input:focus {
           outline: none;
@@ -459,8 +466,9 @@ export default function BuyCreditsPage() {
           flex: 1;
           padding: 8px 12px;
           border-radius: 6px;
-          border: 1px solid #e2e8f0;
-          background: white;
+          border: 1px solid ${colors.border};
+          background: ${colors.card};
+          color: ${colors.foreground};
           cursor: pointer;
           font-weight: 600;
           font-size: 14px;
@@ -468,11 +476,12 @@ export default function BuyCreditsPage() {
         }
         .quick-select button:hover {
           border-color: ${colors.primary};
-          background: ${colors.primary}10;
+          background: hsl(213 100% 55% / 0.15);
           color: ${colors.primary};
         }
         .price-summary {
-          background: #f8fafc;
+          background: ${colors.muted};
+          border: 1px solid ${colors.border};
           border-radius: 12px;
           padding: 20px;
           margin-bottom: 24px;
@@ -483,19 +492,19 @@ export default function BuyCreditsPage() {
           align-items: center;
           padding: 8px 0;
           font-size: 15px;
-          color: #64748b;
+          color: ${colors.mutedForeground};
         }
         .price-row.total {
-          border-top: 2px solid #e2e8f0;
+          border-top: 2px solid ${colors.border};
           margin-top: 8px;
           padding-top: 16px;
           font-size: 18px;
           font-weight: 700;
-          color: #0f172a;
+          color: ${colors.foreground};
         }
         .price-value {
           font-weight: 700;
-          color: #0f172a;
+          color: ${colors.foreground};
         }
         .purchase-btn {
           width: 100%;
@@ -510,7 +519,7 @@ export default function BuyCreditsPage() {
           transition: all 200ms;
         }
         .purchase-btn:hover:not(:disabled) {
-          background: ${colors.primaryHover || '#0073e6'};
+          background: ${colors.primaryHover || 'hsl(213 100% 60%)'};
           transform: translateY(-2px);
         }
         .purchase-btn:disabled {
@@ -520,13 +529,14 @@ export default function BuyCreditsPage() {
         .note {
           text-align: center;
           font-size: 13px;
-          color: #64748b;
+          color: ${colors.mutedForeground};
           margin-top: 16px;
           margin-bottom: 0;
         }
         .error-msg {
-          background: #fef2f2;
-          color: #dc2626;
+          background: hsl(0 84% 55% / 0.15);
+          border: 1px solid ${colors.destructive};
+          color: ${colors.destructive};
           padding: 16px;
           border-radius: 12px;
           margin-bottom: 24px;

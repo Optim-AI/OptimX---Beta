@@ -118,12 +118,13 @@ export default function Welcome(): React.ReactElement {
   if (loading) {
     return (
       <div
+        className="app-page"
         style={{
           minHeight: "100vh",
           display: "grid",
           placeItems: "center",
-          background: "#fff",
           fontFamily: "Poppins, Inter",
+          color: colors.foreground,
         }}
       >
         Loading…
@@ -149,7 +150,8 @@ export default function Welcome(): React.ReactElement {
           padding: 40px 20px;
           font-family: Poppins, Inter, system-ui;
           text-align: center;
-          color: #000;
+          background-color: #121212;
+          color: hsl(0 0% 95%);
         }
 
         /* floating + subtle rotation for depth */
@@ -183,8 +185,8 @@ export default function Welcome(): React.ReactElement {
             90deg,
             transparent 0%,
             transparent 20%,
-            rgba(255,255,255,0.85) 45%,
-            rgba(255,255,255,0.85) 55%,
+            rgba(18,18,18,0.6) 45%,
+            rgba(18,18,18,0.6) 55%,
             transparent 80%,
             transparent 100%
           );
@@ -196,7 +198,7 @@ export default function Welcome(): React.ReactElement {
           margin-bottom: 14px;
           position: relative;
           z-index: 2;
-          color: #0f172a;
+          color: hsl(0 0% 95%);
           animation: fadeSlideUp 620ms cubic-bezier(.2,.9,.2,1) both;
           animation-delay: 80ms;
         }
@@ -236,7 +238,7 @@ export default function Welcome(): React.ReactElement {
 
         .subtitle {
           margin-top: 12px;
-          color: #111;
+          color: hsl(0 0% 70%);
           font-size: 18px;
           max-width: 640px;
           margin-left: auto;
@@ -254,7 +256,7 @@ export default function Welcome(): React.ReactElement {
           width: 240px;
           height: 48px;
           border-radius: 10px;
-          background: linear-gradient(180deg, #0088ff, #0073e6);
+          background: linear-gradient(135deg, hsl(213 100% 55%) 0%, hsl(213 100% 65%) 100%);
           color: white;
           display: inline-flex;
           align-items: center;
@@ -262,7 +264,7 @@ export default function Welcome(): React.ReactElement {
           font-weight: 700;
           cursor: pointer;
           border: none;
-          box-shadow: 0 10px 30px rgba(0, 136, 255, 0.14);
+          box-shadow: 0 0 24px hsl(213 100% 55% / 0.2);
           position: relative;
           z-index: 2;
           transform: translateY(6px);
@@ -272,7 +274,7 @@ export default function Welcome(): React.ReactElement {
           transition: transform 180ms ease, box-shadow 180ms ease;
         }
 
-        .cta:hover { transform: translateY(0); box-shadow: 0 18px 40px rgba(0,136,255,0.22); }
+        .cta:hover { transform: translateY(0); box-shadow: 0 0 32px hsl(213 100% 55% / 0.35); }
         .cta:active { transform: translateY(1px) scale(0.998); }
         .cta:focus { outline: 3px solid rgba(0,136,255,0.12); outline-offset: 3px; }
 
@@ -280,7 +282,7 @@ export default function Welcome(): React.ReactElement {
           margin-top: 18px;
           display: block;
           font-size: 14px;
-          color: #444;
+          color: hsl(0 0% 60%);
           text-decoration: underline;
           cursor: pointer;
           position: relative;
@@ -312,58 +314,7 @@ export default function Welcome(): React.ReactElement {
         }
       `}</style>
 
-      <div className="page" role="main" aria-label="Welcome page">
-        {/* Outer background (same as sign-in) */}
-        <div
-          className="absolute inset-0"
-          style={{
-            backgroundImage: `linear-gradient(135deg, ${
-              colors?.background ?? "#ffffff"
-            } 0%, ${withAlpha(colors?.primary ?? "hsl(213 90% 96%)", 0.3)} 50%, ${
-              colors?.background ?? "#ffffff"
-            } 100%)`,
-            zIndex: 0,
-          }}
-        />
-
-        <div
-          className="absolute inset-0"
-          style={{
-            background: colors?.gradientMesh ?? "linear-gradient(180deg,#f0f8ff00,#ffffff00)",
-            opacity: 0.4,
-            mixBlendMode: "overlay",
-            zIndex: 0,
-          }}
-        />
-
-        {/* floating outside orbs */}
-        <div
-          className="orb small"
-          style={{
-            backgroundColor: withAlpha(colors?.primary ?? "hsl(213 90% 50%)", 0.28),
-            zIndex: 0,
-          }}
-        />
-        <div
-          className="orb medium"
-          style={{
-            backgroundColor: withAlpha(colors?.primary ?? "hsl(213 90% 50%)", 0.18),
-            zIndex: 0,
-          }}
-        />
-        <div
-          className="orb big"
-          style={{
-            backgroundImage: `linear-gradient(90deg, ${withAlpha(
-              colors?.primary ?? "hsl(213 90% 50%)",
-              0.1
-            )} 0%, ${withAlpha(colors?.primaryGlow ?? colors?.primary ?? "hsl(213 90% 50%)", 0.06)} 100%)`,
-            zIndex: 0,
-          }}
-        />
-
-        {/* center soft area (keeps sides strong) */}
-        <div className="center-fade" />
+      <div className="page" role="main" aria-label="Welcome page" style={{ backgroundColor: colors.background }}>
 
         {/* Content - animated in */}
         <h1 className="title" aria-live="polite">
@@ -379,7 +330,7 @@ export default function Welcome(): React.ReactElement {
         </p>
 
         {error && (
-          <p style={{ color: "#c0392b", marginTop: 14, position: "relative", zIndex: 2 }}>
+          <p style={{ color: colors.destructive, marginTop: 14, position: "relative", zIndex: 2 }}>
             {error}
           </p>
         )}

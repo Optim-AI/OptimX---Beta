@@ -16,7 +16,7 @@ import {
   DrawerTitle,
   DrawerDescription,
 } from "./ui/drawer";
-import { Sparkles, Loader2, Check } from "lucide-react";
+import { Sparkles, Loader2, Check, Lightbulb, TrendingUp, Target, Megaphone, PenTool, BarChart3 } from "lucide-react";
 import { useRouter } from "next/router";
 import Link from "next/link";
 import colors from "@/lib/ui/colors";
@@ -104,7 +104,9 @@ const Hero: React.FC = () => {
   const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null);
   const [smoothPos, setSmoothPos] = useState({ x: 0, y: 0 });
   const [fadingOut, setFadingOut] = useState(false);
+  const [hoveredOrbs, setHoveredOrbs] = useState<Set<number>>(new Set());
   const sectionRef = useRef<HTMLElement | null>(null);
+  const floatContainerRef = useRef<HTMLDivElement | null>(null);
   const mouseRef = useRef({ x: 0, y: 0, clientX: 0, clientY: 0, inSection: false });
   const rafRef = useRef<number | null>(null);
   const smoothRef = useRef({ x: 0, y: 0 });
@@ -114,6 +116,28 @@ const Hero: React.FC = () => {
     const el = sectionRef.current;
     if (!el) return;
     const LERP = 0.2;
+    const HOVER_RADIUS = 90;
+
+    const updateHoveredOrbs = (clientX: number, clientY: number) => {
+      const container = floatContainerRef.current;
+      if (!container) return;
+      const hovered = new Set<number>();
+      const children = container.children;
+      for (let i = 0; i < children.length; i++) {
+        const r = (children[i] as HTMLElement).getBoundingClientRect();
+        const cx = r.left + r.width / 2;
+        const cy = r.top + r.height / 2;
+        const dx = clientX - cx;
+        const dy = clientY - cy;
+        if (dx * dx + dy * dy < HOVER_RADIUS * HOVER_RADIUS) hovered.add(i);
+      }
+      setHoveredOrbs((prev) => {
+        if (prev.size !== hovered.size) return hovered;
+        for (const i of hovered) if (!prev.has(i)) return hovered;
+        return prev;
+      });
+    };
+
     const handleMove = (e: MouseEvent) => {
       // Use clientX/clientY only — viewport coords. Never pageX/pageY or +scrollY.
       const rect = el.getBoundingClientRect();
@@ -130,11 +154,13 @@ const Hero: React.FC = () => {
       setCursorPos({ x: mx, y: my });
       setSmoothPos({ x: e.clientX, y: e.clientY });
       setFadingOut(false);
+      updateHoveredOrbs(e.clientX, e.clientY);
     };
     const handleLeave = () => {
       setParallax({ x: 0, y: 0 });
       mouseRef.current = { x: 0, y: 0, clientX: 0, clientY: 0, inSection: false };
       setCursorPos(null);
+      setHoveredOrbs(new Set());
       setFadingOut(true);
       if (fadeTimeoutRef.current) clearTimeout(fadeTimeoutRef.current);
       fadeTimeoutRef.current = setTimeout(() => setFadingOut(false), 500);
@@ -276,10 +302,81 @@ const Hero: React.FC = () => {
         @media (prefers-reduced-motion: reduce) {
           .liquid-glass-blob { animation: none; }
         }
+        @keyframes floatOrbit {
+          0%, 100% { transform: translate(0, 0) rotate(0deg); }
+          25% { transform: translate(4px, -6px) rotate(2deg); }
+          50% { transform: translate(-3px, -4px) rotate(-1deg); }
+          75% { transform: translate(5px, 2px) rotate(1deg); }
+        }
+        .hero-float-orb { animation: floatOrbit 6s ease-in-out infinite; }
+        .hero-float-orb.delay-1 { animation-delay: -1.2s; }
+        .hero-float-orb.delay-2 { animation-delay: -2.5s; }
+        .hero-float-orb.delay-3 { animation-delay: -4s; }
+        .hero-float-orb.delay-4 { animation-delay: -0.5s; }
+        .hero-float-orb.delay-5 { animation-delay: -3.2s; }
+        @media (prefers-reduced-motion: reduce) {
+          .hero-float-orb { animation: none; }
+        }
+        @media (max-width: 768px) {
+          .hero-float-orb { opacity: 0.5; }
+        }
+        .hero-float-orb-inner {
+          transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.2s, filter 0.2s;
+        }
+        .hero-float-orb-hover .hero-float-orb-inner {
+          transform: scale(1.45);
+          opacity: 0.6;
+          filter: drop-shadow(0 0 10px currentColor);
+        }
       `}</style>
 
       <div className="absolute inset-0 z-0" style={{ backgroundColor: '#121212' }} />
       <div className="absolute inset-0 pointer-events-none opacity-[0.012] z-[1]" style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")` }} />
+
+      {/* Floating design elements - marketing, growth, creativity - spread across whole hero */}
+      {!isMobile && (
+        <div ref={floatContainerRef} className="absolute inset-0 pointer-events-none z-[2] overflow-hidden" aria-hidden>
+          <div className={`hero-float-orb absolute left-[5%] top-[12%] opacity-[0.32] ${hoveredOrbs.has(0) ? "hero-float-orb-hover" : ""}`} style={{ color: colors.primary }}>
+            <span className="hero-float-orb-inner inline-block origin-center"><Lightbulb className="h-7 w-7" strokeWidth={1.5} /></span>
+          </div>
+          <div className={`hero-float-orb delay-1 absolute left-[22%] top-[8%] opacity-[0.22] ${hoveredOrbs.has(1) ? "hero-float-orb-hover" : ""}`} style={{ color: colors.mutedForeground }}>
+            <span className="hero-float-orb-inner inline-block origin-center"><PenTool className="h-5 w-5" strokeWidth={1.5} /></span>
+          </div>
+          <div className={`hero-float-orb delay-3 absolute left-[8%] top-[58%] opacity-[0.28] ${hoveredOrbs.has(2) ? "hero-float-orb-hover" : ""}`} style={{ color: colors.primary }}>
+            <span className="hero-float-orb-inner inline-block origin-center"><TrendingUp className="h-6 w-6" strokeWidth={1.5} /></span>
+          </div>
+          <div className={`hero-float-orb delay-4 absolute left-[18%] top-[88%] opacity-[0.24] ${hoveredOrbs.has(3) ? "hero-float-orb-hover" : ""}`} style={{ color: colors.primary }}>
+            <span className="hero-float-orb-inner inline-block origin-center"><Megaphone className="h-6 w-6" strokeWidth={1.5} /></span>
+          </div>
+          <div className={`hero-float-orb delay-5 absolute left-[35%] top-[25%] opacity-[0.2] ${hoveredOrbs.has(4) ? "hero-float-orb-hover" : ""}`} style={{ color: colors.mutedForeground }}>
+            <span className="hero-float-orb-inner inline-block origin-center"><Sparkles className="h-5 w-5" strokeWidth={1.5} /></span>
+          </div>
+          <div className={`hero-float-orb delay-2 absolute left-[28%] top-[72%] opacity-[0.26] ${hoveredOrbs.has(5) ? "hero-float-orb-hover" : ""}`} style={{ color: colors.primary }}>
+            <span className="hero-float-orb-inner inline-block origin-center"><Target className="h-6 w-6" strokeWidth={1.5} /></span>
+          </div>
+          <div className={`hero-float-orb absolute right-[6%] top-[18%] opacity-[0.3] ${hoveredOrbs.has(6) ? "hero-float-orb-hover" : ""}`} style={{ color: colors.primary }}>
+            <span className="hero-float-orb-inner inline-block origin-center"><Target className="h-7 w-7" strokeWidth={1.5} /></span>
+          </div>
+          <div className={`hero-float-orb delay-1 absolute right-[20%] top-[6%] opacity-[0.22] ${hoveredOrbs.has(7) ? "hero-float-orb-hover" : ""}`} style={{ color: colors.mutedForeground }}>
+            <span className="hero-float-orb-inner inline-block origin-center"><BarChart3 className="h-5 w-5" strokeWidth={1.5} /></span>
+          </div>
+          <div className={`hero-float-orb absolute right-[8%] top-[52%] opacity-[0.28] ${hoveredOrbs.has(8) ? "hero-float-orb-hover" : ""}`} style={{ color: colors.primary }}>
+            <span className="hero-float-orb-inner inline-block origin-center"><Lightbulb className="h-6 w-6" strokeWidth={1.5} /></span>
+          </div>
+          <div className={`hero-float-orb delay-4 absolute right-[25%] top-[85%] opacity-[0.24] ${hoveredOrbs.has(9) ? "hero-float-orb-hover" : ""}`} style={{ color: colors.primary }}>
+            <span className="hero-float-orb-inner inline-block origin-center"><TrendingUp className="h-6 w-6 rotate-180" strokeWidth={1.5} /></span>
+          </div>
+          <div className={`hero-float-orb delay-3 absolute right-[32%] top-[38%] opacity-[0.2] ${hoveredOrbs.has(10) ? "hero-float-orb-hover" : ""}`} style={{ color: colors.mutedForeground }}>
+            <span className="hero-float-orb-inner inline-block origin-center"><Megaphone className="h-5 w-5" strokeWidth={1.5} /></span>
+          </div>
+          <div className={`hero-float-orb delay-5 absolute left-[42%] top-[92%] opacity-[0.22] ${hoveredOrbs.has(11) ? "hero-float-orb-hover" : ""}`} style={{ color: colors.mutedForeground }}>
+            <span className="hero-float-orb-inner inline-block origin-center"><BarChart3 className="h-5 w-5" strokeWidth={1.5} /></span>
+          </div>
+          <div className={`hero-float-orb delay-2 absolute right-[38%] top-[78%] opacity-[0.24] ${hoveredOrbs.has(12) ? "hero-float-orb-hover" : ""}`} style={{ color: colors.primary }}>
+            <span className="hero-float-orb-inner inline-block origin-center"><Sparkles className="h-5 w-5" strokeWidth={1.5} /></span>
+          </div>
+        </div>
+      )}
 
       {/* Glass lens: disabled — uncomment condition below to re-enable */}
       {false && !isMobile && (cursorPos !== null || fadingOut) && (
@@ -308,13 +405,13 @@ const Hero: React.FC = () => {
       <ParallaxLayer speed={0.08} className="relative" style={{ zIndex: 10 }}>
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10 w-full max-w-4xl">
         {/* Headline - PRD */}
-        <div className="text-center mb-4 mx-auto max-w-2xl animate-[fadeUp_0.7s_cubic-bezier(0.16,1,0.3,1)_both" style={{ animationDelay: "0.1s" }}>
-          <h1 className="text-4xl sm:text-[46px] font-normal leading-tight tracking-tight" style={{ color: colors.foreground, marginLeft: '-223px', marginRight: '-223px', width: '1182px' }}>
-            An AI Marketing Team, Without Expanding Headcount.
+        <div className="text-center mb-4 mx-auto max-w-4xl animate-[fadeUp_0.7s_cubic-bezier(0.16,1,0.3,1)_both" style={{ animationDelay: "0.1s" }}>
+          <h1 className="text-4xl sm:text-[46px] font-normal leading-tight tracking-tight" style={{ color: colors.foreground }}>
+            Your AI Marketing Team.
           </h1>
         </div>
-        <p className="text-center text-xl mb-8 max-w-2xl mx-auto font-extralight animate-[fadeUp_0.7s_cubic-bezier(0.16,1,0.3,1)_both" style={{ color: colors.mutedForeground, animationDelay: "0.25s" }}>
-        Create, launch, and optimise campaigns, all from one dashboard.
+        <p className="text-center text-xl mb-8 max-w-3xl mx-auto font-extralight animate-[fadeUp_0.7s_cubic-bezier(0.16,1,0.3,1)_both" style={{ color: colors.mutedForeground, animationDelay: "0.25s" }}>
+        Create, launch, and optimise campaigns, with one AI growth engine.
         </p>
 
         {/* CTAs - PRD */}
@@ -339,11 +436,11 @@ const Hero: React.FC = () => {
           </Button>
         </div>
         <p className="text-center text-sm mb-12" style={{ color: colors.mutedForeground }}>
-          Agency-level output. Software-level speed.
+        Average launch time: 4 minutes.
         </p>
 
         {/* Product Preview UI - interactive mock */}
-        <div className={`hero-card p-6 sm:p-8 mb-8 transition-transform duration-800 ${phase === "idle" ? "animate-float-subtle" : ""} ${phase !== "idle" ? "hero-card-expanded" : ""}`} style={{ background: `linear-gradient(135deg, ${withAlpha(colors.card, 0.85)} 0%, ${withAlpha(colors.card, 0.92)} 100%)`, border: '1px solid rgba(97, 97, 97, 1)' }}>
+        <div className={`hero-card p-6 sm:p-8 mb-8 mx-auto w-full max-w-2xl transition-transform duration-800 ${phase === "idle" ? "animate-float-subtle" : ""} ${phase !== "idle" ? "hero-card-expanded" : ""}`} style={{ background: `linear-gradient(135deg, ${withAlpha(colors.card, 0.85)} 0%, ${withAlpha(colors.card, 0.92)} 100%)`, border: '1px solid rgba(97, 97, 97, 1)' }}>
           {phase === "idle" && (
             <div className="space-y-5 animate-[fadeUp_0.5s_cubic-bezier(0.4,0,0.2,1)_forwards]">
               <div className="hero-input-wrap rounded-[18px]">

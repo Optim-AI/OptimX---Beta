@@ -5,6 +5,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
 import Sidebar from '@/app/web/src/components/Sidebar';
+import colors from '@/lib/ui/colors';
 import { InsufficientCreditsAlert } from '@/app/web/src/components/billing';
 import {
   type BrandSnapshot,
@@ -787,9 +788,9 @@ export default function VideoSessionPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="flex items-center gap-3 text-gray-600">
-          <div className="animate-spin rounded-full h-6 w-6 border-2 border-gray-300 border-t-purple-600" />
+      <div className="min-h-screen flex items-center justify-center app-page">
+        <div className="flex items-center gap-3" style={{ color: colors.mutedForeground }}>
+          <div className="animate-spin rounded-full h-6 w-6 border-2 border-t-transparent" style={{ borderColor: colors.border, borderTopColor: colors.primary }} />
           <span>Loading session...</span>
         </div>
       </div>
@@ -798,12 +799,13 @@ export default function VideoSessionPage() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center app-page">
         <div className="text-center">
-          <p className="text-red-600 mb-4">{error}</p>
+          <p className="mb-4" style={{ color: colors.destructive }}>{error}</p>
           <button
             onClick={() => router.push('/creative-studio')}
-            className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+            className="px-4 py-2 text-white rounded-lg"
+            style={{ backgroundColor: colors.primary }}
           >
             Back to Creative Studio
           </button>
@@ -813,7 +815,7 @@ export default function VideoSessionPage() {
   }
 
   return (
-    <div className="h-screen bg-gray-50 flex overflow-hidden">
+    <div className="h-screen flex overflow-hidden app-page">
       {/* Sidebar */}
       <div className="flex-shrink-0 h-full">
         <Sidebar
@@ -832,58 +834,57 @@ export default function VideoSessionPage() {
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col bg-white h-full overflow-hidden">
+      <div className="flex-1 flex flex-col h-full overflow-hidden" style={{ backgroundColor: colors.card, borderLeft: `1px solid ${colors.border}` }}>
         {/* Header */}
-        <div className="border-b border-gray-200 bg-white flex-shrink-0">
+        <div className="border-b flex-shrink-0" style={{ borderColor: colors.border, backgroundColor: colors.card }}>
           <div className="max-w-4xl mx-auto px-6 py-4">
             <div className="flex items-center justify-between">
-              <div>
-                <h1 className="text-xl font-semibold text-gray-900">
-                  {session?.name || 'New Video Session'}
-                </h1>
-                <p className="text-gray-500 text-sm">
-                  {isSaving ? 'Saving...' : 'Create video-first ad concepts'}
-                </p>
+              <div className="flex items-center gap-4">
+                <BackButton />
+                <div>
+                  <h1 className="text-xl font-semibold" style={{ color: colors.foreground }}>
+                    {session?.name || 'New Video Session'}
+                  </h1>
+                  <p className="text-sm" style={{ color: colors.mutedForeground }}>
+                    {isSaving ? 'Saving...' : 'Create video-first ad concepts'}
+                  </p>
+                </div>
               </div>
               <div className="flex items-center gap-4">
                 {videoCredits !== null && (
-                  <div className="flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-200 rounded-lg">
-                    <svg className="w-4 h-4 text-purple-500" fill="currentColor" viewBox="0 0 20 20">
+                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg" style={{ background: 'hsl(270 80% 55% / 0.15)', border: `1px solid hsl(270 80% 55% / 0.35)` }}>
+                    <svg className="w-4 h-4" style={{ color: 'hsl(270 80% 65%)' }} fill="currentColor" viewBox="0 0 20 20">
                       <path d="M2 6a2 2 0 012-2h6a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V6zM14.553 7.106A1 1 0 0014 8v4a1 1 0 00.553.894l2 1A1 1 0 0018 13V7a1 1 0 00-1.447-.894l-2 1z" />
                     </svg>
-                    <span className="font-semibold text-purple-700 text-sm">{videoCredits.total}</span>
-                    <span className="text-purple-600 text-xs">seconds</span>
+                    <span className="font-semibold text-sm" style={{ color: 'hsl(270 80% 70%)' }}>{videoCredits.total}</span>
+                    <span className="text-xs" style={{ color: 'hsl(270 80% 65%)' }}>seconds</span>
                   </div>
                 )}
-                <BackButton />
               </div>
             </div>
           </div>
         </div>
 
         {/* Progress Steps */}
-        <div className="bg-white border-b border-gray-200 px-6 py-4 flex-shrink-0">
+        <div className="border-b px-6 py-4 flex-shrink-0" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
           <div className="max-w-4xl mx-auto flex items-center justify-between">
             {[1, 2, 3, 4].map((s) => (
               <React.Fragment key={s}>
                 <button
                   onClick={() => setStep(s as AdBuilderStep)}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
-                    step === s
-                      ? 'bg-purple-100 text-purple-700 font-semibold'
-                      : step > s
-                      ? 'text-gray-600 hover:text-gray-900'
-                      : 'text-gray-400'
-                  }`}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors"
+                  style={{
+                    backgroundColor: 'transparent',
+                    color: step === s ? colors.primary : step > s ? colors.foreground : colors.mutedForeground,
+                    fontWeight: step === s ? 600 : 400,
+                  }}
                 >
                   <div
-                    className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                      step === s
-                        ? 'bg-purple-600 text-white'
-                        : step > s
-                        ? 'bg-green-500 text-white'
-                        : 'bg-gray-200 text-gray-500'
-                    }`}
+                    className="w-8 h-8 rounded-full flex items-center justify-center"
+                    style={{
+                      backgroundColor: step === s ? colors.primary : step > s ? colors.green600 : colors.muted,
+                      color: step === s || step > s ? 'white' : colors.mutedForeground,
+                    }}
                   >
                     {step > s ? '✓' : s}
                   </div>
@@ -894,26 +895,26 @@ export default function VideoSessionPage() {
                     {s === 4 && 'Generate'}
                   </span>
                 </button>
-                {s < 4 && <div className="flex-1 h-px bg-gray-200 mx-2" />}
+                {s < 4 && <div className="flex-1 h-px mx-2" style={{ backgroundColor: colors.border }} />}
               </React.Fragment>
             ))}
           </div>
         </div>
 
         {/* Step Content */}
-        <div className="flex-1 overflow-y-auto bg-slate-50">
+        <div className="flex-1 overflow-y-auto" style={{ backgroundColor: colors.background }}>
           <div className="max-w-4xl mx-auto px-6 py-8">
             {/* Step 1: Product Input */}
             {step === 1 && (
               <div className="space-y-6">
                 <div>
-                  <h2 className="text-2xl font-bold text-gray-900 mb-2">Product Input</h2>
-                  <p className="text-gray-600">Add your product by URL or upload images</p>
+                  <h2 className="text-2xl font-bold mb-2" style={{ color: colors.foreground }}>Product Input</h2>
+                  <p style={{ color: colors.mutedForeground }}>Add your product by URL or upload images</p>
                 </div>
 
                 {/* URL Input */}
-                <div className="bg-white rounded-lg border border-gray-200 p-6">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                <div className="rounded-lg border p-6" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
+                  <label className="block text-sm font-medium mb-2" style={{ color: colors.foreground }}>
                     Product URL (D2C, Shopify, Amazon, etc.)
                   </label>
                   <form onSubmit={handleProductUrlSubmit} className="flex gap-3">
@@ -922,13 +923,15 @@ export default function VideoSessionPage() {
                       value={productUrl}
                       onChange={(e) => setProductUrl(e.target.value)}
                       placeholder="https://example.com/product"
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      className="flex-1 px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                      style={{ borderColor: colors.border, backgroundColor: colors.input, color: colors.foreground }}
                       disabled={isScrapingProduct}
                     />
                     <button
                       type="submit"
                       disabled={!productUrl.trim() || isScrapingProduct}
-                      className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-4 py-2 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                      style={{ backgroundColor: colors.primary }}
                     >
                       {isScrapingProduct ? 'Scraping...' : 'Scrape'}
                     </button>
@@ -936,8 +939,8 @@ export default function VideoSessionPage() {
                 </div>
 
                 {/* Image Upload */}
-                <div className="bg-white rounded-lg border border-gray-200 p-6">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                <div className="rounded-lg border p-6" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
+                  <label className="block text-sm font-medium mb-2" style={{ color: colors.foreground }}>
                     Or Upload Product Images (1-3 images)
                   </label>
                   <input
@@ -945,23 +948,24 @@ export default function VideoSessionPage() {
                     accept="image/*"
                     multiple
                     onChange={handleImageUpload}
-                    className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100"
+                    className="block w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold"
+                    style={{ color: colors.mutedForeground }}
                   />
                 </div>
 
                 {/* Product Preview */}
                 {adBuilderData.product && (
-                  <div className="bg-white rounded-lg border border-gray-200 p-6">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Detected Product</h3>
+                  <div className="rounded-lg border p-6" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
+                    <h3 className="text-lg font-semibold mb-4" style={{ color: colors.foreground }}>Detected Product</h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div>
-                        <p className="text-sm text-gray-600 mb-1">Product Name</p>
-                        <p className="font-medium">{adBuilderData.product.product_name}</p>
-                        <p className="text-sm text-gray-600 mt-2 mb-1">Brand</p>
-                        <p className="font-medium">{adBuilderData.product.brand_name}</p>
+                        <p className="text-sm mb-1" style={{ color: colors.mutedForeground }}>Product Name</p>
+                        <p className="font-medium" style={{ color: colors.foreground }}>{adBuilderData.product.product_name}</p>
+                        <p className="text-sm mt-2 mb-1" style={{ color: colors.mutedForeground }}>Brand</p>
+                        <p className="font-medium" style={{ color: colors.foreground }}>{adBuilderData.product.brand_name}</p>
                       </div>
                       <div>
-                        <p className="text-sm text-gray-600 mb-2">Product Images</p>
+                        <p className="text-sm mb-2" style={{ color: colors.mutedForeground }}>Product Images</p>
                         <div className="grid grid-cols-3 gap-2">
                           {adBuilderData.product.product_images.map((img, idx) => (
                             <button
@@ -975,9 +979,8 @@ export default function VideoSessionPage() {
                                     : null,
                                 });
                               }}
-                              className={`relative aspect-square rounded-lg overflow-hidden border-2 ${
-                                selectedImageIndex === idx ? 'border-purple-600' : 'border-gray-200'
-                              }`}
+                              className="relative aspect-square rounded-lg overflow-hidden border-2"
+                              style={{ borderColor: selectedImageIndex === idx ? colors.primary : colors.border }}
                             >
                               <img src={img} alt={`Product ${idx + 1}`} className="w-full h-full object-cover" />
                             </button>
@@ -989,7 +992,8 @@ export default function VideoSessionPage() {
                     <div className="mt-6 flex justify-end">
                       <button
                         onClick={() => setStep(2)}
-                        className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+                        className="px-6 py-2 text-white rounded-lg"
+                        style={{ backgroundColor: colors.primary }}
                       >
                         Continue to Ad Setup
                       </button>
@@ -1003,14 +1007,14 @@ export default function VideoSessionPage() {
             {step === 2 && (
               <div className="space-y-6">
                 <div>
-                  <h2 className="text-2xl font-bold text-gray-900 mb-2">Ad Setup</h2>
-                  <p className="text-gray-600">Configure your ad style, duration, and platform</p>
+                  <h2 className="text-2xl font-bold mb-2" style={{ color: colors.foreground }}>Ad Setup</h2>
+                  <p style={{ color: colors.mutedForeground }}>Configure your ad style, duration, and platform</p>
                 </div>
 
-                <div className="bg-white rounded-lg border border-gray-200 p-6 space-y-6">
+                <div className="rounded-lg border p-6 space-y-6" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
                   {/* Style */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Ad Style</label>
+                    <label className="block text-sm font-medium mb-2" style={{ color: colors.foreground }}>Ad Style</label>
                     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                       {VIDEO_STYLES.map((style) => (
                         <button
@@ -1021,11 +1025,12 @@ export default function VideoSessionPage() {
                               adSetup: { ...adBuilderData.adSetup, style: style as any },
                             })
                           }
-                          className={`px-4 py-3 rounded-lg border-2 text-sm font-medium transition-colors ${
-                            adBuilderData.adSetup.style === style
-                              ? 'border-purple-600 bg-purple-50 text-purple-700'
-                              : 'border-gray-200 hover:border-gray-300'
-                          }`}
+                          className="px-4 py-3 rounded-lg border-2 text-sm font-medium transition-colors"
+                          style={{
+                            borderColor: adBuilderData.adSetup.style === style ? colors.primary : colors.border,
+                            backgroundColor: adBuilderData.adSetup.style === style ? 'hsl(213 100% 55% / 0.2)' : 'transparent',
+                            color: adBuilderData.adSetup.style === style ? colors.primary : colors.foreground,
+                          }}
                         >
                           {style}
                         </button>
@@ -1035,7 +1040,7 @@ export default function VideoSessionPage() {
 
                   {/* Duration */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Duration</label>
+                    <label className="block text-sm font-medium mb-2" style={{ color: colors.foreground }}>Duration</label>
                     <div className="flex gap-3">
                       {VIDEO_DURATIONS.map((dur) => (
                         <button
@@ -1046,40 +1051,42 @@ export default function VideoSessionPage() {
                               adSetup: { ...adBuilderData.adSetup, duration: dur },
                             })
                           }
-                          className={`px-6 py-3 rounded-lg border-2 font-medium transition-colors ${
-                            adBuilderData.adSetup.duration === dur
-                              ? 'border-purple-600 bg-purple-50 text-purple-700'
-                              : 'border-gray-200 hover:border-gray-300'
-                          }`}
+                          className="px-6 py-3 rounded-lg border-2 font-medium transition-colors"
+                          style={{
+                            borderColor: adBuilderData.adSetup.duration === dur ? colors.primary : colors.border,
+                            backgroundColor: adBuilderData.adSetup.duration === dur ? 'hsl(213 100% 55% / 0.2)' : 'transparent',
+                            color: adBuilderData.adSetup.duration === dur ? colors.primary : colors.foreground,
+                          }}
                         >
                           {dur}s
                         </button>
                       ))}
                     </div>
-                    <p className="mt-2 text-xs text-gray-500">
+                    <p className="mt-2 text-xs" style={{ color: colors.mutedForeground }}>
                       Standard length: 8 s.
                     </p>
                   </div>
 
                   {/* Platform */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Platform</label>
+                    <label className="block text-sm font-medium mb-2" style={{ color: colors.foreground }}>Platform</label>
                     <div className="grid grid-cols-2 gap-3">
                       {VIDEO_PLATFORMS.map((platform) => (
                         <button
                           key={platform}
                           onClick={() => updatePlatform(platform)}
-                          className={`px-4 py-3 rounded-lg border-2 text-sm font-medium transition-colors ${
-                            adBuilderData.adSetup.platform === platform
-                              ? 'border-purple-600 bg-purple-50 text-purple-700'
-                              : 'border-gray-200 hover:border-gray-300'
-                          }`}
+                          className="px-4 py-3 rounded-lg border-2 text-sm font-medium transition-colors"
+                          style={{
+                            borderColor: adBuilderData.adSetup.platform === platform ? colors.primary : colors.border,
+                            backgroundColor: adBuilderData.adSetup.platform === platform ? 'hsl(213 100% 55% / 0.2)' : 'transparent',
+                            color: adBuilderData.adSetup.platform === platform ? colors.primary : colors.foreground,
+                          }}
                         >
                           {platform}
                         </button>
                       ))}
                     </div>
-                    <p className="mt-2 text-xs text-gray-500">
+                    <p className="mt-2 text-xs" style={{ color: colors.mutedForeground }}>
                       Aspect Ratio: {adBuilderData.adSetup.aspect_ratio}
                     </p>
                   </div>
@@ -1087,13 +1094,15 @@ export default function VideoSessionPage() {
                   <div className="flex justify-between pt-4">
                     <button
                       onClick={() => setStep(1)}
-                      className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                      className="px-6 py-2 border rounded-lg"
+                      style={{ borderColor: colors.border, color: colors.foreground }}
                     >
                       Back
                     </button>
                     <button
                       onClick={() => setStep(3)}
-                      className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+                      className="px-6 py-2 text-white rounded-lg"
+                      style={{ backgroundColor: colors.primary }}
                     >
                       Continue to Script
                     </button>
@@ -1106,17 +1115,17 @@ export default function VideoSessionPage() {
             {step === 3 && (
               <div className="space-y-6">
                 <div>
-                  <h2 className="text-2xl font-bold text-gray-900 mb-2">Voiceover & Script</h2>
-                  <p className="text-gray-600">Configure voiceover and generate your video script</p>
+                  <h2 className="text-2xl font-bold mb-2" style={{ color: colors.foreground }}>Voiceover & Script</h2>
+                  <p style={{ color: colors.mutedForeground }}>Configure voiceover and generate your video script</p>
                 </div>
 
-                <div className="bg-white rounded-lg border border-gray-200 p-6 space-y-6">
+                <div className="rounded-lg border p-6 space-y-6" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
                   {/* User Description Input */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium mb-2" style={{ color: colors.foreground }}>
                       Describe Your Video Ad Vision
                     </label>
-                    <p className="text-xs text-gray-500 mb-2">
+                    <p className="text-xs mb-2" style={{ color: colors.mutedForeground }}>
                       Tell us what you want in your video ad. Our AI will analyze your product and enhance your vision into a premium commercial script.
                     </p>
                     <textarea
@@ -1128,16 +1137,17 @@ export default function VideoSessionPage() {
                         })
                       }
                       placeholder="E.g., Show the product in action, highlight the key benefits, create an emotional connection with the audience, showcase the premium quality..."
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      className="w-full px-3 py-2 border rounded-lg text-sm resize-none focus:outline-none focus:ring-2"
+                      style={{ borderColor: colors.border, backgroundColor: colors.input, color: colors.foreground }}
                       rows={4}
                     />
                   </div>
 
                   {/* Voiceover Toggle */}
-                  <div className="flex items-center justify-between pt-4 border-t border-gray-200">
+                  <div className="flex items-center justify-between pt-4 border-t" style={{ borderColor: colors.border }}>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700">Voiceover</label>
-                      <p className="text-xs text-gray-500">Enable AI-generated voiceover narration</p>
+                      <label className="block text-sm font-medium" style={{ color: colors.foreground }}>Voiceover</label>
+                      <p className="text-xs" style={{ color: colors.mutedForeground }}>Enable AI-generated voiceover narration</p>
                     </div>
                     <button
                       onClick={() =>
@@ -1146,14 +1156,15 @@ export default function VideoSessionPage() {
                           voiceover: { ...adBuilderData.voiceover, enabled: !adBuilderData.voiceover.enabled },
                         })
                       }
-                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                        adBuilderData.voiceover.enabled ? 'bg-purple-600' : 'bg-gray-200'
-                      }`}
+                      className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors"
+                      style={{ backgroundColor: adBuilderData.voiceover.enabled ? colors.primary : colors.muted }}
                     >
                       <span
-                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                          adBuilderData.voiceover.enabled ? 'translate-x-6' : 'translate-x-1'
-                        }`}
+                        className="inline-block h-4 w-4 transform rounded-full transition-transform"
+                        style={{
+                          backgroundColor: colors.cardForeground,
+                          transform: adBuilderData.voiceover.enabled ? 'translateX(1.5rem)' : 'translateX(0.25rem)',
+                        }}
                       />
                     </button>
                   </div>
@@ -1162,7 +1173,7 @@ export default function VideoSessionPage() {
                     <>
                       {/* Tone Selection */}
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Tone</label>
+                        <label className="block text-sm font-medium mb-2" style={{ color: colors.foreground }}>Tone</label>
                         <div className="flex gap-3">
                           {(['Energetic', 'Calm', 'Premium', 'Fun'] as const).map((tone) => (
                             <button
@@ -1173,11 +1184,12 @@ export default function VideoSessionPage() {
                                   voiceover: { ...adBuilderData.voiceover, tone },
                                 })
                               }
-                              className={`px-4 py-2 rounded-lg border-2 text-sm font-medium transition-colors ${
-                                adBuilderData.voiceover.tone === tone
-                                  ? 'border-purple-600 bg-purple-50 text-purple-700'
-                                  : 'border-gray-200 hover:border-gray-300'
-                              }`}
+                              className="px-4 py-2 rounded-lg border-2 text-sm font-medium transition-colors"
+                              style={{
+                                borderColor: adBuilderData.voiceover.tone === tone ? colors.primary : colors.border,
+                                backgroundColor: adBuilderData.voiceover.tone === tone ? 'hsl(213 100% 55% / 0.2)' : 'transparent',
+                                color: adBuilderData.voiceover.tone === tone ? colors.primary : colors.foreground,
+                              }}
                             >
                               {tone}
                             </button>
@@ -1188,7 +1200,7 @@ export default function VideoSessionPage() {
                       {/* Key Message & CTA */}
                       <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                          <label className="block text-sm font-medium mb-2" style={{ color: colors.foreground }}>
                             Key Message (optional)
                           </label>
                           <input
@@ -1201,11 +1213,12 @@ export default function VideoSessionPage() {
                               })
                             }
                             placeholder="e.g., 50% off sale"
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2"
+                            style={{ borderColor: colors.border, backgroundColor: colors.input, color: colors.foreground }}
                           />
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                          <label className="block text-sm font-medium mb-2" style={{ color: colors.foreground }}>
                             CTA (optional)
                           </label>
                           <input
@@ -1218,7 +1231,8 @@ export default function VideoSessionPage() {
                               })
                             }
                             placeholder="e.g., Shop Now"
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2"
+                            style={{ borderColor: colors.border, backgroundColor: colors.input, color: colors.foreground }}
                           />
                         </div>
                       </div>
@@ -1226,10 +1240,10 @@ export default function VideoSessionPage() {
                   )}
 
                   {/* On-Screen Text Toggle */}
-                  <div className="flex items-center justify-between pt-4 border-t border-gray-200">
+                  <div className="flex items-center justify-between pt-4 border-t" style={{ borderColor: colors.border }}>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700">On-Screen Text</label>
-                      <p className="text-xs text-gray-500">Show text overlays on video</p>
+                      <label className="block text-sm font-medium" style={{ color: colors.foreground }}>On-Screen Text</label>
+                      <p className="text-xs" style={{ color: colors.mutedForeground }}>Show text overlays on video</p>
                     </div>
                     <button
                       onClick={() =>
@@ -1238,14 +1252,15 @@ export default function VideoSessionPage() {
                           onScreenText: { ...adBuilderData.onScreenText, enabled: !adBuilderData.onScreenText.enabled },
                         })
                       }
-                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                        adBuilderData.onScreenText.enabled ? 'bg-purple-600' : 'bg-gray-200'
-                      }`}
+                      className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors"
+                      style={{ backgroundColor: adBuilderData.onScreenText.enabled ? colors.primary : colors.muted }}
                     >
                       <span
-                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                          adBuilderData.onScreenText.enabled ? 'translate-x-6' : 'translate-x-1'
-                        }`}
+                        className="inline-block h-4 w-4 transform rounded-full transition-transform"
+                        style={{
+                          backgroundColor: colors.cardForeground,
+                          transform: adBuilderData.onScreenText.enabled ? 'translateX(1.5rem)' : 'translateX(0.25rem)',
+                        }}
                       />
                     </button>
                   </div>
@@ -1254,7 +1269,8 @@ export default function VideoSessionPage() {
                   <button
                     onClick={handleGenerateScript}
                     disabled={isGeneratingScript}
-                    className="w-full px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="w-full px-6 py-3 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                    style={{ backgroundColor: colors.primary }}
                   >
                     {isGeneratingScript ? (
                       <span className="flex items-center justify-center gap-2">
@@ -1268,28 +1284,28 @@ export default function VideoSessionPage() {
 
                   {/* Loading Skeleton while generating */}
                   {isGeneratingScript && (
-                    <div className="pt-4 border-t border-gray-200 space-y-4">
-                      <div className="p-4 bg-purple-50 rounded-lg border border-purple-200 animate-pulse">
-                        <div className="h-4 bg-purple-200 rounded w-32 mb-3" />
-                        <div className="h-3 bg-purple-100 rounded w-full mb-2" />
-                        <div className="h-3 bg-purple-100 rounded w-3/4" />
+                    <div className="pt-4 border-t space-y-4" style={{ borderColor: colors.border }}>
+                      <div className="p-4 rounded-lg border animate-pulse" style={{ backgroundColor: colors.muted, borderColor: colors.border }}>
+                        <div className="h-4 rounded w-32 mb-3" style={{ backgroundColor: colors.border }} />
+                        <div className="h-3 rounded w-full mb-2" style={{ backgroundColor: colors.border }} />
+                        <div className="h-3 rounded w-3/4" style={{ backgroundColor: colors.border }} />
                       </div>
                       <div className="space-y-3">
-                        <div className="h-5 bg-gray-200 rounded w-48 animate-pulse" />
+                        <div className="h-5 rounded w-48 animate-pulse" style={{ backgroundColor: colors.border }} />
                         {[1, 2, 3].map((i) => (
-                          <div key={i} className="p-4 bg-gray-50 rounded-lg border border-gray-200 animate-pulse">
+                          <div key={i} className="p-4 rounded-lg border animate-pulse" style={{ backgroundColor: colors.muted, borderColor: colors.border }}>
                             <div className="flex items-center justify-between mb-3">
-                              <div className="h-6 bg-purple-100 rounded-full w-20" />
-                              <div className="h-6 bg-gray-100 rounded-full w-16" />
+                              <div className="h-6 rounded-full w-20" style={{ backgroundColor: colors.border }} />
+                              <div className="h-6 rounded-full w-16" style={{ backgroundColor: colors.border }} />
                             </div>
                             <div className="space-y-2">
-                              <div className="h-3 bg-gray-200 rounded w-full" />
-                              <div className="h-3 bg-gray-200 rounded w-5/6" />
-                              <div className="h-3 bg-gray-200 rounded w-4/6" />
+                              <div className="h-3 rounded w-full" style={{ backgroundColor: colors.border }} />
+                              <div className="h-3 rounded w-5/6" style={{ backgroundColor: colors.border }} />
+                              <div className="h-3 rounded w-4/6" style={{ backgroundColor: colors.border }} />
                             </div>
                             <div className="flex gap-2 mt-3">
-                              <div className="h-5 bg-amber-100 rounded w-24" />
-                              <div className="h-5 bg-blue-100 rounded w-28" />
+                              <div className="h-5 rounded w-24" style={{ backgroundColor: colors.border }} />
+                              <div className="h-5 rounded w-28" style={{ backgroundColor: colors.border }} />
                             </div>
                           </div>
                         ))}
@@ -1299,11 +1315,11 @@ export default function VideoSessionPage() {
 
                   {/* Ad Angle & Hook */}
                   {!isGeneratingScript && adBuilderData.adAngle && (
-                    <div className="p-4 bg-purple-50 rounded-lg border border-purple-200">
-                      <label className="block text-sm font-semibold text-purple-900 mb-2">
+                    <div className="p-4 rounded-lg border" style={{ backgroundColor: 'hsl(270 80% 55% / 0.15)', borderColor: 'hsl(270 80% 55% / 0.35)' }}>
+                      <label className="block text-sm font-semibold mb-2" style={{ color: colors.foreground }}>
                         Ad Angle & Hook
                       </label>
-                      <p className="text-sm text-purple-800">{adBuilderData.adAngle}</p>
+                      <p className="text-sm" style={{ color: colors.mutedForeground }}>{adBuilderData.adAngle}</p>
                     </div>
                   )}
 
@@ -1340,19 +1356,19 @@ export default function VideoSessionPage() {
                     const isUnderDuration = totalSceneDuration < selectedDuration - 1; // Allow 1s buffer
                     
                     return (
-                    <div className="pt-4 border-t border-gray-200">
+                    <div className="pt-4 border-t" style={{ borderColor: colors.border }}>
                       <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-lg font-semibold text-gray-900">
+                        <h3 className="text-lg font-semibold" style={{ color: colors.foreground }}>
                           Scene-by-Scene Storyboard ({adBuilderData.storyboard.length} scenes) - Editable
                         </h3>
                         <div className="flex items-center gap-2">
-                          <span className={`text-sm font-medium px-3 py-1 rounded-full ${
-                            isOverDuration 
-                              ? 'bg-red-100 text-red-700' 
-                              : isUnderDuration 
-                                ? 'bg-amber-100 text-amber-700'
-                                : 'bg-green-100 text-green-700'
-                          }`}>
+                          <span
+                            className="text-sm font-medium px-3 py-1 rounded-full"
+                            style={{
+                              backgroundColor: isOverDuration ? 'hsl(0 84% 55% / 0.2)' : isUnderDuration ? 'hsl(45 93% 47% / 0.2)' : 'hsl(142 76% 36% / 0.2)',
+                              color: isOverDuration ? colors.destructive : isUnderDuration ? 'hsl(45 93% 40%)' : colors.green600,
+                            }}
+                          >
                             {totalSceneDuration}s / {selectedDuration}s
                           </span>
                         </div>
@@ -1360,15 +1376,15 @@ export default function VideoSessionPage() {
                       
                       {/* Duration Warning */}
                       {isOverDuration && (
-                        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
-                          <svg className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <div className="mb-4 p-3 rounded-lg flex items-start gap-2" style={{ backgroundColor: 'hsl(0 84% 55% / 0.15)', border: `1px solid ${colors.destructive}` }}>
+                          <svg className="w-5 h-5 flex-shrink-0 mt-0.5" style={{ color: colors.destructive }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                           </svg>
                           <div>
-                            <p className="text-sm font-medium text-red-800">
+                            <p className="text-sm font-medium" style={{ color: colors.destructive }}>
                               Total scene duration ({totalSceneDuration}s) exceeds selected video length ({selectedDuration}s)
                             </p>
-                            <p className="text-xs text-red-600 mt-1">
+                            <p className="text-xs mt-1" style={{ color: colors.destructive }}>
                               Consider removing scenes or reducing individual scene durations to fit within {selectedDuration} seconds.
                             </p>
                           </div>
@@ -1376,15 +1392,15 @@ export default function VideoSessionPage() {
                       )}
                       
                       {isUnderDuration && !isOverDuration && (
-                        <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-2">
-                          <svg className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <div className="mb-4 p-3 rounded-lg flex items-start gap-2" style={{ backgroundColor: 'hsl(45 93% 47% / 0.15)', border: '1px solid hsl(45 93% 47% / 0.3)' }}>
+                          <svg className="w-5 h-5 flex-shrink-0 mt-0.5" style={{ color: 'hsl(45 93% 40%)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                           </svg>
                           <div>
-                            <p className="text-sm font-medium text-amber-800">
+                            <p className="text-sm font-medium" style={{ color: 'hsl(45 93% 30%)' }}>
                               Total scene duration ({totalSceneDuration}s) is shorter than selected video length ({selectedDuration}s)
                             </p>
-                            <p className="text-xs text-amber-600 mt-1">
+                            <p className="text-xs mt-1" style={{ color: 'hsl(45 93% 40%)' }}>
                               You may want to add more scenes or extend existing ones to fill the {selectedDuration}-second video.
                             </p>
                           </div>
@@ -1395,21 +1411,22 @@ export default function VideoSessionPage() {
                         {adBuilderData.storyboard.map((scene, idx) => (
                           <div
                             key={idx}
-                            className="p-4 bg-white rounded-lg border border-purple-100 shadow-sm"
+                            className="p-4 rounded-lg shadow-sm"
+                            style={{ backgroundColor: colors.card, border: `1px solid ${colors.border}` }}
                           >
                             {/* Scene Header */}
                             <div className="flex items-center justify-between mb-4">
-                              <span className="text-sm font-semibold text-purple-700 bg-purple-100 px-3 py-1 rounded-full">
+                              <span className="text-sm font-semibold px-3 py-1 rounded-full" style={{ backgroundColor: 'hsl(270 80% 55% / 0.2)', color: colors.primary }}>
                                 Scene {scene.scene}
                               </span>
                               <button
                                 onClick={() => {
                                   const newStoryboard = adBuilderData.storyboard?.filter((_, i) => i !== idx) || [];
-                                  // Renumber scenes
                                   const renumbered = newStoryboard.map((s, i) => ({ ...s, scene: i + 1 }));
                                   setAdBuilderData({ ...adBuilderData, storyboard: renumbered });
                                 }}
-                                className="text-xs text-red-600 hover:text-red-800 px-2 py-1 rounded hover:bg-red-50 transition-colors"
+                                className="text-xs px-2 py-1 rounded transition-colors"
+                                style={{ color: colors.destructive }}
                               >
                                 Remove Scene
                               </button>
@@ -1417,7 +1434,7 @@ export default function VideoSessionPage() {
 
                             {/* Duration / Time Range */}
                             <div className="mb-3">
-                              <label className="block text-xs font-medium text-gray-700 mb-1">
+                              <label className="block text-xs font-medium mb-1" style={{ color: colors.foreground }}>
                                 Duration / Time Range
                               </label>
                               <input
@@ -1429,13 +1446,14 @@ export default function VideoSessionPage() {
                                   setAdBuilderData({ ...adBuilderData, storyboard: newStoryboard });
                                 }}
                                 placeholder="e.g., 0-3s or 2-3s"
-                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2"
+                                style={{ borderColor: colors.border, backgroundColor: colors.input, color: colors.foreground }}
                               />
                             </div>
 
                             {/* Visual Description */}
                             <div className="mb-3">
-                              <label className="block text-xs font-medium text-gray-700 mb-1">
+                              <label className="block text-xs font-medium mb-1" style={{ color: colors.foreground }}>
                                 Visual Description
                               </label>
                               <textarea
@@ -1447,13 +1465,14 @@ export default function VideoSessionPage() {
                                 }}
                                 placeholder="Describe the visual scene with camera angles, lighting, composition..."
                                 rows={3}
-                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2"
+                                style={{ borderColor: colors.border, backgroundColor: colors.input, color: colors.foreground }}
                               />
                             </div>
 
                             {/* On-Screen Text */}
                             <div className="mb-3">
-                              <label className="block text-xs font-medium text-gray-700 mb-1">
+                              <label className="block text-xs font-medium mb-1" style={{ color: colors.foreground }}>
                                 On-Screen Text (max 6 words)
                               </label>
                               <input
@@ -1465,14 +1484,15 @@ export default function VideoSessionPage() {
                                   setAdBuilderData({ ...adBuilderData, storyboard: newStoryboard });
                                 }}
                                 placeholder="e.g., Discover Premium Quality"
-                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2"
+                                style={{ borderColor: colors.border, backgroundColor: colors.input, color: colors.foreground }}
                               />
                             </div>
 
                             {/* Emotion & Motion Style (side by side) */}
                             <div className="grid grid-cols-2 gap-3 mb-3">
                               <div>
-                                <label className="block text-xs font-medium text-gray-700 mb-1">
+                                <label className="block text-xs font-medium mb-1" style={{ color: colors.foreground }}>
                                   Emotion
                                 </label>
                                 <input
@@ -1484,11 +1504,12 @@ export default function VideoSessionPage() {
                                     setAdBuilderData({ ...adBuilderData, storyboard: newStoryboard });
                                   }}
                                   placeholder="e.g., Desire, Excitement"
-                                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                  className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2"
+                                  style={{ borderColor: colors.border, backgroundColor: colors.input, color: colors.foreground }}
                                 />
                               </div>
                               <div>
-                                <label className="block text-xs font-medium text-gray-700 mb-1">
+                                <label className="block text-xs font-medium mb-1" style={{ color: colors.foreground }}>
                                   Motion / Camera Style
                                 </label>
                                 <input
@@ -1500,14 +1521,15 @@ export default function VideoSessionPage() {
                                     setAdBuilderData({ ...adBuilderData, storyboard: newStoryboard });
                                   }}
                                   placeholder="e.g., Slow zoom in, Pan left"
-                                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                  className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2"
+                                  style={{ borderColor: colors.border, backgroundColor: colors.input, color: colors.foreground }}
                                 />
                               </div>
                             </div>
 
                             {/* Voiceover for this scene */}
                             <div>
-                              <label className="block text-xs font-medium text-gray-700 mb-1">
+                              <label className="block text-xs font-medium mb-1" style={{ color: colors.foreground }}>
                                 Scene Voiceover (optional)
                               </label>
                               <textarea
@@ -1519,7 +1541,8 @@ export default function VideoSessionPage() {
                                 }}
                                 placeholder="Voiceover text for this specific scene..."
                                 rows={2}
-                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2"
+                                style={{ borderColor: colors.border, backgroundColor: colors.input, color: colors.foreground }}
                               />
                             </div>
                           </div>
@@ -1542,7 +1565,8 @@ export default function VideoSessionPage() {
                             const newStoryboard = [...(adBuilderData.storyboard || []), newScene];
                             setAdBuilderData({ ...adBuilderData, storyboard: newStoryboard });
                           }}
-                          className="w-full px-4 py-3 text-sm text-purple-600 border-2 border-dashed border-purple-300 rounded-lg hover:bg-purple-50 hover:border-purple-400 transition-colors font-medium"
+                          className="w-full px-4 py-3 text-sm border-2 border-dashed rounded-lg transition-colors font-medium"
+                          style={{ borderColor: colors.primary, color: colors.primary }}
                         >
                           + Add New Scene
                         </button>
@@ -1553,30 +1577,30 @@ export default function VideoSessionPage() {
 
                   {/* Visual Style Guide */}
                   {!isGeneratingScript && adBuilderData.visualStyleGuide && (
-                    <div className="p-4 bg-gradient-to-r from-purple-50 to-indigo-50 rounded-lg border border-purple-200">
-                      <label className="block text-sm font-semibold text-purple-900 mb-3">
+                    <div className="p-4 rounded-lg border" style={{ backgroundColor: 'hsl(270 80% 55% / 0.12)', borderColor: 'hsl(270 80% 55% / 0.35)' }}>
+                      <label className="block text-sm font-semibold mb-3" style={{ color: colors.foreground }}>
                         Visual Style Guide
                       </label>
                       <div className="grid grid-cols-2 gap-3 text-sm">
                         <div>
-                          <span className="font-medium text-purple-800">Color Palette:</span>{' '}
-                          <span className="text-purple-700">{adBuilderData.visualStyleGuide.color_palette}</span>
+                          <span className="font-medium" style={{ color: colors.foreground }}>Color Palette:</span>{' '}
+                          <span style={{ color: colors.mutedForeground }}>{adBuilderData.visualStyleGuide.color_palette}</span>
                         </div>
                         <div>
-                          <span className="font-medium text-purple-800">Lighting:</span>{' '}
-                          <span className="text-purple-700">{adBuilderData.visualStyleGuide.lighting_mood}</span>
+                          <span className="font-medium" style={{ color: colors.foreground }}>Lighting:</span>{' '}
+                          <span style={{ color: colors.mutedForeground }}>{adBuilderData.visualStyleGuide.lighting_mood}</span>
                         </div>
                         <div>
-                          <span className="font-medium text-purple-800">Typography:</span>{' '}
-                          <span className="text-purple-700">{adBuilderData.visualStyleGuide.typography}</span>
+                          <span className="font-medium" style={{ color: colors.foreground }}>Typography:</span>{' '}
+                          <span style={{ color: colors.mutedForeground }}>{adBuilderData.visualStyleGuide.typography}</span>
                         </div>
                         <div>
-                          <span className="font-medium text-purple-800">Motion:</span>{' '}
-                          <span className="text-purple-700">{adBuilderData.visualStyleGuide.motion_style}</span>
+                          <span className="font-medium" style={{ color: colors.foreground }}>Motion:</span>{' '}
+                          <span style={{ color: colors.mutedForeground }}>{adBuilderData.visualStyleGuide.motion_style}</span>
                         </div>
                       </div>
                       {adBuilderData.visualStyleGuide.brand_polish && (
-                        <p className="text-xs text-purple-600 mt-3">
+                        <p className="text-xs mt-3" style={{ color: colors.mutedForeground }}>
                           Quality Level: {adBuilderData.visualStyleGuide.brand_polish}
                         </p>
                       )}
@@ -1585,8 +1609,8 @@ export default function VideoSessionPage() {
 
                   {/* Generated Voiceover Script */}
                   {!isGeneratingScript && adBuilderData.voiceover.script && (
-                    <div className="p-4 bg-gray-50 rounded-lg">
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <div className="p-4 rounded-lg" style={{ backgroundColor: colors.muted }}>
+                      <label className="block text-sm font-medium mb-2" style={{ color: colors.foreground }}>
                         Full Voiceover Script
                       </label>
                       <textarea
@@ -1597,7 +1621,8 @@ export default function VideoSessionPage() {
                             voiceover: { ...adBuilderData.voiceover, script: e.target.value },
                           })
                         }
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2"
+                        style={{ borderColor: colors.border, backgroundColor: colors.input, color: colors.foreground }}
                         rows={4}
                       />
                     </div>
@@ -1608,7 +1633,7 @@ export default function VideoSessionPage() {
                     <div className="space-y-4">
                       <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">Headline</label>
+                          <label className="block text-sm font-medium mb-2" style={{ color: colors.foreground }}>Headline</label>
                           <input
                             type="text"
                             value={adBuilderData.onScreenText.headline || ''}
@@ -1618,11 +1643,12 @@ export default function VideoSessionPage() {
                                 onScreenText: { ...adBuilderData.onScreenText, headline: e.target.value },
                               })
                             }
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2"
+                            style={{ borderColor: colors.border, backgroundColor: colors.input, color: colors.foreground }}
                           />
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">Subtext</label>
+                          <label className="block text-sm font-medium mb-2" style={{ color: colors.foreground }}>Subtext</label>
                           <input
                             type="text"
                             value={adBuilderData.onScreenText.subtext || ''}
@@ -1632,13 +1658,14 @@ export default function VideoSessionPage() {
                                 onScreenText: { ...adBuilderData.onScreenText, subtext: e.target.value },
                               })
                             }
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2"
+                            style={{ borderColor: colors.border, backgroundColor: colors.input, color: colors.foreground }}
                           />
                         </div>
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Text style</label>
-                        <p className="text-xs text-gray-500 mb-2">How the on-screen text appears (kinetic, animated, captions, etc.)</p>
+                        <label className="block text-sm font-medium mb-2" style={{ color: colors.foreground }}>Text style</label>
+                        <p className="text-xs mb-2" style={{ color: colors.mutedForeground }}>How the on-screen text appears (kinetic, animated, captions, etc.)</p>
                         <div className="flex flex-wrap gap-2">
                           {VIDEO_TEXT_STYLES.map((opt) => (
                             <button
@@ -1650,11 +1677,12 @@ export default function VideoSessionPage() {
                                   onScreenText: { ...adBuilderData.onScreenText, textStyle: opt.id },
                                 })
                               }
-                              className={`px-3 py-2 rounded-lg border-2 text-sm font-medium transition-colors ${
-                                (adBuilderData.onScreenText.textStyle ?? 'animated_effects') === opt.id
-                                  ? 'border-purple-600 bg-purple-50 text-purple-700'
-                                  : 'border-gray-200 hover:border-gray-300'
-                              }`}
+                              className="px-3 py-2 rounded-lg border-2 text-sm font-medium transition-colors"
+                              style={{
+                                borderColor: (adBuilderData.onScreenText.textStyle ?? 'animated_effects') === opt.id ? colors.primary : colors.border,
+                                backgroundColor: (adBuilderData.onScreenText.textStyle ?? 'animated_effects') === opt.id ? 'hsl(213 100% 55% / 0.2)' : 'transparent',
+                                color: (adBuilderData.onScreenText.textStyle ?? 'animated_effects') === opt.id ? colors.primary : colors.foreground,
+                              }}
                               title={opt.description}
                             >
                               {opt.label}
@@ -1663,8 +1691,8 @@ export default function VideoSessionPage() {
                         </div>
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Text position</label>
-                        <p className="text-xs text-gray-500 mb-2">Where text sits (lower third recommended for readability)</p>
+                        <label className="block text-sm font-medium mb-2" style={{ color: colors.foreground }}>Text position</label>
+                        <p className="text-xs mb-2" style={{ color: colors.mutedForeground }}>Where text sits (lower third recommended for readability)</p>
                         <div className="flex flex-wrap gap-2">
                           {VIDEO_TEXT_POSITIONS.map((opt) => (
                             <button
@@ -1676,11 +1704,12 @@ export default function VideoSessionPage() {
                                   onScreenText: { ...adBuilderData.onScreenText, textPosition: opt.id },
                                 })
                               }
-                              className={`px-3 py-2 rounded-lg border-2 text-sm font-medium transition-colors ${
-                                (adBuilderData.onScreenText.textPosition ?? 'lower_third') === opt.id
-                                  ? 'border-purple-600 bg-purple-50 text-purple-700'
-                                  : 'border-gray-200 hover:border-gray-300'
-                              }`}
+                              className="px-3 py-2 rounded-lg border-2 text-sm font-medium transition-colors"
+                              style={{
+                                borderColor: (adBuilderData.onScreenText.textPosition ?? 'lower_third') === opt.id ? colors.primary : colors.border,
+                                backgroundColor: (adBuilderData.onScreenText.textPosition ?? 'lower_third') === opt.id ? 'hsl(213 100% 55% / 0.2)' : 'transparent',
+                                color: (adBuilderData.onScreenText.textPosition ?? 'lower_third') === opt.id ? colors.primary : colors.foreground,
+                              }}
                               title={opt.description}
                             >
                               {opt.label}
@@ -1698,24 +1727,27 @@ export default function VideoSessionPage() {
                               onScreenText: { ...adBuilderData.onScreenText, alignBrand: e.target.checked },
                             })
                           }
-                          className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                          className="rounded focus:ring-2"
+                          style={{ accentColor: colors.primary }}
                         />
-                        <span className="text-sm text-gray-700">Align text style with brand (fonts & colors)</span>
+                        <span className="text-sm" style={{ color: colors.foreground }}>Align text style with brand (fonts & colors)</span>
                       </label>
                     </div>
                   )}
 
-                  <div className="flex justify-between pt-4 border-t border-gray-200">
+                  <div className="flex justify-between pt-4 border-t" style={{ borderColor: colors.border }}>
                     <button
                       onClick={() => setStep(2)}
-                      className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                      className="px-6 py-2 border rounded-lg"
+                      style={{ borderColor: colors.border, color: colors.foreground }}
                     >
                       Back
                     </button>
                     <button
                       onClick={() => setStep(4)}
                       disabled={!adBuilderData.voiceover.script}
-                      className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-6 py-2 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                      style={{ backgroundColor: colors.primary }}
                     >
                       Continue to Preview
                     </button>
@@ -1728,34 +1760,34 @@ export default function VideoSessionPage() {
             {step === 4 && (
               <div className="space-y-6">
                 <div>
-                  <h2 className="text-2xl font-bold text-gray-900 mb-2">Generate Video</h2>
-                  <p className="text-gray-600">Generate your video ad</p>
+                  <h2 className="text-2xl font-bold mb-2" style={{ color: colors.foreground }}>Generate Video</h2>
+                  <p style={{ color: colors.mutedForeground }}>Generate your video ad</p>
                 </div>
 
-                <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-900">
+                <div className="p-4 rounded-xl text-sm leading-relaxed relative z-10" style={{ backgroundColor: 'hsl(30 60% 22%)', border: '1px solid hsl(30 50% 40%)', color: '#FAFAFA' }}>
                   If a generation glitches or looks incorrect,{' '}
-                  <Link href="/report" className="font-medium text-amber-700 underline hover:text-amber-800">send us a screenshot</Link>
+                  <Link href="/report" className="font-medium underline" style={{ color: 'hsl(38 92% 65%)' }}>send us a screenshot</Link>
                   {' '}and we&apos;ll refund the credit. We&apos;re constantly improving the system to make it better every day.
                 </div>
 
-                <div className="bg-white rounded-lg border border-gray-200 p-6">
+                <div className="rounded-lg border p-6" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
                   {/* Summary */}
                   <div className="grid grid-cols-2 gap-4 mb-6">
                     <div>
-                      <p className="text-sm text-gray-600">Product</p>
-                      <p className="font-medium">{adBuilderData.product?.product_name || 'N/A'}</p>
+                      <p className="text-sm" style={{ color: colors.mutedForeground }}>Product</p>
+                      <p className="font-medium" style={{ color: colors.foreground }}>{adBuilderData.product?.product_name || 'N/A'}</p>
                     </div>
                     <div>
-                      <p className="text-sm text-gray-600">Style</p>
-                      <p className="font-medium">{adBuilderData.adSetup.style}</p>
+                      <p className="text-sm" style={{ color: colors.mutedForeground }}>Style</p>
+                      <p className="font-medium" style={{ color: colors.foreground }}>{adBuilderData.adSetup.style}</p>
                     </div>
                     <div>
-                      <p className="text-sm text-gray-600">Duration</p>
-                      <p className="font-medium">{adBuilderData.adSetup.duration}s</p>
+                      <p className="text-sm" style={{ color: colors.mutedForeground }}>Duration</p>
+                      <p className="font-medium" style={{ color: colors.foreground }}>{adBuilderData.adSetup.duration}s</p>
                     </div>
                     <div>
-                      <p className="text-sm text-gray-600">Platform</p>
-                      <p className="font-medium">{adBuilderData.adSetup.platform}</p>
+                      <p className="text-sm" style={{ color: colors.mutedForeground }}>Platform</p>
+                      <p className="font-medium" style={{ color: colors.foreground }}>{adBuilderData.adSetup.platform}</p>
                     </div>
                   </div>
 
@@ -1763,7 +1795,8 @@ export default function VideoSessionPage() {
                   <button
                     onClick={handleGenerateVideo}
                     disabled={isGeneratingVideo}
-                    className="w-full px-6 py-4 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-lg font-semibold"
+                    className="w-full px-6 py-4 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed text-lg font-semibold"
+                    style={{ backgroundColor: colors.primary }}
                   >
                     {isGeneratingVideo ? (
                       <span className="flex items-center justify-center gap-2">
@@ -1778,11 +1811,11 @@ export default function VideoSessionPage() {
 
                 {/* Generated Videos */}
                 {generatedVideos.length > 0 && (
-                  <div className="bg-white rounded-lg border border-gray-200 p-6">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Generated Videos</h3>
+                  <div className="rounded-lg border p-6" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
+                    <h3 className="text-lg font-semibold mb-4" style={{ color: colors.foreground }}>Generated Videos</h3>
                     <div className="space-y-4">
                       {generatedVideos.map((video) => (
-                        <div key={video.id} className="border border-gray-200 rounded-lg p-4">
+                        <div key={video.id} className="rounded-lg p-4" style={{ border: `1px solid ${colors.border}` }}>
                           <video
                             src={video.url}
                             controls
@@ -1790,13 +1823,14 @@ export default function VideoSessionPage() {
                             style={{ maxHeight: '400px' }}
                           />
                           <div className="mt-2 flex justify-between items-center">
-                            <span className="text-sm text-gray-500">
+                            <span className="text-sm" style={{ color: colors.mutedForeground }}>
                               {new Date(video.timestamp).toLocaleString()}
                             </span>
                             <a
                               href={video.url}
                               download={`video-${video.id}.mp4`}
-                              className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm"
+                              className="px-4 py-2 rounded-lg text-sm"
+                              style={{ backgroundColor: colors.muted, color: colors.foreground }}
                             >
                               Download
                             </a>
@@ -1810,7 +1844,8 @@ export default function VideoSessionPage() {
                 <div className="flex justify-start">
                   <button
                     onClick={() => setStep(3)}
-                    className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                    className="px-6 py-2 border rounded-lg"
+                    style={{ borderColor: colors.border, color: colors.foreground }}
                   >
                     Back
                   </button>
@@ -1860,34 +1895,36 @@ export default function VideoSessionPage() {
               }
             }}
           >
-            <div className="bg-white rounded-xl shadow-xl max-w-md w-full animate-in fade-in zoom-in-95 duration-200">
+            <div className="rounded-xl shadow-xl max-w-md w-full animate-in fade-in zoom-in-95 duration-200" style={{ backgroundColor: colors.card, border: `1px solid ${colors.border}` }}>
               <div className="p-6">
                 <div className="flex items-center gap-3 mb-4">
-                  <div className="flex items-center justify-center w-12 h-12 rounded-full bg-red-100">
-                    <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <div className="flex items-center justify-center w-12 h-12 rounded-full" style={{ backgroundColor: 'hsl(0 84% 55% / 0.2)' }}>
+                    <svg className="w-6 h-6" style={{ color: colors.destructive }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                     </svg>
                   </div>
                   <div>
-                    <h3 className="text-lg font-semibold text-gray-900">Delete Session</h3>
-                    <p className="text-sm text-gray-500">This action cannot be undone</p>
+                    <h3 className="text-lg font-semibold" style={{ color: colors.foreground }}>Delete Session</h3>
+                    <p className="text-sm" style={{ color: colors.mutedForeground }}>This action cannot be undone</p>
                   </div>
                 </div>
-                <p className="text-gray-600 mb-6">
+                <p className="mb-6" style={{ color: colors.mutedForeground }}>
                   Are you sure you want to delete this session? All data including generated videos will be permanently removed.
                 </p>
                 <div className="flex gap-3">
                   <button
                     onClick={() => setDeleteSessionId(null)}
                     disabled={isDeletingSession}
-                    className="flex-1 px-4 py-3 text-gray-700 bg-gray-100 rounded-lg font-medium hover:bg-gray-200 transition-colors disabled:opacity-50"
+                    className="flex-1 px-4 py-3 rounded-lg font-medium transition-colors disabled:opacity-50"
+                    style={{ backgroundColor: colors.muted, color: colors.foreground }}
                   >
                     Cancel
                   </button>
                   <button
                     onClick={confirmDeleteSession}
                     disabled={isDeletingSession}
-                    className="flex-1 px-4 py-3 text-white bg-red-600 rounded-lg font-medium hover:bg-red-700 transition-colors disabled:opacity-50"
+                    className="flex-1 px-4 py-3 text-white rounded-lg font-medium transition-colors disabled:opacity-50"
+                    style={{ backgroundColor: colors.destructive }}
                   >
                     {isDeletingSession ? 'Deleting...' : 'Delete'}
                   </button>

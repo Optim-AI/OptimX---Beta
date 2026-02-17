@@ -28,7 +28,8 @@ export default function BackButton({
   return (
     <button
       onClick={handleClick}
-      className="inline-flex items-center gap-2 px-3 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+      className="inline-flex items-center gap-2 px-3 py-2 text-sm rounded-lg transition-colors"
+      style={{ color: '#FAFAFA' }}
     >
       <svg
         className="w-4 h-4"

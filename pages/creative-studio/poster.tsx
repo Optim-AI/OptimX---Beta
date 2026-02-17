@@ -5,6 +5,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '@/auth/supabase/client';
 import Sidebar from '@/app/web/src/components/Sidebar';
+import colors from '@/lib/ui/colors';
 import { InsufficientCreditsAlert } from '@/app/web/src/components/billing';
 import {
   type BrandSnapshot,
@@ -1174,7 +1175,7 @@ export default function PosterSessionPage() {
   
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center app-page">
         <div className="flex items-center gap-3 text-gray-600">
           <div className="animate-spin rounded-full h-6 w-6 border-2 border-gray-300 border-t-blue-600" />
           <span>Loading session...</span>
@@ -1185,7 +1186,7 @@ export default function PosterSessionPage() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center app-page">
         <div className="text-center">
           <p className="text-red-600 mb-4">{error}</p>
           <button
@@ -1200,7 +1201,7 @@ export default function PosterSessionPage() {
   }
 
   return (
-    <div className="h-screen bg-gray-50 flex overflow-hidden">
+    <div className="h-screen flex overflow-hidden app-page">
       {/* Sidebar */}
       <div className="flex-shrink-0 h-full">
         <Sidebar
@@ -1219,30 +1220,32 @@ export default function PosterSessionPage() {
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col bg-white h-full overflow-hidden">
+      <div className="flex-1 flex flex-col h-full overflow-hidden" style={{ backgroundColor: colors.card, borderLeft: `1px solid ${colors.border}` }}>
         {/* Header */}
-        <div className="border-b border-gray-200 bg-white flex-shrink-0">
+        <div className="border-b flex-shrink-0" style={{ borderColor: colors.border, backgroundColor: colors.card }}>
           <div className="max-w-4xl mx-auto px-6 py-4">
             <div className="flex items-center justify-between">
-              <div>
-                <h1 className="text-xl font-semibold text-gray-900">
-                  {session?.name || 'New Poster Session'}
-                </h1>
-                <p className="text-gray-500 text-sm">
-                  {isSaving ? 'Saving...' : 'Create poster-ready creatives by talking to AI'}
-                </p>
+              <div className="flex items-center gap-4">
+                <BackButton />
+                <div>
+                  <h1 className="text-xl font-semibold" style={{ color: colors.foreground }}>
+                    {session?.name || 'New Poster Session'}
+                  </h1>
+                  <p className="text-sm" style={{ color: colors.mutedForeground }}>
+                    {isSaving ? 'Saving...' : 'Create poster-ready creatives by talking to AI'}
+                  </p>
+                </div>
               </div>
               <div className="flex items-center gap-4">
                 {credits !== null && (
-                  <div className="flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-amber-50 to-yellow-50 border border-amber-200 rounded-lg">
-                    <svg className="w-4 h-4 text-amber-500" fill="currentColor" viewBox="0 0 20 20">
-                      <path d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.736 6.979C9.208 6.193 9.696 6 10 6c.304 0 .792.193 1.264.979a1 1 0 001.715-1.029C12.279 4.784 11.232 4 10 4s-2.279.784-2.979 1.95c-.285.475-.507 1-.67 1.55H6a1 1 0 000 2h.013a9.358 9.358 0 000 1H6a1 1 0 100 2h.351c.163.55.385 1.075.67 1.55C7.721 15.216 8.768 16 10 16s2.279-.784 2.979-1.95a1 1 0 10-1.715-1.029c-.472.786-.96.979-1.264.979-.304 0-.792-.193-1.264-.979a4.265 4.265 0 01-.264-.521H10a1 1 0 100-2H8.017a7.36 7.36 0 010-1H10a1 1 0 100-2H8.472c.08-.185.167-.36.264-.521z" />
+                  <div className="flex items-center gap-2 px-4 py-2 rounded-xl" style={{ backgroundColor: 'hsl(213 30% 18%)', border: `1px solid ${colors.primary}`, boxShadow: `0 0 12px ${colors.primary}20` }}>
+                    <svg className="w-5 h-5" style={{ color: colors.primary }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                     </svg>
-                    <span className="font-semibold text-amber-700 text-sm">{credits}</span>
-                    <span className="text-amber-600 text-xs">credits</span>
+                    <span className="font-semibold text-sm" style={{ color: colors.primary }}>{credits}</span>
+                    <span className="text-sm" style={{ color: 'hsl(213 100% 70%)' }}>images</span>
                   </div>
                 )}
-                <BackButton />
               </div>
             </div>
           </div>
@@ -1398,7 +1401,7 @@ export default function PosterSessionPage() {
 
         {/* Input Area */}
         {phase === 'input' && (
-          <div className="border-t border-gray-200 bg-white flex-shrink-0">
+          <div className="border-t flex-shrink-0" style={{ borderColor: colors.border, backgroundColor: colors.card }}>
             <div className="max-w-4xl mx-auto px-6 py-4">
               <ChatInput
                 value={inputValue}
@@ -1624,11 +1627,8 @@ function ChatInput({
   return (
     <form onSubmit={onSubmit}>
       <div
-        className={`border-2 rounded-xl p-4 transition-all duration-200 ${
-          isDragging
-            ? 'border-blue-400 bg-blue-50 shadow-md'
-            : 'border-gray-200 bg-white hover:border-gray-300'
-        }`}
+        className="border-2 rounded-xl p-4 transition-all duration-200"
+        style={isDragging ? { borderColor: colors.primary, backgroundColor: 'hsl(213 100% 55% / 0.1)' } : { borderColor: colors.border, backgroundColor: colors.card }}
         onDragOver={onDragOver}
         onDragLeave={onDragLeave}
         onDrop={onDrop}
@@ -1640,7 +1640,8 @@ function ChatInput({
                 <img
                   src={URL.createObjectURL(img)}
                   alt={`Preview ${idx + 1}`}
-                  className="w-16 h-16 object-cover rounded-lg border border-gray-200 shadow-sm"
+                  className="w-16 h-16 object-cover rounded-lg shadow-sm"
+                  style={{ border: `1px solid ${colors.border}` }}
                 />
                 <button
                   type="button"
@@ -1667,8 +1668,8 @@ function ChatInput({
               }}
               placeholder="Paste website URL, describe what you want, or drag images here..."
               rows={1}
-              className="w-full resize-none border-0 focus:outline-none text-sm text-gray-900 placeholder-gray-400 bg-transparent"
-              style={{ minHeight: '24px', maxHeight: '200px' }}
+              className="w-full resize-none border-0 focus:outline-none text-sm bg-transparent"
+              style={{ minHeight: '24px', maxHeight: '200px', color: colors.foreground }}
             />
           </div>
 
@@ -1676,7 +1677,8 @@ function ChatInput({
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-all duration-200"
+              className="p-2 rounded-lg transition-all duration-200"
+              style={{ color: colors.mutedForeground }}
               title="Upload images"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1687,7 +1689,8 @@ function ChatInput({
             <button
               type="submit"
               disabled={!value.trim() && images.length === 0}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
+              className="px-4 py-2 text-white rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
+              style={{ backgroundColor: colors.primary }}
             >
               Send
             </button>
@@ -1731,9 +1734,8 @@ function ProductInput({
       <div className="flex-shrink-0 w-8" />
       <form onSubmit={onSubmit} className="flex-1">
         <div
-          className={`border-2 rounded-xl p-4 transition-all duration-200 flex flex-col gap-3 ${
-            isDragging ? 'border-blue-400 bg-blue-50 shadow-md' : 'border-gray-200 bg-white hover:border-gray-300'
-          }`}
+          className="border-2 rounded-xl p-4 transition-all duration-200 flex flex-col gap-3"
+          style={isDragging ? { borderColor: colors.primary, backgroundColor: 'hsl(213 100% 55% / 0.1)' } : { borderColor: colors.border, backgroundColor: colors.card }}
           onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
           onDragLeave={() => setIsDragging(false)}
           onDrop={(e) => { e.preventDefault(); setIsDragging(false); onImageSelect(e.dataTransfer.files); }}
@@ -1745,7 +1747,8 @@ function ProductInput({
                   <img
                     src={URL.createObjectURL(img)}
                     alt={`Preview ${idx + 1}`}
-                    className="w-16 h-16 object-cover rounded-lg border border-gray-200 shadow-sm"
+                    className="w-16 h-16 object-cover rounded-lg shadow-sm"
+                    style={{ border: `1px solid ${colors.border}` }}
                   />
                   <button
                     type="button"
@@ -1766,14 +1769,16 @@ function ProductInput({
               onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSubmit(); } }}
               placeholder="Describe what you want to promote or upload product images..."
               rows={1}
-              className="flex-1 resize-none border-0 focus:outline-none text-sm text-gray-900 placeholder-gray-400 bg-transparent"
+              className="flex-1 resize-none border-0 focus:outline-none text-sm bg-transparent"
+              style={{ color: colors.foreground }}
             />
 
             <div className="flex gap-2 flex-shrink-0">
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-all"
+                className="p-2 rounded-lg transition-all"
+                style={{ color: colors.mutedForeground }}
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -1783,7 +1788,8 @@ function ProductInput({
               <button
                 type="submit"
                 disabled={!prompt.trim() && images.length === 0}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                className="px-4 py-2 text-white rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                style={{ backgroundColor: colors.primary }}
               >
                 Continue
               </button>
@@ -1818,15 +1824,16 @@ function PosterPromptInput({
     <div className="flex gap-4 max-w-3xl ml-auto">
       <div className="flex-shrink-0 w-8" />
       <form onSubmit={(e) => { e.preventDefault(); onSubmit(); }} className="flex-1">
-        <div className="border-2 border-gray-200 rounded-xl p-6 bg-white hover:border-gray-300 shadow-sm">
-          <label className="block text-sm font-medium text-gray-700 mb-3">
+        <div className="border-2 rounded-xl p-6 shadow-sm" style={{ borderColor: colors.border, backgroundColor: colors.card }}>
+          <label className="block text-sm font-medium mb-3" style={{ color: colors.foreground }}>
             Describe the poster you want
           </label>
           <textarea
             value={prompt}
             onChange={(e) => onPromptChange(e.target.value)}
             placeholder="e.g., A vibrant poster highlighting the product with bold text and modern design..."
-            className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+            className="w-full border rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 resize-none placeholder:opacity-70"
+            style={{ borderColor: colors.border, backgroundColor: colors.input, color: colors.foreground }}
             rows={4}
             onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { onSubmit(); } }}
           />
@@ -1834,7 +1841,8 @@ function PosterPromptInput({
             <button
               type="submit"
               disabled={!prompt.trim()}
-              className="px-6 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+              className="px-6 py-2.5 text-white rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+              style={{ backgroundColor: colors.primary }}
             >
               Continue →
             </button>
@@ -1866,11 +1874,11 @@ function ConfigInput({
     <div className="flex gap-4 max-w-3xl ml-auto">
       <div className="flex-shrink-0 w-8" />
       <div className="flex-1">
-        <div className="border-2 border-gray-200 rounded-xl p-6 bg-white space-y-6 hover:border-gray-300 shadow-sm">
+        <div className="border-2 rounded-xl p-6 space-y-6 shadow-sm" style={{ borderColor: colors.border, backgroundColor: colors.card }}>
           {/* Reference Images Display */}
           {referenceImages.length > 0 && (
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-3">
+              <label className="block text-sm font-medium mb-3" style={{ color: colors.foreground }}>
                 Reference Images ({referenceImages.length})
               </label>
               <div className="flex flex-wrap gap-3">
@@ -1879,7 +1887,8 @@ function ConfigInput({
                     <img
                       src={imageUrl}
                       alt={`Reference ${idx + 1}`}
-                      className="w-20 h-20 object-cover rounded-lg border border-gray-200 shadow-sm"
+                      className="w-20 h-20 object-cover rounded-lg shadow-sm"
+                      style={{ border: `1px solid ${colors.border}` }}
                     />
                     {onRemoveReferenceImage && (
                       <button
@@ -1897,7 +1906,7 @@ function ConfigInput({
                   </div>
                 ))}
               </div>
-              <p className="text-xs text-gray-500 mt-2">
+              <p className="text-xs mt-2" style={{ color: colors.mutedForeground }}>
                 These images will be used as style references for your new posters
               </p>
             </div>
@@ -1905,7 +1914,7 @@ function ConfigInput({
 
           {/* Theme Selection */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-3">
+            <label className="block text-sm font-medium mb-3" style={{ color: colors.foreground }}>
               Theme Selection
             </label>
             <div className="grid grid-cols-3 gap-2">
@@ -1914,11 +1923,8 @@ function ConfigInput({
                   key={theme.id}
                   type="button"
                   onClick={() => onConfigChange({ ...config, theme: theme.id })}
-                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                    config.theme === theme.id
-                      ? 'bg-blue-600 text-white shadow-sm'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
+                  className="px-3 py-2 rounded-lg text-sm font-medium transition-all"
+                  style={config.theme === theme.id ? { backgroundColor: colors.primary, color: 'white' } : { backgroundColor: colors.muted, color: colors.foreground }}
                 >
                   {theme.label}
                 </button>
@@ -1928,7 +1934,7 @@ function ConfigInput({
 
           {/* Aspect Ratio */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-3">
+            <label className="block text-sm font-medium mb-3" style={{ color: colors.foreground }}>
               Aspect Ratio
             </label>
             <div className="flex gap-2">
@@ -1937,11 +1943,8 @@ function ConfigInput({
                   key={ar.id}
                   type="button"
                   onClick={() => onConfigChange({ ...config, aspectRatio: ar.id as PosterConfig['aspectRatio'] })}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                    config.aspectRatio === ar.id
-                      ? 'bg-blue-600 text-white shadow-sm'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
+                  className="px-4 py-2 rounded-lg text-sm font-medium transition-all"
+                  style={config.aspectRatio === ar.id ? { backgroundColor: colors.primary, color: 'white' } : { backgroundColor: colors.muted, color: colors.foreground }}
                 >
                   {ar.label}
                 </button>
@@ -1951,7 +1954,7 @@ function ConfigInput({
 
           {/* Variant Count */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-3">
+            <label className="block text-sm font-medium mb-3" style={{ color: colors.foreground }}>
               Number of Variants
             </label>
             <div className="flex gap-2">
@@ -1960,17 +1963,14 @@ function ConfigInput({
                   key={count}
                   type="button"
                   onClick={() => onConfigChange({ ...config, variantCount: count as PosterConfig['variantCount'] })}
-                  className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                    config.variantCount === count
-                      ? 'bg-blue-600 text-white shadow-sm'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
+                  className="flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-all"
+                  style={config.variantCount === count ? { backgroundColor: colors.primary, color: 'white' } : { backgroundColor: colors.muted, color: colors.foreground }}
                 >
                   {count} {count === 1 ? 'Variant' : 'Variants'}
                 </button>
               ))}
             </div>
-            <p className="text-xs text-gray-500 mt-2">
+            <p className="text-xs mt-2" style={{ color: colors.mutedForeground }}>
               Generate {config.variantCount} different {config.variantCount === 1 ? 'version' : 'versions'} of your poster ({config.variantCount} {config.variantCount === 1 ? 'credit' : 'credits'} will be deducted)
             </p>
           </div>
@@ -1981,7 +1981,8 @@ function ConfigInput({
               type="button"
               onClick={onSubmit}
               disabled={!config.theme}
-              className="px-6 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+              className="px-6 py-2.5 text-white rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+              style={{ backgroundColor: colors.primary }}
             >
               Generate {config.variantCount} {config.variantCount === 1 ? 'Variant' : 'Variants'}
             </button>

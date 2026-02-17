@@ -15,10 +15,8 @@ const Header: React.FC = () => {
   const navItems = [
     { name: 'Home', href: '/', type: 'route' },
     { name: 'About', href: '/About', type: 'route' },
-    { name: 'Product', href: '/product', type: 'route' },
     { name: 'Pricing', href: '/#pricing', type: 'section' },
-    { name: 'Use Cases', href: '/use-cases', type: 'route' },
-    { name: 'Blog', href: '/blog', type: 'route' },
+    { name: 'How It Works', href: '/#how-it-works', type: 'section' },
     { name: 'FAQ', href: '/#faq', type: 'section' },
     { name: 'Contact', href: '/Contact', type: 'route' },
   ];
@@ -42,21 +40,19 @@ const Header: React.FC = () => {
   };
 
   return (
-    <header
-      className="fixed top-0 w-full z-50 backdrop-blur-md"
-      style={{
-        background: "hsl(0 0% 7% / 0.85)",
-        borderBottom: `1px solid ${colors.border}`,
-        color: colors.foreground,
-      }}
-    >
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
-          <Link href="/" className="flex items-center space-x-2" style={{ color: colors.foreground }}>
-            <img src="/images/SkalX_Logo.png" alt="SkalX AI Logo" className="h-8 w-auto object-contain" />
-            <span className="text-xl font-bold" style={{ lineHeight: 1 }}>
-              <span style={{ color: colors.foreground }}>SkalX AI</span>
-            </span>
+    <header className="fixed top-0 left-0 right-0 z-50 px-4 sm:px-6 pt-4">
+      <div
+        className="mx-auto max-w-5xl rounded-2xl backdrop-blur-xl border"
+        style={{
+          background: 'hsl(0 0% 9% / 0.75)',
+          borderColor: 'rgba(255,255,255,0.06)',
+          boxShadow: '0 4px 24px rgba(0,0,0,0.4), 0 0 1px rgba(255,255,255,0.05)',
+          color: colors.foreground,
+        }}
+      >
+        <div className="flex items-center justify-between h-14 px-4 sm:px-6">
+          <Link href="/" className="flex items-center" style={{ color: colors.foreground }}>
+            <span className="text-xl font-bold" style={{ lineHeight: 1, color: colors.foreground }}>SkalX AI</span>
           </Link>
 
           {/* Desktop Navigation */}
@@ -150,12 +146,12 @@ const Header: React.FC = () => {
         {/* Mobile Navigation */}
         {isMenuOpen && (
           <div
-            className="lg:hidden"
+            className="lg:hidden rounded-b-2xl overflow-hidden"
             style={{
-              borderTop: `1px solid ${colors.border}`,
+              borderTop: '1px solid rgba(255,255,255,0.06)',
             }}
           >
-            <div className="px-2 pt-2 pb-3 space-y-1">
+            <div className="px-2 pt-2 pb-4 space-y-1">
               {navItems.map((item) => {
                 if (item.type === 'section') {
                   return (
@@ -173,7 +169,7 @@ const Header: React.FC = () => {
                       }}
                       onMouseEnter={(e) => {
                         (e.currentTarget as HTMLElement).style.color = colors.primary;
-                        (e.currentTarget as HTMLElement).style.backgroundColor = "hsl(213 90% 96% / 0.5)";
+                        (e.currentTarget as HTMLElement).style.backgroundColor = "hsl(213 100% 55% / 0.12)";
                       }}
                       onMouseLeave={(e) => {
                         (e.currentTarget as HTMLElement).style.color = colors.foreground;
@@ -194,17 +190,17 @@ const Header: React.FC = () => {
                     className="block px-3 py-2 transition-all duration-300 font-medium rounded-md"
                     style={{
                       color: isActive ? colors.primary : colors.foreground,
-                      backgroundColor: isActive ? "hsl(213 90% 96% / 0.3)" : 'transparent',
+                      backgroundColor: isActive ? "hsl(213 100% 55% / 0.12)" : 'transparent',
                       textDecoration: 'none',
                     }}
-                    onMouseEnter={(e) => {
-                      (e.currentTarget as HTMLElement).style.color = colors.primary;
-                      (e.currentTarget as HTMLElement).style.backgroundColor = "hsl(213 90% 96% / 0.5)";
-                    }}
-                    onMouseLeave={(e) => {
-                      (e.currentTarget as HTMLElement).style.color = isActive ? colors.primary : colors.foreground;
-                      (e.currentTarget as HTMLElement).style.backgroundColor = isActive ? "hsl(213 90% 96% / 0.3)" : 'transparent';
-                    }}
+                      onMouseEnter={(e) => {
+                        (e.currentTarget as HTMLElement).style.color = colors.primary;
+                        (e.currentTarget as HTMLElement).style.backgroundColor = "hsl(213 100% 55% / 0.12)";
+                      }}
+                      onMouseLeave={(e) => {
+                        (e.currentTarget as HTMLElement).style.color = isActive ? colors.primary : colors.foreground;
+                        (e.currentTarget as HTMLElement).style.backgroundColor = isActive ? "hsl(213 100% 55% / 0.12)" : 'transparent';
+                      }}
                   >
                     {item.name}
                   </Link>

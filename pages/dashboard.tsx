@@ -666,7 +666,7 @@ export default function DashboardPage(): JSX.Element {
   // Loading state while checking feature access
   if (checkingFeature) {
     return (
-      <div className="min-h-screen flex bg-slate-50">
+      <div className="min-h-screen flex app-page">
         <Sidebar />
         <main className="flex-1 p-10 flex items-center justify-center">
           <div>Loading...</div>
@@ -678,14 +678,14 @@ export default function DashboardPage(): JSX.Element {
   // If feature is not enabled or is coming soon, show overlay
   if (!featureAccess?.enabled || featureAccess?.comingSoon) {
     return (
-      <div className="min-h-screen flex bg-slate-50">
+      <div className="min-h-screen flex app-page">
         <Sidebar />
         <main className="flex-1 relative">
           <ComingSoonOverlay featureKey="dashboard">
             <div className="p-10">
               <div className="flex items-center justify-between mb-8">
                 <div>
-                  <h2 className="text-3xl font-extrabold text-slate-900">Dashboard</h2>
+                  <h2 className="text-3xl font-extrabold" style={{ color: colors.foreground }}>Dashboard</h2>
                   <p className="mt-1 text-sm" style={mutedFg ? { color: mutedFg } : undefined}>Overview — all-time metrics & actionable suggestions</p>
                 </div>
               </div>
@@ -693,11 +693,11 @@ export default function DashboardPage(): JSX.Element {
               <div className="space-y-6">
                 <div className="grid grid-cols-2 gap-6">
                   {[1, 2, 3, 4].map((i) => (
-                    <div key={i} className="p-6 bg-white rounded-xl h-32" />
+                    <div key={i} className="p-6 rounded-xl h-32" style={{ backgroundColor: colors.card, border: `1px solid ${colors.border}` }} />
                   ))}
                 </div>
-                <div className="p-8 bg-white rounded-xl h-64" />
-                <div className="p-8 bg-white rounded-xl h-64" />
+                <div className="p-8 rounded-xl h-64" style={{ backgroundColor: colors.card, border: `1px solid ${colors.border}` }} />
+                <div className="p-8 rounded-xl h-64" style={{ backgroundColor: colors.card, border: `1px solid ${colors.border}` }} />
               </div>
             </div>
           </ComingSoonOverlay>
@@ -707,12 +707,12 @@ export default function DashboardPage(): JSX.Element {
   }
 
   return (
-    <div className="min-h-screen flex bg-slate-50">
+    <div className="min-h-screen flex app-page">
       <Sidebar />
       <main className="flex-1 p-10">
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h2 className="text-3xl font-extrabold text-slate-900">Dashboard</h2>
+            <h2 className="text-3xl font-extrabold" style={{ color: colors.foreground }}>Dashboard</h2>
             <p className="mt-1 text-sm" style={mutedFg ? { color: mutedFg } : undefined}>Overview — all-time metrics & actionable suggestions</p>
           </div>
 
@@ -724,7 +724,7 @@ export default function DashboardPage(): JSX.Element {
                 </Button>
               </a>
             </Link>
-            <button onClick={() => { fetchStatuses(userId); fetchMetaMetricsAllTime(userId); fetchCampaigns(userId); checkMetaHealth(userId); }} className="px-3 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-sm">
+            <button onClick={() => { fetchStatuses(userId); fetchMetaMetricsAllTime(userId); fetchCampaigns(userId); checkMetaHealth(userId); }} className="px-3 py-2 rounded-lg text-sm" style={{ border: `1px solid ${colors.border}`, backgroundColor: colors.card, color: colors.foreground }}>
               Refresh
             </button>
           </div>

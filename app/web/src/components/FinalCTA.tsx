@@ -22,8 +22,8 @@ const FinalCTA: React.FC = () => {
           <h2 className="text-4xl md:text-5xl lg:text-[46px] font-normal mb-6 leading-tight" style={{ color: colors.foreground }}>
             Ready to Scale Marketing Smarter?
           </h2>
-          <p className="text-xl mb-10 max-w-2xl mx-auto font-extralight" style={{ color: colors.mutedForeground }}>
-            Launch, automate, and optimize campaigns — without expanding your team.
+          <p className="text-xl mb-10 max-w-3xl mx-auto font-extralight" style={{ color: colors.mutedForeground }}>
+            Create, automate, and optimise campaigns without expanding your team.
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-4">

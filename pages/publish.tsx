@@ -4,7 +4,7 @@ import Sidebar from "../app/web/src/components/Sidebar";
 
 export default function Publish() {
   return (
-    <div className="min-h-screen flex bg-slate-50">
+    <div className="min-h-screen flex app-page">
       {/* Sidebar */}
       <Sidebar />
 
