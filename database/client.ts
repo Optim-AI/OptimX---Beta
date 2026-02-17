@@ -4,6 +4,10 @@
 //
 // Local Supabase DB: postgresql://postgres:postgres@localhost:54322/postgres
 // Production: Your Supabase project's connection string
+//
+// Lazy init: DATABASE_URL is only read when db is first used, so build succeeds
+// when the var is not set (e.g. in Vercel build). Set DATABASE_URL in deployment
+// env for runtime.
 
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
@@ -13,25 +17,31 @@ const globalForDb = globalThis as unknown as {
   pool: Pool | undefined;
 };
 
-// Database connection string
-// Local: postgresql://postgres:postgres@localhost:54322/postgres
-// Prod: Your Supabase connection string from dashboard
-const connectionString = process.env.DATABASE_URL;
-
-if (!connectionString) {
-  throw new Error('DATABASE_URL is not defined in environment variables');
-}
-
-// Use connection pooling for better performance
-const pool = globalForDb.pool ?? new Pool({
-  connectionString,
-  max: 10, // Maximum number of clients in the pool
-});
-
-export const db = globalForDb.db ?? drizzle(pool);
-
-// Cache pool and db in development to prevent connection exhaustion during HMR
-if (process.env.NODE_ENV !== 'production') {
+function getPool(): Pool {
+  if (globalForDb.pool) return globalForDb.pool;
+  const connectionString = process.env.DATABASE_URL;
+  if (!connectionString) {
+    throw new Error('DATABASE_URL is not defined in environment variables');
+  }
+  const pool = new Pool({
+    connectionString,
+    max: 10,
+  });
   globalForDb.pool = pool;
-  globalForDb.db = db;
+  return pool;
 }
+
+function getDb(): ReturnType<typeof drizzle> {
+  if (globalForDb.db) return globalForDb.db;
+  const pool = getPool();
+  const d = drizzle(pool);
+  globalForDb.db = d;
+  return d;
+}
+
+// Lazy: only touches DATABASE_URL when first used (at request time), not at import/build time
+export const db = new Proxy({} as ReturnType<typeof drizzle>, {
+  get(_, prop) {
+    return (getDb() as Record<string | symbol, unknown>)[prop];
+  },
+});
