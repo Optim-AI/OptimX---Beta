@@ -78,6 +78,7 @@ const HEARD_FROM_OPTIONS = [
   "Other"
 ];
 
+<<<<<<< HEAD
 const colors = {
   background: designColors.background,
   primary: designColors.primary,
@@ -87,6 +88,15 @@ const colors = {
   foreground: designColors.foreground,
   mutedForeground: designColors.mutedForeground,
   border: designColors.border,
+=======
+/* ---------- Color tokens - Dark Theme ---------- */
+const colors = {
+  background: "#121212",
+  primary: "hsl(213 100% 55%)",
+  primaryGlow: "hsl(213 100% 65%)",
+  gradientMesh:
+    "radial-gradient(at 40% 20%, hsl(213 100% 50% / 0.12) 0px, transparent 50%), radial-gradient(at 80% 0%, hsl(240 100% 50% / 0.08) 0px, transparent 50%), radial-gradient(at 0% 50%, hsl(213 100% 60% / 0.06) 0px, transparent 50%)",
+>>>>>>> ec66f5da06316f46f3cfbc565018ba171f1e5c49
 };
 
 function withAlpha(token: string, alpha: number) {
@@ -151,6 +161,11 @@ export default function OnboardingInfoPage(): JSX.Element {
   const orbInnerRef = useRef<HTMLDivElement | null>(null);
   const cardRef = useRef<HTMLDivElement | null>(null);
 
+<<<<<<< HEAD
+=======
+  const COLOR_PRIMARY = "#0088ff";
+  const COLOR_SECONDARY = "#0ea5e9";
+>>>>>>> ec66f5da06316f46f3cfbc565018ba171f1e5c49
 
   // Load user + profile
   useEffect(() => {
@@ -283,7 +298,7 @@ export default function OnboardingInfoPage(): JSX.Element {
 
       const result = await profileClient.upsert(payload);
       if (!result.success) throw new Error(result.error || "Profile update failed");
-      router.push("/integrationsbeta");
+      router.push("/creative-studio");
     } catch (e: any) {
       setError(e?.message ?? String(e));
     } finally {
@@ -339,7 +354,11 @@ export default function OnboardingInfoPage(): JSX.Element {
   }, []); // refs are stable, empty deps are fine
 
 
+<<<<<<< HEAD
   if (loading) return <div className="app-page" style={{ padding: 24, minHeight: '100vh', color: colors.foreground }}>Loading…</div>;
+=======
+  if (loading) return <div style={{ padding: 24, background: "#121212", minHeight: "100vh", color: "hsl(0 0% 95%)" }}>Loading…</div>;
+>>>>>>> ec66f5da06316f46f3cfbc565018ba171f1e5c49
 
   return (
     <div
@@ -458,11 +477,20 @@ export default function OnboardingInfoPage(): JSX.Element {
             maxWidth: 980,
             borderRadius: 24,
             padding: 36,
+<<<<<<< HEAD
             boxShadow: "0 1px 2px hsl(0 0% 0% / 0.04), 0 4px 12px hsl(0 0% 0% / 0.04), 0 12px 40px hsl(0 0% 0% / 0.06)",
             overflow: "hidden",
             background: `linear-gradient(135deg, ${withAlpha(colors.card, 0.9)} 0%, ${withAlpha(colors.card, 0.95)} 100%)`,
             border: `1px solid ${colors.border}`,
             backdropFilter: "blur(20px)",
+=======
+            boxShadow: "0 28px 90px rgba(0,0,0,0.4)",
+            overflow: "hidden",
+            background:
+              "linear-gradient(145deg, hsl(0 0% 16%) 0%, hsl(0 0% 12%) 100%)",
+            backdropFilter: "saturate(140%) blur(10px)",
+            border: "1px solid rgba(255, 255, 255, 0.08)",
+>>>>>>> ec66f5da06316f46f3cfbc565018ba171f1e5c49
             position: "relative",
             zIndex: 2,
             transform: "translateZ(0)",
@@ -481,18 +509,30 @@ export default function OnboardingInfoPage(): JSX.Element {
               height: 36,
               width: 36,
               borderRadius: 10,
-              border: "none",
+              border: "1px solid rgba(255,255,255,0.1)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
+<<<<<<< HEAD
               background: colors.muted,
               boxShadow: "0 4px 12px hsl(0 0% 0% / 0.2)",
+=======
+              background: "rgba(255,255,255,0.05)",
+              boxShadow: "0 6px 20px rgba(0,0,0,0.2)",
+>>>>>>> ec66f5da06316f46f3cfbc565018ba171f1e5c49
               cursor: "pointer",
               padding: 6,
+              transition: "background 0.2s ease",
             }}
+            onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.1)")}
+            onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.05)")}
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+<<<<<<< HEAD
               <path d="M15 19l-7-7 7-7" stroke={colors.foreground} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+=======
+              <path d="M15 19l-7-7 7-7" stroke="hsl(0 0% 95%)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+>>>>>>> ec66f5da06316f46f3cfbc565018ba171f1e5c49
             </svg>
           </button>
 
@@ -595,7 +635,11 @@ export default function OnboardingInfoPage(): JSX.Element {
                 maxWidth: 720,
                 height: 12,
                 margin: "0 auto 16px",
+<<<<<<< HEAD
                 background: colors.muted,
+=======
+                background: "hsl(0 0% 20%)",
+>>>>>>> ec66f5da06316f46f3cfbc565018ba171f1e5c49
                 borderRadius: 12,
                 overflow: "hidden",
                 position: "relative",
@@ -605,7 +649,11 @@ export default function OnboardingInfoPage(): JSX.Element {
                 style={{
                   height: "100%",
                   width: `${progressPercent}%`,
+<<<<<<< HEAD
                   background: `linear-gradient(135deg, ${colors.primary} 0%, ${colors.primaryGlow} 100%)`,
+=======
+                  background: `linear-gradient(90deg,${COLOR_PRIMARY},${COLOR_SECONDARY})`,
+>>>>>>> ec66f5da06316f46f3cfbc565018ba171f1e5c49
                   borderRadius: 12,
                   transition: "width 0.4s ease",
                   position: "relative",
@@ -637,13 +685,17 @@ export default function OnboardingInfoPage(): JSX.Element {
               />
 
               {/* SkalX AI brand title */}
+<<<<<<< HEAD
               <div style={{ fontSize: 24, fontWeight: 800, color: colors.foreground, lineHeight: 1 }}>
+=======
+              <div style={{ fontSize: 24, fontWeight: 800, color: "hsl(0 0% 95%)", lineHeight: 1 }}>
+>>>>>>> ec66f5da06316f46f3cfbc565018ba171f1e5c49
                 <span>SkalX AI</span>
               </div>
 
               {/* This line now uses firstName derived like welcome.tsx */}
-              <div style={{ fontSize: 18, color: "#111827", fontWeight: 600 }}>
-                Hello <span style={{ color: COLOR_B }}>{firstName}</span> — Let’s get to know your business
+              <div style={{ fontSize: 18, color: "hsl(0 0% 85%)", fontWeight: 600 }}>
+                Hello <span style={{ color: COLOR_SECONDARY }}>{firstName}</span> — Let's get to know your business
               </div>
             </div>
 
@@ -681,11 +733,19 @@ export default function OnboardingInfoPage(): JSX.Element {
                     <div
                       style={{
                         width: "80%",
+<<<<<<< HEAD
                         border: `2px dashed ${colors.border}`,
                         borderRadius: 16,
                         padding: 24,
                         textAlign: "center",
                         background: colors.muted,
+=======
+                        border: "2px dashed rgba(255,255,255,0.15)",
+                        borderRadius: 16,
+                        padding: 24,
+                        textAlign: "center",
+                        background: "rgba(255,255,255,0.03)",
+>>>>>>> ec66f5da06316f46f3cfbc565018ba171f1e5c49
                         transition: "transform 180ms ease",
                       }}
                     >
@@ -700,14 +760,22 @@ export default function OnboardingInfoPage(): JSX.Element {
                           }}
                         />
                       ) : (
+<<<<<<< HEAD
                         <div style={{ color: colors.mutedForeground, marginBottom: 12 }}>
+=======
+                        <div style={{ color: "hsl(0 0% 65%)", marginBottom: 12 }}>
+>>>>>>> ec66f5da06316f46f3cfbc565018ba171f1e5c49
                           Upload your logo
                         </div>
                       )}
                       <label
                         style={{
                           display: "inline-block",
+<<<<<<< HEAD
                           background: colors.primary,
+=======
+                          background: "linear-gradient(180deg, #0088ff, #0073e6)",
+>>>>>>> ec66f5da06316f46f3cfbc565018ba171f1e5c49
                           color: "white",
                           borderRadius: 8,
                           padding: "10px 22px",
@@ -761,7 +829,11 @@ export default function OnboardingInfoPage(): JSX.Element {
               {/* Step 2 */}
               {step === 2 && (
                 <div>
+<<<<<<< HEAD
                   <h2 style={{ textAlign: "center", fontWeight: 600, marginBottom: 24, fontSize: 20, color: colors.foreground }}>
+=======
+                  <h2 style={{ textAlign: "center", fontWeight: 600, marginBottom: 24, fontSize: 20, color: "hsl(0 0% 95%)" }}>
+>>>>>>> ec66f5da06316f46f3cfbc565018ba171f1e5c49
                     Choose your Industry
                   </h2>
                   <div
@@ -780,15 +852,23 @@ export default function OnboardingInfoPage(): JSX.Element {
                           borderRadius: 12,
                           border:
                             businessType === bt
+<<<<<<< HEAD
                               ? `2px solid ${colors.primary}`
                               : `1px solid ${colors.border}`,
                           background:
                             businessType === bt ? withAlpha(colors.primary, 0.12) : colors.card,
                           color: colors.foreground,
+=======
+                              ? `2px solid ${COLOR_PRIMARY}`
+                              : "1px solid hsl(0 0% 22%)",
+                          background:
+                            businessType === bt ? "rgba(0,136,255,0.1)" : "hsl(0 0% 18%)",
+                          color: businessType === bt ? "hsl(0 0% 95%)" : "hsl(0 0% 85%)",
+>>>>>>> ec66f5da06316f46f3cfbc565018ba171f1e5c49
                           cursor: "pointer",
                           fontWeight: 500,
                           transition: "transform 160ms ease, box-shadow 160ms ease",
-                          boxShadow: businessType === bt ? "0 6px 30px rgba(16,24,40,0.06)" : "none",
+                          boxShadow: businessType === bt ? "0 6px 30px rgba(0,136,255,0.2)" : "none",
                         }}
                       >
                         {bt}
@@ -806,7 +886,11 @@ export default function OnboardingInfoPage(): JSX.Element {
               {/* Step 3 */}
               {step === 3 && (
                 <div>
+<<<<<<< HEAD
                   <h2 style={{ textAlign: "center", fontWeight: 600, marginBottom: 24, fontSize: 20, color: colors.foreground }}>
+=======
+                  <h2 style={{ textAlign: "center", fontWeight: 600, marginBottom: 24, fontSize: 20, color: "hsl(0 0% 95%)" }}>
+>>>>>>> ec66f5da06316f46f3cfbc565018ba171f1e5c49
                     What is your core use case?
                   </h2>
                   <div
@@ -831,11 +915,20 @@ export default function OnboardingInfoPage(): JSX.Element {
                           padding: 12,
                           height: 64,
                           border: useCase.includes(opt)
+<<<<<<< HEAD
                             ? `2px solid ${colors.primary}`
                             : `1px solid ${colors.border}`,
                           background: useCase.includes(opt)
                             ? withAlpha(colors.primary, 0.12)
                             : colors.card,
+=======
+                            ? `2px solid ${COLOR_PRIMARY}`
+                            : "1px solid hsl(0 0% 22%)",
+                          background: useCase.includes(opt)
+                            ? "rgba(0,136,255,0.1)"
+                            : "hsl(0 0% 18%)",
+                          color: useCase.includes(opt) ? "hsl(0 0% 95%)" : "hsl(0 0% 85%)",
+>>>>>>> ec66f5da06316f46f3cfbc565018ba171f1e5c49
                           cursor: "pointer",
                           color: colors.foreground,
                           transition: "transform 140ms ease",
@@ -857,7 +950,11 @@ export default function OnboardingInfoPage(): JSX.Element {
               {/* Step 4 */}
               {step === 4 && (
                 <div>
+<<<<<<< HEAD
                   <h2 style={{ textAlign: "center", fontWeight: 600, marginBottom: 24, fontSize: 20, color: colors.foreground }}>
+=======
+                  <h2 style={{ textAlign: "center", fontWeight: 600, marginBottom: 24, fontSize: 20, color: "hsl(0 0% 95%)" }}>
+>>>>>>> ec66f5da06316f46f3cfbc565018ba171f1e5c49
                     Choose the size of your business
                   </h2>
                   <div
@@ -877,10 +974,18 @@ export default function OnboardingInfoPage(): JSX.Element {
                           borderRadius: 12,
                           border:
                             businessSize === sz
+<<<<<<< HEAD
                               ? `2px solid ${colors.primary}`
                               : `1px solid ${colors.border}`,
                           background:
                             businessSize === sz ? withAlpha(colors.primary, 0.12) : colors.card,
+=======
+                              ? `2px solid ${COLOR_PRIMARY}`
+                              : "1px solid hsl(0 0% 22%)",
+                          background:
+                            businessSize === sz ? "rgba(0,136,255,0.1)" : "hsl(0 0% 18%)",
+                          color: businessSize === sz ? "hsl(0 0% 95%)" : "hsl(0 0% 85%)",
+>>>>>>> ec66f5da06316f46f3cfbc565018ba171f1e5c49
                           cursor: "pointer",
                           color: colors.foreground,
                           transition: "transform 140ms ease",
@@ -909,7 +1014,7 @@ export default function OnboardingInfoPage(): JSX.Element {
               )}
 
               {error && (
-                <div style={{ color: "red", marginTop: 16, textAlign: "center" }}>
+                <div style={{ color: "#ef4444", marginTop: 16, textAlign: "center" }}>
                   {error}
                 </div>
               )}
@@ -995,17 +1100,27 @@ const inputStyle: React.CSSProperties = {
   height: 48,
   width: "80%",
   borderRadius: 12,
+<<<<<<< HEAD
   border: `1px solid ${colors.border}`,
   background: colors.card,
   color: colors.foreground,
+=======
+  border: "1px solid hsl(0 0% 22%)",
+>>>>>>> ec66f5da06316f46f3cfbc565018ba171f1e5c49
   padding: "0 16px",
   outline: "none",
-  transition: "box-shadow 160ms ease, transform 120ms ease",
+  transition: "box-shadow 160ms ease, transform 120ms ease, border-color 160ms ease",
   boxShadow: "inset 0 0 0 rgba(0,0,0,0)",
+  background: "hsl(0 0% 15%)",
+  color: "hsl(0 0% 95%)",
 };
 const buttonStyle: React.CSSProperties = {
   marginTop: 28,
+<<<<<<< HEAD
   background: `linear-gradient(135deg, ${colors.primary} 0%, ${colors.primaryGlow} 100%)`,
+=======
+  background: "linear-gradient(180deg, #0088ff, #0073e6)",
+>>>>>>> ec66f5da06316f46f3cfbc565018ba171f1e5c49
   color: "white",
   border: "none",
   borderRadius: 12,
@@ -1015,4 +1130,5 @@ const buttonStyle: React.CSSProperties = {
   cursor: "pointer",
   boxShadow: "0 0 24px hsl(213 100% 55% / 0.2)",
   transition: "transform 160ms ease, box-shadow 160ms ease",
+  boxShadow: "0 10px 30px rgba(0, 136, 255, 0.3)",
 };

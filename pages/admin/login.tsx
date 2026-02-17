@@ -149,6 +149,7 @@ export default function AdminLoginPage() {
           border: 2px solid #e2e8f0;
           border-radius: 10px;
           font-size: 15px;
+          color: #0f172a;
           transition: all 200ms;
         }
         .input-group input:focus {

@@ -123,8 +123,14 @@ export default function Welcome(): React.ReactElement {
           minHeight: "100vh",
           display: "grid",
           placeItems: "center",
+<<<<<<< HEAD
           fontFamily: "Poppins, Inter",
           color: colors.foreground,
+=======
+          background: "#121212",
+          fontFamily: "Poppins, Inter",
+          color: "hsl(0 0% 95%)",
+>>>>>>> ec66f5da06316f46f3cfbc565018ba171f1e5c49
         }}
       >
         Loading…
@@ -150,7 +156,10 @@ export default function Welcome(): React.ReactElement {
           padding: 40px 20px;
           font-family: Poppins, Inter, system-ui;
           text-align: center;
+<<<<<<< HEAD
           background-color: #121212;
+=======
+>>>>>>> ec66f5da06316f46f3cfbc565018ba171f1e5c49
           color: hsl(0 0% 95%);
         }
 
@@ -180,13 +189,22 @@ export default function Welcome(): React.ReactElement {
           100% { background-position: 220% 0; }
         }
 
-        .center-fade { position: absolute; inset: 0; pointer-events: none; z-index: 1;
+        .center-fade {
+          position: absolute;
+          inset: 0;
+          pointer-events: none;
+          z-index: 1;
           background: linear-gradient(
             90deg,
             transparent 0%,
             transparent 20%,
+<<<<<<< HEAD
             rgba(18,18,18,0.6) 45%,
             rgba(18,18,18,0.6) 55%,
+=======
+            rgba(18,18,18,0.4) 45%,
+            rgba(18,18,18,0.4) 55%,
+>>>>>>> ec66f5da06316f46f3cfbc565018ba171f1e5c49
             transparent 80%,
             transparent 100%
           );
@@ -212,7 +230,7 @@ export default function Welcome(): React.ReactElement {
           animation-delay: 160ms;
           position: relative;
           /* subtle shine */
-          background: linear-gradient(90deg, rgba(255,255,255,0.0) 0%, rgba(255,255,255,0.05) 30%, rgba(255,255,255,0.12) 50%, rgba(255,255,255,0.05) 70%, rgba(255,255,255,0.0) 100%);
+          background: linear-gradient(90deg, rgba(255,255,255,0.0) 0%, rgba(255,255,255,0.08) 30%, rgba(255,255,255,0.15) 50%, rgba(255,255,255,0.08) 70%, rgba(255,255,255,0.0) 100%);
           background-size: 240% 100%;
           -webkit-background-clip: text;
           background-clip: text;
@@ -229,7 +247,7 @@ export default function Welcome(): React.ReactElement {
           bottom: 0;
           color: ${colors?.primary ?? "#0088FF"};
           -webkit-text-fill-color: ${colors?.primary ?? "#0088FF"};
-          background: linear-gradient(90deg, rgba(255,255,255,0.0) 0%, rgba(255,255,255,0.12) 45%, rgba(255,255,255,0.0) 55%, rgba(255,255,255,0.0) 100%);
+          background: linear-gradient(90deg, rgba(255,255,255,0.0) 0%, rgba(255,255,255,0.15) 45%, rgba(255,255,255,0.0) 55%, rgba(255,255,255,0.0) 100%);
           background-size: 240% 100%;
           animation: nameShine 2.8s linear infinite;
           animation-delay: 500ms;
@@ -238,7 +256,11 @@ export default function Welcome(): React.ReactElement {
 
         .subtitle {
           margin-top: 12px;
+<<<<<<< HEAD
           color: hsl(0 0% 70%);
+=======
+          color: hsl(0 0% 75%);
+>>>>>>> ec66f5da06316f46f3cfbc565018ba171f1e5c49
           font-size: 18px;
           max-width: 640px;
           margin-left: auto;
@@ -255,16 +277,26 @@ export default function Welcome(): React.ReactElement {
           margin-top: 40px;
           width: 240px;
           height: 48px;
+<<<<<<< HEAD
           border-radius: 10px;
           background: linear-gradient(135deg, hsl(213 100% 55%) 0%, hsl(213 100% 65%) 100%);
+=======
+          border-radius: 12px;
+          background: linear-gradient(180deg, #0088ff, #0073e6);
+>>>>>>> ec66f5da06316f46f3cfbc565018ba171f1e5c49
           color: white;
           display: inline-flex;
           align-items: center;
           justify-content: center;
           font-weight: 700;
+          font-size: 15px;
           cursor: pointer;
           border: none;
+<<<<<<< HEAD
           box-shadow: 0 0 24px hsl(213 100% 55% / 0.2);
+=======
+          box-shadow: 0 10px 30px rgba(0, 136, 255, 0.3);
+>>>>>>> ec66f5da06316f46f3cfbc565018ba171f1e5c49
           position: relative;
           z-index: 2;
           transform: translateY(6px);
@@ -274,15 +306,27 @@ export default function Welcome(): React.ReactElement {
           transition: transform 180ms ease, box-shadow 180ms ease;
         }
 
+<<<<<<< HEAD
         .cta:hover { transform: translateY(0); box-shadow: 0 0 32px hsl(213 100% 55% / 0.35); }
+=======
+        .cta:hover {
+          transform: translateY(0);
+          box-shadow: 0 18px 40px rgba(0,136,255,0.4);
+          background: linear-gradient(180deg, #1a94ff, #0080f0);
+        }
+>>>>>>> ec66f5da06316f46f3cfbc565018ba171f1e5c49
         .cta:active { transform: translateY(1px) scale(0.998); }
-        .cta:focus { outline: 3px solid rgba(0,136,255,0.12); outline-offset: 3px; }
+        .cta:focus { outline: 3px solid rgba(0,136,255,0.3); outline-offset: 3px; }
 
         .do-later {
           margin-top: 18px;
           display: block;
           font-size: 14px;
+<<<<<<< HEAD
           color: hsl(0 0% 60%);
+=======
+          color: hsl(0 0% 65%);
+>>>>>>> ec66f5da06316f46f3cfbc565018ba171f1e5c49
           text-decoration: underline;
           cursor: pointer;
           position: relative;
@@ -290,6 +334,11 @@ export default function Welcome(): React.ReactElement {
           opacity: 0;
           animation: fadeSlideUp 680ms cubic-bezier(.2,.9,.2,1) both;
           animation-delay: 360ms;
+          transition: color 0.2s ease;
+        }
+
+        .do-later:hover {
+          color: hsl(0 0% 85%);
         }
 
         /* orb specific */
@@ -330,7 +379,11 @@ export default function Welcome(): React.ReactElement {
         </p>
 
         {error && (
+<<<<<<< HEAD
           <p style={{ color: colors.destructive, marginTop: 14, position: "relative", zIndex: 2 }}>
+=======
+          <p style={{ color: "#ef4444", marginTop: 14, position: "relative", zIndex: 2 }}>
+>>>>>>> ec66f5da06316f46f3cfbc565018ba171f1e5c49
             {error}
           </p>
         )}

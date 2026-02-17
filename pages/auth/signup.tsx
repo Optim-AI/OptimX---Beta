@@ -224,18 +224,91 @@ export default function SignUpPage(): React.ReactElement {
   return (
     <>
       <style jsx global>{`
+<<<<<<< HEAD
         :root { --optim-blue: hsl(213 100% 55%); --border: hsl(0 0% 22%); --link-color: hsl(213 100% 65%); --muted: hsl(0 0% 60%); }
         *{box-sizing:border-box}
         html,body,#__next{height:100%;margin:0}
         body{font-family:Poppins,Inter,system-ui;-webkit-font-smoothing:antialiased}
         .page-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;background-color:#121212}
         .animation-float{ animation: float 8s ease-in-out infinite; transform-origin:center; }
+=======
+        :root {
+          --optim-blue: #0088ff;
+          --border: hsl(0 0% 22%);
+          --link-color: #5ba3ff;
+          --muted: hsl(0 0% 60%);
+        }
+        * {
+          box-sizing: border-box;
+        }
+        html,
+        body,
+        #__next {
+          height: 100%;
+          margin: 0;
+        }
+        body {
+          font-family: Poppins, Inter, system-ui;
+          -webkit-font-smoothing: antialiased;
+        }
+        .page-wrap {
+          min-height: 100vh;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          position: relative;
+          overflow: hidden;
+        }
+        .bg-shape {
+          position: absolute;
+          border-radius: 9999px;
+          pointer-events: none;
+          filter: blur(120px);
+          opacity: 0.95;
+          z-index: 0;
+        }
+        .bg-shape.left {
+          width: 520px;
+          height: 520px;
+          left: -140px;
+          top: -80px;
+        }
+        .bg-shape.mid {
+          width: 380px;
+          height: 380px;
+          left: 420px;
+          top: 120px;
+        }
+        .bg-shape.right {
+          width: 600px;
+          height: 600px;
+          right: -160px;
+          bottom: -60px;
+        }
+        .mesh-gradient {
+          mix-blend-mode: overlay;
+        }
+        .animation-float {
+          animation: float 8s ease-in-out infinite;
+          transform-origin: center;
+        }
+>>>>>>> ec66f5da06316f46f3cfbc565018ba171f1e5c49
         @keyframes float {
-          0% { transform: translateY(0) translateX(0) scale(1); opacity: .9; }
-          50% { transform: translateY(-18px) translateX(6px) scale(1.02); opacity: .95; }
-          100% { transform: translateY(0) translateX(0) scale(1); opacity: .9; }
+          0% {
+            transform: translateY(0) translateX(0) scale(1);
+            opacity: 0.9;
+          }
+          50% {
+            transform: translateY(-18px) translateX(6px) scale(1.02);
+            opacity: 0.95;
+          }
+          100% {
+            transform: translateY(0) translateX(0) scale(1);
+            opacity: 0.9;
+          }
         }
 
+<<<<<<< HEAD
         .auth-card{
           z-index:3;
           width:500px;
@@ -250,10 +323,39 @@ export default function SignUpPage(): React.ReactElement {
           align-items:center;
           position:relative;
           overflow:hidden;
+=======
+        /* CARD + LAYOUT - match SignIn dark theme */
+        .auth-card {
+          z-index: 3;
+          width: 500px;
+          border-radius: 18px;
+          backdrop-filter: blur(6px);
+          padding: 20px;
+          box-shadow: 0 20px 80px rgba(0, 0, 0, 0.4);
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          position: relative;
+          overflow: hidden;
         }
-        .card-bg{ position:absolute; inset:0; pointer-events:none; z-index:0; }
-        .auth-content{ position:relative; z-index:2; width:100%; display:flex; flex-direction:column;align-items:center }
+        .card-bg {
+          position: absolute;
+          inset: 0;
+          pointer-events: none;
+          z-index: 0;
+        }
+        .auth-content {
+          position: relative;
+          z-index: 2;
+          width: 100%;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+>>>>>>> ec66f5da06316f46f3cfbc565018ba171f1e5c49
+        }
 
+<<<<<<< HEAD
         .brand-badge{width:64px;height:64px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg, hsl(213 100% 55%) 0%, hsl(213 100% 65%) 100%);box-shadow:0 0 24px hsl(213 100% 55% / 0.2)}
         .brand-title{margin-top:8px;font-weight:700;font-size:32px;line-height:40px;color:hsl(0 0% 95%);text-align:center}
         .brand-sub{margin-top:4px;color:hsl(0 0% 60%);font-weight:500;font-size:13px;text-align:center;margin-bottom:12px}
@@ -276,11 +378,182 @@ export default function SignUpPage(): React.ReactElement {
         .helper-row{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:8px}
         .helper-row a{font-size:13px;color:var(--link-color);text-decoration:none;font-weight:600}
         .helper-row a.secondary{color:var(--muted);font-weight:600;text-decoration:underline}
+=======
+        .brand-badge {
+          width: 64px;
+          height: 64px;
+          border-radius: 12px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: linear-gradient(180deg, #36a7ff, #0f62ff);
+          box-shadow: 0 0 9.65px rgba(188, 215, 255, 0.24);
+        }
+        .brand-title {
+          margin-top: 8px;
+          font-weight: 700;
+          font-size: 32px;
+          line-height: 40px;
+          color: hsl(0 0% 95%);
+          text-align: center;
+        }
+        .brand-sub {
+          margin-top: 4px;
+          color: hsl(0 0% 60%);
+          font-weight: 500;
+          font-size: 13px;
+          text-align: center;
+          margin-bottom: 12px;
+        }
 
-        @media (max-width:820px){
-          .auth-card{width:calc(100% - 40px);padding:16px;border-radius:14px}
-          .brand-title{font-size:26px}
-          .oauth-row{grid-template-columns:1fr;gap:10px}
+        .oauth-row {
+          margin-top: 28px;
+          width: 100%;
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+        .oauth-btn {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 10px;
+          background: hsl(0 0% 18%);
+          border: 1px solid var(--border);
+          border-radius: 12px;
+          padding: 12px 20px;
+          cursor: pointer;
+          font-weight: 600;
+          font-size: 15px;
+          height: 48px;
+          width: 100%;
+          color: hsl(0 0% 95%);
+          transition: all 0.2s ease;
+        }
+        .oauth-btn:hover {
+          background: hsl(0 0% 20%);
+          border-color: hsl(0 0% 30%);
+        }
+        .oauth-btn img,
+        .oauth-btn svg {
+          flex-shrink: 0;
+          width: 20px;
+          height: 20px;
+        }
+        .oauth-btn span {
+          white-space: nowrap;
+        }
+
+        .form {
+          margin-top: 12px;
+          width: 100%;
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+        label {
+          font-size: 12px;
+          font-weight: 500;
+          color: hsl(0 0% 95%);
+          margin-bottom: 6px;
+          display: block;
+        }
+        .input {
+          height: 44px;
+          border-radius: 10px;
+          border: 1px solid var(--border);
+          padding: 10px 12px;
+          font-size: 15px;
+          background: hsl(0 0% 15%);
+          color: hsl(0 0% 95%);
+          width: 100%;
+          display: block;
+        }
+        .input::placeholder {
+          color: hsl(0 0% 50%);
+        }
+        .pw-wrap {
+          position: relative;
+          width: 100%;
+        }
+        .pw-toggle {
+          position: absolute;
+          right: 12px;
+          top: 10px;
+          height: 28px;
+          width: 36px;
+          border: none;
+          background: transparent;
+          cursor: pointer;
+        }
+        .cta {
+          margin-top: 6px;
+          height: 44px;
+          border-radius: 12px;
+          background: var(--optim-blue);
+          color: white;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-weight: 800;
+          border: none;
+          font-size: 15px;
+          width: 100%;
+          cursor: pointer;
+        }
+        .cta:hover:not(:disabled) {
+          background: hsl(213 100% 60%);
+        }
+        .cta:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+        .policy {
+          font-size: 12px;
+          text-align: center;
+          color: var(--muted);
+          margin-top: 10px;
+        }
+        .policy a {
+          color: var(--link-color);
+          text-decoration: underline;
+          font-weight: 600;
+        }
+        .msg {
+          margin-top: 8px;
+          font-size: 13px;
+          text-align: center;
+        }
+
+        .helper-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 12px;
+          margin-top: 8px;
+        }
+        .helper-row a {
+          font-size: 13px;
+          color: var(--link-color);
+          text-decoration: none;
+          font-weight: 600;
+        }
+        .helper-row a.secondary {
+          color: var(--muted);
+          font-weight: 600;
+          text-decoration: underline;
+        }
+>>>>>>> ec66f5da06316f46f3cfbc565018ba171f1e5c49
+
+        @media (max-width: 820px) {
+          .auth-card {
+            width: calc(100% - 40px);
+            padding: 16px;
+            border-radius: 14px;
+          }
+          .brand-title {
+            font-size: 26px;
+          }
         }
       `}</style>
 
@@ -321,7 +594,7 @@ export default function SignUpPage(): React.ReactElement {
                   <path fill="#4caf50" d="M24 43c5.1 0 9.6-2 13-5.2l-6-4.9C29.9 34.9 27.1 36 24 36c-5.1 0-9.6-2-13-5.2l-6.6 4.8C10.2 40.1 16.7 44 24 44z"/>
                   <path fill="#1565c0" d="M43.6 20.4H42V20H24v8h11.3c-1 2.8-3 5.2-5.5 6.8l6 4.9C39.9 36.3 44 30 44 23c0-1.3-.1-2.6-.4-3.6z"/>
                 </svg>
-                <span style={{ marginLeft: 6 }}>Continue with Google</span>
+                <span>Continue with Google</span>
               </button>
 
               <button
@@ -333,14 +606,20 @@ export default function SignUpPage(): React.ReactElement {
                 <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden>
                   <path d="M22 12c0-5.5-4.5-10-10-10S2 6.5 2 12c0 4.9 3.5 9 8.1 9.9v-7H7.9v-2.9h2.2V9.7c0-2.2 1.3-3.4 3.3-3.4.95 0 1.9.17 1.9.17v2.1h-1.08c-1.06 0-1.39.66-1.39 1.33v1.6h2.36l-.38 2.9h-1.98v7C18.5 21 22 16.9 22 12z" fill="#0866FF" />
                 </svg>
-                <span style={{ marginLeft: 6 }}>Continue with Facebook</span>
+                <span>Continue with Facebook</span>
               </button>
             </div>
 
             <div style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, marginTop: 32 }}>
+<<<<<<< HEAD
               <div style={{ flex: 1, height: 1, background: colors.border }} />
               <div style={{ color: colors.mutedForeground, fontSize: 13 }}>Or sign up with email</div>
               <div style={{ flex: 1, height: 1, background: colors.border }} />
+=======
+              <div style={{ flex: 1, height: 1, background: 'hsl(0 0% 22%)' }} />
+              <div style={{ color: 'hsl(0 0% 60%)', fontSize: 13 }}>Or sign up with email</div>
+              <div style={{ flex: 1, height: 1, background: 'hsl(0 0% 22%)' }} />
+>>>>>>> ec66f5da06316f46f3cfbc565018ba171f1e5c49
             </div>
 
             <form className="form" aria-labelledby="signup-title" onSubmit={handleSignUp}>

@@ -75,32 +75,32 @@ export default function BrandOnboarding({
         }
       }}
     >
-      <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="p-6 border-b border-gray-200 flex items-center justify-between">
+      <div className="bg-gray-900 rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto border border-gray-700">
+        <div className="p-6 border-b border-gray-700 flex items-center justify-between">
           <div>
-            <h2 className="text-2xl font-semibold text-gray-900">Set Up Your Brand</h2>
-            <p className="text-gray-600 text-sm mt-1">
+            <h2 className="text-2xl font-semibold text-gray-100">Set Up Your Brand</h2>
+            <p className="text-gray-400 text-sm mt-1">
               Help me understand your brand so I can create consistent, on-brand creatives for you.
             </p>
           </div>
           <button
             onClick={onSkip}
             disabled={isLoading}
-            className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-4 py-2 text-sm font-medium text-gray-400 hover:text-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Skip
           </button>
         </div>
 
         {/* Mode Toggle */}
-        <div className="p-6 border-b border-gray-200">
-          <div className="flex gap-2 bg-gray-100 rounded-lg p-1">
+        <div className="p-6 border-b border-gray-700">
+          <div className="flex gap-2 bg-gray-800 rounded-lg p-1">
             <button
               onClick={() => onModeChange("website")}
               className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
                 mode === "website"
-                  ? "bg-white text-gray-900 shadow-sm"
-                  : "text-gray-600 hover:text-gray-900"
+                  ? "bg-gray-700 text-gray-100 shadow-sm"
+                  : "text-gray-400 hover:text-gray-200"
               }`}
             >
               From Website
@@ -109,8 +109,8 @@ export default function BrandOnboarding({
               onClick={() => onModeChange("manual")}
               className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
                 mode === "manual"
-                  ? "bg-white text-gray-900 shadow-sm"
-                  : "text-gray-600 hover:text-gray-900"
+                  ? "bg-gray-700 text-gray-100 shadow-sm"
+                  : "text-gray-400 hover:text-gray-200"
               }`}
             >
               Manual Setup
@@ -122,7 +122,7 @@ export default function BrandOnboarding({
         {mode === "website" && (
           <form onSubmit={handleWebsiteSubmit} className="p-6 space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-300 mb-2">
                 Website URL
               </label>
               <input
@@ -130,7 +130,7 @@ export default function BrandOnboarding({
                 value={websiteUrl}
                 onChange={(e) => setWebsiteUrl(e.target.value)}
                 placeholder="https://yourwebsite.com"
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                className="w-full px-4 py-2 border border-gray-600 rounded-lg bg-gray-800 text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-700 disabled:opacity-50"
                 required
                 disabled={isLoading}
               />
@@ -139,12 +139,12 @@ export default function BrandOnboarding({
               </p>
             </div>
             {isLoading && (
-              <div className="flex items-center gap-3 p-4 bg-blue-50 rounded-lg border border-blue-100">
-                <svg className="animate-spin h-5 w-5 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <div className="flex items-center gap-3 p-4 bg-blue-900/30 rounded-lg border border-blue-700/50">
+                <svg className="animate-spin h-5 w-5 text-blue-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
-                <span className="text-blue-700 text-sm font-medium">Analyzing your website... This may take a moment.</span>
+                <span className="text-blue-300 text-sm font-medium">Analyzing your website... This may take a moment.</span>
               </div>
             )}
             <div className="flex gap-3">
@@ -173,7 +173,7 @@ export default function BrandOnboarding({
         {mode === "manual" && (
           <form onSubmit={handleManualSubmit} className="p-6 space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-300 mb-2">
                 Business / Brand Name *
               </label>
               <input
@@ -181,13 +181,13 @@ export default function BrandOnboarding({
                 value={manualForm.name}
                 onChange={(e) => setManualForm({ ...manualForm, name: e.target.value })}
                 placeholder="Your Brand Name"
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-2 border border-gray-600 rounded-lg bg-gray-800 text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 required
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-300 mb-2">
                 What do you sell or offer? *
               </label>
               <input
@@ -195,13 +195,13 @@ export default function BrandOnboarding({
                 value={manualForm.offering}
                 onChange={(e) => setManualForm({ ...manualForm, offering: e.target.value })}
                 placeholder="e.g., Premium coffee, Digital marketing services"
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-2 border border-gray-600 rounded-lg bg-gray-800 text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 required
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-300 mb-2">
                 Who is your target audience? *
               </label>
               <input
@@ -209,19 +209,19 @@ export default function BrandOnboarding({
                 value={manualForm.audience}
                 onChange={(e) => setManualForm({ ...manualForm, audience: e.target.value })}
                 placeholder="e.g., Young professionals, Small business owners"
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-2 border border-gray-600 rounded-lg bg-gray-800 text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 required
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-300 mb-2">
                 Brand Personality
               </label>
               <select
                 value={manualForm.personality}
                 onChange={(e) => setManualForm({ ...manualForm, personality: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-2 border border-gray-600 rounded-lg bg-gray-800 text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">Select personality...</option>
                 <option value="minimal">Minimal</option>
@@ -234,7 +234,7 @@ export default function BrandOnboarding({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-300 mb-2">
                 Tagline or Key Message (Optional)
               </label>
               <input
@@ -242,7 +242,7 @@ export default function BrandOnboarding({
                 value={manualForm.tagline}
                 onChange={(e) => setManualForm({ ...manualForm, tagline: e.target.value })}
                 placeholder="e.g., Quality First, Always"
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-2 border border-gray-600 rounded-lg bg-gray-800 text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
 
