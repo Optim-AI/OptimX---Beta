@@ -59,12 +59,8 @@ const ComparisonSection: React.FC = () => {
   const [activeSlide, setActiveSlide] = useState(0);
   const [scrollProgress, setScrollProgress] = useState(0);
   const [isMobile, setIsMobile] = useState(false);
-<<<<<<< HEAD
-  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
-=======
   const [isAutoPlaying, setIsAutoPlaying] = useState(true);
   const autoPlayRef = useRef<NodeJS.Timeout | null>(null);
->>>>>>> ec66f5da06316f46f3cfbc565018ba171f1e5c49
 
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 768);
@@ -75,51 +71,12 @@ const ComparisonSection: React.FC = () => {
 
   // Auto-play functionality for desktop
   useEffect(() => {
-<<<<<<< HEAD
-    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
-    setPrefersReducedMotion(mq.matches);
-    const handler = () => setPrefersReducedMotion(mq.matches);
-    mq.addEventListener('change', handler);
-    return () => mq.removeEventListener('change', handler);
-  }, []);
-
-  useEffect(() => {
-    if (isMobile) return;
-=======
     if (isMobile || !isAutoPlaying) return;
->>>>>>> ec66f5da06316f46f3cfbc565018ba171f1e5c49
 
     autoPlayRef.current = setInterval(() => {
       setActiveSlide((prev) => (prev + 1) % COMPARISON_ROWS.length);
     }, 4000);
 
-<<<<<<< HEAD
-        const rect = section.getBoundingClientRect();
-        const scrollHeight = section.offsetHeight;
-        const viewportHeight = window.innerHeight;
-
-        if (rect.top > viewportHeight || rect.bottom < 0) return;
-
-        const scrollableDistance = scrollHeight - viewportHeight;
-        if (scrollableDistance <= 0) {
-          setActiveSlide(0);
-          return;
-        }
-
-        const scrolled = -rect.top;
-        const progress = Math.max(0, Math.min(1, scrolled / scrollableDistance));
-        const segment = Math.floor(progress * 4);
-        const slideIndex = Math.min(segment, 3);
-        setScrollProgress(progress);
-        setActiveSlide((prev) => (prev !== slideIndex ? slideIndex : prev));
-      });
-    };
-
-    handleScroll();
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    window.addEventListener('resize', handleScroll);
-=======
->>>>>>> ec66f5da06316f46f3cfbc565018ba171f1e5c49
     return () => {
       if (autoPlayRef.current) {
         clearInterval(autoPlayRef.current);
@@ -223,42 +180,6 @@ const ComparisonSection: React.FC = () => {
           max-width: 1100px;
           margin: 0 auto;
           padding: 0 1.5rem;
-<<<<<<< HEAD
-          overflow: hidden;
-          perspective: 1600px;
-        }
-        .comparison-cube-scene {
-          width: 100%;
-          max-width: 1100px;
-          height: 360px;
-          position: relative;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          perspective-origin: 50% 50%;
-          overflow: hidden;
-        }
-        .comparison-cube {
-          position: relative;
-          width: 100%;
-          height: 100%;
-          transform-style: preserve-3d;
-          will-change: transform;
-        }
-        .comparison-cube-face {
-          position: absolute;
-          width: 100%;
-          height: 100%;
-          top: 0;
-          left: 0;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          backface-visibility: hidden;
-          -webkit-backface-visibility: hidden;
-          transform-style: preserve-3d;
-=======
->>>>>>> ec66f5da06316f46f3cfbc565018ba171f1e5c49
         }
         .comparison-slide-grid {
           display: grid;
@@ -275,11 +196,6 @@ const ComparisonSection: React.FC = () => {
           position: absolute;
           inset: 0;
           pointer-events: none;
-<<<<<<< HEAD
-          opacity: 0.15;
-          background: radial-gradient(ellipse 60% 40% at 50% 50%, rgba(79,140,255,0.2) 0%, transparent 70%);
-          filter: blur(80px);
-=======
           background: radial-gradient(ellipse 60% 40% at 50% 50%, rgba(79,140,255,0.08) 0%, transparent 70%);
           filter: blur(100px);
         }
@@ -321,7 +237,6 @@ const ComparisonSection: React.FC = () => {
         .nav-dot:hover .nav-label,
         .nav-dot.active .nav-label {
           opacity: 1;
->>>>>>> ec66f5da06316f46f3cfbc565018ba171f1e5c49
         }
         .nav-dot.active .nav-label {
           color: rgba(79,140,255,0.9);
@@ -343,114 +258,9 @@ const ComparisonSection: React.FC = () => {
       <div className="grain-overlay" />
       <div className="comparison-glow" />
 
-<<<<<<< HEAD
-      <div className="comparison-sticky">
-        <div className="progress-track">
-          <div
-            className="progress-fill"
-            style={{ height: `${((activeSlide + 0.25) / 4) * 100}%` }}
-          />
-        </div>
-        <div className="comparison-cube-scene">
-          <div
-            className="comparison-cube"
-            style={{
-              transform: prefersReducedMotion ? `rotateX(${activeSlide * 90}deg)` : `rotateX(${scrollProgress * 360}deg)`,
-              transition: prefersReducedMotion ? 'transform 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94)' : 'none',
-            }}
-          >
-            {COMPARISON_ROWS.map((row, index) => {
-              const ProblemIcon = row.problem.icon;
-              const SolutionIcon = row.solution.icon;
-              const depth = 550;
-              const angle = (index / 4) * 360;
-
-              return (
-                <div
-                  key={index}
-                  className="comparison-cube-face"
-                  style={{
-                    transform: `rotateX(${angle}deg) translateZ(${depth}px)`,
-                  }}
-                >
-                  <div className="comparison-glow" />
-                  <div className="comparison-slide-grid">
-                    <div
-                      className="comparison-card relative"
-                      style={{
-                        background: 'rgba(255,255,255,0.03)',
-                        border: '1px solid rgba(255,255,255,0.06)',
-                      }}
-                    >
-                      <div className="absolute top-4 right-4 w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(239,68,68,0.2)' }}>
-                        <X className="w-4 h-4" style={{ color: '#ef4444' }} strokeWidth={2.5} />
-                      </div>
-                      <div
-                        className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 mb-4"
-                        style={{ background: 'rgba(255,255,255,0.05)' }}
-                      >
-                        <ProblemIcon className="w-6 h-6" style={{ color: 'rgba(255,255,255,0.4)' }} />
-                      </div>
-                      <h3 className="font-semibold text-xl mb-2" style={{ color: 'rgba(255,255,255,0.75)' }}>
-                        {row.problem.title}
-                      </h3>
-                      <p className="text-base leading-relaxed" style={{ color: 'rgba(255,255,255,0.55)' }}>
-                        {row.problem.text}
-                      </p>
-                    </div>
-
-                    <div className="flex items-center justify-center flex-shrink-0" style={{ color: 'rgba(255,255,255,0.25)' }}>
-                      <ArrowRight className="w-8 h-8" strokeWidth={2} />
-                    </div>
-
-                    <div
-                      className="comparison-card relative"
-                      style={{
-                        background: 'rgba(79,140,255,0.08)',
-                        border: '1px solid rgba(79,140,255,0.25)',
-                        boxShadow: '0 0 40px rgba(79,140,255,0.15)',
-                      }}
-                    >
-                      <div className="absolute top-4 right-4 w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(34,197,94,0.2)' }}>
-                        <Check className="w-4 h-4" style={{ color: '#22c55e' }} strokeWidth={2.5} />
-                      </div>
-                      <div
-                        className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 mb-4"
-                        style={{ background: 'rgba(79,140,255,0.2)' }}
-                      >
-                        <SolutionIcon className="w-6 h-6" style={{ color: '#4F8CFF' }} />
-                      </div>
-                      <h3 className="font-semibold text-xl mb-2" style={{ color: 'rgba(255,255,255,0.95)' }}>
-                        {row.solution.title}
-                      </h3>
-                      <p className="text-base leading-relaxed" style={{ color: 'rgba(255,255,255,0.75)' }}>
-                        {row.solution.text}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-        <div
-          className="absolute left-0 right-0 text-center px-4"
-          style={{
-            top: 0,
-            left: 0,
-            right: 0,
-            pointerEvents: 'none',
-            zIndex: 5,
-            paddingTop: '15vh',
-            paddingBottom: 0,
-            background: '#121212',
-          }}
-        >
-=======
       <div className="comparison-container">
         {/* Header */}
         <div className="text-center mb-16">
->>>>>>> ec66f5da06316f46f3cfbc565018ba171f1e5c49
           <h2
             className="text-3xl md:text-4xl leading-tight mb-3"
             style={{ color: 'rgba(255,255,255,0.95)', fontWeight: 200 }}
