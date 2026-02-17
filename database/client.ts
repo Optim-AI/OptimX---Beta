@@ -39,9 +39,12 @@ function getDb(): ReturnType<typeof drizzle> {
   return d;
 }
 
+type DbType = ReturnType<typeof drizzle>;
+
 // Lazy: only touches DATABASE_URL when first used (at request time), not at import/build time
-export const db = new Proxy({} as ReturnType<typeof drizzle>, {
-  get(_, prop) {
-    return (getDb() as unknown as Record<string | symbol, unknown>)[prop];
+export const db: DbType = new Proxy({} as DbType, {
+  get(_target, prop: string | symbol) {
+    const database = getDb();
+    return (database as any)[prop];
   },
 });
