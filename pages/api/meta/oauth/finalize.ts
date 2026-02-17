@@ -139,7 +139,7 @@ export default async function handler(
     return res.status(500).json({
       error: "finalize_error",
       message: "Failed to finalize integration",
-      details: err.message,
+      ...(process.env.NODE_ENV === "development" && { details: err?.message }),
     });
   }
 }

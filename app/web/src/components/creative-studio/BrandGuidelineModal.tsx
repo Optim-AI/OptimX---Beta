@@ -127,8 +127,7 @@ export default function BrandGuidelineModal({
                       <div key={idx} className="flex items-center gap-2">
                         <div
                           className="w-8 h-8 rounded border"
-                          style={{ borderColor: colors.border }}
-                          style={{ backgroundColor: color }}
+                          style={{ borderColor: colors.border, backgroundColor: color }}
                         />
                         <span className="text-sm"
                     style={{ color: colors.mutedForeground }}>{color}</span>
@@ -148,8 +147,7 @@ export default function BrandGuidelineModal({
                       <div className="flex items-center gap-2">
                         <div
                           className="w-8 h-8 rounded border"
-                          style={{ borderColor: colors.border }}
-                          style={{ backgroundColor: brand.colors.primary }}
+                          style={{ borderColor: colors.border, backgroundColor: brand.colors.primary }}
                         />
                         <span className="text-sm"
                     style={{ color: colors.mutedForeground }}>Primary</span>
@@ -159,8 +157,7 @@ export default function BrandGuidelineModal({
                       <div className="flex items-center gap-2">
                         <div
                           className="w-8 h-8 rounded border"
-                          style={{ borderColor: colors.border }}
-                          style={{ backgroundColor: brand.colors.secondary }}
+                          style={{ borderColor: colors.border, backgroundColor: brand.colors.secondary }}
                         />
                         <span className="text-sm"
                     style={{ color: colors.mutedForeground }}>Secondary</span>
@@ -170,8 +167,7 @@ export default function BrandGuidelineModal({
                       <div className="flex items-center gap-2">
                         <div
                           className="w-8 h-8 rounded border"
-                          style={{ borderColor: colors.border }}
-                          style={{ backgroundColor: brand.colors.accent }}
+                          style={{ borderColor: colors.border, backgroundColor: brand.colors.accent }}
                         />
                         <span className="text-sm"
                     style={{ color: colors.mutedForeground }}>Accent</span>
