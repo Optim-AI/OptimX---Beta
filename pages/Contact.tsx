@@ -155,7 +155,7 @@ const Contact = () => {
         >
           <div className="container mx-auto px-4 text-center">
             <h1
-              className="text-4xl md:text-5xl font-bold mb-6"
+              className="text-4xl md:text-4xl font-medium mb-6"
               style={{
                 // keep gradient-text intent as fallback
                 backgroundImage: colors.gradientPrimary ?? undefined,
@@ -169,7 +169,7 @@ const Contact = () => {
             </h1>
 
             <p
-              className="text-xl max-w-2xl mx-auto"
+              className="text-xl max-w-3xl mx-auto"
               style={{ color: colors.mutedForeground }}
             >
               Ready to transform your business with AI-powered marketing
@@ -362,7 +362,7 @@ const Contact = () => {
                           Reachout to us
                         </h3>
                         <p style={{ color: colors.mutedForeground }}>
-                          info@optim.app
+                          info@optimx.app
                         </p>
                         <p style={{ color: colors.mutedForeground }}>
                           <a
