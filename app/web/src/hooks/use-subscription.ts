@@ -60,6 +60,11 @@ export const useSubscription = create<SubscriptionState>()(
       lastFetched: null,
 
       fetchSubscription: async () => {
+        const { lastFetched } = get();
+        const CACHE_MS = 30 * 1000; // 30 seconds - avoid redundant fetches
+        if (lastFetched && Date.now() - lastFetched < CACHE_MS) {
+          return;
+        }
         set({ isLoading: true, error: null });
         try {
           const response = await fetch('/api/billing/subscriptions/current');

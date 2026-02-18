@@ -1,16 +1,30 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Button } from './ui/button';
 import { Menu, X } from 'lucide-react';
 import colors from '@/lib/ui/colors';
+import { supabase } from '@/auth/supabase/client';
 
 const Header: React.FC = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isSignedIn, setIsSignedIn] = useState<boolean | null>(null);
   const pathname = usePathname();
   const router = useRouter();
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      const { data } = await supabase.auth.getUser();
+      setIsSignedIn(!!data?.user);
+    };
+    checkAuth();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
+      checkAuth();
+    });
+    return () => subscription.unsubscribe();
+  }, []);
 
   const navItems = [
     { name: 'Home', href: '/', type: 'route' },
@@ -121,7 +135,7 @@ const Header: React.FC = () => {
             >
               Sign In
             </Link>
-            <Link href="/auth/signup">
+            <Link href={isSignedIn ? '/welcome' : '/auth/signup'}>
               <Button variant="cta">Start Free</Button>
             </Link>
           </div>
@@ -211,7 +225,7 @@ const Header: React.FC = () => {
                 <Link href="/auth/signin" onClick={() => setIsMenuOpen(false)} className="text-sm font-medium px-3 py-2" style={{ color: colors.mutedForeground }}>
                   Sign In
                 </Link>
-                <Link href="/auth/signup" onClick={() => setIsMenuOpen(false)}>
+                <Link href={isSignedIn ? '/welcome' : '/auth/signup'} onClick={() => setIsMenuOpen(false)}>
                   <Button variant="cta" className="justify-start w-full">Start Free</Button>
                 </Link>
               </div>

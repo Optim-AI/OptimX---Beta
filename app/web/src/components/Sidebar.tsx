@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import colors from '@/lib/ui/colors';
 import { authFetch } from '@/lib/utils';
+import { useSubscription } from '@/app/web/src/hooks/use-subscription';
 
 type NavItem = {
   href: string;
@@ -92,36 +93,28 @@ const Sidebar: React.FC<SidebarProps> = ({
   const router = useRouter();
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
-  const [currentPlan, setCurrentPlan] = useState<{ name: string; status: string } | null>(null);
   const [featureAccess, setFeatureAccess] = useState<Record<string, any>>({});
-  const [loading, setLoading] = useState(true);
+  const [featuresLoading, setFeaturesLoading] = useState(true);
 
-  // Fetch current subscription and feature access on mount
+  const { subscription, fetchSubscription } = useSubscription();
+  const currentPlan = subscription?.plan
+    ? { name: subscription.plan.name, status: subscription.status }
+    : null;
+
+  // Use shared subscription store (deduplicates with CreditDisplay and other consumers)
   useEffect(() => {
-    async function fetchSubscriptionAndFeatures() {
-      try {
-        const response = await authFetch('/api/billing/subscriptions/current');
-        const data = await response.json();
-        if (data.success && data.hasSubscription && data.subscription?.plan) {
-          setCurrentPlan({
-            name: data.subscription.plan.name,
-            status: data.subscription.status,
-          });
-        }
+    fetchSubscription();
+  }, [fetchSubscription]);
 
-        // Fetch feature access
-        const featuresResponse = await authFetch('/api/features/access');
-        const featuresData = await featuresResponse.json();
-        if (featuresData.success) {
-          setFeatureAccess(featuresData.features || {});
-        }
-      } catch (err) {
-        console.error('Failed to fetch subscription/features:', err);
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchSubscriptionAndFeatures();
+  // Fetch feature access on mount (separate API)
+  useEffect(() => {
+    authFetch('/api/features/access')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success) setFeatureAccess(data.features || {});
+      })
+      .catch((err) => console.error('Failed to fetch features:', err))
+      .finally(() => setFeaturesLoading(false));
   }, []);
 
   // Blue-themed fallbacks (use tokens from your colors object if present)

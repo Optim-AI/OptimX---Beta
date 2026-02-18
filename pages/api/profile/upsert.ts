@@ -4,6 +4,28 @@ import { getUserIdFromRequest } from '@/auth/request';
 import { ProfileDAO } from '@/database';
 import { CreditsDAO } from '@/database/models/Credits.dao';
 
+const isConnectionError = (err: unknown): boolean => {
+  const msg = String(err instanceof Error ? err.message : err);
+  return /connection|ECONNREFUSED|ECONNRESET|timeout|ETIMEDOUT/i.test(msg);
+};
+
+async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 2): Promise<T> {
+  let lastErr: unknown;
+  for (let i = 0; i < maxAttempts; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      lastErr = e;
+      if (i < maxAttempts - 1 && isConnectionError(e)) {
+        await new Promise((r) => setTimeout(r, 100 * (i + 1)));
+        continue;
+      }
+      throw e;
+    }
+  }
+  throw lastErr;
+}
+
 /**
  * POST /api/profile/upsert
  * Upserts user profile data using Prisma (replaces supabase.from("profiles").upsert)
@@ -24,12 +46,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Get profile data from request body
     const profileData = req.body || {};
 
-    // Check if this is a new user
-    const existingProfile = await ProfileDAO.get(userId);
+    // Check if this is a new user (with retry for cold-start connection issues)
+    const existingProfile = await withRetry(() => ProfileDAO.get(userId));
     const isNewUser = !existingProfile;
 
-    // Upsert profile using Prisma DAO
-    const profile = await ProfileDAO.upsert(userId, profileData);
+    // Upsert profile using Prisma DAO (with retry for cold-start connection issues)
+    const profile = await withRetry(() => ProfileDAO.upsert(userId, profileData));
 
     // Initialize free credits for new users (pay-as-you-go welcome bonus)
     if (isNewUser) {
@@ -77,10 +99,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       isNewUser
     });
   } catch (error: any) {
-    console.error('Profile upsert error:', error);
+    console.error('Profile upsert error:', error?.message ?? error);
+    if (error?.stack) console.error('Stack:', error.stack);
     return res.status(500).json({
       error: 'Failed to upsert profile',
-      message: error.message
+      message: error?.message ?? String(error)
     });
   }
 }

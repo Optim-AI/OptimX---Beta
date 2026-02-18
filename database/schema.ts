@@ -125,7 +125,6 @@ export const profiles = pgTable("profiles", {
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 	tagline: text(),
 	organisationName: text("organisation_name"),
-	gstNumber: text("gst_number"),
 }, (table) => [
 	index("profiles_business_mobile_idx").using("btree", table.businessMobile.asc().nullsLast()).where(sql`${table.businessMobile} IS NOT NULL`),
 	uniqueIndex("profiles_email_idx").using("btree", table.email.asc().nullsLast()).where(sql`${table.email} IS NOT NULL`),
