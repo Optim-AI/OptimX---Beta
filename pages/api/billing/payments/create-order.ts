@@ -3,7 +3,7 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { getUserIdFromRequest } from '@/auth/request';
 import { razorpay, RAZORPAY_KEY_ID, isRazorpayConfigured } from '@/lib/razorpay/client';
 import { PaymentsDAO } from '@/database/models/Payments.dao';
-import { BUY_CREDITS_PRICING, calculateTotalsInr } from '@/lib/billing/pricing';
+import { calculateTotalsInr, getMinQuantity, getMaxQuantity } from '@/lib/billing/pricing';
 
 /**
  * POST /api/billing/payments/create-order
@@ -38,9 +38,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ error: 'Credits must be a whole number' });
     }
 
-    if (creditsNum < BUY_CREDITS_PRICING.minQuantity || creditsNum > BUY_CREDITS_PRICING.maxQuantity) {
+    const minQty = getMinQuantity(creditType);
+    const maxQty = getMaxQuantity(creditType);
+    if (creditsNum < minQty || creditsNum > maxQty) {
       return res.status(400).json({
-        error: `Credits must be between ${BUY_CREDITS_PRICING.minQuantity} and ${BUY_CREDITS_PRICING.maxQuantity}`,
+        error: `Credits must be between ${minQty} and ${maxQty}`,
+      });
+    }
+    if (creditType === 'video' && creditsNum % 8 !== 0) {
+      return res.status(400).json({
+        error: 'Video credits must be a multiple of 8 seconds',
       });
     }
 

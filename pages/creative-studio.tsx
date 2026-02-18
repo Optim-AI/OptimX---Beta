@@ -347,6 +347,25 @@ export default function CreativeStudioLanding() {
         {/* Content */}
         <div className="flex-1 overflow-y-auto">
           <div className="max-w-4xl mx-auto px-6 py-8">
+            {/* Guided banner (shown when user skipped onboarding) */}
+            {router.query.guided === '1' && (
+              <div className="mb-6 p-4 rounded-xl flex items-center justify-between gap-4" style={{ backgroundColor: 'hsl(213 100% 55% / 0.12)', border: `1px solid hsl(213 100% 55% / 0.35)` }}>
+                <div>
+                  <p className="font-medium" style={{ color: colors.foreground }}>Quick tip</p>
+                  <p className="text-sm mt-0.5" style={{ color: colors.mutedForeground }}>
+                    Set up your brand and workspace for better results. You can do this anytime from your brand settings.
+                  </p>
+                </div>
+                <Link
+                  href="/onboardingInfo"
+                  className="shrink-0 px-4 py-2 rounded-lg font-medium text-sm"
+                  style={{ backgroundColor: colors.primary, color: 'white' }}
+                >
+                  Set up workspace
+                </Link>
+              </div>
+            )}
+
             {/* AI disclaimer note */}
             <div className="mb-8 p-4 rounded-xl relative z-10" style={{ backgroundColor: 'hsl(30 60% 22%)', border: '1px solid hsl(30 50% 40%)' }}>
               <p className="text-sm leading-relaxed" style={{ color: '#FAFAFA' }}>

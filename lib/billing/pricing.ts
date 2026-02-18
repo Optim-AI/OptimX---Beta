@@ -7,11 +7,15 @@
 
 export const BUY_CREDITS_PRICING = {
   imageCreditPriceInr: 10, // ₹10 per image credit
-  videoSecondPriceInr: 25, // ₹25 per video second
+  videoSecondPriceInr: 26, // ₹26 per video second
   minQuantity: 10,
   maxQuantity: 1000,
+  minVideoQuantity: 8,
+  maxVideoQuantity: 1000,
   defaultImageQuantity: 50,
-  defaultVideoQuantity: 60,
+  defaultVideoQuantity: 16,
+  imageQuantityStep: 10,
+  videoQuantityStep: 8,
   gstRate: 0.18, // 18% GST
 } as const;
 
@@ -19,6 +23,32 @@ export function getUnitPriceInr(creditType: 'image' | 'video'): number {
   return creditType === 'image'
     ? BUY_CREDITS_PRICING.imageCreditPriceInr
     : BUY_CREDITS_PRICING.videoSecondPriceInr;
+}
+
+export function getMinQuantity(creditType: 'image' | 'video'): number {
+  return creditType === 'image' ? BUY_CREDITS_PRICING.minQuantity : BUY_CREDITS_PRICING.minVideoQuantity;
+}
+
+export function getMaxQuantity(creditType: 'image' | 'video'): number {
+  return creditType === 'image' ? BUY_CREDITS_PRICING.maxQuantity : BUY_CREDITS_PRICING.maxVideoQuantity;
+}
+
+export function getQuantityStep(creditType: 'image' | 'video'): number {
+  return creditType === 'image' ? BUY_CREDITS_PRICING.imageQuantityStep : BUY_CREDITS_PRICING.videoQuantityStep;
+}
+
+/** Clamps and rounds quantity to valid range. Video quantities are rounded to nearest multiple of 8. */
+export function clampQuantity(creditType: 'image' | 'video', value: number): number {
+  const min = getMinQuantity(creditType);
+  const max = getMaxQuantity(creditType);
+  const step = getQuantityStep(creditType);
+
+  let clamped = Math.max(min, Math.min(max, Math.round(value)));
+  if (creditType === 'video') {
+    clamped = Math.round(clamped / step) * step;
+    clamped = Math.max(min, Math.min(max, clamped));
+  }
+  return clamped;
 }
 
 /**

@@ -3,10 +3,17 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '@/auth/supabase/client';
-import { Zap, Image, Video, ArrowLeft, Plus, Minus, CheckCircle, Mail, X } from 'lucide-react';
+import { Image, Video, ArrowLeft, Plus, Minus, Check, Shield, CheckCircle, Mail, X } from 'lucide-react';
 import colors from '@/lib/ui/colors';
 import { authFetch } from '@/lib/utils';
-import { BUY_CREDITS_PRICING, calculateTotalsInr } from '@/lib/billing/pricing';
+import {
+    BUY_CREDITS_PRICING,
+    calculateTotalsInr,
+    getMinQuantity,
+    getMaxQuantity,
+    getQuantityStep,
+    clampQuantity,
+  } from '@/lib/billing/pricing';
 
 interface CreditBalance {
   imageCredits: { subscription: number; addon: number; total: number };
@@ -24,7 +31,7 @@ export default function BuyCreditsPage() {
   const [error, setError] = useState<string | null>(null);
   const [showSuccess, setShowSuccess] = useState(false);
   const [purchaseInfo, setPurchaseInfo] = useState<{ quantity: number; type: string } | null>(null);
-  const [invoiceEmail, setInvoiceEmail] = useState('optimx.tech@gmail.com');
+  const [invoiceEmail, setInvoiceEmail] = useState('');
   const [invoiceEmailSaved, setInvoiceEmailSaved] = useState(false);
 
   useEffect(() => {
@@ -74,10 +81,8 @@ export default function BuyCreditsPage() {
   const totals = calculateTotalsInr({ creditType, credits: quantity });
 
   function adjustQuantity(delta: number) {
-    setQuantity((prev) => {
-      const newValue = prev + delta;
-      return Math.max(BUY_CREDITS_PRICING.minQuantity, Math.min(BUY_CREDITS_PRICING.maxQuantity, newValue));
-    });
+    const step = getQuantityStep(creditType);
+    setQuantity((prev) => clampQuantity(creditType, prev + delta * step));
   }
 
   async function handlePurchase() {
@@ -169,144 +174,221 @@ export default function BuyCreditsPage() {
 
       <div className="page app-page">
         <div className="container">
-          <button className="back-btn" onClick={() => router.back()}>
-            <ArrowLeft size={20} />
-            Back
-          </button>
-
-          <div className="header">
-            <Zap size={48} color={colors.primary} />
-            <h1>Buy Credits</h1>
-            <p>Purchase credits for image and video generation</p>
-          </div>
+          <header className="top-bar">
+            <button className="back-btn" onClick={() => router.back()}>
+              <ArrowLeft size={20} />
+              Back
+            </button>
+            <div className="header">
+              <h1>Buy Credits</h1>
+              <p>Purchase credits for image and video generation</p>
+            </div>
+          </header>
 
           {balance && (
-            <div className="balance-card">
-              <div className="balance-item">
-                <Image size={24} color={colors.primary} />
-                <div>
-                  <div className="balance-label">Image Credits</div>
-                  <div className="balance-value">{balance.imageCredits.total}</div>
-                </div>
+            <div className="balance-cards">
+              <div className="balance-card-item">
+                <div className="balance-value">{balance.imageCredits.total}</div>
+                <div className="balance-label">Available</div>
+                <div className="balance-type">Image Credits</div>
               </div>
-              <div className="balance-item">
-                <Video size={24} color={colors.primary} />
-                <div>
-                  <div className="balance-label">Video Credits</div>
-                  <div className="balance-value">{balance.videoCredits.total}s</div>
-                </div>
+              <div className="balance-card-item">
+                <div className="balance-value">{balance.videoCredits.total}s</div>
+                <div className="balance-label">Seconds Remaining</div>
+                <div className="balance-type">Video Credits</div>
               </div>
             </div>
           )}
 
-          <div className="type-toggle">
-            <button
-              className={`toggle-btn ${creditType === 'image' ? 'active' : ''}`}
-              onClick={() => setCreditType('image')}
-            >
-              <Image size={18} />
-              Image Credits
-            </button>
-            <button
-              className={`toggle-btn ${creditType === 'video' ? 'active' : ''}`}
-              onClick={() => setCreditType('video')}
-            >
-              <Video size={18} />
-              Video Credits (seconds)
-            </button>
-          </div>
-
           {error && <div className="error-msg">{error}</div>}
 
-          <div className="purchase-section">
-            <div className="quantity-selector">
-              <label>
-                How many {creditType === 'image' ? 'image credits' : 'video seconds'} do you want?
-              </label>
-
-              <div className="quantity-controls">
-                <button
-                  className="qty-btn"
-                  onClick={() => adjustQuantity(-10)}
-                  disabled={quantity <= BUY_CREDITS_PRICING.minQuantity}
-                >
-                  <Minus size={20} />
-                </button>
-
-                <input
-                  type="number"
-                  className="qty-input"
-                  value={quantity}
-                  onChange={(e) => {
-                    const val = parseInt(e.target.value) || BUY_CREDITS_PRICING.minQuantity;
-                    setQuantity(Math.max(BUY_CREDITS_PRICING.minQuantity, Math.min(BUY_CREDITS_PRICING.maxQuantity, val)));
-                  }}
-                  min={BUY_CREDITS_PRICING.minQuantity}
-                  max={BUY_CREDITS_PRICING.maxQuantity}
-                />
-
-                <button
-                  className="qty-btn"
-                  onClick={() => adjustQuantity(10)}
-                  disabled={quantity >= BUY_CREDITS_PRICING.maxQuantity}
-                >
-                  <Plus size={20} />
-                </button>
+          <div className="main-grid">
+            <div className="main-left">
+              <div className="type-toggle">
+                <div className="segmented-control">
+                  <button
+                    className={`segmented-tab ${creditType === 'image' ? 'active' : ''}`}
+                    onClick={() => setCreditType('image')}
+                  >
+                    <Image size={18} />
+                    Image Credits
+                  </button>
+                  <button
+                    className={`segmented-tab ${creditType === 'video' ? 'active' : ''}`}
+                    onClick={() => setCreditType('video')}
+                  >
+                    <Video size={18} />
+                    Video Credits (seconds)
+                  </button>
+                </div>
               </div>
 
-              <div className="quick-select">
-                {creditType === 'image' ? (
-                  <>
-                    <button onClick={() => setQuantity(25)}>25</button>
-                    <button onClick={() => setQuantity(50)}>50</button>
-                    <button onClick={() => setQuantity(100)}>100</button>
-                    <button onClick={() => setQuantity(250)}>250</button>
-                  </>
-                ) : (
-                  <>
-                    <button onClick={() => setQuantity(60)}>60s</button>
-                    <button onClick={() => setQuantity(120)}>120s</button>
-                    <button onClick={() => setQuantity(300)}>300s</button>
-                    <button onClick={() => setQuantity(600)}>600s</button>
-                  </>
-                )}
+              <div className="quantity-selector">
+                <label>
+                  How many {creditType === 'image' ? 'image credits' : 'video seconds'} do you want?
+                </label>
+                <div className="quantity-row">
+                  <div className="quantity-controls">
+                    <button
+                      className="qty-btn"
+                      onClick={() => adjustQuantity(-1)}
+                      disabled={quantity <= getMinQuantity(creditType)}
+                    >
+                      <Minus size={20} />
+                    </button>
+                    <input
+                      type="number"
+                      className="qty-input"
+                      value={quantity}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value, 10);
+                        setQuantity(Number.isNaN(val) ? getMinQuantity(creditType) : clampQuantity(creditType, val));
+                      }}
+                      min={getMinQuantity(creditType)}
+                      max={getMaxQuantity(creditType)}
+                      step={getQuantityStep(creditType)}
+                    />
+                    <button
+                      className="qty-btn"
+                      onClick={() => adjustQuantity(1)}
+                      disabled={quantity >= getMaxQuantity(creditType)}
+                    >
+                      <Plus size={20} />
+                    </button>
+                  </div>
+                  <div className="preset-chips">
+                    {creditType === 'image' ? (
+                      <>
+                        <button
+                          className={`preset-chip ${quantity === 25 ? 'selected' : ''}`}
+                          onClick={() => setQuantity(25)}
+                        >
+                          25
+                        </button>
+                        <button
+                          className={`preset-chip ${quantity === 50 ? 'selected' : ''}`}
+                          onClick={() => setQuantity(50)}
+                        >
+                          50
+                        </button>
+                        <button
+                          className={`preset-chip ${quantity === 100 ? 'selected' : ''}`}
+                          onClick={() => setQuantity(100)}
+                        >
+                          100
+                        </button>
+                        <button
+                          className={`preset-chip ${quantity === 250 ? 'selected' : ''}`}
+                          onClick={() => setQuantity(250)}
+                        >
+                          250
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          className={`preset-chip ${quantity === 8 ? 'selected' : ''}`}
+                          onClick={() => setQuantity(8)}
+                        >
+                          8s
+                        </button>
+                        <button
+                          className={`preset-chip ${quantity === 24 ? 'selected' : ''}`}
+                          onClick={() => setQuantity(24)}
+                        >
+                          24s
+                        </button>
+                        <button
+                          className={`preset-chip ${quantity === 48 ? 'selected' : ''}`}
+                          onClick={() => setQuantity(48)}
+                        >
+                          48s
+                        </button>
+                        <button
+                          className={`preset-chip ${quantity === 96 ? 'selected' : ''}`}
+                          onClick={() => setQuantity(96)}
+                        >
+                          96s
+                        </button>
+                        <button
+                          className={`preset-chip ${quantity === 192 ? 'selected' : ''}`}
+                          onClick={() => setQuantity(192)}
+                        >
+                          192s
+                        </button>
+                        <button
+                          className={`preset-chip ${quantity === 384 ? 'selected' : ''}`}
+                          onClick={() => setQuantity(384)}
+                        >
+                          384s
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="trust-section">
+                <div className="trust-row">
+                  <div className="trust-item">
+                    <Check size={16} color={colors.green600} />
+                    <span>Credits never expire</span>
+                  </div>
+                  <div className="trust-item">
+                    <Shield size={16} color={colors.primary} />
+                    <span>Secure via Razorpay</span>
+                  </div>
+                </div>
+                <div className="trust-item trust-email-row">
+                  <Mail size={16} color={colors.mutedForeground} />
+                  <div className="trust-email-wrap">
+                    <span>GST invoice to</span>
+                    <input
+                      type="email"
+                      className="invoice-email-input"
+                      placeholder="your@email.com"
+                      value={invoiceEmail}
+                      onChange={(e) => setInvoiceEmail(e.target.value)}
+                    />
+                  </div>
+                </div>
               </div>
             </div>
 
-            <div className="price-summary">
-              <div className="price-row">
-                <span>Price per {creditType === 'image' ? 'credit' : 'second'}:</span>
-                <span className="price-value">₹{totals.unitPriceInr}</span>
-              </div>
-              <div className="price-row">
-                <span>Quantity:</span>
-                <span className="price-value">{quantity}</span>
-              </div>
-              <div className="price-row">
-                <span>Subtotal:</span>
-                <span className="price-value">₹{totals.subtotalInr}</span>
-              </div>
-              <div className="price-row">
-                <span>GST ({Math.round(totals.gstRate * 100)}%):</span>
-                <span className="price-value">₹{totals.gstAmountInr}</span>
-              </div>
-              <div className="price-row total">
-                <span>Total (incl. GST):</span>
-                <span className="price-value">₹{totals.totalInr}</span>
+            <div className="main-right">
+              <div className="summary-card">
+                <div className="price-summary">
+                  <div className="price-row">
+                    <span className="price-label">Price per {creditType === 'image' ? 'credit' : 'second'}</span>
+                    <span className="price-value">₹{totals.unitPriceInr}</span>
+                  </div>
+                  <div className="price-row">
+                    <span className="price-label">Quantity</span>
+                    <span className="price-value">{quantity}</span>
+                  </div>
+                  <div className="price-row">
+                    <span className="price-label">Subtotal</span>
+                    <span className="price-value">₹{totals.subtotalInr}</span>
+                  </div>
+                  <div className="price-row">
+                    <span className="price-label">GST ({Math.round(totals.gstRate * 100)}%)</span>
+                    <span className="price-value">₹{totals.gstAmountInr}</span>
+                  </div>
+                  <div className="price-divider" />
+                  <div className="price-row total">
+                    <span className="price-label">Total</span>
+                    <span className="price-value-total">₹{totals.totalInr}</span>
+                  </div>
+                </div>
+                <button
+                  className="purchase-btn"
+                  disabled={purchasing || quantity < getMinQuantity(creditType)}
+                  onClick={handlePurchase}
+                >
+                  {purchasing ? 'Processing...' : `Pay ₹${totals.totalInr}`}
+                </button>
               </div>
             </div>
-
-            <button
-              className="purchase-btn"
-              disabled={purchasing || quantity < BUY_CREDITS_PRICING.minQuantity}
-              onClick={handlePurchase}
-            >
-              {purchasing ? 'Processing...' : `Pay ₹${totals.totalInr}`}
-            </button>
-
-            <p className="note">
-              Purchased credits never expire. All payments are processed securely through Razorpay.
-            </p>
           </div>
         </div>
       </div>
@@ -362,133 +444,210 @@ export default function BuyCreditsPage() {
         .page {
           min-height: 100vh;
           background: ${colors.background};
-          padding: 40px 20px;
+          padding: 40px 32px;
           font-family: Poppins, Inter, system-ui;
           color: ${colors.foreground};
         }
         .container {
-          max-width: 600px;
+          max-width: 1100px;
           margin: 0 auto;
+        }
+        .top-bar {
+          display: flex;
+          align-items: center;
+          gap: 32px;
+          margin-bottom: 32px;
         }
         .back-btn {
           display: flex;
           align-items: center;
           gap: 8px;
-          background: ${colors.card};
+          background: transparent;
           border: 1px solid ${colors.border};
           color: ${colors.foreground};
           padding: 10px 16px;
           border-radius: 8px;
           cursor: pointer;
-          font-weight: 600;
-          margin-bottom: 24px;
-          transition: all 200ms;
+          font-weight: 500;
+          font-size: 14px;
+          flex-shrink: 0;
+          transition: all 0.2s ease;
         }
         .back-btn:hover {
-          background: ${colors.muted};
+          background: ${colors.card};
+          border-color: hsl(0 0% 30%);
         }
         .header {
-          text-align: center;
-          margin-bottom: 40px;
+          flex: 1;
         }
         .header h1 {
-          font-size: 36px;
-          font-weight: 800;
-          margin: 16px 0 8px;
+          font-size: 28px;
+          font-weight: 700;
+          margin: 0 0 4px;
           color: ${colors.foreground};
+          letter-spacing: -0.02em;
         }
         .header p {
           color: ${colors.mutedForeground};
-          font-size: 16px;
+          font-size: 14px;
+          margin: 0;
         }
-        .balance-card {
+        .balance-cards {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 16px;
+          margin-bottom: 32px;
+        }
+        .balance-card-item {
+          background: ${colors.card};
+          border: 1px solid ${colors.border};
+          border-radius: 12px;
+          padding: 20px 24px;
+          transition: box-shadow 0.2s ease, transform 0.2s ease;
+        }
+        .balance-card-item:hover {
+          box-shadow: 0 4px 12px hsl(0 0% 0% / 0.25);
+          transform: translateY(-1px);
+        }
+        .balance-card-item .balance-value {
+          font-size: 28px;
+          font-weight: 700;
+          color: ${colors.foreground};
+          letter-spacing: -0.02em;
+          margin-bottom: 4px;
+        }
+        .balance-card-item .balance-label {
+          font-size: 12px;
+          color: ${colors.mutedForeground};
+          font-weight: 500;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+        }
+        .balance-card-item .balance-type {
+          font-size: 13px;
+          color: ${colors.mutedForeground};
+          margin-top: 8px;
+        }
+        .main-grid {
+          display: grid;
+          grid-template-columns: 1fr 360px;
+          gap: 32px;
+          align-items: start;
+        }
+        .main-left {
+          background: ${colors.card};
+          border: 1px solid ${colors.border};
+          border-radius: 16px;
+          padding: 28px 32px;
+        }
+        .main-right {
+          position: sticky;
+          top: 24px;
+        }
+        .summary-card {
           background: ${colors.card};
           border: 1px solid ${colors.border};
           border-radius: 16px;
           padding: 24px;
-          display: flex;
-          gap: 32px;
-          justify-content: center;
-          margin-bottom: 32px;
-          box-shadow: ${colors.shadowSoft};
-        }
-        .balance-item {
-          display: flex;
-          align-items: center;
-          gap: 16px;
-        }
-        .balance-label {
-          font-size: 14px;
-          color: ${colors.mutedForeground};
-          font-weight: 500;
-        }
-        .balance-value {
-          font-size: 28px;
-          font-weight: 800;
-          color: ${colors.foreground};
         }
         .type-toggle {
-          display: flex;
-          gap: 12px;
-          margin-bottom: 32px;
+          margin-bottom: 28px;
         }
-        .toggle-btn {
+        .segmented-control {
+          display: flex;
+          background: ${colors.input};
+          border: 1px solid ${colors.border};
+          border-radius: 10px;
+          padding: 4px;
+          gap: 0;
+        }
+        .segmented-tab {
           flex: 1;
           display: flex;
           align-items: center;
           justify-content: center;
           gap: 8px;
-          padding: 14px 28px;
-          border-radius: 10px;
-          border: 2px solid ${colors.border};
-          background: ${colors.card};
-          color: ${colors.foreground};
+          padding: 12px 20px;
+          border-radius: 8px;
+          border: none;
+          background: transparent;
+          color: ${colors.mutedForeground};
           cursor: pointer;
-          font-weight: 700;
-          font-size: 15px;
-          transition: all 200ms;
+          font-weight: 600;
+          font-size: 14px;
+          transition: all 0.25s ease;
         }
-        .toggle-btn.active {
-          border-color: ${colors.primary};
-          background: ${colors.primary};
-          color: white;
+        .segmented-tab.active {
+          background: hsl(213 100% 55% / 0.15);
+          color: ${colors.primary};
+          border: 1px solid hsl(213 100% 55% / 0.35);
         }
-        .purchase-section {
-          background: ${colors.card};
-          border: 1px solid ${colors.border};
-          border-radius: 16px;
-          padding: 32px;
-          box-shadow: ${colors.shadowSoft};
+        .segmented-tab:hover:not(.active) {
+          color: ${colors.foreground};
+        }
+        .quantity-selector {
+          margin-bottom: 28px;
         }
         .quantity-selector label {
           display: block;
-          font-size: 16px;
+          font-size: 14px;
           font-weight: 600;
           color: ${colors.foreground};
-          margin-bottom: 16px;
+          margin-bottom: 12px;
+        }
+        .quantity-row {
+          display: flex;
+          flex-direction: row;
+          align-items: center;
+          gap: 24px;
+          flex-wrap: wrap;
         }
         .quantity-controls {
           display: flex;
           align-items: center;
           gap: 12px;
-          margin-bottom: 16px;
+        }
+        .preset-chips {
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+        .preset-chip {
+          padding: 10px 18px;
+          border-radius: 8px;
+          border: 1px solid ${colors.border};
+          background: transparent;
+          color: ${colors.foreground};
+          cursor: pointer;
+          font-weight: 600;
+          font-size: 14px;
+          transition: all 0.2s ease;
+        }
+        .preset-chip:hover {
+          border-color: hsl(213 100% 55% / 0.5);
+          background: hsl(213 100% 55% / 0.08);
+        }
+        .preset-chip.selected {
+          background: hsl(213 100% 55% / 0.2);
+          border-color: ${colors.primary};
+          color: ${colors.primary};
         }
         .qty-btn {
           width: 44px;
           height: 44px;
           border-radius: 8px;
-          border: 2px solid ${colors.border};
-          background: ${colors.card};
+          border: 1px solid ${colors.border};
+          background: ${colors.input};
           color: ${colors.foreground};
           display: flex;
           align-items: center;
           justify-content: center;
           cursor: pointer;
-          transition: all 200ms;
+          transition: all 0.2s ease;
         }
         .qty-btn:hover:not(:disabled) {
           border-color: ${colors.primary};
-          background: hsl(213 100% 55% / 0.15);
+          background: hsl(213 100% 55% / 0.12);
         }
         .qty-btn:disabled {
           opacity: 0.4;
@@ -498,11 +657,11 @@ export default function BuyCreditsPage() {
           flex: 1;
           height: 44px;
           border-radius: 8px;
-          border: 2px solid ${colors.border};
+          border: 1px solid ${colors.border};
           background: ${colors.input};
           padding: 0 16px;
-          font-size: 18px;
-          font-weight: 700;
+          font-size: 16px;
+          font-weight: 600;
           text-align: center;
           color: ${colors.foreground};
         }
@@ -510,101 +669,155 @@ export default function BuyCreditsPage() {
           outline: none;
           border-color: ${colors.primary};
         }
-        .quick-select {
+        .trust-section {
           display: flex;
-          gap: 8px;
-          margin-bottom: 24px;
+          flex-direction: column;
+          gap: 16px;
+          padding-top: 20px;
+          border-top: 1px solid ${colors.border};
         }
-        .quick-select button {
+        .trust-row {
+          display: flex;
+          gap: 24px;
+          flex-wrap: wrap;
+        }
+        .trust-item {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          font-size: 13px;
+          color: ${colors.mutedForeground};
+        }
+        .trust-item svg {
+          flex-shrink: 0;
+        }
+        .trust-email-row {
+          align-items: flex-start;
+        }
+        .trust-email-wrap {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
           flex: 1;
-          padding: 8px 12px;
-          border-radius: 6px;
-          border: 1px solid ${colors.border};
-          background: ${colors.card};
-          color: ${colors.foreground};
-          cursor: pointer;
-          font-weight: 600;
-          font-size: 14px;
-          transition: all 200ms;
         }
-        .quick-select button:hover {
+        .trust-email-wrap span {
+          font-size: 13px;
+        }
+        .invoice-email-input {
+          background: ${colors.input};
+          border: 1px solid ${colors.border};
+          border-radius: 6px;
+          padding: 8px 12px;
+          font-size: 14px;
+          color: ${colors.foreground};
+          outline: none;
+          transition: border-color 0.2s;
+        }
+        .invoice-email-input:focus {
           border-color: ${colors.primary};
-          background: hsl(213 100% 55% / 0.15);
-          color: ${colors.primary};
+        }
+        .invoice-email-input::placeholder {
+          color: ${colors.mutedForeground};
+          opacity: 0.7;
         }
         .price-summary {
-          background: ${colors.muted};
-          border: 1px solid ${colors.border};
-          border-radius: 12px;
-          padding: 20px;
-          margin-bottom: 24px;
+          padding: 0 0 20px;
+          margin-bottom: 20px;
+          border-bottom: 1px solid ${colors.border};
         }
         .price-row {
           display: flex;
           justify-content: space-between;
           align-items: center;
           padding: 8px 0;
-          font-size: 15px;
-          color: ${colors.mutedForeground};
+          font-size: 14px;
         }
-        .price-row.total {
-          border-top: 2px solid ${colors.border};
-          margin-top: 8px;
-          padding-top: 16px;
-          font-size: 18px;
-          font-weight: 700;
-          color: ${colors.foreground};
+        .price-label {
+          color: ${colors.mutedForeground};
+          font-weight: 500;
         }
         .price-value {
           font-weight: 700;
           color: ${colors.foreground};
+          font-size: 15px;
+        }
+        .price-divider {
+          height: 1px;
+          background: ${colors.border};
+          margin: 12px 0;
+        }
+        .price-row.total {
+          padding: 0;
+        }
+        .price-row.total .price-label {
+          font-size: 15px;
+          font-weight: 600;
+          color: ${colors.foreground};
+        }
+        .price-value-total {
+          font-size: 24px;
+          font-weight: 700;
+          color: ${colors.foreground};
+          letter-spacing: -0.02em;
         }
         .purchase-btn {
           width: 100%;
-          padding: 16px;
+          padding: 16px 24px;
           border-radius: 10px;
-          background: ${colors.primary};
+          background: ${colors.gradientPrimary || colors.primary};
           color: white;
           font-weight: 700;
           font-size: 16px;
           border: none;
           cursor: pointer;
-          transition: all 200ms;
+          transition: all 0.2s ease;
         }
         .purchase-btn:hover:not(:disabled) {
-          background: ${colors.primaryHover || 'hsl(213 100% 60%)'};
           transform: translateY(-2px);
+          box-shadow: 0 8px 24px hsl(213 100% 55% / 0.25);
         }
         .purchase-btn:disabled {
           opacity: 0.6;
           cursor: not-allowed;
         }
-        .note {
-          text-align: center;
-          font-size: 13px;
-          color: ${colors.mutedForeground};
-          margin-top: 16px;
-          margin-bottom: 0;
-        }
         .error-msg {
-          background: hsl(0 84% 55% / 0.15);
-          border: 1px solid ${colors.destructive};
+          background: hsl(0 84% 55% / 0.12);
+          border: 1px solid hsl(0 84% 55% / 0.3);
           color: ${colors.destructive};
           padding: 16px;
-          border-radius: 12px;
+          border-radius: 10px;
           margin-bottom: 24px;
-          text-align: center;
-          font-weight: 600;
+          font-size: 14px;
+          font-weight: 500;
+        }
+        @media (max-width: 900px) {
+          .main-grid {
+            grid-template-columns: 1fr;
+          }
+          .main-right {
+            position: static;
+          }
         }
         @media (max-width: 768px) {
-          .header h1 {
-            font-size: 28px;
+          .page {
+            padding: 24px 16px;
           }
-          .balance-card {
+          .top-bar {
             flex-direction: column;
-            gap: 20px;
+            align-items: flex-start;
+            gap: 16px;
           }
-          .type-toggle {
+          .header h1 {
+            font-size: 24px;
+          }
+          .balance-cards {
+            grid-template-columns: 1fr;
+          }
+          .quantity-row {
+            flex-direction: column;
+            align-items: stretch;
+          }
+          .trust-row {
             flex-direction: column;
           }
         }

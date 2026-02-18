@@ -113,6 +113,7 @@ const HEARD_FROM_OPTIONS = [
 ];
 
 import colors from '@/lib/ui/colors';
+import { authFetch } from '@/lib/utils';
 
 export default function SettingsPage(): JSX.Element {
   const router = useRouter();
@@ -121,10 +122,24 @@ export default function SettingsPage(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  // Only three tabs now: profile, business, security
-  const [tab, setTab] = useState<"profile" | "business" | "security">(
+  // Four tabs: profile, business, billing, security
+  const [tab, setTab] = useState<"profile" | "business" | "billing" | "security">(
     "profile"
   );
+
+  // Billing state
+  const [billingLoading, setBillingLoading] = useState(false);
+  const [creditBalance, setCreditBalance] = useState<{
+    imageCredits: { total: number };
+    videoCredits: { total: number };
+  } | null>(null);
+  const [subscription, setSubscription] = useState<{
+    plan: { name: string; billingCycle: string };
+    nextResetDate: string | null;
+  } | null>(null);
+  const [paymentHistory, setPaymentHistory] = useState<
+    { id: string; amount: number; currency: string; status: string; paymentType: string; createdAt: string; metadata?: { creditType?: string; credits?: number } }[]
+  >([]);
 
   const [profile, setProfile] = useState<ProfilePayload | null>(null);
 
@@ -150,7 +165,17 @@ export default function SettingsPage(): JSX.Element {
     (async () => {
       setLoading(true);
       try {
-        const { data: { user }, error: userErr } = await supabase.auth.getUser();
+        // Wait for auth to initialize (session restore from storage) before redirecting.
+        // getUser() can briefly return null on initial load before Supabase hydrates the session.
+        let user: any = null;
+        let userErr: any = null;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          const res = await supabase.auth.getUser();
+          user = res.data?.user ?? null;
+          userErr = res.error ?? null;
+          if (user) break;
+          if (attempt < 2) await new Promise((r) => setTimeout(r, 300));
+        }
         if (userErr || !user) {
           router.push("/auth/signin");
           return;
@@ -197,6 +222,42 @@ export default function SettingsPage(): JSX.Element {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Fetch billing data when billing tab is active
+  useEffect(() => {
+    if (tab !== "billing") return;
+    let cancelled = false;
+    setBillingLoading(true);
+    (async () => {
+      try {
+        const [balanceRes, subRes, historyRes] = await Promise.all([
+          authFetch("/api/credits/balance"),
+          authFetch("/api/billing/subscriptions/current"),
+          authFetch("/api/billing/payments/history"),
+        ]);
+        if (cancelled) return;
+        const balanceData = await balanceRes.json();
+        const subData = await subRes.json();
+        const historyData = await historyRes.json();
+        if (balanceData.success)
+          setCreditBalance({
+            imageCredits: balanceData.imageCredits,
+            videoCredits: balanceData.videoCredits,
+          });
+        if (subData.success && subData.subscription)
+          setSubscription({
+            plan: subData.subscription.plan,
+            nextResetDate: subData.subscription.nextResetDate,
+          });
+        if (historyData.success) setPaymentHistory(historyData.payments || []);
+      } catch (e) {
+        console.error("fetch billing error", e);
+      } finally {
+        if (!cancelled) setBillingLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [tab]);
 
   async function saveProfileAndAi() {
     if (!profile) return;
@@ -321,6 +382,17 @@ export default function SettingsPage(): JSX.Element {
                 }`}
               >
                 Business
+              </TabsTrigger>
+
+              <TabsTrigger
+                value="billing"
+                className={`px-4 py-2 ${
+                  tab === "billing"
+                    ? "bg-white shadow-xl rounded-lg"
+                    : "text-slate-600"
+                }`}
+              >
+                Billing Details
               </TabsTrigger>
 
               <TabsTrigger
@@ -495,6 +567,304 @@ export default function SettingsPage(): JSX.Element {
                     </form>
                   </CardContent>
                 </Card>
+              </TabsContent>
+
+              <TabsContent value="billing" className="p-0 rounded-xl overflow-hidden">
+                <div
+                  className="billing-section"
+                  style={{
+                    background: colors.background,
+                    color: colors.foreground,
+                  }}
+                >
+                  <style jsx>{`
+                    .billing-section {
+                      padding: 32px;
+                      font-family: Poppins, Inter, system-ui;
+                    }
+                    .billing-section h3 {
+                      font-size: 18px;
+                      font-weight: 700;
+                      margin: 0 0 8px;
+                      color: ${colors.foreground};
+                    }
+                    .billing-section .subtitle {
+                      font-size: 14px;
+                      color: ${colors.mutedForeground};
+                      margin-bottom: 16px;
+                    }
+                    .billing-card {
+                      background: ${colors.card};
+                      border: 1px solid ${colors.border};
+                      border-radius: 12px;
+                      padding: 24px;
+                      margin-bottom: 24px;
+                    }
+                    .credit-chips {
+                      display: flex;
+                      gap: 12px;
+                      flex-wrap: wrap;
+                      margin-bottom: 24px;
+                    }
+                    .credit-chip {
+                      background: ${colors.card};
+                      border: 1px solid ${colors.border};
+                      border-radius: 10px;
+                      padding: 20px 28px;
+                      min-width: 120px;
+                      text-align: center;
+                      transition: box-shadow 0.2s, transform 0.2s;
+                    }
+                    .credit-chip:hover {
+                      box-shadow: 0 4px 12px hsl(0 0% 0% / 0.25);
+                      transform: translateY(-1px);
+                    }
+                    .credit-chip .value {
+                      font-size: 28px;
+                      font-weight: 700;
+                      color: ${colors.foreground};
+                      display: block;
+                      margin-bottom: 4px;
+                    }
+                    .credit-chip .label {
+                      font-size: 12px;
+                      color: ${colors.mutedForeground};
+                      text-transform: uppercase;
+                      letter-spacing: 0.04em;
+                    }
+                    .buy-credits-btn {
+                      display: inline-flex;
+                      align-items: center;
+                      justify-content: center;
+                      padding: 14px 28px;
+                      border-radius: 10px;
+                      background: ${colors.primary};
+                      color: white;
+                      font-weight: 600;
+                      font-size: 15px;
+                      border: none;
+                      cursor: pointer;
+                      transition: all 0.2s;
+                    }
+                    .buy-credits-btn:hover {
+                      background: ${colors.primaryHover || "hsl(213 100% 60%)"};
+                      transform: translateY(-1px);
+                      box-shadow: 0 6px 20px hsl(213 100% 55% / 0.25);
+                    }
+                    .tx-table {
+                      width: 100%;
+                      border-collapse: collapse;
+                      font-size: 14px;
+                    }
+                    .tx-table th {
+                      text-align: left;
+                      padding: 12px 16px;
+                      color: ${colors.mutedForeground};
+                      font-weight: 600;
+                      border-bottom: 1px solid ${colors.border};
+                    }
+                    .tx-table td {
+                      padding: 14px 16px;
+                      border-bottom: 1px solid ${colors.border};
+                      color: ${colors.foreground};
+                    }
+                    .tx-table tr:hover td {
+                      background: hsl(0 0% 15% / 0.5);
+                    }
+                    .status-badge {
+                      display: inline-block;
+                      padding: 4px 10px;
+                      border-radius: 6px;
+                      font-size: 12px;
+                      font-weight: 600;
+                    }
+                    .status-complete {
+                      background: hsl(142 76% 36% / 0.2);
+                      color: ${colors.green600};
+                    }
+                    .status-captured {
+                      background: hsl(142 76% 36% / 0.2);
+                      color: ${colors.green600};
+                    }
+                    .status-created {
+                      background: hsl(213 100% 55% / 0.15);
+                      color: ${colors.primary};
+                    }
+                    .status-failed {
+                      background: hsl(0 84% 55% / 0.15);
+                      color: ${colors.destructive};
+                    }
+                  `}</style>
+
+                  {billingLoading ? (
+                    <div className="billing-card">
+                      <p className="subtitle">Loading billing info…</p>
+                    </div>
+                  ) : (
+                    <>
+                      {/* Credit Balance - horizontal chips */}
+                      <div style={{ marginBottom: 32 }}>
+                        <h3>Credit Balance</h3>
+                        <p className="subtitle">
+                          Your available credits for image and video generation
+                        </p>
+                        <div className="credit-chips">
+                          {creditBalance ? (
+                            <>
+                              <div className="credit-chip">
+                                <span className="value">
+                                  {creditBalance.imageCredits?.total ?? 0}
+                                </span>
+                                <span className="label">Image Credits</span>
+                              </div>
+                              <div className="credit-chip">
+                                <span className="value">
+                                  {creditBalance.videoCredits?.total ?? 0}s
+                                </span>
+                                <span className="label">Video Credits</span>
+                              </div>
+                            </>
+                          ) : (
+                            <div className="credit-chip">
+                              <span className="value">—</span>
+                              <span className="label">Loading…</span>
+                            </div>
+                          )}
+                        </div>
+                        <button
+                          className="buy-credits-btn"
+                          onClick={() => router.push("/buy-credits")}
+                        >
+                          Buy Credits
+                        </button>
+                      </div>
+
+                      {/* Subscription Plan */}
+                      <div className="billing-card">
+                        <h3>
+                          Subscription Plan:{" "}
+                          <span style={{ color: colors.primary }}>
+                            {subscription?.plan?.name ?? "Pay-as-you-go"}
+                          </span>
+                        </h3>
+                        <p className="subtitle">
+                          {subscription?.plan?.billingCycle ?? "Credits purchased on demand"}
+                        </p>
+                        {subscription?.nextResetDate && (
+                          <p
+                            className="subtitle"
+                            style={{ marginBottom: 0, marginTop: 8 }}
+                          >
+                            Credits reset on{" "}
+                            {new Date(
+                              subscription.nextResetDate
+                            ).toLocaleDateString()}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Payment Method */}
+                      <div className="billing-card">
+                        <h3>Payment Method</h3>
+                        <p className="subtitle">
+                          All payments are processed securely via Razorpay
+                        </p>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 12,
+                            padding: "16px 20px",
+                            background: colors.input,
+                            borderRadius: 8,
+                            border: `1px solid ${colors.border}`,
+                          }}
+                        >
+                          <span style={{ fontWeight: 600 }}>
+                            Razorpay (Cards, UPI, Net Banking)
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Latest Transactions */}
+                      <div className="billing-card">
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            marginBottom: 16,
+                          }}
+                        >
+                          <h3 style={{ marginBottom: 0 }}>Latest Transactions</h3>
+                          <select
+                            style={{
+                              padding: "8px 12px",
+                              borderRadius: 8,
+                              border: `1px solid ${colors.border}`,
+                              background: colors.input,
+                              color: colors.foreground,
+                              fontSize: 13,
+                            }}
+                          >
+                            <option>Sort by: Recent</option>
+                          </select>
+                        </div>
+                        {paymentHistory.length > 0 ? (
+                          <table className="tx-table">
+                            <thead>
+                              <tr>
+                                <th>Invoice</th>
+                                <th>Date</th>
+                                <th>Amount</th>
+                                <th>Status</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {paymentHistory.map((tx) => (
+                                <tr key={tx.id}>
+                                  <td>
+                                    {tx.paymentType === "subscription"
+                                      ? "Subscription"
+                                      : tx.paymentType === "image_topup"
+                                      ? `Image Credits${tx.metadata?.credits ? ` - ${tx.metadata.credits}` : ""}`
+                                      : tx.paymentType === "video_topup"
+                                      ? `Video Credits${tx.metadata?.credits ? ` - ${tx.metadata.credits}s` : ""}`
+                                      : tx.paymentType}
+                                  </td>
+                                  <td>
+                                    {new Date(
+                                      tx.createdAt
+                                    ).toLocaleDateString()}
+                                  </td>
+                                  <td style={{ fontWeight: 700 }}>
+                                    ₹{tx.amount}
+                                  </td>
+                                  <td>
+                                    <span
+                                      className={`status-badge status-${tx.status}`}
+                                    >
+                                      {tx.status === "captured"
+                                        ? "Complete"
+                                        : tx.status}
+                                    </span>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        ) : (
+                          <p
+                            className="subtitle"
+                            style={{ marginBottom: 0, padding: "24px 0" }}
+                          >
+                            No transactions yet
+                          </p>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
               </TabsContent>
 
               <TabsContent

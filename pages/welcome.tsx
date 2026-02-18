@@ -333,15 +333,15 @@ export default function Welcome(): React.ReactElement {
 
         {/* Content - animated in */}
         <h1 className="title" aria-live="polite">
-          Hello{" "}
-          <span className="name" data-text={firstName}>
-            {firstName}
+          Welcome,{" "}
+          <span className="name" data-text={firstName || "there"}>
+            {firstName || "there"}
           </span>
-          , Happy to welcome you onboard.
+          {" "}👋
         </h1>
 
         <p className="subtitle">
-          Set up your brand — so AI can personalise everything just for you.
+          Let&apos;s set up your workspace in under a minute.
         </p>
 
         {error && (
@@ -364,10 +364,10 @@ export default function Welcome(): React.ReactElement {
           href="#"
           onClick={(e) => {
             e.preventDefault();
-            router.push("/creative-studio");
+            router.push("/creative-studio?guided=1");
           }}
         >
-          Do it later
+          Skip for now
         </a>
       </div>
     </>
