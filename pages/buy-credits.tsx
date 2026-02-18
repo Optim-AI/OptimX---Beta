@@ -31,8 +31,7 @@ export default function BuyCreditsPage() {
   const [error, setError] = useState<string | null>(null);
   const [showSuccess, setShowSuccess] = useState(false);
   const [purchaseInfo, setPurchaseInfo] = useState<{ quantity: number; type: string } | null>(null);
-  const [invoiceEmail, setInvoiceEmail] = useState('');
-  const [invoiceEmailSaved, setInvoiceEmailSaved] = useState(false);
+  const [billingEmail, setBillingEmail] = useState('');
 
   useEffect(() => {
     checkAuth();
@@ -58,6 +57,9 @@ export default function BuyCreditsPage() {
     if (!data?.user) {
       router.replace('/auth/signin');
       return;
+    }
+    if (data.user.email) {
+      setBillingEmail(data.user.email);
     }
     setAuthenticated(true);
     setLoading(false);
@@ -85,7 +87,16 @@ export default function BuyCreditsPage() {
     setQuantity((prev) => clampQuantity(creditType, prev + delta * step));
   }
 
+  function isValidEmail(email: string) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  }
+
   async function handlePurchase() {
+    if (!isValidEmail(billingEmail)) {
+      setError('Please enter a valid billing email address');
+      return;
+    }
+
     setPurchasing(true);
     setError(null);
 
@@ -97,6 +108,7 @@ export default function BuyCreditsPage() {
         body: JSON.stringify({
           creditType,
           credits: quantity,
+          billingEmail,
         }),
       });
       const orderData = await orderResponse.json();
@@ -133,7 +145,6 @@ export default function BuyCreditsPage() {
             await fetchBalance();
             setPurchaseInfo({ quantity, type: creditType === 'image' ? 'image credits' : 'video seconds' });
             setShowSuccess(true);
-            setInvoiceEmailSaved(false);
           } else {
             setError('Payment verification failed');
           }
@@ -347,8 +358,8 @@ export default function BuyCreditsPage() {
                       type="email"
                       className="invoice-email-input"
                       placeholder="your@email.com"
-                      value={invoiceEmail}
-                      onChange={(e) => setInvoiceEmail(e.target.value)}
+                      value={billingEmail}
+                      onChange={(e) => setBillingEmail(e.target.value)}
                     />
                   </div>
                 </div>
@@ -382,7 +393,7 @@ export default function BuyCreditsPage() {
                 </div>
                 <button
                   className="purchase-btn"
-                  disabled={purchasing || quantity < getMinQuantity(creditType)}
+                  disabled={purchasing || quantity < getMinQuantity(creditType) || !isValidEmail(billingEmail)}
                   onClick={handlePurchase}
                 >
                   {purchasing ? 'Processing...' : `Pay ₹${totals.totalInr}`}
@@ -411,26 +422,9 @@ export default function BuyCreditsPage() {
             <div className="invoice-section">
               <div className="invoice-header">
                 <Mail size={18} color={colors.primary} />
-                <span>We will mail your invoice to</span>
+                <span>Invoice will be sent to</span>
               </div>
-              <div className="invoice-email-row">
-                <input
-                  type="email"
-                  className="invoice-email-input"
-                  value={invoiceEmail}
-                  onChange={(e) => { setInvoiceEmail(e.target.value); setInvoiceEmailSaved(false); }}
-                />
-                <button
-                  className="invoice-save-btn"
-                  onClick={() => setInvoiceEmailSaved(true)}
-                  disabled={!invoiceEmail.trim() || invoiceEmailSaved}
-                >
-                  {invoiceEmailSaved ? 'Saved' : 'Save'}
-                </button>
-              </div>
-              {invoiceEmailSaved && (
-                <p className="invoice-saved-msg">Invoice will be sent to this email.</p>
-              )}
+              <p className="invoice-email-display">{billingEmail}</p>
             </div>
 
             <button className="modal-done-btn" onClick={() => setShowSuccess(false)}>
@@ -896,52 +890,42 @@ export default function BuyCreditsPage() {
           font-size: 14px;
           font-weight: 600;
           color: ${colors.foreground};
-          margin-bottom: 12px;
+          margin-bottom: 8px;
         }
-        .invoice-email-row {
+        .invoice-email-display {
+          font-size: 15px;
+          color: ${colors.primary};
+          font-weight: 600;
+          margin: 0;
+          word-break: break-all;
+        }
+        .billing-email-section {
+          margin-bottom: 24px;
+        }
+        .billing-email-label {
           display: flex;
+          align-items: center;
           gap: 8px;
-        }
-        .invoice-email-input {
-          flex: 1;
-          height: 40px;
-          border-radius: 8px;
-          border: 1px solid ${colors.border};
-          background: ${colors.card};
-          color: ${colors.foreground};
-          padding: 0 12px;
           font-size: 14px;
+          font-weight: 600;
+          color: ${colors.foreground};
+          margin-bottom: 8px;
+        }
+        .billing-email-input {
+          width: 100%;
+          height: 44px;
+          border-radius: 8px;
+          border: 2px solid ${colors.border};
+          background: ${colors.input};
+          color: ${colors.foreground};
+          padding: 0 14px;
+          font-size: 15px;
           outline: none;
           transition: border-color 200ms;
+          box-sizing: border-box;
         }
-        .invoice-email-input:focus {
+        .billing-email-input:focus {
           border-color: ${colors.primary};
-        }
-        .invoice-save-btn {
-          padding: 0 18px;
-          height: 40px;
-          border-radius: 8px;
-          border: none;
-          background: ${colors.primary};
-          color: white;
-          font-weight: 600;
-          font-size: 14px;
-          cursor: pointer;
-          transition: all 200ms;
-          white-space: nowrap;
-        }
-        .invoice-save-btn:hover:not(:disabled) {
-          opacity: 0.9;
-        }
-        .invoice-save-btn:disabled {
-          opacity: 0.6;
-          cursor: not-allowed;
-        }
-        .invoice-saved-msg {
-          font-size: 13px;
-          color: #22c55e;
-          margin: 8px 0 0;
-          font-weight: 500;
         }
         .modal-done-btn {
           width: 100%;

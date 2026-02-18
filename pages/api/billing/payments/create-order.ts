@@ -26,7 +26,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const { creditType, credits } = req.body;
+    const { creditType, credits, billingEmail } = req.body;
 
     // Validate inputs
     if (!creditType || (creditType !== 'image' && creditType !== 'video')) {
@@ -67,6 +67,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         gst_rate: totals.gstRate.toString(),
         gst_amount_inr: totals.gstAmountInr.toString(),
         total_inr: totals.totalInr.toString(),
+        ...(billingEmail ? { billing_email: billingEmail } : {}),
       },
     });
 
@@ -87,6 +88,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         gstRate: totals.gstRate,
         gstAmountInr: totals.gstAmountInr,
         totalInr: totals.totalInr,
+        ...(billingEmail ? { billingEmail } : {}),
       },
     });
 
