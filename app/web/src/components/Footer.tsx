@@ -19,7 +19,7 @@ const Footer: React.FC = () => {
       { name: 'Use Cases', href: '/use-cases', type: 'route' },
       { name: 'Blog', href: '/blog', type: 'route' },
     ],
-    Legal: [
+    'Security & Policy': [
       { name: 'Terms & Conditions', href: '/terms-and-conditions', type: 'route' },
       { name: 'Privacy Policy', href: '/privacy-policy', type: 'route' },
       { name: 'Refund Policy', href: '/refund-cancellation', type: 'route' },

@@ -1460,27 +1460,28 @@ export default function PosterSessionPage() {
               }
             }}
           >
-            <div className="bg-white rounded-xl shadow-xl max-w-md w-full animate-in fade-in zoom-in-95 duration-200">
+            <div className="rounded-xl shadow-xl max-w-md w-full animate-in fade-in zoom-in-95 duration-200" style={{ backgroundColor: colors.card, border: `1px solid ${colors.border}` }}>
               <div className="p-6">
                 <div className="flex items-center gap-3 mb-4">
-                  <div className="flex items-center justify-center w-12 h-12 rounded-full bg-red-100">
-                    <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <div className="flex items-center justify-center w-12 h-12 rounded-full" style={{ backgroundColor: 'hsl(0 84% 55% / 0.2)' }}>
+                    <svg className="w-6 h-6" style={{ color: colors.destructive }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                     </svg>
                   </div>
                   <div>
-                    <h3 className="text-lg font-semibold text-gray-900">Delete Session</h3>
-                    <p className="text-sm text-gray-500">This action cannot be undone</p>
+                    <h3 className="text-lg font-semibold" style={{ color: colors.foreground }}>Delete Session</h3>
+                    <p className="text-sm" style={{ color: colors.mutedForeground }}>This action cannot be undone</p>
                   </div>
                 </div>
-                <p className="text-gray-600 mb-6">
+                <p className="mb-6" style={{ color: colors.mutedForeground }}>
                   Are you sure you want to delete this session? All data including generated posters will be permanently removed.
                 </p>
                 <div className="flex gap-3">
                   <button
                     onClick={() => setDeleteSessionId(null)}
                     disabled={isDeletingSession}
-                    className="flex-1 px-4 py-3 text-gray-700 bg-gray-100 rounded-lg font-medium hover:bg-gray-200 transition-colors disabled:opacity-50"
+                    className="flex-1 px-4 py-3 rounded-lg font-medium transition-colors disabled:opacity-50"
+                    style={{ color: colors.foreground, backgroundColor: colors.muted }}
                   >
                     Cancel
                   </button>
@@ -1537,7 +1538,8 @@ export default function PosterSessionPage() {
                   link.download = `poster-${Date.now()}.png`;
                   link.click();
                 }}
-                className="px-5 py-2.5 bg-white text-gray-900 rounded-lg text-sm font-medium hover:bg-gray-100 shadow-lg transition-colors flex items-center gap-2"
+                className="px-5 py-2.5 rounded-lg text-sm font-medium shadow-lg transition-colors flex items-center gap-2"
+                style={{ backgroundColor: colors.card, color: colors.foreground, border: `1px solid ${colors.border}` }}
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
@@ -1569,7 +1571,8 @@ export default function PosterSessionPage() {
                     window.open(previewImageUrl, '_blank');
                   }
                 }}
-                className="px-5 py-2.5 bg-white text-gray-900 rounded-lg text-sm font-medium hover:bg-gray-100 shadow-lg transition-colors flex items-center gap-2"
+                className="px-5 py-2.5 rounded-lg text-sm font-medium shadow-lg transition-colors flex items-center gap-2"
+                style={{ backgroundColor: colors.card, color: colors.foreground, border: `1px solid ${colors.border}` }}
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
@@ -1582,7 +1585,8 @@ export default function PosterSessionPage() {
                   handleUseAsReference(previewImageUrl, 0);
                   setPreviewImageUrl(null);
                 }}
-                className="px-5 py-2.5 bg-white text-gray-900 rounded-lg text-sm font-medium hover:bg-gray-100 shadow-lg transition-colors flex items-center gap-2"
+                className="px-5 py-2.5 rounded-lg text-sm font-medium shadow-lg transition-colors flex items-center gap-2"
+                style={{ backgroundColor: colors.card, color: colors.foreground, border: `1px solid ${colors.border}` }}
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -2121,7 +2125,8 @@ function PosterGrid({
                 const idx = posters.findIndex(p => p === previewImage);
                 if (idx >= 0) handleDownload(previewImage, idx);
               }}
-              className="px-5 py-2.5 bg-white text-gray-900 rounded-lg text-sm font-medium hover:bg-gray-100 shadow-lg transition-colors flex items-center gap-2"
+              className="px-5 py-2.5 rounded-lg text-sm font-medium shadow-lg transition-colors flex items-center gap-2"
+              style={{ backgroundColor: colors.card, color: colors.foreground, border: `1px solid ${colors.border}` }}
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
@@ -2154,7 +2159,8 @@ function PosterGrid({
                   window.open(previewImage, '_blank');
                 }
               }}
-              className="px-5 py-2.5 bg-white text-gray-900 rounded-lg text-sm font-medium hover:bg-gray-100 shadow-lg transition-colors flex items-center gap-2"
+              className="px-5 py-2.5 rounded-lg text-sm font-medium shadow-lg transition-colors flex items-center gap-2"
+              style={{ backgroundColor: colors.card, color: colors.foreground, border: `1px solid ${colors.border}` }}
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
@@ -2170,13 +2176,13 @@ function PosterGrid({
         <div className="flex-1 space-y-8">
           {/* Regeneration Prompt Input */}
           {showRegeneratePrompt && (
-            <div className="border border-gray-200 rounded-lg p-4 bg-white">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+            <div className="rounded-lg p-4" style={{ border: `1px solid ${colors.border}`, backgroundColor: colors.card }}>
+              <label className="block text-sm font-medium mb-2" style={{ color: colors.foreground }}>
                 Edit your prompt or add changes
               </label>
-              <div className="mb-3 p-2 bg-gray-50 rounded border border-gray-100">
-                <p className="text-xs text-gray-500 mb-1">Current prompt:</p>
-                <p className="text-sm text-gray-700">{posterPrompt || 'No prompt set'}</p>
+              <div className="mb-3 p-2 rounded border" style={{ backgroundColor: colors.muted, borderColor: colors.border }}>
+                <p className="text-xs mb-1" style={{ color: colors.mutedForeground }}>Current prompt:</p>
+                <p className="text-sm" style={{ color: colors.foreground }}>{posterPrompt || 'No prompt set'}</p>
               </div>
               <textarea
                 value={regeneratePrompt}
@@ -2254,11 +2260,12 @@ function PosterGrid({
                         e.stopPropagation();
                         setOpenMenuIndex(openMenuIndex === idx ? null : idx);
                       }}
-                      className={`p-2.5 border rounded-lg transition-colors ${
-                        openMenuIndex === idx 
-                          ? 'border-gray-400 bg-gray-100 text-gray-900' 
-                          : 'border-gray-300 text-gray-600 hover:bg-gray-50'
-                      }`}
+                      className="p-2.5 border rounded-lg transition-colors"
+                      style={{
+                        borderColor: openMenuIndex === idx ? colors.primary : colors.border,
+                        backgroundColor: openMenuIndex === idx ? 'hsl(213 100% 55% / 0.15)' : 'transparent',
+                        color: colors.foreground,
+                      }}
                       aria-label="More actions"
                     >
                       <svg
@@ -2279,13 +2286,15 @@ function PosterGrid({
                     {/* Dropdown Menu - with seamless connection to button */}
                     {openMenuIndex === idx && (
                       <div 
-                        className="absolute right-0 mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-20"
+                        className="absolute right-0 mt-1 w-48 rounded-lg shadow-lg z-20"
+                        style={{ backgroundColor: colors.card, border: `1px solid ${colors.border}` }}
                         onClick={(e) => e.stopPropagation()}
                       >
                         <div className="py-1">
                           <button
                             onClick={() => handleDownload(poster, idx)}
-                            className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2"
+                            className="w-full text-left px-4 py-2.5 text-sm transition-colors flex items-center gap-2"
+                            style={{ color: colors.foreground }}
                           >
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />

@@ -42,7 +42,7 @@ const withAlpha = (token: string | undefined, alpha: number) => {
 export const metadata = {
   title: "Contact Oli AI - AI Marketing Automation & Campaign Management",
   description:
-    "Get in touch with Oli AI for AI-powered marketing automation solutions. Contact our expert team for personalized marketing campaigns, SEO optimization, and business growth strategies.",
+    "Get in touch with Oli AI for AI-powered marketing automation solutions. Contact our expert team for personalized marketing campaigns, SEO Optimisation, and business growth strategies.",
   keywords:
     "contact Oli AI, AI marketing consultation, marketing automation support, campaign management contact, digital marketing help, business growth solutions, marketing strategy consultation",
   openGraph: {
@@ -308,7 +308,7 @@ const Contact = () => {
                       <Textarea
                         id="message"
                         name="message"
-                        placeholder="Tell us about your marketing challenges, current strategies, target audience, and how we can help optimize your campaigns..."
+                        placeholder="Tell us about your marketing challenges, current strategies, target audience, and how we can help Optimise your campaigns..."
                         className="min-h-[120px]"
                         value={formData.message}
                         onChange={handleChange}
@@ -398,7 +398,7 @@ const Contact = () => {
                       className="font-semibold mb-2"
                       style={{ color: colors.foreground }}
                     >
-                      Marketing Optimization Benefits
+                      Marketing Optimisation Benefits
                     </h3>
                     <div
                       className="space-y-2 text-sm"
@@ -406,7 +406,7 @@ const Contact = () => {
                     >
                       <p>✓ AI-powered campaign automation</p>
                       <p>✓ Advanced audience targeting</p>
-                      <p>✓ Real-time performance optimization</p>
+                      <p>✓ Real-time performance Optimisation</p>
                       <p>✓ Multi-platform content management</p>
                       <p>✓ Data-driven insights & analytics</p>
                     </div>

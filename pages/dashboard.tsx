@@ -765,8 +765,8 @@ export default function DashboardPage(): JSX.Element {
                           </div>
 
                           <div>
-                            <div className="text-sm text-slate-500">{stat.label}</div>
-                            <div className="text-2xl font-semibold text-slate-900 mt-1">{stat.value}</div>
+                            <div className="text-sm" style={{ color: mutedFg ?? undefined }}>{stat.label}</div>
+                            <div className="text-2xl font-semibold mt-1" style={{ color: colors.foreground }}>{stat.value}</div>
                           </div>
                         </div>
 

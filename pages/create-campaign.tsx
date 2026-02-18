@@ -462,7 +462,7 @@ const CampaignCreate: React.FC = () => {
     budget: 5000,
     startDate: "",
     endDate: "",
-    autoOptimize: true,
+    autoOptimise: true,
     description: "",
     emotion: "",
     offerInfo: "",
@@ -1399,7 +1399,7 @@ const CampaignCreate: React.FC = () => {
         budget: adFormData.budget,
         startDate: adFormData.startDate,
         endDate: adFormData.endDate,
-        autoOptimize: adFormData.autoOptimize,
+        autoOptimise: adFormData.autoOptimise,
         description: inputText || adFormData.description,
         emotion: adFormData.emotion,
         offerInfo: adFormData.offerInfo,
@@ -1897,7 +1897,7 @@ const CampaignCreate: React.FC = () => {
         gender: adFormData.gender || undefined,
         interests: adFormData.interests || undefined,
         autoTarget: !!adFormData.autoTarget,
-        autoOptimize: !!adFormData.autoOptimize,
+        autoOptimise: !!adFormData.autoOptimise,
       };
 
       try {
@@ -2977,10 +2977,10 @@ const showAcknowledgement =
                               <label className="inline-flex items-center gap-2">
                                 <input
                                   type="checkbox"
-                                  checked={!!adFormData.autoOptimize}
-                                  onChange={(e) => setAdFormData((p: any) => ({ ...p, autoOptimize: e.target.checked }))}
+                                  checked={!!adFormData.autoOptimise}
+                                  onChange={(e) => setAdFormData((p: any) => ({ ...p, autoOptimise: e.target.checked }))}
                                 />
-                                Auto optimize
+                                Auto Optimise
                               </label>
                               <label className="inline-flex items-center gap-2">
                                 <input

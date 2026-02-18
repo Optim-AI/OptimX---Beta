@@ -3,6 +3,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import type { SessionType } from './types';
+import colors from '@/lib/ui/colors';
 
 type SessionNameModalProps = {
   isOpen: boolean;
@@ -69,22 +70,21 @@ export default function SessionNameModal({
       }}
       onKeyDown={handleKeyDown}
     >
-      <div className="bg-white rounded-xl shadow-xl max-w-md w-full animate-in fade-in zoom-in-95 duration-200">
+      <div className="rounded-xl shadow-xl max-w-md w-full animate-in fade-in zoom-in-95 duration-200" style={{ backgroundColor: colors.card, border: `1px solid ${colors.border}` }}>
         {/* Header */}
-        <div className="p-6 border-b border-gray-200">
+        <div className="p-6 border-b" style={{ borderColor: colors.border }}>
           <div className="flex items-center gap-3">
             <div
-              className={`flex items-center justify-center w-12 h-12 rounded-xl ${
-                typeColor === 'blue' ? 'bg-blue-50' : 'bg-purple-50'
-              }`}
+              className="flex items-center justify-center w-12 h-12 rounded-xl"
+              style={{ backgroundColor: typeColor === 'blue' ? 'hsl(213 100% 55% / 0.2)' : 'hsl(270 80% 55% / 0.2)' }}
             >
               <span className="text-2xl">{typeIcon}</span>
             </div>
             <div>
-              <h2 className="text-xl font-semibold text-gray-900">
+              <h2 className="text-xl font-semibold" style={{ color: colors.foreground }}>
                 New {typeLabel} Session
               </h2>
-              <p className="text-sm text-gray-500">
+              <p className="text-sm" style={{ color: colors.mutedForeground }}>
                 Give your session a name to get started
               </p>
             </div>
@@ -96,7 +96,8 @@ export default function SessionNameModal({
           <div className="mb-6">
             <label
               htmlFor="session-name"
-              className="block text-sm font-medium text-gray-700 mb-2"
+              className="block text-sm font-medium mb-2"
+              style={{ color: colors.foreground }}
             >
               Session Name
             </label>
@@ -111,12 +112,13 @@ export default function SessionNameModal({
                   ? 'e.g., Summer Sale Campaign'
                   : 'e.g., Product Launch Video'
               }
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 placeholder:text-gray-400"
+              className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              style={{ borderColor: colors.border, backgroundColor: colors.input, color: colors.foreground }}
               disabled={isLoading}
               maxLength={100}
               autoComplete="off"
             />
-            <p className="text-xs text-gray-500 mt-2">
+            <p className="text-xs mt-2" style={{ color: colors.mutedForeground }}>
               This helps you identify your session later
             </p>
           </div>
@@ -127,7 +129,8 @@ export default function SessionNameModal({
               type="button"
               onClick={onClose}
               disabled={isLoading}
-              className="flex-1 px-4 py-3 text-gray-700 bg-gray-100 rounded-lg font-medium hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex-1 px-4 py-3 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              style={{ color: colors.foreground, backgroundColor: colors.muted }}
             >
               Cancel
             </button>

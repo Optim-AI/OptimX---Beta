@@ -104,7 +104,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       gender,
       interests,
       autoTarget = true,
-      autoOptimize = true,
+      autoOptimise = true,
     } = req.body ?? {};
 
     if (!campaignName || !budget || !adSetName) {
@@ -177,7 +177,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       name: adSetName,
       campaign_id: campaignJson.id,
       billing_event: "IMPRESSIONS",
-      optimization_goal: autoOptimize ? "REACH" : "IMPRESSIONS",
+      Optimisation_goal: autoOptimise ? "REACH" : "IMPRESSIONS",
       bid_strategy: "LOWEST_COST_WITHOUT_CAP",
       status: "PAUSED",
       targeting: JSON.stringify(finalTargeting),

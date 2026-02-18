@@ -44,8 +44,8 @@ const tutorialsData = [
     id: "analytics-1",
     title: "Reading Campaign Insights",
     length: "5:22",
-    excerpt: "Understand metrics, attribution windows, and how to optimize based on performance signals.",
-    tags: ["analytics", "optimization"],
+    excerpt: "Understand metrics, attribution windows, and how to Optimise based on performance signals.",
+    tags: ["analytics", "Optimisation"],
     href: "/docs/tutorials/analytics",
   },
 ];

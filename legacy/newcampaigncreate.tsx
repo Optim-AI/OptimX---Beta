@@ -119,7 +119,7 @@
 //     budget: 5000,
 //     startDate: "",
 //     endDate: "",
-//     autoOptimize: true,
+//     autoOptimise: true,
 //     description: "",
 //     emotion: "",
 //     offerInfo: "",
@@ -378,7 +378,7 @@
 //         budget: adFormData.budget,
 //         startDate: adFormData.startDate,
 //         endDate: adFormData.endDate,
-//         autoOptimize: adFormData.autoOptimize,
+//         autoOptimise: adFormData.autoOptimise,
 //         description: adFormData.description,
 //         emotion: adFormData.emotion,
 //         offerInfo: adFormData.offerInfo,
@@ -938,10 +938,10 @@
 //                         </div>
 
 //                         <div className="flex items-center justify-between">
-//                           <Label>Auto-optimize Spend</Label>
+//                           <Label>Auto-Optimise Spend</Label>
 //                           <Switch
-//                             checked={adFormData.autoOptimize}
-//                             onCheckedChange={(checked) => setAdFormData({ ...adFormData, autoOptimize: checked })}
+//                             checked={adFormData.autoOptimise}
+//                             onCheckedChange={(checked) => setAdFormData({ ...adFormData, autoOptimise: checked })}
 //                           />
 //                         </div>
 //                       </div>
@@ -1043,7 +1043,7 @@
 //                             Ready to Generate
 //                           </h4>
 //                           <p className="text-sm text-muted-foreground">
-//                             AI will create optimized ad copies, visuals, and targeting recommendations based on your inputs.
+//                             AI will create Optimised ad copies, visuals, and targeting recommendations based on your inputs.
 //                           </p>
 
 //                           <div className="mt-4 flex gap-3">

@@ -28,6 +28,7 @@ import {
 } from '@/app/web/src/components/creative-studio';
 import { authFetch } from '@/lib/utils';
 import { supabase } from '@/auth/supabase/client';
+import { Check } from 'lucide-react';
 
 // ============== Types ==============
 
@@ -967,24 +968,47 @@ export default function VideoSessionPage() {
                       <div>
                         <p className="text-sm mb-2" style={{ color: colors.mutedForeground }}>Product Images</p>
                         <div className="grid grid-cols-3 gap-2">
-                          {adBuilderData.product.product_images.map((img, idx) => (
-                            <button
-                              key={idx}
-                              onClick={() => {
-                                setSelectedImageIndex(idx);
-                                setAdBuilderData({
-                                  ...adBuilderData,
-                                  product: adBuilderData.product
-                                    ? { ...adBuilderData.product, hero_image: img }
-                                    : null,
-                                });
-                              }}
-                              className="relative aspect-square rounded-lg overflow-hidden border-2"
-                              style={{ borderColor: selectedImageIndex === idx ? colors.primary : colors.border }}
-                            >
-                              <img src={img} alt={`Product ${idx + 1}`} className="w-full h-full object-cover" />
-                            </button>
-                          ))}
+                          {adBuilderData.product.product_images.map((img, idx) => {
+                            const isSelected = selectedImageIndex === idx;
+                            return (
+                              <button
+                                key={idx}
+                                onClick={() => {
+                                  setSelectedImageIndex(idx);
+                                  setAdBuilderData({
+                                    ...adBuilderData,
+                                    product: adBuilderData.product
+                                      ? { ...adBuilderData.product, hero_image: img }
+                                      : null,
+                                  });
+                                }}
+                                className="relative aspect-square rounded-lg overflow-hidden border-2 transition-all"
+                                style={{
+                                  borderColor: isSelected ? colors.green600 : colors.border,
+                                  borderWidth: isSelected ? 3 : 2,
+                                  boxShadow: isSelected ? `0 0 0 2px ${colors.green600}40` : undefined,
+                                }}
+                                aria-pressed={isSelected}
+                                aria-label={isSelected ? `Selected product image ${idx + 1}` : `Select product image ${idx + 1}`}
+                              >
+                                <img src={img} alt={`Product ${idx + 1}`} className="w-full h-full object-cover" />
+                                {isSelected && (
+                                  <div
+                                    className="absolute inset-0 flex items-center justify-center"
+                                    style={{ backgroundColor: 'rgba(34, 197, 94, 0.35)' }}
+                                    aria-hidden
+                                  >
+                                    <div
+                                      className="flex items-center justify-center w-10 h-10 rounded-full"
+                                      style={{ backgroundColor: colors.green600, color: 'white', boxShadow: '0 2px 8px rgba(0,0,0,0.3)' }}
+                                    >
+                                      <Check size={24} strokeWidth={3} />
+                                    </div>
+                                  </div>
+                                )}
+                              </button>
+                            );
+                          })}
                         </div>
                       </div>
                     </div>
@@ -1756,12 +1780,12 @@ export default function VideoSessionPage() {
               </div>
             )}
 
-            {/* Step 4: Generate */}
+            {/* Step 4: Generate – Final confirmation checkpoint */}
             {step === 4 && (
               <div className="space-y-6">
                 <div>
-                  <h2 className="text-2xl font-bold mb-2" style={{ color: colors.foreground }}>Generate Video</h2>
-                  <p style={{ color: colors.mutedForeground }}>Generate your video ad</p>
+                  <h2 className="text-2xl font-bold mb-2" style={{ color: colors.foreground }}>Review &amp; Generate</h2>
+                  <p style={{ color: colors.mutedForeground }}>Confirm your video settings before spending credits</p>
                 </div>
 
                 <div className="p-4 rounded-xl text-sm leading-relaxed relative z-10" style={{ backgroundColor: 'hsl(30 60% 22%)', border: '1px solid hsl(30 50% 40%)', color: '#FAFAFA' }}>
@@ -1771,14 +1795,37 @@ export default function VideoSessionPage() {
                 </div>
 
                 <div className="rounded-lg border p-6" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
-                  {/* Summary */}
-                  <div className="grid grid-cols-2 gap-4 mb-6">
+                  {/* Orientation preview */}
+                  <div className="mb-6">
+                    <p className="text-sm font-medium mb-2" style={{ color: colors.mutedForeground }}>Orientation</p>
+                    <div
+                      className="rounded-lg border-2 overflow-hidden flex items-center justify-center"
+                      style={{
+                        borderColor: colors.border,
+                        backgroundColor: colors.muted,
+                        aspectRatio: ['9:16', '4:5'].includes(adBuilderData.adSetup.aspect_ratio || '') ? '9/16' : '16/9',
+                        maxWidth: 200,
+                        maxHeight: 140,
+                      }}
+                    >
+                      <span className="text-xs font-semibold" style={{ color: colors.mutedForeground }}>
+                        {['9:16', '4:5'].includes(adBuilderData.adSetup.aspect_ratio || '') ? 'Portrait' : adBuilderData.adSetup.aspect_ratio === '1:1' ? 'Square' : 'Landscape'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Summary grid */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                     <div>
                       <p className="text-sm" style={{ color: colors.mutedForeground }}>Product</p>
                       <p className="font-medium" style={{ color: colors.foreground }}>{adBuilderData.product?.product_name || 'N/A'}</p>
                     </div>
                     <div>
                       <p className="text-sm" style={{ color: colors.mutedForeground }}>Style</p>
+                      <p className="font-medium" style={{ color: colors.foreground }}>{adBuilderData.adSetup.style}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm" style={{ color: colors.mutedForeground }}>Theme</p>
                       <p className="font-medium" style={{ color: colors.foreground }}>{adBuilderData.adSetup.style}</p>
                     </div>
                     <div>
@@ -1789,14 +1836,37 @@ export default function VideoSessionPage() {
                       <p className="text-sm" style={{ color: colors.mutedForeground }}>Platform</p>
                       <p className="font-medium" style={{ color: colors.foreground }}>{adBuilderData.adSetup.platform}</p>
                     </div>
+                    <div>
+                      <p className="text-sm mb-2" style={{ color: colors.mutedForeground }}>Selected product image</p>
+                      {adBuilderData.product?.hero_image ? (
+                        <img
+                          src={adBuilderData.product.hero_image}
+                          alt="Selected product"
+                          className="w-16 h-16 rounded-lg object-cover border"
+                          style={{ borderColor: colors.border }}
+                        />
+                      ) : (
+                        <p className="text-sm" style={{ color: colors.mutedForeground }}>None</p>
+                      )}
+                    </div>
                   </div>
 
-                  {/* Generate Button */}
+                  {/* Generated script */}
+                  {adBuilderData.voiceover?.script && (
+                    <div className="mb-6 p-4 rounded-lg" style={{ backgroundColor: colors.muted, border: `1px solid ${colors.border}` }}>
+                      <p className="text-sm font-medium mb-2" style={{ color: colors.mutedForeground }}>Generated script</p>
+                      <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: colors.foreground }}>
+                        {adBuilderData.voiceover.script}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Generate CTA */}
                   <button
                     onClick={handleGenerateVideo}
                     disabled={isGeneratingVideo}
-                    className="w-full px-6 py-4 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed text-lg font-semibold"
-                    style={{ backgroundColor: colors.primary }}
+                    className="w-full px-6 py-4 text-white rounded-xl disabled:opacity-50 disabled:cursor-not-allowed text-lg font-semibold transition-all hover:opacity-95"
+                    style={{ backgroundColor: colors.primary, boxShadow: colors.shadowGlow }}
                   >
                     {isGeneratingVideo ? (
                       <span className="flex items-center justify-center gap-2">

@@ -32,13 +32,13 @@ const CARDS: StackedCard[] = [
   {
     problem: {
       icon: TrendingDown,
-      title: 'Manual optimization & guesswork',
+      title: 'Manual Optimisation & guesswork',
       text: 'Guesswork leads to wasted budget and missed opportunities.',
     },
     solution: {
       icon: BarChart3,
       title: 'Real-time AI insights with budget recommendations',
-      text: 'Know what\'s working. Optimize with confidence.',
+      text: 'Know what\'s working. Optimise with confidence.',
     },
   },
   {
@@ -50,7 +50,7 @@ const CARDS: StackedCard[] = [
     solution: {
       icon: Boxes,
       title: 'One unified system for creative, execution, and analytics',
-      text: 'Creative, execution, and optimization in one place.',
+      text: 'Creative, execution, and Optimisation in one place.',
     },
   },
 ];

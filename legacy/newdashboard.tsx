@@ -263,7 +263,7 @@
 //         recs.push({
 //           title: "Increase CTR with creative experiments",
 //           impact: "High",
-//           reason: `All-time Avg CTR is ${(meta.avg_ctr ?? 0).toFixed(2)}% — creative can be optimized.`,
+//           reason: `All-time Avg CTR is ${(meta.avg_ctr ?? 0).toFixed(2)}% — creative can be Optimised.`,
 //           actions: ["A/B test headlines & thumbnails", "Try different primary text lengths"],
 //           estimate: "Potential +10–30% CTR",
 //         });
@@ -271,7 +271,7 @@
 
 //       if ((meta.total_spend ?? 0) > 1000 && (meta.conversions ?? 0) < 20) {
 //         recs.push({
-//           title: "Conversion optimization needed",
+//           title: "Conversion Optimisation needed",
 //           impact: "High",
 //           reason: `High cumulative spend (${fmtMoney(meta.total_spend)}) with low conversions (${meta.conversions ?? 0}).`,
 //           actions: ["Audit landing pages", "Verify tracking & events"],
@@ -582,7 +582,7 @@
 //               </CardHeader>
 //               <CardContent>
 //                 <ul className="list-disc ml-5 text-sm space-y-1">
-//                   <li>Keep conversions tracked to improve optimization.</li>
+//                   <li>Keep conversions tracked to improve Optimisation.</li>
 //                   <li>Run small experiments to find winning creatives.</li>
 //                   <li>Check frequency to avoid audience fatigue.</li>
 //                 </ul>

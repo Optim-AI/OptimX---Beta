@@ -100,7 +100,7 @@ const AIUseDisclosure: React.FC = () => {
               <ul className="list-disc ml-4">
                 <li>Generate image creatives and variants for campaigns.</li>
                 <li>Create and suggest captions, headlines, and ad copy.</li>
-                <li>Analyze performance data and generate insights and optimization recommendations.</li>
+                <li>Analyze performance data and generate insights and Optimisation recommendations.</li>
                 <li>Automate mundane tasks such as resizing creatives and formatting captions for platforms.</li>
               </ul>
 

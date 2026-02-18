@@ -358,50 +358,59 @@ export default function SettingsPage(): JSX.Element {
 
       <main className="flex-1 p-8">
         <div className="max-w-6xl mx-auto">
-          <h2 className="text-2xl font-bold text-slate-800 mb-6">Settings</h2>
+          <h2 className="text-2xl font-bold mb-6" style={{ color: colors.foreground }}>Settings</h2>
 
           <Tabs defaultValue={tab} onValueChange={(v) => setTab(v as any)}>
-            <TabsList className="flex gap-2 mb-6 bg-transparent p-1 rounded-lg overflow-x-auto">
+            <TabsList className="settings-tabs flex gap-2 mb-6 p-1 rounded-lg overflow-x-auto" style={{ backgroundColor: colors.muted, border: `1px solid ${colors.border}` }}>
+              <style jsx>{`
+                .settings-tabs button {
+                  transition: background-color 0.2s, color 0.2s;
+                }
+                .settings-tabs button[data-state="inactive"]:hover {
+                  background-color: ${colors.primary} !important;
+                  color: white !important;
+                }
+              `}</style>
               <TabsTrigger
                 value="profile"
-                className={`px-4 py-2 ${
-                  tab === "profile"
-                    ? "bg-white shadow-xl rounded-lg"
-                    : "text-slate-600"
-                }`}
+                className="settings-tab-trigger px-4 py-2 rounded-lg"
+                style={{
+                  backgroundColor: tab === "profile" ? colors.primary : "transparent",
+                  color: tab === "profile" ? colors.primaryForeground : colors.mutedForeground,
+                }}
               >
                 Profile
               </TabsTrigger>
 
               <TabsTrigger
                 value="business"
-                className={`px-4 py-2 ${
-                  tab === "business"
-                    ? "bg-white shadow-xl rounded-lg"
-                    : "text-slate-600"
-                }`}
+                className="settings-tab-trigger px-4 py-2 rounded-lg"
+                style={{
+                  backgroundColor: tab === "business" ? colors.primary : "transparent",
+                  color: tab === "business" ? colors.primaryForeground : colors.mutedForeground,
+                }}
               >
                 Business
               </TabsTrigger>
 
               <TabsTrigger
                 value="billing"
-                className={`px-4 py-2 ${
-                  tab === "billing"
-                    ? "bg-white shadow-xl rounded-lg"
-                    : "text-slate-600"
-                }`}
+                className="settings-tab-trigger px-4 py-2 rounded-lg"
+                style={{
+                  backgroundColor: tab === "billing" ? colors.primary : "transparent",
+                  color: tab === "billing" ? colors.primaryForeground : colors.mutedForeground,
+                }}
               >
                 Billing Details
               </TabsTrigger>
 
               <TabsTrigger
                 value="security"
-                className={`px-4 py-2 ${
-                  tab === "security"
-                    ? "bg-white shadow-xl rounded-lg"
-                    : "text-slate-600"
-                }`}
+                className="settings-tab-trigger px-4 py-2 rounded-lg"
+                style={{
+                  backgroundColor: tab === "security" ? colors.primary : "transparent",
+                  color: tab === "security" ? colors.primaryForeground : colors.mutedForeground,
+                }}
               >
                 Security &amp; Policy
               </TabsTrigger>
@@ -869,13 +878,14 @@ export default function SettingsPage(): JSX.Element {
 
               <TabsContent
                 value="security"
-                className="p-6 bg-white rounded-xl"
+                className="p-6 rounded-xl"
+                style={{ backgroundColor: colors.card, border: `1px solid ${colors.border}` }}
               >
                 {/* Security & Policy as its own top-level tab */}
-                <Card className="bg-white rounded-xl shadow-sm border border-slate-200">
+                <Card className="rounded-xl shadow-sm" style={{ backgroundColor: colors.card, borderColor: colors.border, border: `1px solid ${colors.border}` }}>
                   <CardHeader>
-                    <CardTitle>Security &amp; Policy</CardTitle>
-                    <p className="text-sm text-slate-600 mt-1">
+                    <CardTitle style={{ color: colors.foreground }}>Security &amp; Policy</CardTitle>
+                    <p className="text-sm mt-1" style={{ color: colors.mutedForeground }}>
                       All the important legal, security, and data-handling
                       details in one place.
                     </p>
@@ -883,84 +893,58 @@ export default function SettingsPage(): JSX.Element {
 
                   <CardContent>
                     <div className="grid gap-3 sm:grid-cols-2">
-                      <Link href="/terms-and-conditions" className="group">
-                        <div className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3 hover:border-slate-400 hover:bg-slate-50 transition">
-                          <span className="text-sm font-medium text-slate-800">
-                            Terms &amp; Conditions
-                          </span>
-                          <span className="text-xs text-slate-500 group-hover:text-slate-800">
-                            View
-                          </span>
-                        </div>
-                      </Link>
-
-                      <Link href="/privacy-policy" className="group">
-                        <div className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3 hover:border-slate-400 hover:bg-slate-50 transition">
-                          <span className="text-sm font-medium text-slate-800">
-                            Privacy Policy
-                          </span>
-                          <span className="text-xs text-slate-500 group-hover:text-slate-800">
-                            View
-                          </span>
-                        </div>
-                      </Link>
-
-                      <Link href="/refund-cancellation" className="group">
-                        <div className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3 hover:border-slate-400 hover:bg-slate-50 transition">
-                          <span className="text-sm font-medium text-slate-800">
-                            Refund Policy
-                          </span>
-                          <span className="text-xs text-slate-500 group-hover:text-slate-800">
-                            View
-                          </span>
-                        </div>
-                      </Link>
-
-                      <Link href="/cookie-policy" className="group">
-                        <div className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3 hover:border-slate-400 hover:bg-slate-50 transition">
-                          <span className="text-sm font-medium text-slate-800">
-                            Cookie Policy
-                          </span>
-                          <span className="text-xs text-slate-500 group-hover:text-slate-800">
-                            View
-                          </span>
-                        </div>
-                      </Link>
-
-                      <Link href="/data-handling-security" className="group">
-                        <div className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3 hover:border-slate-400 hover:bg-slate-50 transition">
-                          <span className="text-sm font-medium text-slate-800">
-                            Data Handling &amp; Security
-                          </span>
-                          <span className="text-xs text-slate-500 group-hover:text-slate-800">
-                            View
-                          </span>
-                        </div>
-                      </Link>
-
-                      <Link href="/ai-use-disclosure" className="group">
-                        <div className="flex items-center justify-between rounded-lg border border-slate-200 px-4 py-3 hover:border-slate-400 hover:bg-slate-50 transition">
-                          <span className="text-sm font-medium text-slate-800">
-                            AI Use Disclosure
-                          </span>
-                          <span className="text-xs text-slate-500 group-hover:text-slate-800">
-                            View
-                          </span>
-                        </div>
-                      </Link>
+                      {[
+                        { href: "/terms-and-conditions", label: "Terms & Conditions" },
+                        { href: "/privacy-policy", label: "Privacy Policy" },
+                        { href: "/refund-cancellation", label: "Refund Policy" },
+                        { href: "/cookie-policy", label: "Cookie Policy" },
+                        { href: "/data-handling-security", label: "Data Handling & Security" },
+                        { href: "/ai-disclosure", label: "AI Use Disclosure" },
+                      ].map((item) => (
+                        <Link key={item.href} href={item.href} className="group block">
+                          <div
+                            className="flex items-center justify-between rounded-lg border px-4 py-3 transition"
+                            style={{
+                              borderColor: colors.border,
+                              backgroundColor: "transparent",
+                              color: colors.foreground,
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.borderColor = colors.primary;
+                              e.currentTarget.style.backgroundColor = "hsl(213 100% 55% / 0.08)";
+                              const view = e.currentTarget.querySelector(".policy-view");
+                              if (view) (view as HTMLElement).style.color = colors.primary;
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.borderColor = colors.border;
+                              e.currentTarget.style.backgroundColor = "transparent";
+                              const view = e.currentTarget.querySelector(".policy-view");
+                              if (view) (view as HTMLElement).style.color = colors.mutedForeground;
+                            }}
+                          >
+                            <span className="text-sm font-medium" style={{ color: colors.foreground }}>
+                              {item.label}
+                            </span>
+                            <span className="policy-view text-xs" style={{ color: colors.mutedForeground }}>
+                              View
+                            </span>
+                          </div>
+                        </Link>
+                      ))}
                     </div>
 
-                    <div className="mt-6 border-t pt-4">
-                      <p className="text-xs text-slate-500 leading-relaxed">
+                    <div className="mt-6 pt-4" style={{ borderTop: `1px solid ${colors.border}` }}>
+                      <p className="text-sm leading-relaxed" style={{ color: colors.mutedForeground }}>
                         To remove your data or permanently delete your account,
                         email{" "}
                         <a
                           href="mailto:info@optimx.app?subject=Delete%20Account&body=delete%20-%20[reason]"
-                          className="font-medium text-slate-800 underline"
+                          className="font-medium underline"
+                          style={{ color: colors.primary }}
                         >
                           info@optimx.app
                         </a>{" "}
-                        with the subject <span className="font-semibold">"delete"</span>{" "}
+                        with the subject <span className="font-semibold" style={{ color: colors.foreground }}>&quot;delete&quot;</span>{" "}
                         and a brief reason.
                       </p>
                     </div>

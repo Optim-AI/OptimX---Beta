@@ -11,7 +11,6 @@ import {
   BookOpen,
   UploadCloud,
   Link2,
-  Bell,
   Settings,
   ChevronLeft,
   ChevronRight,
@@ -45,9 +44,8 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/create-campaign', label: 'Create Campaign', Icon: PlusCircle, featureKey: 'create_campaigns' },
   { href: '/analytics', label: 'Analytics', Icon: BarChart3, featureKey: 'basic_analytics' },
   { href: '/library', label: 'Campaign Library', Icon: Folder, featureKey: 'campaign_library' },
-  { href: '/image-library', label: 'Image Library', Icon: UploadCloud }, // Always visible
+  { href: '/image-library', label: 'Generated contents', Icon: UploadCloud }, // Always visible
   { href: '/integrations', label: 'Integrations', Icon: Link2, featureKey: 'integrations' },
-  { href: '/notifications', label: 'Notifications', Icon: Bell }, // Always visible
   { href: '/settings', label: 'Settings', Icon: Settings }, // Always visible
   { href: '/report', label: 'Report', Icon: Flag }, // Report errors or feedback
 ];

@@ -414,21 +414,21 @@ const Hero: React.FC = () => {
         Create, launch, and optimise campaigns, with one AI growth engine.
         </p>
 
-        {/* CTAs - PRD */}
+        {/* CTAs - matching reference: same height, padding (~12–16px vertical, ~24–32px horizontal), font size, border radius (Start Free keeps its gradient color) */}
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-4 animate-[fadeUp_0.7s_cubic-bezier(0.16,1,0.3,1)_both" style={{ animationDelay: "0.35s" }}>
           <Button
             variant="hero"
             size="lg"
-            className="px-8 py-6 text-lg w-full sm:w-auto"
+            className="px-8 py-4 text-base rounded-xl w-full sm:w-auto min-w-[160px]"
             asChild
             style={{ background: colors.gradientPrimary, color: colors.primaryForeground, boxShadow: colors.shadowGlow }}
           >
-            <Link href="/auth/signup">Start Free</Link>
+            <Link href="/auth/signup" className="flex items-center justify-center w-full">Start Free</Link>
           </Button>
           <Button
             variant="outline"
             size="lg"
-            className="px-8 py-6 text-lg w-full sm:w-auto"
+            className="px-8 py-4 text-base rounded-xl w-full sm:w-auto min-w-[160px]"
             onClick={() => scrollToSection("how-it-works")}
             style={{ borderColor: colors.border, color: colors.foreground }}
           >

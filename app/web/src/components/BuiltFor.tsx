@@ -7,7 +7,7 @@ import { useScrollAnimation } from '../hooks/use-scroll-animation';
 import colors from '@/lib/ui/colors';
 
 const BUILT_FOR_CARDS = [
-  { icon: User, title: 'Solo Founders', desc: 'Run and optimize ads without hiring a full team.' },
+  { icon: User, title: 'Solo Founders', desc: 'Run and Optimise ads without hiring a full team.' },
   { icon: Store, title: 'D2C Brands', desc: 'Scale creatives and campaigns efficiently across channels.' },
   { icon: Users, title: 'In-House Marketing Teams', desc: 'Move faster with automation and AI-driven insights.' },
 ];

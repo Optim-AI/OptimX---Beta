@@ -50,7 +50,7 @@ SkalX AI integrates with Meta's Graph API to enable users to manage their own Fa
 | **Facebook Post Publishing** | Create and publish text/photo posts to Facebook Pages | Streamlined Facebook Page content management |
 | **Comment Management** | Read and respond to comments on Facebook and Instagram posts | Centralized engagement and customer interaction |
 | **Analytics Dashboard** | View post performance metrics (likes, comments, reach, impressions) | Data-driven decision making for content strategy |
-| **Ad Campaign Insights** | Monitor Facebook/Instagram ad performance (spend, clicks, conversions) | ROI tracking and campaign optimization |
+| **Ad Campaign Insights** | Monitor Facebook/Instagram ad performance (spend, clicks, conversions) | ROI tracking and campaign Optimisation |
 | **Lead Generation** | Access and export leads from Meta lead ads | Integrated lead management workflow |
 
 ---
@@ -328,7 +328,7 @@ GET /{campaign-id}/insights?fields=impressions,clicks,spend,reach,ctr,cpc,cpm
 - `pages/api/meta/ads/insights.ts`
 
 **App Review Justification:**
-> "SkalX AI provides a unified analytics dashboard for marketing professionals. Users need to view their Facebook and Instagram ad campaign performance alongside organic content metrics to make informed marketing decisions. This permission allows read-only access to ad insights for campaigns the user manages, enabling comprehensive ROI tracking and performance optimization."
+> "SkalX AI provides a unified analytics dashboard for marketing professionals. Users need to view their Facebook and Instagram ad campaign performance alongside organic content metrics to make informed marketing decisions. This permission allows read-only access to ad insights for campaigns the user manages, enabling comprehensive ROI tracking and performance Optimisation."
 
 ---
 
@@ -343,7 +343,7 @@ GET /{campaign-id}/insights?fields=impressions,clicks,spend,reach,ctr,cpc,cpm
 - Create ad campaigns from SkalX AI dashboard
 - Pause/resume ad campaigns
 - Adjust ad budgets and targeting
-- Automated campaign optimization based on AI recommendations
+- Automated campaign Optimisation based on AI recommendations
 
 **API Calls Planned:**
 ```
@@ -361,7 +361,7 @@ Currently, SkalX AI only uses `ads_read` for displaying ad insights. The `ads_ma
 - Future implementation planned in `lib/meta/ads.ts`
 
 **App Review Justification:**
-> "SkalX AI is building comprehensive ad campaign management features. While currently we only display ad insights (using ads_read), we are preparing to launch ad creation and management capabilities in Q1 2026. This will allow users to create and optimize Facebook/Instagram ad campaigns directly from SkalX AI, complementing our existing organic content publishing features. We request this permission now to enable seamless feature rollout without requiring users to re-authenticate."
+> "SkalX AI is building comprehensive ad campaign management features. While currently we only display ad insights (using ads_read), we are preparing to launch ad creation and management capabilities in Q1 2026. This will allow users to create and Optimise Facebook/Instagram ad campaigns directly from SkalX AI, complementing our existing organic content publishing features. We request this permission now to enable seamless feature rollout without requiring users to re-authenticate."
 
 ---
 
@@ -586,7 +586,7 @@ For each advanced permission, provide:
 **Justification:** SkalX AI analytics dashboard displays Facebook/Instagram ad insights alongside organic content metrics, enabling comprehensive ROI tracking and data-driven decision making.
 
 **Permission:** `ads_management`
-**Use Case:** Future feature for ad campaign creation and optimization
+**Use Case:** Future feature for ad campaign creation and Optimisation
 **Justification:** Preparing for Q1 2026 feature launch that will allow users to create and manage ad campaigns from SkalX AI. Requesting now to avoid requiring users to re-authenticate later.
 
 **Permission:** `leads_retrieval`

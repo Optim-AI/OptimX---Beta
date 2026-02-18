@@ -73,8 +73,9 @@ async function handleGetSessions(
   res: NextApiResponse,
   userId: string
 ) {
-  const { type, limit = "50" } = req.query;
+  const { type, limit = "50", includeMedia = "0" } = req.query;
   const limitNum = Math.min(parseInt(limit as string) || 50, 100);
+  const includeMediaData = includeMedia === "1" || includeMedia === "true";
 
   try {
     const sessionType = (type === "poster" || type === "video") ? type : undefined;
@@ -85,15 +86,25 @@ async function handleGetSessions(
     });
 
     // Transform data to match frontend types
-    const sessions = data.map((session) => ({
-      id: session.id,
-      name: session.name,
-      sessionType: session.sessionType,
-      brandSnapshot: session.brandSnapshot,
-      phase: session.phase,
-      createdAt: session.createdAt,
-      updatedAt: session.updatedAt,
-    }));
+    const sessions = data.map((session) => {
+      const base = {
+        id: session.id,
+        name: session.name,
+        sessionType: session.sessionType,
+        brandSnapshot: session.brandSnapshot,
+        phase: session.phase,
+        createdAt: session.createdAt,
+        updatedAt: session.updatedAt,
+      };
+      if (includeMediaData) {
+        return {
+          ...base,
+          generatedPosters: session.generatedPosters,
+          generatedVideos: session.generatedVideos,
+        };
+      }
+      return base;
+    });
 
     return res.status(200).json({
       ok: true,

@@ -26,6 +26,8 @@ export default function BuyCreditsPage() {
   const [authenticated, setAuthenticated] = useState(false);
   const [creditType, setCreditType] = useState<'image' | 'video'>('image');
   const [quantity, setQuantity] = useState<number>(BUY_CREDITS_PRICING.defaultImageQuantity);
+  const [inputValue, setInputValue] = useState<string>(String(BUY_CREDITS_PRICING.defaultImageQuantity));
+  const [quantityError, setQuantityError] = useState<string | null>(null);
   const [balance, setBalance] = useState<CreditBalance | null>(null);
   const [purchasing, setPurchasing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -45,11 +47,12 @@ export default function BuyCreditsPage() {
 
   // Reset quantity when credit type changes
   useEffect(() => {
-    setQuantity(
-      creditType === 'image'
-        ? BUY_CREDITS_PRICING.defaultImageQuantity
-        : BUY_CREDITS_PRICING.defaultVideoQuantity
-    );
+    const def = creditType === 'image'
+      ? BUY_CREDITS_PRICING.defaultImageQuantity
+      : BUY_CREDITS_PRICING.defaultVideoQuantity;
+    setQuantity(def);
+    setInputValue(String(def));
+    setQuantityError(null);
   }, [creditType]);
 
   async function checkAuth() {
@@ -84,7 +87,74 @@ export default function BuyCreditsPage() {
 
   function adjustQuantity(delta: number) {
     const step = getQuantityStep(creditType);
-    setQuantity((prev) => clampQuantity(creditType, prev + delta * step));
+    const newQty = clampQuantity(creditType, quantity + delta * step);
+    setQuantity(newQty);
+    setInputValue(String(newQty));
+    setQuantityError(null);
+  }
+
+  function validateQuantity(value: string): boolean {
+    const num = parseInt(value, 10);
+    const min = getMinQuantity(creditType);
+    if (value === '' || Number.isNaN(num)) {
+      setQuantityError(`Minimum order value is ${creditType === 'image' ? '10 credits' : '8 seconds'} for ${creditType === 'image' ? 'image' : 'video'}.`);
+      return false;
+    }
+    if (num < min) {
+      setQuantityError(`Minimum order value is ${creditType === 'image' ? '10 credits' : '8 seconds'} for ${creditType === 'image' ? 'image' : 'video'}.`);
+      return false;
+    }
+    if (num > getMaxQuantity(creditType)) {
+      setQuantityError(`Maximum order is ${getMaxQuantity(creditType)} ${creditType === 'image' ? 'credits' : 'seconds'}.`);
+      return false;
+    }
+    setQuantityError(null);
+    return true;
+  }
+
+  function handleQuantityInputChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const val = e.target.value;
+    if (val !== '' && !/^\d*$/.test(val)) return;
+    setInputValue(val);
+    if (val === '') {
+      setQuantityError(`Minimum order value is ${creditType === 'image' ? '10 credits' : '8 seconds'} for ${creditType === 'image' ? 'image' : 'video'}.`);
+      return;
+    }
+    const num = parseInt(val, 10);
+    if (Number.isNaN(num)) return;
+    const min = getMinQuantity(creditType);
+    const max = getMaxQuantity(creditType);
+    if (num < min) {
+      setQuantityError(`Minimum order value is ${creditType === 'image' ? '10 credits' : '8 seconds'} for ${creditType === 'image' ? 'image' : 'video'}.`);
+    } else if (num > max) {
+      setQuantityError(`Maximum order is ${max} ${creditType === 'image' ? 'credits' : 'seconds'}.`);
+    } else {
+      setQuantityError(null);
+    }
+    setQuantity(num);
+  }
+
+  function handleQuantityBlur() {
+    const trimmed = inputValue.trim();
+    if (trimmed === '') {
+      const min = getMinQuantity(creditType);
+      setInputValue(String(min));
+      setQuantity(min);
+      setQuantityError(null);
+      return;
+    }
+    const num = parseInt(trimmed, 10);
+    if (Number.isNaN(num)) {
+      const min = getMinQuantity(creditType);
+      setInputValue(String(min));
+      setQuantity(min);
+      setQuantityError(null);
+      return;
+    }
+    const clamped = clampQuantity(creditType, num);
+    setInputValue(String(clamped));
+    setQuantity(clamped);
+    validateQuantity(String(clamped));
   }
 
   function isValidEmail(email: string) {
@@ -198,15 +268,15 @@ export default function BuyCreditsPage() {
 
           {balance && (
             <div className="balance-cards">
-              <div className="balance-card-item">
-                <div className="balance-value">{balance.imageCredits.total}</div>
-                <div className="balance-label">Available</div>
-                <div className="balance-type">Image Credits</div>
+              <div className="balance-card-item balance-card-image" style={{ background: 'hsl(213 100% 55% / 0.15)', borderColor: 'hsl(213 100% 55% / 0.35)' }}>
+                <div className="balance-value" style={{ color: colors.primary }}>{balance.imageCredits.total}</div>
+                <div className="balance-label" style={{ color: colors.primary }}>Available</div>
+                <div className="balance-type" style={{ color: colors.primary }}>Image Credits</div>
               </div>
-              <div className="balance-card-item">
-                <div className="balance-value">{balance.videoCredits.total}s</div>
-                <div className="balance-label">Seconds Remaining</div>
-                <div className="balance-type">Video Credits</div>
+              <div className="balance-card-item balance-card-video" style={{ background: 'hsl(270 80% 55% / 0.15)', borderColor: 'hsl(270 80% 55% / 0.35)' }}>
+                <div className="balance-value" style={{ color: 'hsl(270 80% 70%)' }}>{balance.videoCredits.total}s</div>
+                <div className="balance-label" style={{ color: 'hsl(270 80% 70%)' }}>Seconds Remaining</div>
+                <div className="balance-type" style={{ color: 'hsl(270 80% 70%)' }}>Video Credits</div>
               </div>
             </div>
           )}
@@ -247,18 +317,23 @@ export default function BuyCreditsPage() {
                     >
                       <Minus size={20} />
                     </button>
-                    <input
-                      type="number"
-                      className="qty-input"
-                      value={quantity}
-                      onChange={(e) => {
-                        const val = parseInt(e.target.value, 10);
-                        setQuantity(Number.isNaN(val) ? getMinQuantity(creditType) : clampQuantity(creditType, val));
-                      }}
-                      min={getMinQuantity(creditType)}
-                      max={getMaxQuantity(creditType)}
-                      step={getQuantityStep(creditType)}
-                    />
+                    <div className="qty-input-wrap">
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        className="qty-input"
+                        value={inputValue}
+                        onChange={handleQuantityInputChange}
+                        onBlur={handleQuantityBlur}
+                        aria-invalid={!!quantityError}
+                      />
+                      {quantityError && (
+                        <p className="qty-validation-error" role="alert">
+                          {quantityError}
+                        </p>
+                      )}
+                    </div>
                     <button
                       className="qty-btn"
                       onClick={() => adjustQuantity(1)}
@@ -393,7 +468,7 @@ export default function BuyCreditsPage() {
                 </div>
                 <button
                   className="purchase-btn"
-                  disabled={purchasing || quantity < getMinQuantity(creditType) || !isValidEmail(billingEmail)}
+                  disabled={purchasing || !!quantityError || quantity < getMinQuantity(creditType) || !isValidEmail(billingEmail)}
                   onClick={handlePurchase}
                 >
                   {purchasing ? 'Processing...' : `Pay ₹${totals.totalInr}`}
@@ -647,8 +722,14 @@ export default function BuyCreditsPage() {
           opacity: 0.4;
           cursor: not-allowed;
         }
-        .qty-input {
+        .qty-input-wrap {
           flex: 1;
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+        .qty-input {
+          width: 100%;
           height: 44px;
           border-radius: 8px;
           border: 1px solid ${colors.border};
@@ -662,6 +743,15 @@ export default function BuyCreditsPage() {
         .qty-input:focus {
           outline: none;
           border-color: ${colors.primary};
+        }
+        .qty-input[aria-invalid="true"] {
+          border-color: hsl(0 84% 55% / 0.6);
+        }
+        .qty-validation-error {
+          font-size: 12px;
+          color: ${colors.destructive};
+          margin: 0;
+          line-height: 1.3;
         }
         .trust-section {
           display: flex;
