@@ -22,6 +22,8 @@ type ProfileRow = {
   logo_path?: string | null;
   heard_from?: string | null;
   heard_from_other?: string | null;
+  organisation_name?: string | null;
+  gst_number?: string | null;
 };
 
 const BUSINESS_TYPES = [
@@ -139,6 +141,8 @@ export default function OnboardingInfoPage(): JSX.Element {
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [heardFrom, setHeardFrom] = useState(HEARD_FROM_OPTIONS[0]);
   const [heardFromOther, setHeardFromOther] = useState("");
+  const [organisationName, setOrganisationName] = useState("");
+  const [gstNumber, setGstNumber] = useState("");
 
   const [businessType, setBusinessType] = useState(BUSINESS_TYPES[0]);
   const [useCase, setUseCase] = useState<string[]>([]);
@@ -146,6 +150,8 @@ export default function OnboardingInfoPage(): JSX.Element {
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const orbOuterRef = useRef<HTMLDivElement | null>(null);
@@ -185,6 +191,8 @@ export default function OnboardingInfoPage(): JSX.Element {
           if (Array.isArray(data.use_case)) setUseCase(data.use_case);
           setHeardFrom(data.heard_from || HEARD_FROM_OPTIONS[0]);
           setHeardFromOther(data.heard_from_other || "");
+          setOrganisationName(data.organisation_name || "");
+          setGstNumber(data.gst_number || "");
 
           if (data.logo_path) {
             const publicUrl = storageClient.getPublicUrl("user-uploads", data.logo_path);
@@ -246,7 +254,37 @@ export default function OnboardingInfoPage(): JSX.Element {
     return path;
   }
 
+  const GST_REGEX = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
+
   const handleNext = () => {
+    setFieldErrors({});
+    setValidationError(null);
+
+    if (step === 1) {
+      const errors: Record<string, string> = {};
+      if (!businessName.trim()) errors.businessName = "Business name is required.";
+      if (!location.trim()) errors.location = "Location is required.";
+      if (!tagline.trim()) errors.tagline = "Tagline is required.";
+      if (!organisationName.trim()) errors.organisationName = "Organisation name is required.";
+      if (!gstNumber.trim()) {
+        errors.gstNumber = "GST number is required.";
+      } else if (!GST_REGEX.test(gstNumber.trim().toUpperCase())) {
+        errors.gstNumber = "Invalid GST number. Expected format: 22AAAAA0000A1Z5";
+      }
+      if (!logoFile && !logoPreview) errors.logo = "Logo is required.";
+      if (heardFrom === "Other" && !heardFromOther.trim()) errors.heardFromOther = "Please specify how you heard about us.";
+
+      if (Object.keys(errors).length > 0) {
+        setFieldErrors(errors);
+        return;
+      }
+    }
+
+    if (step === 3 && useCase.length === 0) {
+      setValidationError("Please select at least one use case.");
+      return;
+    }
+
     setStep((s) => Math.min(4, s + 1));
     if (typeof window !== "undefined") {
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -279,6 +317,8 @@ export default function OnboardingInfoPage(): JSX.Element {
         heard_from: heardFrom || null,
         heard_from_other:
           heardFrom === "Other" ? heardFromOther || null : null,
+        organisation_name: organisationName || null,
+        gst_number: gstNumber || null,
       };
 
       const result = await profileClient.upsert(payload);
@@ -666,25 +706,42 @@ export default function OnboardingInfoPage(): JSX.Element {
                       value={businessName}
                       onChange={(e) => setBusinessName(e.target.value)}
                       placeholder="Business name"
-                      style={inputStyle}
+                      style={fieldErrors.businessName ? { ...inputStyle, borderColor: "#ef4444" } : inputStyle}
                     />
+                    {fieldErrors.businessName && <div style={fieldErrorStyle}>{fieldErrors.businessName}</div>}
                     <input
                       value={location}
                       onChange={(e) => setLocation(e.target.value)}
                       placeholder="Location"
-                      style={inputStyle}
+                      style={fieldErrors.location ? { ...inputStyle, borderColor: "#ef4444" } : inputStyle}
                     />
+                    {fieldErrors.location && <div style={fieldErrorStyle}>{fieldErrors.location}</div>}
                     <input
                       value={tagline}
                       onChange={(e) => setTagline(e.target.value)}
                       placeholder="Tagline (e.g., Empowering Growth with AI)"
-                      style={inputStyle}
+                      style={fieldErrors.tagline ? { ...inputStyle, borderColor: "#ef4444" } : inputStyle}
                     />
+                    {fieldErrors.tagline && <div style={fieldErrorStyle}>{fieldErrors.tagline}</div>}
+                    <input
+                      value={organisationName}
+                      onChange={(e) => setOrganisationName(e.target.value)}
+                      placeholder="Organisation Name"
+                      style={fieldErrors.organisationName ? { ...inputStyle, borderColor: "#ef4444" } : inputStyle}
+                    />
+                    {fieldErrors.organisationName && <div style={fieldErrorStyle}>{fieldErrors.organisationName}</div>}
+                    <input
+                      value={gstNumber}
+                      onChange={(e) => setGstNumber(e.target.value)}
+                      placeholder="GST Number (e.g., 22AAAAA0000A1Z5)"
+                      style={fieldErrors.gstNumber ? { ...inputStyle, borderColor: "#ef4444" } : inputStyle}
+                    />
+                    {fieldErrors.gstNumber && <div style={fieldErrorStyle}>{fieldErrors.gstNumber}</div>}
 
                     <div
                       style={{
                         width: "80%",
-                        border: `2px dashed ${colors.border}`,
+                        border: fieldErrors.logo ? "2px dashed #ef4444" : `2px dashed ${colors.border}`,
                         borderRadius: 16,
                         padding: 24,
                         textAlign: "center",
@@ -733,26 +790,33 @@ export default function OnboardingInfoPage(): JSX.Element {
                         />
                       </label>
                     </div>
+                    {fieldErrors.logo && <div style={fieldErrorStyle}>{fieldErrors.logo}</div>}
 
-                    <select
-                      value={heardFrom}
-                      onChange={(e) => setHeardFrom(e.target.value)}
-                      style={inputStyle}
-                    >
-                      {HEARD_FROM_OPTIONS.map((h) => (
-                        <option key={h} value={h}>
-                          {h}
-                        </option>
-                      ))}
-                    </select>
+                    <div style={{ width: "80%", textAlign: "left" }}>
+                      <label style={{ display: "block", marginBottom: 8, fontSize: 14, fontWeight: 500, color: colors.foreground }}>
+                        How did you find us?
+                      </label>
+                      <select
+                        value={heardFrom}
+                        onChange={(e) => setHeardFrom(e.target.value)}
+                        style={{ ...inputStyle, width: "100%" }}
+                      >
+                        {HEARD_FROM_OPTIONS.map((h) => (
+                          <option key={h} value={h}>
+                            {h}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                     {heardFrom === "Other" && (
                       <input
                         value={heardFromOther}
                         onChange={(e) => setHeardFromOther(e.target.value)}
                         placeholder="Please specify"
-                        style={inputStyle}
+                        style={fieldErrors.heardFromOther ? { ...inputStyle, borderColor: "#ef4444" } : inputStyle}
                       />
                     )}
+                    {fieldErrors.heardFromOther && <div style={fieldErrorStyle}>{fieldErrors.heardFromOther}</div>}
 
                     <button onClick={handleNext} style={buttonStyle} className="btn-cta">
                       Next
@@ -850,6 +914,11 @@ export default function OnboardingInfoPage(): JSX.Element {
                     ))}
                   </div>
                   <div style={{ textAlign: "center", marginTop: 24 }}>
+                    {validationError && step === 3 && (
+                      <div style={{ color: "#ef4444", fontSize: 14, marginBottom: 12 }}>
+                        {validationError}
+                      </div>
+                    )}
                     <button onClick={handleNext} style={buttonStyle} className="btn-cta">
                       Next
                     </button>
@@ -1018,4 +1087,11 @@ const buttonStyle: React.CSSProperties = {
   cursor: "pointer",
   boxShadow: "0 10px 30px rgba(0, 136, 255, 0.3)",
   transition: "transform 160ms ease, box-shadow 160ms ease",
+};
+const fieldErrorStyle: React.CSSProperties = {
+  color: "#ef4444",
+  fontSize: 13,
+  marginTop: -10,
+  width: "80%",
+  textAlign: "left",
 };

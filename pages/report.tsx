@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef, useCallback } from "react";
+import React, { useState, useRef, useCallback, useEffect } from "react";
 import Sidebar from "../app/web/src/components/Sidebar";
 import {
   Card,
@@ -15,13 +15,24 @@ import { Label } from "../app/web/src/components/ui/label";
 import { Textarea } from "../app/web/src/components/ui/textarea";
 import { toast } from "../app/web/src/hooks/use-toast";
 import { authFetch } from "@/lib/utils";
-import { Flag, AlertCircle, MessageSquare, Upload, X } from "lucide-react";
+import { Flag, AlertCircle, MessageSquare, Upload, X, CheckCircle, Loader2, Clock, Eye, CheckCircle2 } from "lucide-react";
 import colors from "@/lib/ui/colors";
 
 const MAX_IMAGES = 3;
 const MAX_IMAGE_BYTES = 3 * 1024 * 1024; // 3MB per image
 
 type ReportType = "error" | "feedback";
+
+interface UserReport {
+  id: string;
+  userId: string;
+  type: string;
+  message: string;
+  pageUrl: string | null;
+  status: string;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
 
 function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -32,13 +43,91 @@ function fileToDataUrl(file: File): Promise<string> {
   });
 }
 
+function formatDate(dateStr: string | null): string {
+  if (!dateStr) return "";
+  const d = new Date(dateStr);
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const config: Record<string, { bg: string; color: string; icon: React.ReactNode; label: string }> = {
+    open: {
+      bg: "rgba(59, 130, 246, 0.15)",
+      color: "rgb(96, 165, 250)",
+      icon: <Clock size={12} />,
+      label: "Open",
+    },
+    reviewed: {
+      bg: "rgba(234, 179, 8, 0.15)",
+      color: "rgb(250, 204, 21)",
+      icon: <Eye size={12} />,
+      label: "Reviewed",
+    },
+    resolved: {
+      bg: "rgba(34, 197, 94, 0.15)",
+      color: "rgb(74, 222, 128)",
+      icon: <CheckCircle2 size={12} />,
+      label: "Resolved",
+    },
+  };
+  const c = config[status] || config.open;
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium"
+      style={{ backgroundColor: c.bg, color: c.color }}
+    >
+      {c.icon}
+      {c.label}
+    </span>
+  );
+}
+
+function TypeBadge({ type }: { type: string }) {
+  const isError = type === "error";
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium"
+      style={{
+        backgroundColor: isError ? "rgba(239, 68, 68, 0.15)" : "rgba(99, 102, 241, 0.15)",
+        color: isError ? "rgb(248, 113, 113)" : "rgb(129, 140, 248)",
+      }}
+    >
+      {isError ? <AlertCircle size={12} /> : <MessageSquare size={12} />}
+      {isError ? "Bug" : "Feedback"}
+    </span>
+  );
+}
+
 export default function ReportPage() {
   const [type, setType] = useState<ReportType>("feedback");
   const [message, setMessage] = useState("");
   const [pageUrl, setPageUrl] = useState("");
   const [images, setImages] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [successBanner, setSuccessBanner] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // My Reports state
+  const [myReports, setMyReports] = useState<UserReport[]>([]);
+  const [reportsLoading, setReportsLoading] = useState(true);
+
+  const fetchMyReports = useCallback(async () => {
+    try {
+      const res = await authFetch("/api/reports/my");
+      const data = await res.json();
+      if (data.success && Array.isArray(data.reports)) {
+        setMyReports(data.reports);
+      }
+    } catch (err) {
+      console.error("Failed to fetch reports:", err);
+    } finally {
+      setReportsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchMyReports();
+  }, [fetchMyReports]);
 
   const addImages = useCallback(async (files: FileList | File[]) => {
     const list = Array.from(files);
@@ -97,6 +186,7 @@ export default function ReportPage() {
     }
 
     setIsSubmitting(true);
+    setSuccessBanner(false);
     try {
       const res = await authFetch("/api/report", {
         method: "POST",
@@ -125,9 +215,12 @@ export default function ReportPage() {
             ? "We've received your report and will look into it."
             : "We've received your feedback and appreciate it.",
       });
+      setSuccessBanner(true);
       setMessage("");
       setPageUrl("");
       setImages([]);
+      // Refresh report list
+      fetchMyReports();
     } catch (err) {
       console.error("Report submit error:", err);
       toast({
@@ -165,6 +258,30 @@ export default function ReportPage() {
             </div>
           </div>
 
+          {/* Success Banner */}
+          {successBanner && (
+            <div
+              className="mb-6 flex items-center gap-3 rounded-lg border px-4 py-3"
+              style={{
+                backgroundColor: "rgba(34, 197, 94, 0.1)",
+                borderColor: "rgba(34, 197, 94, 0.3)",
+                color: "rgb(74, 222, 128)",
+              }}
+            >
+              <CheckCircle size={20} />
+              <span className="flex-1 text-sm font-medium">
+                Report submitted successfully. We'll review it shortly.
+              </span>
+              <button
+                onClick={() => setSuccessBanner(false)}
+                className="rounded p-1 transition-colors hover:bg-white/10"
+                aria-label="Dismiss"
+              >
+                <X size={16} />
+              </button>
+            </div>
+          )}
+
           <Card style={{ borderColor: "rgba(0,0,0,0.06)" }}>
             <CardHeader>
               <CardTitle style={{ color: colors.foreground }}>
@@ -182,7 +299,7 @@ export default function ReportPage() {
                   <div className="flex gap-3">
                     <button
                       type="button"
-                      onClick={() => setType("error")}
+                      onClick={() => { setType("error"); setSuccessBanner(false); }}
                       className="flex flex-1 items-center gap-2 rounded-lg border-2 px-4 py-3 text-left transition-colors"
                       style={{
                         borderColor: type === "error" ? colors.primary : "rgba(0,0,0,0.1)",
@@ -195,7 +312,7 @@ export default function ReportPage() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setType("feedback")}
+                      onClick={() => { setType("feedback"); setSuccessBanner(false); }}
                       className="flex flex-1 items-center gap-2 rounded-lg border-2 px-4 py-3 text-left transition-colors"
                       style={{
                         borderColor: type === "feedback" ? colors.primary : "rgba(0,0,0,0.1)",
@@ -337,6 +454,58 @@ export default function ReportPage() {
               </form>
             </CardContent>
           </Card>
+
+          {/* My Reports Section */}
+          <div className="mt-10">
+            <h2 className="mb-4 text-lg font-semibold" style={{ color: colors.foreground }}>
+              My Reports
+            </h2>
+
+            {reportsLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 size={24} className="animate-spin" style={{ color: colors.mutedForeground }} />
+              </div>
+            ) : myReports.length === 0 ? (
+              <div
+                className="rounded-lg border py-10 text-center"
+                style={{ borderColor: colors.border, backgroundColor: colors.card }}
+              >
+                <Flag size={32} className="mx-auto mb-3" style={{ color: colors.mutedForeground }} />
+                <p className="text-sm" style={{ color: colors.mutedForeground }}>
+                  No reports yet. Submit your first report above.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {myReports.map((report) => (
+                  <div
+                    key={report.id}
+                    className="rounded-lg border p-4"
+                    style={{ borderColor: colors.border, backgroundColor: colors.card }}
+                  >
+                    <div className="mb-2 flex items-center gap-2 flex-wrap">
+                      <TypeBadge type={report.type} />
+                      <StatusBadge status={report.status} />
+                      <span className="ml-auto text-xs" style={{ color: colors.mutedForeground }}>
+                        {formatDate(report.createdAt)}
+                      </span>
+                    </div>
+                    <p
+                      className="text-sm leading-relaxed line-clamp-2"
+                      style={{ color: colors.cardForeground }}
+                    >
+                      {report.message}
+                    </p>
+                    {report.pageUrl && (
+                      <p className="mt-1 truncate text-xs" style={{ color: colors.mutedForeground }}>
+                        {report.pageUrl}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </main>
     </div>

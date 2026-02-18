@@ -121,6 +121,8 @@ export const profiles = pgTable("profiles", {
 	insertedAt: timestamp("inserted_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 	tagline: text(),
+	organisationName: text("organisation_name"),
+	gstNumber: text("gst_number"),
 }, (table) => [
 	index("profiles_business_mobile_idx").using("btree", table.businessMobile.asc().nullsLast()).where(sql`${table.businessMobile} IS NOT NULL`),
 	uniqueIndex("profiles_email_idx").using("btree", table.email.asc().nullsLast()).where(sql`${table.email} IS NOT NULL`),
@@ -333,6 +335,23 @@ export const userUIState = pgTable("user_ui_state", {
 }, (table) => [
 	index("idx_user_ui_state_user").using("btree", table.userId.asc().nullsLast()),
 	uniqueIndex("user_ui_state_user_id_key").using("btree", table.userId.asc().nullsLast()),
+]);
+
+// reports table
+export const reports = pgTable("reports", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	userId: uuid("user_id").notNull(),
+	type: text().notNull(), // 'error' | 'feedback'
+	message: text().notNull(),
+	pageUrl: text("page_url"),
+	images: text().array(), // base64 data URLs (max 3)
+	status: text().notNull().default('open'), // 'open' | 'reviewed' | 'resolved'
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (table) => [
+	index("idx_reports_user_id").using("btree", table.userId.asc().nullsLast()),
+	index("idx_reports_status").using("btree", table.status.asc().nullsLast()),
+	index("idx_reports_created_at").using("btree", table.createdAt.desc().nullsLast()),
 ]);
 
 // ============================================================
