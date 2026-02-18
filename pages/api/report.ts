@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { getUserIdFromRequest } from "@/auth/request";
+import { ReportDAO } from "@/database/models/Report.dao";
 
 /**
  * POST /api/report
@@ -27,20 +28,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       : [];
 
     const reportType = type === "error" ? "error" : "feedback";
-    const payload = {
+
+    await ReportDAO.create({
       userId,
       type: reportType,
       message: String(message).trim().slice(0, 5000),
       pageUrl: typeof pageUrl === "string" ? pageUrl.trim().slice(0, 500) || null : null,
-      imageCount: images.length,
-      createdAt: new Date().toISOString(),
-    };
-
-    // Log metadata; images are in body (persist to storage/DB as needed)
-    console.info("[Report]", JSON.stringify(payload));
-    if (images.length > 0) {
-      console.info("[Report] images: ", images.length, "attachments (base64)");
-    }
+      images,
+    });
 
     return res.status(200).json({
       success: true,

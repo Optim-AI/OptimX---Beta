@@ -15,6 +15,8 @@ import {
   Edit,
   X,
   Save,
+  MessageSquare,
+  Eye,
 } from 'lucide-react';
 import colors from '@/lib/ui/colors';
 
@@ -49,6 +51,22 @@ interface EditPlanData {
   displayOrder: number;
 }
 
+interface ReportData {
+  id: string;
+  userId: string;
+  type: string;
+  message: string;
+  pageUrl: string | null;
+  images: string[] | null;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  userEmail: string | null;
+  userFullName: string | null;
+}
+
+type ActiveSection = 'plans' | 'reports';
+
 export default function AdminDashboard() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
@@ -58,6 +76,9 @@ export default function AdminDashboard() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [username, setUsername] = useState('');
+
+  // Section toggle
+  const [activeSection, setActiveSection] = useState<ActiveSection>('plans');
 
   // Edit modal state
   const [editingPlan, setEditingPlan] = useState<Plan | null>(null);
@@ -70,6 +91,12 @@ export default function AdminDashboard() {
     displayOrder: 0,
   });
   const [saving, setSaving] = useState(false);
+
+  // Reports state
+  const [reportsData, setReportsData] = useState<ReportData[]>([]);
+  const [reportsLoading, setReportsLoading] = useState(false);
+  const [selectedReport, setSelectedReport] = useState<ReportData | null>(null);
+  const [updatingReportStatus, setUpdatingReportStatus] = useState(false);
 
   useEffect(() => {
     // Check if admin is logged in
@@ -84,6 +111,12 @@ export default function AdminDashboard() {
     setUsername(adminUsername || 'Admin');
     fetchDashboardData();
   }, [router]);
+
+  useEffect(() => {
+    if (activeSection === 'reports' && reportsData.length === 0) {
+      fetchReports();
+    }
+  }, [activeSection]);
 
   async function fetchDashboardData() {
     setLoading(true);
@@ -116,6 +149,77 @@ export default function AdminDashboard() {
       setError(err.message || 'Failed to fetch dashboard data');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function fetchReports() {
+    setReportsLoading(true);
+
+    try {
+      const token = localStorage.getItem('admin_token');
+      const response = await fetch('/api/admin/reports/list', {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (response.status === 401) {
+        localStorage.removeItem('admin_token');
+        localStorage.removeItem('admin_username');
+        router.replace('/admin/login');
+        return;
+      }
+
+      const result = await response.json();
+
+      if (!result.success) {
+        setError(result.error || 'Failed to fetch reports');
+        return;
+      }
+
+      setReportsData(result.reports);
+    } catch (err: any) {
+      setError(err.message || 'Failed to fetch reports');
+    } finally {
+      setReportsLoading(false);
+    }
+  }
+
+  async function handleUpdateReportStatus(reportId: string, status: string) {
+    setUpdatingReportStatus(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const token = localStorage.getItem('admin_token');
+      const response = await fetch('/api/admin/reports/update-status', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ reportId, status }),
+      });
+
+      const result = await response.json();
+
+      if (!result.success) {
+        setError(result.error || 'Failed to update report status');
+        return;
+      }
+
+      setSuccess(result.message);
+      // Update local state
+      setReportsData((prev) =>
+        prev.map((r) => (r.id === reportId ? { ...r, status, updatedAt: new Date().toISOString() } : r))
+      );
+      if (selectedReport?.id === reportId) {
+        setSelectedReport((prev) => prev ? { ...prev, status, updatedAt: new Date().toISOString() } : null);
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to update report status');
+    } finally {
+      setUpdatingReportStatus(false);
     }
   }
 
@@ -251,6 +355,42 @@ export default function AdminDashboard() {
     router.push('/admin/login');
   }
 
+  function formatDate(dateStr: string) {
+    return new Date(dateStr).toLocaleString('en-IN', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  }
+
+  function getStatusColor(status: string) {
+    switch (status) {
+      case 'open':
+        return { bg: '#fef3c7', color: '#92400e' };
+      case 'reviewed':
+        return { bg: '#dbeafe', color: '#1e40af' };
+      case 'resolved':
+        return { bg: '#d1fae5', color: '#065f46' };
+      default:
+        return { bg: '#f1f5f9', color: '#475569' };
+    }
+  }
+
+  function getTypeColor(type: string) {
+    return type === 'error'
+      ? { bg: '#fef2f2', color: '#dc2626' }
+      : { bg: '#f0fdf4', color: '#16a34a' };
+  }
+
+  const reportCounts = {
+    total: reportsData.length,
+    open: reportsData.filter((r) => r.status === 'open').length,
+    reviewed: reportsData.filter((r) => r.status === 'reviewed').length,
+    resolved: reportsData.filter((r) => r.status === 'resolved').length,
+  };
+
   if (loading) {
     return (
       <div className="page loading-page">
@@ -291,7 +431,7 @@ export default function AdminDashboard() {
           <Shield size={32} color={colors.primary} />
           <div>
             <h1>Admin Dashboard</h1>
-            <p>SkalX AI Plan Management</p>
+            <p>SkalX AI Management</p>
           </div>
         </div>
         <div className="header-right">
@@ -320,177 +460,335 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* System Status Card */}
-        <div className="status-card">
-          <div className="status-header">
-            <div className="status-icon">
-              {data?.plansEnabled ? (
-                <Power size={32} color="#10b981" />
-              ) : (
-                <PowerOff size={32} color="#f59e0b" />
-              )}
-            </div>
-            <div className="status-info">
-              <h2>Plan System Status</h2>
-              <div className={`status-badge ${data?.plansEnabled ? 'enabled' : 'disabled'}`}>
-                {data?.plansEnabled ? 'ENABLED' : 'DISABLED'}
+        {/* Section Toggle */}
+        <div className="section-toggle">
+          <button
+            className={`section-btn ${activeSection === 'plans' ? 'active' : ''}`}
+            onClick={() => setActiveSection('plans')}
+          >
+            <BarChart3 size={18} />
+            Plans
+          </button>
+          <button
+            className={`section-btn ${activeSection === 'reports' ? 'active' : ''}`}
+            onClick={() => setActiveSection('reports')}
+          >
+            <MessageSquare size={18} />
+            Reports
+            {reportCounts.open > 0 && (
+              <span className="badge">{reportCounts.open}</span>
+            )}
+          </button>
+        </div>
+
+        {activeSection === 'plans' && (
+          <>
+            {/* System Status Card */}
+            <div className="status-card">
+              <div className="status-header">
+                <div className="status-icon">
+                  {data?.plansEnabled ? (
+                    <Power size={32} color="#10b981" />
+                  ) : (
+                    <PowerOff size={32} color="#f59e0b" />
+                  )}
+                </div>
+                <div className="status-info">
+                  <h2>Plan System Status</h2>
+                  <div className={`status-badge ${data?.plansEnabled ? 'enabled' : 'disabled'}`}>
+                    {data?.plansEnabled ? 'ENABLED' : 'DISABLED'}
+                  </div>
+                </div>
+              </div>
+
+              <div className="status-description">
+                {data?.plansEnabled ? (
+                  <>
+                    <CheckCircle size={20} color="#10b981" />
+                    <span>
+                      Plans are <strong>enabled</strong>. New users must select a plan after signup.
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <XCircle size={20} color="#f59e0b" />
+                    <span>
+                      Plans are <strong>disabled</strong>. Users can signup with pay-as-you-go credits
+                      only.
+                    </span>
+                  </>
+                )}
+              </div>
+
+              <div className="toggle-section">
+                <button
+                  className={`toggle-btn ${data?.plansEnabled ? 'disable' : 'enable'}`}
+                  onClick={() => handleToggleAllPlans(!data?.plansEnabled)}
+                  disabled={toggling}
+                >
+                  {toggling ? (
+                    <>
+                      <RefreshCw size={18} className="spin" />
+                      Processing...
+                    </>
+                  ) : data?.plansEnabled ? (
+                    <>
+                      <PowerOff size={18} />
+                      Disable All Plans
+                    </>
+                  ) : (
+                    <>
+                      <Power size={18} />
+                      Enable All Plans
+                    </>
+                  )}
+                </button>
               </div>
             </div>
-          </div>
 
-          <div className="status-description">
-            {data?.plansEnabled ? (
-              <>
-                <CheckCircle size={20} color="#10b981" />
-                <span>
-                  Plans are <strong>enabled</strong>. New users must select a plan after signup.
-                </span>
-              </>
-            ) : (
-              <>
-                <XCircle size={20} color="#f59e0b" />
-                <span>
-                  Plans are <strong>disabled</strong>. Users can signup with pay-as-you-go credits
-                  only.
-                </span>
-              </>
-            )}
-          </div>
+            {/* Statistics Cards */}
+            <div className="stats-grid">
+              <div className="stat-card">
+                <div className="stat-icon total">
+                  <BarChart3 size={24} />
+                </div>
+                <div className="stat-content">
+                  <div className="stat-value">{data?.statistics.total || 0}</div>
+                  <div className="stat-label">Total Plans</div>
+                </div>
+              </div>
 
-          <div className="toggle-section">
-            <button
-              className={`toggle-btn ${data?.plansEnabled ? 'disable' : 'enable'}`}
-              onClick={() => handleToggleAllPlans(!data?.plansEnabled)}
-              disabled={toggling}
-            >
-              {toggling ? (
-                <>
-                  <RefreshCw size={18} className="spin" />
-                  Processing...
-                </>
-              ) : data?.plansEnabled ? (
-                <>
-                  <PowerOff size={18} />
-                  Disable All Plans
-                </>
+              <div className="stat-card">
+                <div className="stat-icon active">
+                  <CheckCircle size={24} />
+                </div>
+                <div className="stat-content">
+                  <div className="stat-value">{data?.statistics.active || 0}</div>
+                  <div className="stat-label">Active Plans</div>
+                </div>
+              </div>
+
+              <div className="stat-card">
+                <div className="stat-icon inactive">
+                  <XCircle size={24} />
+                </div>
+                <div className="stat-content">
+                  <div className="stat-value">{data?.statistics.inactive || 0}</div>
+                  <div className="stat-label">Inactive Plans</div>
+                </div>
+              </div>
+
+              <div className="stat-card">
+                <div className="stat-icon mode">
+                  <TrendingUp size={24} />
+                </div>
+                <div className="stat-content">
+                  <div className="stat-value">{data?.plansEnabled ? 'Subscription' : 'Pay-as-you-go'}</div>
+                  <div className="stat-label">Current Mode</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Plans Table */}
+            <div className="plans-card">
+              <div className="plans-header">
+                <h3>All Plans</h3>
+                <button className="refresh-btn" onClick={fetchDashboardData}>
+                  <RefreshCw size={16} />
+                  Refresh
+                </button>
+              </div>
+
+              {data?.plans && data.plans.length > 0 ? (
+                <div className="table-wrapper">
+                  <table className="plans-table">
+                    <thead>
+                      <tr>
+                        <th>Plan Name</th>
+                        <th>Billing Cycle</th>
+                        <th>Price</th>
+                        <th>Image Credits</th>
+                        <th>Video Credits</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.plans.map((plan) => (
+                        <tr key={plan.id}>
+                          <td className="plan-name">{plan.name}</td>
+                          <td>
+                            <span className="billing-badge">{plan.billingCycle}</span>
+                          </td>
+                          <td className="price">₹{plan.priceInr}</td>
+                          <td>{plan.imageCredits}</td>
+                          <td>{plan.videoCredits}s</td>
+                          <td>
+                            <label className="toggle-switch">
+                              <input
+                                type="checkbox"
+                                checked={plan.isActive}
+                                onChange={(e) => handleToggleSinglePlan(plan.id, e.target.checked)}
+                                disabled={togglingPlan === plan.id}
+                              />
+                              <span className="toggle-slider"></span>
+                            </label>
+                          </td>
+                          <td>
+                            <button
+                              className="edit-btn"
+                              onClick={() => handleEditClick(plan)}
+                              title="Edit plan"
+                            >
+                              <Edit size={16} />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               ) : (
-                <>
-                  <Power size={18} />
-                  Enable All Plans
-                </>
+                <div className="empty-state">
+                  <p>No plans found in database</p>
+                </div>
               )}
-            </button>
-          </div>
-        </div>
+            </div>
+          </>
+        )}
 
-        {/* Statistics Cards */}
-        <div className="stats-grid">
-          <div className="stat-card">
-            <div className="stat-icon total">
-              <BarChart3 size={24} />
-            </div>
-            <div className="stat-content">
-              <div className="stat-value">{data?.statistics.total || 0}</div>
-              <div className="stat-label">Total Plans</div>
-            </div>
-          </div>
+        {activeSection === 'reports' && (
+          <>
+            {/* Report Statistics */}
+            <div className="stats-grid">
+              <div className="stat-card">
+                <div className="stat-icon total">
+                  <MessageSquare size={24} />
+                </div>
+                <div className="stat-content">
+                  <div className="stat-value">{reportCounts.total}</div>
+                  <div className="stat-label">Total Reports</div>
+                </div>
+              </div>
 
-          <div className="stat-card">
-            <div className="stat-icon active">
-              <CheckCircle size={24} />
-            </div>
-            <div className="stat-content">
-              <div className="stat-value">{data?.statistics.active || 0}</div>
-              <div className="stat-label">Active Plans</div>
-            </div>
-          </div>
+              <div className="stat-card">
+                <div className="stat-icon inactive">
+                  <XCircle size={24} />
+                </div>
+                <div className="stat-content">
+                  <div className="stat-value">{reportCounts.open}</div>
+                  <div className="stat-label">Open</div>
+                </div>
+              </div>
 
-          <div className="stat-card">
-            <div className="stat-icon inactive">
-              <XCircle size={24} />
-            </div>
-            <div className="stat-content">
-              <div className="stat-value">{data?.statistics.inactive || 0}</div>
-              <div className="stat-label">Inactive Plans</div>
-            </div>
-          </div>
+              <div className="stat-card">
+                <div className="stat-icon mode">
+                  <Eye size={24} />
+                </div>
+                <div className="stat-content">
+                  <div className="stat-value">{reportCounts.reviewed}</div>
+                  <div className="stat-label">Reviewed</div>
+                </div>
+              </div>
 
-          <div className="stat-card">
-            <div className="stat-icon mode">
-              <TrendingUp size={24} />
+              <div className="stat-card">
+                <div className="stat-icon active">
+                  <CheckCircle size={24} />
+                </div>
+                <div className="stat-content">
+                  <div className="stat-value">{reportCounts.resolved}</div>
+                  <div className="stat-label">Resolved</div>
+                </div>
+              </div>
             </div>
-            <div className="stat-content">
-              <div className="stat-value">{data?.plansEnabled ? 'Subscription' : 'Pay-as-you-go'}</div>
-              <div className="stat-label">Current Mode</div>
-            </div>
-          </div>
-        </div>
 
-        {/* Plans Table */}
-        <div className="plans-card">
-          <div className="plans-header">
-            <h3>All Plans</h3>
-            <button className="refresh-btn" onClick={fetchDashboardData}>
-              <RefreshCw size={16} />
-              Refresh
-            </button>
-          </div>
+            {/* Reports Table */}
+            <div className="plans-card">
+              <div className="plans-header">
+                <h3>All Reports</h3>
+                <button className="refresh-btn" onClick={fetchReports} disabled={reportsLoading}>
+                  <RefreshCw size={16} className={reportsLoading ? 'spin' : ''} />
+                  {reportsLoading ? 'Loading...' : 'Refresh'}
+                </button>
+              </div>
 
-          {data?.plans && data.plans.length > 0 ? (
-            <div className="table-wrapper">
-              <table className="plans-table">
-                <thead>
-                  <tr>
-                    <th>Plan Name</th>
-                    <th>Billing Cycle</th>
-                    <th>Price</th>
-                    <th>Image Credits</th>
-                    <th>Video Credits</th>
-                    <th>Status</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.plans.map((plan) => (
-                    <tr key={plan.id}>
-                      <td className="plan-name">{plan.name}</td>
-                      <td>
-                        <span className="billing-badge">{plan.billingCycle}</span>
-                      </td>
-                      <td className="price">₹{plan.priceInr}</td>
-                      <td>{plan.imageCredits}</td>
-                      <td>{plan.videoCredits}s</td>
-                      <td>
-                        <label className="toggle-switch">
-                          <input
-                            type="checkbox"
-                            checked={plan.isActive}
-                            onChange={(e) => handleToggleSinglePlan(plan.id, e.target.checked)}
-                            disabled={togglingPlan === plan.id}
-                          />
-                          <span className="toggle-slider"></span>
-                        </label>
-                      </td>
-                      <td>
-                        <button
-                          className="edit-btn"
-                          onClick={() => handleEditClick(plan)}
-                          title="Edit plan"
-                        >
-                          <Edit size={16} />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              {reportsLoading && reportsData.length === 0 ? (
+                <div className="empty-state">
+                  <RefreshCw size={24} className="spin" />
+                  <p>Loading reports...</p>
+                </div>
+              ) : reportsData.length > 0 ? (
+                <div className="table-wrapper">
+                  <table className="plans-table">
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th>User</th>
+                        <th>Type</th>
+                        <th>Message</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {reportsData.map((report) => {
+                        const statusColor = getStatusColor(report.status);
+                        const typeColor = getTypeColor(report.type);
+                        return (
+                          <tr key={report.id} className="report-row" onClick={() => setSelectedReport(report)}>
+                            <td style={{ whiteSpace: 'nowrap' }}>{formatDate(report.createdAt)}</td>
+                            <td>
+                              <span className="user-cell" title={report.userEmail || report.userId}>
+                                {report.userFullName || report.userEmail || report.userId.slice(0, 8) + '...'}
+                              </span>
+                            </td>
+                            <td>
+                              <span
+                                className="type-badge"
+                                style={{ background: typeColor.bg, color: typeColor.color }}
+                              >
+                                {report.type}
+                              </span>
+                            </td>
+                            <td className="message-cell">
+                              {report.message.length > 80
+                                ? report.message.slice(0, 80) + '...'
+                                : report.message}
+                            </td>
+                            <td>
+                              <span
+                                className="report-status-badge"
+                                style={{ background: statusColor.bg, color: statusColor.color }}
+                              >
+                                {report.status}
+                              </span>
+                            </td>
+                            <td>
+                              <button
+                                className="edit-btn"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedReport(report);
+                                }}
+                                title="View report"
+                              >
+                                <Eye size={16} />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="empty-state">
+                  <p>No reports found</p>
+                </div>
+              )}
             </div>
-          ) : (
-            <div className="empty-state">
-              <p>No plans found in database</p>
-            </div>
-          )}
-        </div>
+          </>
+        )}
       </div>
 
       {/* Edit Plan Modal */}
@@ -600,6 +898,101 @@ export default function AdminDashboard() {
         </div>
       )}
 
+      {/* Report Detail Modal */}
+      {selectedReport && (
+        <div className="modal-overlay" onClick={() => setSelectedReport(null)}>
+          <div className="modal-content report-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Report Details</h3>
+              <button className="close-btn" onClick={() => setSelectedReport(null)}>
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="modal-body">
+              <div className="report-detail-grid">
+                <div className="report-detail-item">
+                  <label>Type</label>
+                  <span
+                    className="type-badge"
+                    style={{
+                      background: getTypeColor(selectedReport.type).bg,
+                      color: getTypeColor(selectedReport.type).color,
+                    }}
+                  >
+                    {selectedReport.type}
+                  </span>
+                </div>
+
+                <div className="report-detail-item">
+                  <label>Status</label>
+                  <select
+                    className="status-select"
+                    value={selectedReport.status}
+                    onChange={(e) => handleUpdateReportStatus(selectedReport.id, e.target.value)}
+                    disabled={updatingReportStatus}
+                  >
+                    <option value="open">Open</option>
+                    <option value="reviewed">Reviewed</option>
+                    <option value="resolved">Resolved</option>
+                  </select>
+                </div>
+
+                <div className="report-detail-item">
+                  <label>User</label>
+                  <span className="detail-value">
+                    {selectedReport.userFullName || selectedReport.userEmail || selectedReport.userId}
+                  </span>
+                  {(selectedReport.userFullName && selectedReport.userEmail) && (
+                    <span className="detail-sub-value">{selectedReport.userEmail}</span>
+                  )}
+                </div>
+
+                <div className="report-detail-item">
+                  <label>Date</label>
+                  <span className="detail-value">{formatDate(selectedReport.createdAt)}</span>
+                </div>
+              </div>
+
+              {selectedReport.pageUrl && (
+                <div className="report-detail-item full-width">
+                  <label>Page URL</label>
+                  <span className="detail-value page-url">{selectedReport.pageUrl}</span>
+                </div>
+              )}
+
+              <div className="report-detail-item full-width">
+                <label>Message</label>
+                <div className="report-message-box">{selectedReport.message}</div>
+              </div>
+
+              {selectedReport.images && selectedReport.images.length > 0 && (
+                <div className="report-detail-item full-width">
+                  <label>Attachments ({selectedReport.images.length})</label>
+                  <div className="report-images-grid">
+                    {selectedReport.images.map((img, idx) => (
+                      <img
+                        key={idx}
+                        src={img}
+                        alt={`Attachment ${idx + 1}`}
+                        className="report-image"
+                        onClick={() => window.open(img, '_blank')}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="modal-footer">
+              <button className="cancel-btn" onClick={() => setSelectedReport(null)}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <style jsx>{`
         .page {
           min-height: 100vh;
@@ -695,6 +1088,58 @@ export default function AdminDashboard() {
           cursor: pointer;
           padding: 0 8px;
         }
+
+        /* Section Toggle */
+        .section-toggle {
+          display: flex;
+          gap: 8px;
+          margin-bottom: 32px;
+          background: white;
+          padding: 6px;
+          border-radius: 12px;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+          width: fit-content;
+        }
+        .section-btn {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 10px 24px;
+          border-radius: 8px;
+          border: none;
+          font-weight: 600;
+          font-size: 14px;
+          cursor: pointer;
+          transition: all 200ms;
+          background: transparent;
+          color: #64748b;
+          position: relative;
+        }
+        .section-btn.active {
+          background: ${colors.primary};
+          color: white;
+        }
+        .section-btn:not(.active):hover {
+          background: #f1f5f9;
+        }
+        .badge {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-width: 20px;
+          height: 20px;
+          padding: 0 6px;
+          border-radius: 10px;
+          font-size: 11px;
+          font-weight: 700;
+          background: #ef4444;
+          color: white;
+        }
+        .section-btn.active .badge {
+          background: white;
+          color: ${colors.primary};
+        }
+
         .status-card {
           background: white;
           border-radius: 16px;
@@ -915,6 +1360,126 @@ export default function AdminDashboard() {
           color: #94a3b8;
         }
 
+        /* Report-specific styles */
+        .report-row {
+          cursor: pointer;
+          transition: background 150ms;
+        }
+        .report-row:hover {
+          background: #f8fafc;
+        }
+        .user-cell {
+          font-size: 13px;
+          color: #0f172a;
+          max-width: 200px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          display: inline-block;
+        }
+        .type-badge {
+          display: inline-block;
+          padding: 3px 10px;
+          border-radius: 6px;
+          font-size: 12px;
+          font-weight: 600;
+          text-transform: capitalize;
+        }
+        .report-status-badge {
+          display: inline-block;
+          padding: 3px 10px;
+          border-radius: 6px;
+          font-size: 12px;
+          font-weight: 600;
+          text-transform: capitalize;
+        }
+        .message-cell {
+          max-width: 300px;
+          color: #475569;
+          font-size: 14px;
+        }
+
+        /* Report Detail Modal */
+        .report-modal {
+          max-width: 700px;
+        }
+        .report-detail-grid {
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 16px;
+          margin-bottom: 16px;
+        }
+        .report-detail-item {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+        .report-detail-item.full-width {
+          margin-top: 12px;
+        }
+        .report-detail-item label {
+          font-size: 12px;
+          font-weight: 700;
+          color: #64748b;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+        .detail-value {
+          font-size: 14px;
+          color: #0f172a;
+          word-break: break-all;
+        }
+        .detail-sub-value {
+          font-size: 12px;
+          color: #64748b;
+        }
+        .page-url {
+          color: ${colors.primary};
+        }
+        .status-select {
+          padding: 6px 10px;
+          border: 1px solid #e2e8f0;
+          border-radius: 6px;
+          font-size: 14px;
+          font-weight: 600;
+          cursor: pointer;
+          width: fit-content;
+        }
+        .status-select:focus {
+          outline: none;
+          border-color: ${colors.primary};
+          box-shadow: 0 0 0 3px ${colors.primary}20;
+        }
+        .report-message-box {
+          background: #f8fafc;
+          border: 1px solid #e2e8f0;
+          border-radius: 8px;
+          padding: 16px;
+          font-size: 14px;
+          color: #0f172a;
+          white-space: pre-wrap;
+          word-break: break-word;
+          max-height: 200px;
+          overflow-y: auto;
+        }
+        .report-images-grid {
+          display: flex;
+          gap: 12px;
+          flex-wrap: wrap;
+        }
+        .report-image {
+          width: 120px;
+          height: 120px;
+          object-fit: cover;
+          border-radius: 8px;
+          border: 1px solid #e2e8f0;
+          cursor: pointer;
+          transition: transform 200ms;
+        }
+        .report-image:hover {
+          transform: scale(1.05);
+        }
+
         /* Toggle Switch */
         .toggle-switch {
           position: relative;
@@ -1132,6 +1697,9 @@ export default function AdminDashboard() {
             grid-template-columns: 1fr;
           }
           .form-grid {
+            grid-template-columns: 1fr;
+          }
+          .report-detail-grid {
             grid-template-columns: 1fr;
           }
         }

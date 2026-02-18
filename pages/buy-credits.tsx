@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '@/auth/supabase/client';
-import { Zap, Image, Video, ArrowLeft, Plus, Minus } from 'lucide-react';
+import { Zap, Image, Video, ArrowLeft, Plus, Minus, CheckCircle, Mail, X } from 'lucide-react';
 import colors from '@/lib/ui/colors';
 import { authFetch } from '@/lib/utils';
 import { BUY_CREDITS_PRICING, calculateTotalsInr } from '@/lib/billing/pricing';
@@ -22,6 +22,10 @@ export default function BuyCreditsPage() {
   const [balance, setBalance] = useState<CreditBalance | null>(null);
   const [purchasing, setPurchasing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [purchaseInfo, setPurchaseInfo] = useState<{ quantity: number; type: string } | null>(null);
+  const [invoiceEmail, setInvoiceEmail] = useState('optimx.tech@gmail.com');
+  const [invoiceEmailSaved, setInvoiceEmailSaved] = useState(false);
 
   useEffect(() => {
     checkAuth();
@@ -122,7 +126,9 @@ export default function BuyCreditsPage() {
           if (verifyData.success) {
             // Refresh balance
             await fetchBalance();
-            alert(`Successfully purchased ${quantity} ${creditType === 'image' ? 'image credits' : 'video seconds'}!`);
+            setPurchaseInfo({ quantity, type: creditType === 'image' ? 'image credits' : 'video seconds' });
+            setShowSuccess(true);
+            setInvoiceEmailSaved(false);
           } else {
             setError('Payment verification failed');
           }
@@ -304,6 +310,53 @@ export default function BuyCreditsPage() {
           </div>
         </div>
       </div>
+
+      {/* Payment Success Modal */}
+      {showSuccess && purchaseInfo && (
+        <div className="modal-overlay" onClick={() => setShowSuccess(false)}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+            <button className="modal-close" onClick={() => setShowSuccess(false)}>
+              <X size={20} />
+            </button>
+            <div className="modal-icon">
+              <CheckCircle size={56} color="#22c55e" />
+            </div>
+            <h2 className="modal-title">Payment Successful!</h2>
+            <p className="modal-subtitle">
+              You have purchased <strong>{purchaseInfo.quantity} {purchaseInfo.type}</strong>.
+            </p>
+
+            <div className="invoice-section">
+              <div className="invoice-header">
+                <Mail size={18} color={colors.primary} />
+                <span>We will mail your invoice to</span>
+              </div>
+              <div className="invoice-email-row">
+                <input
+                  type="email"
+                  className="invoice-email-input"
+                  value={invoiceEmail}
+                  onChange={(e) => { setInvoiceEmail(e.target.value); setInvoiceEmailSaved(false); }}
+                />
+                <button
+                  className="invoice-save-btn"
+                  onClick={() => setInvoiceEmailSaved(true)}
+                  disabled={!invoiceEmail.trim() || invoiceEmailSaved}
+                >
+                  {invoiceEmailSaved ? 'Saved' : 'Save'}
+                </button>
+              </div>
+              {invoiceEmailSaved && (
+                <p className="invoice-saved-msg">Invoice will be sent to this email.</p>
+              )}
+            </div>
+
+            <button className="modal-done-btn" onClick={() => setShowSuccess(false)}>
+              Done
+            </button>
+          </div>
+        </div>
+      )}
 
       <style jsx>{`
         .page {
@@ -554,6 +607,144 @@ export default function BuyCreditsPage() {
           .type-toggle {
             flex-direction: column;
           }
+        }
+        .modal-overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(0, 0, 0, 0.6);
+          backdrop-filter: blur(4px);
+          display: grid;
+          place-items: center;
+          z-index: 1000;
+          padding: 20px;
+        }
+        .modal-card {
+          background: ${colors.card};
+          border: 1px solid ${colors.border};
+          border-radius: 20px;
+          padding: 40px 36px;
+          max-width: 440px;
+          width: 100%;
+          text-align: center;
+          position: relative;
+          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+          animation: modalIn 300ms cubic-bezier(.2,.9,.3,1);
+        }
+        @keyframes modalIn {
+          from { opacity: 0; transform: scale(0.95) translateY(10px); }
+          to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        .modal-close {
+          position: absolute;
+          top: 14px;
+          right: 14px;
+          background: ${colors.muted};
+          border: 1px solid ${colors.border};
+          border-radius: 8px;
+          width: 32px;
+          height: 32px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          color: ${colors.mutedForeground};
+          transition: all 200ms;
+        }
+        .modal-close:hover {
+          background: ${colors.border};
+          color: ${colors.foreground};
+        }
+        .modal-icon {
+          margin-bottom: 16px;
+        }
+        .modal-title {
+          font-size: 22px;
+          font-weight: 800;
+          color: ${colors.foreground};
+          margin: 0 0 8px;
+        }
+        .modal-subtitle {
+          font-size: 15px;
+          color: ${colors.mutedForeground};
+          margin: 0 0 28px;
+        }
+        .invoice-section {
+          background: ${colors.muted};
+          border: 1px solid ${colors.border};
+          border-radius: 12px;
+          padding: 20px;
+          margin-bottom: 24px;
+          text-align: left;
+        }
+        .invoice-header {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 14px;
+          font-weight: 600;
+          color: ${colors.foreground};
+          margin-bottom: 12px;
+        }
+        .invoice-email-row {
+          display: flex;
+          gap: 8px;
+        }
+        .invoice-email-input {
+          flex: 1;
+          height: 40px;
+          border-radius: 8px;
+          border: 1px solid ${colors.border};
+          background: ${colors.card};
+          color: ${colors.foreground};
+          padding: 0 12px;
+          font-size: 14px;
+          outline: none;
+          transition: border-color 200ms;
+        }
+        .invoice-email-input:focus {
+          border-color: ${colors.primary};
+        }
+        .invoice-save-btn {
+          padding: 0 18px;
+          height: 40px;
+          border-radius: 8px;
+          border: none;
+          background: ${colors.primary};
+          color: white;
+          font-weight: 600;
+          font-size: 14px;
+          cursor: pointer;
+          transition: all 200ms;
+          white-space: nowrap;
+        }
+        .invoice-save-btn:hover:not(:disabled) {
+          opacity: 0.9;
+        }
+        .invoice-save-btn:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+        .invoice-saved-msg {
+          font-size: 13px;
+          color: #22c55e;
+          margin: 8px 0 0;
+          font-weight: 500;
+        }
+        .modal-done-btn {
+          width: 100%;
+          padding: 14px;
+          border-radius: 10px;
+          background: ${colors.primary};
+          color: white;
+          font-weight: 700;
+          font-size: 15px;
+          border: none;
+          cursor: pointer;
+          transition: all 200ms;
+        }
+        .modal-done-btn:hover {
+          opacity: 0.9;
+          transform: translateY(-1px);
         }
       `}</style>
     </>

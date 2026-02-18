@@ -19,6 +19,9 @@ export { PlansDAO } from './models/Plans.dao';
 export { SubscriptionsDAO } from './models/Subscriptions.dao';
 export { PaymentsDAO, WebhookEventsDAO } from './models/Payments.dao';
 
+// Reports DAO
+export { ReportDAO } from './models/Report.dao';
+
 // Note: Removed DAOs for tables that don't exist in production:
 // - GoogleAdsDAO (google_ads_tokens table removed)
 // - RecommendationDAO (recommendations table removed)
@@ -50,6 +53,8 @@ export {
   payments,
   webhookEvents,
   creditHistory,
+  // Reports
+  reports,
 } from '@/database/schema';
 
 // Export inferred types
@@ -77,6 +82,8 @@ import {
   payments,
   webhookEvents,
   creditHistory,
+  // Reports
+  reports,
 } from '@/database/schema';
 
 // Note: User type removed - use auth.users directly via Supabase Auth
@@ -104,3 +111,6 @@ export type CreditPack = typeof creditPacks.$inferSelect;
 export type Payment = typeof payments.$inferSelect;
 export type WebhookEvent = typeof webhookEvents.$inferSelect;
 export type CreditHistory = typeof creditHistory.$inferSelect;
+
+// Report types
+export type Report = typeof reports.$inferSelect;
