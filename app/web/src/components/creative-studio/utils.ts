@@ -461,6 +461,7 @@ export const DEFAULT_AD_BUILDER_DATA = {
   },
   voiceover: {
     enabled: true,
+    language: "english" as const,
     tone: "Energetic" as const,
   },
   onScreenText: {

@@ -43,6 +43,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       platform,
       aspect_ratio,
       voiceover,
+      language, // Voiceover language: english, tamil, hindi
       tone,
       key_message,
       cta,
@@ -157,6 +158,7 @@ AD REQUIREMENTS:
 - Platform: ${platform || "Instagram Reels / TikTok"}
 - Aspect Ratio: ${aspect_ratio || "9:16"}
 - Voiceover: ${voiceover ? "Yes" : "No"}
+${voiceover ? `- Voiceover Language: ${String(language || "english").charAt(0).toUpperCase() + String(language || "english").slice(1)} (write the entire voiceover script and voiceover_lines in ${language === "tamil" ? "Tamil" : language === "hindi" ? "Hindi" : "English"})` : ""}
 - Tone: ${tone || "Energetic"}
 ${key_message ? `- Key Message: ${key_message}` : ""}
 ${cta ? `- CTA: ${cta}` : ""}
@@ -166,7 +168,7 @@ DIRECTOR REQUIREMENTS:
 - Create a shot-by-shot plan where the sum of all shot durations equals ${durationSecondsClamped} seconds. Use time ranges like "0-3s", "3-7s", etc., ending at ${durationSecondsClamped}s.
 - Each shot: 1–4 seconds typically; adjust number of shots so the total is ${durationSecondsClamped}s and the pacing serves the user's vision.
 - Specify camera (angle, movement), lighting, and composition for each shot.
-- Voiceover (if enabled): write a script that can be read in ${durationSecondsClamped} seconds (~${Math.floor(durationSecondsClamped * 2.2)}–${Math.floor(durationSecondsClamped * 2.5)} words). ${key_message ? `Weave in: "${key_message}".` : ""} ${cta ? `End with CTA: "${cta}".` : ""}
+- Voiceover (if enabled): write a script in ${language === "tamil" ? "Tamil" : language === "hindi" ? "Hindi" : "English"} that can be read in ${durationSecondsClamped} seconds (~${Math.floor(durationSecondsClamped * 2.2)}–${Math.floor(durationSecondsClamped * 2.5)} words). ${key_message ? `Weave in: "${key_message}".` : ""} ${cta ? `End with CTA: "${cta}".` : ""}
 - final_video_prompt: 300–800 tokens, director-grade, describing the full ${durationSecondsClamped}-second film (cinematic lighting, movement, pacing, color, premium brand quality), aligned with the user's described vision.
 
 Return your response as a JSON object with this exact structure (use real timings that sum to ${durationSecondsClamped}s):
@@ -195,7 +197,7 @@ Return your response as a JSON object with this exact structure (use real timing
     "motion_style": "Overall motion",
     "brand_polish": "Brand polish (e.g. Apple/Stripe quality)"
   },
-  "voiceover_script": "${voiceover ? `Full voiceover script readable in exactly ${durationSecondsClamped} seconds, ${tone || "Energetic"} tone.` : "N/A - Voiceover disabled"}",
+  "voiceover_script": "${voiceover ? `Full voiceover script in ${language === "tamil" ? "Tamil" : language === "hindi" ? "Hindi" : "English"}, readable in exactly ${durationSecondsClamped} seconds, ${tone || "Energetic"} tone.` : "N/A - Voiceover disabled"}",
   "headline": "${on_screen_text ? "Short headline (3-5 words)" : "N/A"}",
   "subtext": "${on_screen_text ? "Supporting text (5-8 words)" : "N/A"}",
   "final_video_prompt": "Single cinematic prompt (300-800 tokens) for the full ${durationSecondsClamped}-second video: camera, lighting, composition, pacing, color grading, shot transitions, premium quality."
