@@ -36,6 +36,9 @@ function getPool(): Pool {
   });
   pool.on('error', (err) => {
     console.error('[DB] Pool error:', err.message, '| code:', (err as any).code);
+    if (/auth|password|FATAL/i.test(err.message)) {
+      console.error('[DB] AUTH FAILURE — DATABASE_URL =', connectionString);
+    }
   });
   pool.on('connect', () => {
     console.log('[DB] New client connected to pool');
@@ -75,9 +78,12 @@ export function extractDbError(error: any): {
   pgTable?: string;
   pgConstraint?: string;
   cause?: string;
+  databaseUrl?: string;
 } {
   // The original pg error is often in error.cause
   const cause = error?.cause ?? error;
+  const isAuthError = /auth|password|FATAL/i.test(error?.message ?? '') ||
+                      /auth|password|FATAL/i.test(cause?.message ?? '');
   return {
     message: error?.message ?? 'Unknown error',
     pgCode: cause?.code,
@@ -87,5 +93,6 @@ export function extractDbError(error: any): {
     pgTable: cause?.table,
     pgConstraint: cause?.constraint,
     cause: cause !== error ? cause?.message : undefined,
+    databaseUrl: isAuthError ? process.env.DATABASE_URL : undefined,
   };
 }

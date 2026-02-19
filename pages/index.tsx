@@ -29,8 +29,10 @@ const Home: React.FC = () => {
   const [checking, setChecking] = useState(true);
 
   useEffect(() => {
-    // If the URL has a hash (e.g. /#pricing), skip the redirect so the user can see the section
-    if (window.location.hash) {
+    // If the URL has a plain anchor hash (e.g. /#pricing), skip the redirect so the user can see the section.
+    // But don't skip for Supabase auth callback hashes (e.g. #access_token=...).
+    const hash = window.location.hash;
+    if (hash && !hash.includes('access_token') && !hash.includes('type=')) {
       setChecking(false);
       return;
     }
