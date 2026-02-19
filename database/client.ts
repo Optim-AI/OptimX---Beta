@@ -37,6 +37,7 @@ function getPool(): Pool {
   pool.on('error', (err) => {
     console.error('[DB] Pool error:', err.message, '| code:', (err as any).code);
     if (/auth|password|FATAL/i.test(err.message)) {
+
       console.error('[DB] AUTH FAILURE — DATABASE_URL =', connectionString);
     }
   });
