@@ -1,11 +1,37 @@
 "use client";
-import Link from 'next/link';
-import React, { useRef, useEffect } from "react";
-import { ArrowRight, Sparkles, User } from "lucide-react";
+import Link from "next/link";
+import React, { useRef, useEffect, useState } from "react";
+import {
+  ArrowRight,
+  Sparkles,
+  CreditCard,
+  AlertTriangle,
+  CheckCircle2,
+  FileText,
+  ChevronDown,
+  Link2,
+  Shield,
+} from "lucide-react";
 import { Button } from "../app/web/src/components/ui/button";
-import colors from '@/lib/ui/colors';
+import colors from "@/lib/ui/colors";
 
-/** Convert "hsl(H S% L%)" -> "hsla(H, S%, L%, a)" for inline usage */
+const TOC_ITEMS = [
+  { id: "information-collect", label: "Information We Collect" },
+  { id: "how-we-use", label: "How We Use" },
+  { id: "meta-api", label: "Meta API Data" },
+  { id: "google-api", label: "Google API Data" },
+  { id: "ai-processing", label: "AI Data Processing" },
+  { id: "payments", label: "Payments" },
+  { id: "data-sharing", label: "Data Sharing" },
+  { id: "storage-security", label: "Storage & Security" },
+  { id: "data-retention", label: "Data Retention" },
+  { id: "your-rights", label: "Your Rights" },
+  { id: "childrens-privacy", label: "Children's Privacy" },
+  { id: "beta-disclaimer", label: "Beta Disclaimer" },
+  { id: "policy-updates", label: "Policy Updates" },
+  { id: "contact", label: "Contact" },
+] as const;
+
 function withAlpha(token: string, alpha: number) {
   const hslMatch = token.match(/hsl\(\s*([\d.]+)\s+([\d.]+)%\s+([\d.]+)%\s*\)/i);
   if (hslMatch) {
@@ -16,253 +42,629 @@ function withAlpha(token: string, alpha: number) {
   return token;
 }
 
+function SectionHeading({
+  id,
+  children,
+  className = "",
+}: {
+  id: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  const [copied, setCopied] = useState(false);
+  const copyLink = () => {
+    const url = `${typeof window !== "undefined" ? window.location.origin : ""}/privacy-policy#${id}`;
+    navigator.clipboard.writeText(url);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+  return (
+    <div className={`group flex items-center gap-2 ${className}`}>
+      <h2 id={id} className="scroll-mt-28">
+        {children}
+      </h2>
+      <button
+        type="button"
+        onClick={copyLink}
+        className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-white/10"
+        aria-label="Copy link to section"
+      >
+        <Link2 className="h-4 w-4" style={{ color: colors.mutedForeground }} />
+      </button>
+      {copied && (
+        <span className="text-xs" style={{ color: colors.mutedForeground }}>
+          Copied
+        </span>
+      )}
+    </div>
+  );
+}
+
+function SectionBlock({
+  children,
+  className = "",
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      className={`rounded-[18px] p-6 sm:p-8 border ${className}`}
+      style={{
+        background: colors.card,
+        borderColor: withAlpha(colors.border, 0.5),
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function HighlightBox({
+  variant,
+  children,
+}: {
+  variant: "success" | "warning";
+  children: React.ReactNode;
+}) {
+  const config = {
+    success: {
+      borderColor: "hsl(142 76% 36% / 0.5)",
+      bgColor: "hsl(142 76% 36% / 0.08)",
+      icon: CheckCircle2,
+    },
+    warning: {
+      borderColor: "hsl(38 92% 50% / 0.5)",
+      bgColor: "hsl(38 92% 50% / 0.08)",
+      icon: AlertTriangle,
+    },
+  };
+  const { borderColor, icon: Icon } = config[variant];
+  return (
+    <div
+      className="rounded-xl p-4 pl-5 border-l-4"
+      style={{ borderLeftColor: borderColor, backgroundColor: config[variant].bgColor }}
+    >
+      <div className="flex gap-3">
+        <Icon className="h-5 w-5 shrink-0 mt-0.5" style={{ color: borderColor }} />
+        <div>{children}</div>
+      </div>
+    </div>
+  );
+}
+
 const PrivacyPolicy: React.FC = () => {
   const topRef = useRef<HTMLElement | null>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [activeSection, setActiveSection] = useState<string>(TOC_ITEMS[0].id);
+  const [tocOpen, setTocOpen] = useState(false);
 
   useEffect(() => {
-    if (!topRef.current) return;
-    topRef.current.scrollTo({ top: 0 });
+    topRef.current?.scrollTo({ top: 0 });
   }, []);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            setActiveSection(entry.target.id);
+            break;
+          }
+        }
+      },
+      { rootMargin: "-80px 0px -70% 0px", threshold: 0 }
+    );
+    TOC_ITEMS.forEach(({ id }) => {
+      const el = document.getElementById(id);
+      if (el) observer.observe(el);
+    });
+    return () => observer.disconnect();
+  }, []);
+
+  const scrollTo = (id: string) => {
+    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setTocOpen(false);
+  };
 
   return (
     <main
       ref={topRef}
-      className="min-h-screen pb-24 pt-20 relative overflow-hidden"
+      className="min-h-screen pb-24 pt-20 relative"
       style={{ backgroundColor: colors.background, color: colors.foreground }}
     >
-      <style jsx>{`
-        .animation-float { animation: floatY 6s ease-in-out infinite alternate; }
-        @keyframes floatY { from { transform: translateY(-8px);} to { transform: translateY(8px);} }
-        .reveal-left { display:inline-block; transform-origin:left; transform:scaleX(0); opacity:0; animation: revealLeft 0.7s cubic-bezier(0.2,0.9,0.2,1) forwards; }
-        @keyframes revealLeft { to { transform: scaleX(1); opacity:1; } }
-        .glass-card { backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
-      `}</style>
-
-      {/* Background layers + orbs (matching Hero theme) */}
       <div
-        className="absolute inset-0 backdrop-blur-xl"
+        className="absolute inset-0 pointer-events-none"
         style={{
-          backgroundImage: `linear-gradient(135deg, ${colors.background} 0%, ${withAlpha("hsl(213 90% 96%)", 0.18)} 40%, ${colors.background} 100%)`,
+          background: `linear-gradient(180deg, ${colors.background} 0%, ${withAlpha(colors.card, 0.3)} 50%, ${colors.background} 100%)`,
+          opacity: 0.6,
         }}
       />
-      <div className="absolute inset-0" style={{ background: colors.gradientMesh, opacity: 0.18 }} />
 
-      <div
-        className="absolute -left-10 top-16 w-72 h-72 rounded-full blur-3xl animation-float"
-        style={{ backgroundColor: withAlpha(colors.primary, 0.12) }}
-      />
-      <div
-        className="absolute right-10 bottom-20 w-96 h-96 rounded-full blur-3xl animation-float"
-        style={{ backgroundColor: withAlpha(colors.primary, 0.08), animationDelay: "2s" }}
-      />
-      <div
-        className="absolute inset-0 flex items-start justify-center pointer-events-none"
-        style={{ opacity: 0.05 }}
-      >
-        <div
-          className="w-[600px] h-[600px] rounded-full blur-3xl animation-float"
-          style={{
-            backgroundImage: `linear-gradient(90deg, ${withAlpha(colors.primary, 0.06)} 0%, ${withAlpha(colors.primaryGlow ?? colors.primary, 0.04)} 100%)`,
-            marginTop: "6rem",
-          }}
-        />
-      </div>
-
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-        {/* Header with logo and name (no navbar) */}
+      <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10 max-w-[1600px]">
         <header className="flex items-center gap-3 py-6">
-          {/* <div
-            className="w-12 h-12 rounded-md flex items-center justify-center glass-card"
-            style={{ background: colors.card, border: `1px solid ${colors.border}`, boxShadow: colors.shadowStrong }}
-          >
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
-              <rect x="2" y="2" width="20" height="20" rx="6" fill={colors.primary} />
-              <path d="M7 12h10" stroke="white" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-              <path d="M7 8h10" stroke={withAlpha("white", 0.85)} strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </div>
-
-          <div>
-            <div className="text-2xl font-bold leading-tight flex items-baseline gap-1">
-              <span style={{ color: colors.foreground }}>SkalX AI</span>
-            </div>
-            <div className="text-sm text-[14px]" style={{ color: colors.mutedForeground }}>Privacy Policy</div>
-          </div> */}
-
-          <Link href="/" className="flex items-center space-x-1" style={{ color: colors.foreground }}>
-                      <img src="/images/Oli_AI_Logo.svg" alt="SkalX AI Logo" className="h-10 w-auto" />
-                      <span className="text-xl font-bold" style={{ lineHeight: 1 }}>
-<span style={{ color: colors.foreground }}>SkalX AI</span>
-                      </span>
-                    </Link>
+          <Link href="/" className="flex items-center" style={{ color: colors.foreground }}>
+            <img src="/images/SkalX_Logo.png" alt="SkalX AI Logo" className="h-8 w-auto object-contain" />
+          </Link>
         </header>
+        <div className="mb-10">
+          <h1
+            className="text-[34px] sm:text-[36px] font-bold leading-tight mb-2"
+            style={{ color: colors.foreground }}
+          >
+            Privacy Policy
+          </h1>
+          <div className="text-[15px]" style={{ color: colors.mutedForeground }}>
+            Last Updated: February 2026
+          </div>
+        </div>
 
-        {/* Content Card */}
-        <section className="max-w-8xl mx-auto mt-6">
-          <div className="p-8 rounded-2xl glass-card border" style={{ borderColor: withAlpha(colors.border, 0.6), background: colors.card }}>
-            <div className="mb-6">
-              <h1 className="text-4xl font-extrabold mb-2" style={{ color: colors.foreground }}>Privacy Policy</h1>
-              <div className="text-sm" style={{ color: colors.mutedForeground }}>Last Updated: 14th November, 2025</div>
+        <div className="lg:hidden mb-8">
+          <button
+            type="button"
+            onClick={() => setTocOpen(!tocOpen)}
+            className="w-full flex items-center justify-between gap-2 p-4 rounded-xl border transition-colors"
+            style={{
+              background: colors.card,
+              borderColor: withAlpha(colors.border, 0.5),
+              color: colors.foreground,
+            }}
+          >
+            <span className="text-sm font-medium">Table of Contents</span>
+            <ChevronDown className={`h-5 w-5 transition-transform ${tocOpen ? "rotate-180" : ""}`} />
+          </button>
+          {tocOpen && (
+            <nav
+              className="mt-2 p-4 rounded-xl border"
+              style={{ background: colors.card, borderColor: withAlpha(colors.border, 0.5) }}
+            >
+              <ul className="space-y-1">
+                {TOC_ITEMS.map(({ id, label }) => (
+                  <li key={id}>
+                    <button
+                      type="button"
+                      onClick={() => scrollTo(id)}
+                      className={`block w-full text-left py-2 px-2 text-sm rounded transition-colors ${
+                        activeSection === id ? "font-medium" : ""
+                      }`}
+                      style={{ color: activeSection === id ? colors.primary : colors.foreground }}
+                    >
+                      {label}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+          )}
+        </div>
+
+        <div className="flex flex-col lg:flex-row gap-10 lg:gap-12">
+          <aside className="hidden lg:block w-full lg:w-[25%] shrink-0" style={{ maxWidth: 280 }}>
+            <nav className="sticky top-24 space-y-1" style={{ paddingTop: 8 }}>
+              {TOC_ITEMS.map(({ id, label }) => (
+                <a
+                  key={id}
+                  href={`#${id}`}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    scrollTo(id);
+                  }}
+                  className={`block py-2 text-[14px] rounded px-2 transition-colors hover:underline ${
+                    activeSection === id ? "font-medium" : ""
+                  }`}
+                  style={{ color: activeSection === id ? colors.primary : colors.mutedForeground }}
+                >
+                  {label}
+                </a>
+              ))}
+            </nav>
+          </aside>
+
+          <div ref={contentRef} className="flex-1 min-w-0 space-y-12" style={{ maxWidth: 1100 }}>
+            <div
+              className="rounded-[18px] p-6 sm:p-8 border shadow-lg"
+              style={{
+                background: withAlpha(colors.primary, 0.06),
+                borderColor: withAlpha(colors.primary, 0.2),
+              }}
+            >
+              <h3 className="text-lg font-semibold mb-4" style={{ color: colors.foreground }}>
+                Quick Summary
+              </h3>
+              <ul className="space-y-3">
+                {[
+                  { icon: FileText, text: "We collect only the information necessary to operate and improve the platform." },
+                  { icon: Shield, text: "We never sell your personal data." },
+                  { icon: CreditCard, text: "Payment data processed by Razorpay; we do not store card details." },
+                  { icon: CheckCircle2, text: "Meta and Google data used only for your campaigns." },
+                  { icon: AlertTriangle, text: "Exercise your rights at info@optimx.app" },
+                ].map(({ icon: Icon, text }) => (
+                  <li key={text} className="flex items-start gap-3">
+                    <Icon className="h-5 w-5 shrink-0 mt-0.5" style={{ color: colors.primary }} />
+                    <span className="text-[15px] leading-[1.65]" style={{ color: colors.foreground }}>
+                      {text}
+                    </span>
+                  </li>
+                ))}
+              </ul>
             </div>
 
-            <article className="prose prose-invert max-w-none" style={{ color: colors.foreground }}>
-              <p>
-                This Privacy Policy explains how SkalX AI ("we", "our", "us") collects, uses, stores, and protects your information when you use our website, app, and related services ("Services"). By using SkalX AI, you agree to the practices described here.
+            <p className="text-[15px] leading-[1.7]" style={{ color: colors.foreground }}>
+              This Privacy Policy explains how SkalX AI (&quot;Company&quot;, &quot;we&quot;, &quot;our&quot;, or &quot;us&quot;) collects, uses, stores, and protects your information when you access our website, application, and related services (&quot;Services&quot;).
+            </p>
+            <p className="text-[15px] leading-[1.7]" style={{ color: colors.foreground }}>
+              By using SkalX AI, you agree to this Privacy Policy.
+            </p>
+
+            <SectionBlock>
+              <SectionHeading id="information-collect" className="text-[22px] sm:text-[24px] font-semibold mb-6">
+                1. Information We Collect
+              </SectionHeading>
+              <p className="text-[15px] leading-[1.7] mb-4" style={{ color: colors.foreground }}>
+                We collect only the information necessary to operate and improve the platform.
               </p>
+              <div className="border-t pt-5 mt-5" style={{ borderColor: withAlpha(colors.border, 0.4) }}>
+                <h4 className="text-[18px] font-medium mb-3" style={{ color: colors.foreground }}>
+                  1.1 Information You Provide
+                </h4>
+                <p className="text-[15px] leading-[1.7] mb-2" style={{ color: colors.foreground }}>
+                  When you register or use the Services, we may collect:
+                </p>
+                <ul className="list-disc pl-6 space-y-2 text-[15px] leading-[1.7] mb-4">
+                  <li>Name</li>
+                  <li>Email address</li>
+                  <li>Phone number (if provided)</li>
+                  <li>Business information</li>
+                  <li>Uploaded brand assets (logos, images, media)</li>
+                  <li>Campaign inputs and AI prompts</li>
+                  <li>Generated content</li>
+                  <li>Support communications</li>
+                </ul>
+                <p className="text-[15px] leading-[1.7]" style={{ color: colors.foreground }}>
+                  Payment information is processed securely by Razorpay. We do not store card numbers or CVV details.
+                </p>
+              </div>
+              <div className="border-t pt-5 mt-5" style={{ borderColor: withAlpha(colors.border, 0.4) }}>
+                <h4 className="text-[18px] font-medium mb-3" style={{ color: colors.foreground }}>
+                  1.2 Information Collected Automatically
+                </h4>
+                <p className="text-[15px] leading-[1.7] mb-2" style={{ color: colors.foreground }}>
+                  When you use the platform, we may automatically collect:
+                </p>
+                <ul className="list-disc pl-6 space-y-2 text-[15px] leading-[1.7]">
+                  <li>IP address</li>
+                  <li>Device and browser information</li>
+                  <li>Usage analytics and feature interactions</li>
+                  <li>Approximate location (IP-based)</li>
+                  <li>Cookie and tracking data</li>
+                </ul>
+              </div>
+              <div className="border-t pt-5 mt-5" style={{ borderColor: withAlpha(colors.border, 0.4) }}>
+                <h4 className="text-[18px] font-medium mb-3" style={{ color: colors.foreground }}>
+                  1.3 Information from Third-Party Platforms
+                </h4>
+                <p className="text-[15px] leading-[1.7] mb-2" style={{ color: colors.foreground }}>
+                  When you connect integrations, we may access:
+                </p>
+                <p className="text-[15px] font-medium mt-4 mb-1" style={{ color: colors.foreground }}>
+                  Meta (Facebook/Instagram)
+                </p>
+                <ul className="list-disc pl-6 space-y-1 text-[15px] leading-[1.7] mb-4">
+                  <li>Pages and ad account access</li>
+                  <li>Publishing permissions</li>
+                  <li>Insights and analytics data</li>
+                </ul>
+                <p className="text-[15px] font-medium mb-1" style={{ color: colors.foreground }}>
+                  Google
+                </p>
+                <ul className="list-disc pl-6 space-y-1 text-[15px] leading-[1.7] mb-4">
+                  <li>OAuth profile information</li>
+                  <li>Access tokens</li>
+                  <li>Publishing or analytics permissions</li>
+                </ul>
+                <p className="text-[15px] font-medium mb-1" style={{ color: colors.foreground }}>
+                  Social Login Providers
+                </p>
+                <ul className="list-disc pl-6 space-y-1 text-[15px] leading-[1.7]">
+                  <li>Basic profile information required for authentication</li>
+                </ul>
+              </div>
+            </SectionBlock>
 
-              <h3 className="font-bold mt-8">1. Information We Collect</h3>
-              <p>Information you provide</p>
-              <ul className="list-disc ml-4">
-                <li>name, email, phone.</li>
-                <li>business info.</li>
-                <li>payment info. (processed by Razorpay)</li>
-                <li>uploaded media. (logos, images, captions, etc.)</li>
-                <li>campaign inputs, AI prompts, generated content.</li>
-              </ul>
-
-              <p><strong>Automatically collected</strong></p>
-              <ul className="list-disc ml-4">
-                <li>IP address.</li>
-                <li>device/browser info.</li>
-                <li>usage & analytics.</li>
-                <li>location. (approximate/IP-based)</li>
-                <li>cookies and tracking data.</li>
-              </ul>
-
-              <p><strong>From third-party platforms</strong></p>
-              <ul className="list-disc ml-4">
-                <li>When you connect accounts:</li>
-                <li>Meta: pages, ad accounts, insights, publishing permissions</li>
-                <li>Google: OAuth profile info, access tokens</li>
-                <li>Social platforms: login profile info</li>
-              </ul>
-
-              <h3 className="font-bold mt-8">2. How We Use Your Information</h3>
-              <p>We use your data to:</p>
-              <ul className="list-disc ml-4">
-                <li>create campaigns</li>
-                <li>generate AI creatives</li>
-                <li>run and publish ads</li>
-                <li>analyze campaign performance</li>
-                <li>provide insights & recommendations</li>
-                <li>improve product functionality</li>
-                <li>ensure security & prevent fraud</li>
-                <li>provide customer support</li>
-              </ul>
-              <p>We never use your Meta or Google data for advertising or profiling outside the platform.</p>
-
-              <h3 className="font-bold mt-8">3. Meta API Data Usage (Mandatory Disclosure)</h3>
-              <p>To comply with Meta Platform Policies:</p>
-              <p>SkalX AI only uses Facebook/Instagram data to:</p>
-              <ul className="list-disc ml-4">
-                <li>publish posts or ads on your behalf</li>
-                <li>fetch insights/performance data</li>
-                <li>generate recommendations</li>
-                <li>display analytics to you</li>
-              </ul>
-
-              <p>SkalX AI does NOT:</p>
-              <ul className="list-disc ml-4">
-                <li>sell, rent, or share your Meta data</li>
-                <li>use Meta data to build user profiles</li>
-                <li>store data longer than necessary</li>
-                <li>use Meta data for unrelated advertising</li>
-                <li>transfer Meta data to third parties except essential processors</li>
-                <li>combine Meta data with external data sources for profiling</li>
-              </ul>
-
-              <p><strong>Token Handling</strong></p>
-              <ul className="list-disc ml-4">
-                <li>Access tokens are encrypted at rest</li>
-                <li>Not shared with external parties</li>
-                <li>Automatically deleted when revoked</li>
-                <li>Used only to operate requested features</li>
-              </ul>
-
-              <p><strong>Revoking Access</strong></p>
-              <p>You can revoke access anytime at: Facebook Settings → Business Integrations</p>
-
-              <h3 className="font-bold mt-8">4. Google API Data Usage (Mandatory Limited Use Statement)</h3>
-              <p>
-                Our use of Google API data complies with the Google API Services User Data Policy, including the Limited Use requirements. Google data is used ONLY to provide core features (auth, publishing, analytics), never sold or shared, never used for advertising, profiling, or unrelated purposes, and stored securely only as long as required.
+            <SectionBlock>
+              <SectionHeading id="how-we-use" className="text-[22px] sm:text-[24px] font-semibold mb-6">
+                2. How We Use Your Information
+              </SectionHeading>
+              <p className="text-[15px] leading-[1.7] mb-2" style={{ color: colors.foreground }}>
+                We use your information to:
               </p>
-
-              <h3 className="font-bold mt-8">5. AI Data Processing</h3>
-              <p>
-                SkalX AI uses AI providers (e.g., OpenAI) for generating captions, images, videos, analyzing post performance, and generating insights. We send only the minimum necessary information required for generation. We do not use personal data for training internal AI models. You are responsible for reviewing AI output before publishing.
+              <ul className="list-disc pl-6 space-y-2 text-[15px] leading-[1.7] mb-4">
+                <li>Create and manage campaigns</li>
+                <li>Generate AI creatives</li>
+                <li>Run and publish advertisements</li>
+                <li>Fetch analytics and insights</li>
+                <li>Improve platform functionality</li>
+                <li>Ensure platform security</li>
+                <li>Prevent fraud or abuse</li>
+                <li>Provide customer support</li>
+              </ul>
+              <p className="text-[15px] leading-[1.7]" style={{ color: colors.foreground }}>
+                We do not use Meta or Google data for advertising outside your campaigns or for profiling unrelated to your use of the platform.
               </p>
+            </SectionBlock>
 
-              <h4>5.1 AI Training Policy</h4>
-              <p>
-                SkalX AI may use user-generated content that you manually create, upload, or provide directly inside our platform (such as captions, prompts, uploaded images, and brand assets) to improve and fine-tune certain internal AI models. We do not use Meta API data, Instagram or Facebook insights or media, Google API data, Third-party platform data, or Social login data for any AI model training. Training data is used only with your explicit opt-in consent. You may withdraw your consent at any time, and we will exclude your data from future training datasets.
+            <SectionBlock>
+              <SectionHeading id="meta-api" className="text-[22px] sm:text-[24px] font-semibold mb-6">
+                3. Meta API Data Usage (Mandatory Disclosure)
+              </SectionHeading>
+              <p className="text-[15px] leading-[1.7] mb-4" style={{ color: colors.foreground }}>
+                To comply with Meta Platform Policies:
               </p>
+              <HighlightBox variant="success">
+                <p className="text-[15px] font-medium mb-2" style={{ color: colors.foreground }}>
+                  SkalX AI uses Meta data only to:
+                </p>
+                <ul className="list-disc pl-5 space-y-1 text-[15px] leading-[1.7] mb-4">
+                  <li>Publish posts and ads on your behalf</li>
+                  <li>Fetch performance insights</li>
+                  <li>Generate analytics and recommendations</li>
+                  <li>Display analytics within your account</li>
+                </ul>
+                <p className="text-[15px] font-medium mb-2" style={{ color: colors.foreground }}>
+                  We do NOT:
+                </p>
+                <ul className="list-disc pl-5 space-y-1 text-[15px] leading-[1.7] mb-4">
+                  <li>Sell or rent Meta data</li>
+                  <li>Use Meta data to build external profiles</li>
+                  <li>Use Meta data for unrelated advertising</li>
+                  <li>Combine Meta data with external datasets for profiling</li>
+                  <li>Store Meta data longer than necessary</li>
+                </ul>
+                <p className="text-[15px] font-medium mb-2" style={{ color: colors.foreground }}>
+                  Token Handling
+                </p>
+                <ul className="list-disc pl-5 space-y-1 text-[15px] leading-[1.7] mb-2">
+                  <li>Access tokens are encrypted at rest</li>
+                  <li>Tokens are never shared with unauthorized third parties</li>
+                  <li>Tokens are deleted immediately upon revocation</li>
+                  <li>Tokens are used only to enable requested features</li>
+                </ul>
+                <p className="text-[15px] leading-[1.7] mt-3" style={{ color: colors.foreground }}>
+                  You may revoke access anytime via: Facebook Settings → Business Integrations
+                </p>
+              </HighlightBox>
+            </SectionBlock>
 
-              <h3 className="font-bold mt-8">6. Payments</h3>
-              <p>Payments are processed securely by Razorpay. SkalX AI does not store card numbers or CVV.</p>
+            <SectionBlock>
+              <SectionHeading id="google-api" className="text-[22px] sm:text-[24px] font-semibold mb-6">
+                4. Google API Data Usage (Limited Use Statement)
+              </SectionHeading>
+              <p className="text-[15px] leading-[1.7] mb-4" style={{ color: colors.foreground }}>
+                Our use of Google API data complies with the Google API Services User Data Policy, including Limited Use requirements.
+              </p>
+              <p className="text-[15px] leading-[1.7] mb-2" style={{ color: colors.foreground }}>
+                Google data is:
+              </p>
+              <ul className="list-disc pl-6 space-y-2 text-[15px] leading-[1.7]">
+                <li>Used only for authentication, publishing, and analytics</li>
+                <li>Never sold or shared</li>
+                <li>Never used for advertising or profiling</li>
+                <li>Stored securely</li>
+                <li>Deleted upon revocation or account deletion</li>
+              </ul>
+            </SectionBlock>
 
-              <h3 className="font-bold mt-8">7. Data Sharing</h3>
-              <p>We only share data with:</p>
-              <ul className="list-disc ml-4">
-                <li>AWS (hosting)</li>
-                <li>Supabase (database)</li>
-                <li>Meta & Google (API integrations)</li>
+            <SectionBlock>
+              <SectionHeading id="ai-processing" className="text-[22px] sm:text-[24px] font-semibold mb-6">
+                5. AI Data Processing
+              </SectionHeading>
+              <p className="text-[15px] leading-[1.7] mb-4" style={{ color: colors.foreground }}>
+                SkalX AI uses third-party AI providers to generate captions, images, videos, insights, and analytics.
+              </p>
+              <p className="text-[15px] leading-[1.7] mb-2" style={{ color: colors.foreground }}>
+                When you request AI generation, we send only the minimum necessary information, such as:
+              </p>
+              <ul className="list-disc pl-6 space-y-2 text-[15px] leading-[1.7] mb-4">
+                <li>Prompts</li>
+                <li>Uploaded assets</li>
+                <li>Non-sensitive campaign metadata</li>
+              </ul>
+              <p className="text-[15px] leading-[1.7] mb-6" style={{ color: colors.foreground }}>
+                We do not send private API tokens or confidential credentials to AI providers. You are responsible for reviewing AI-generated output before publishing.
+              </p>
+              <div className="border-t pt-5 mt-5" style={{ borderColor: withAlpha(colors.border, 0.4) }}>
+                <h4 className="text-[18px] font-medium mb-3" style={{ color: colors.foreground }}>
+                  5.1 AI Training Policy
+                </h4>
+                <p className="text-[15px] leading-[1.7] mb-4" style={{ color: colors.foreground }}>
+                  By default, we do NOT use your private content for AI training.
+                </p>
+                <p className="text-[15px] leading-[1.7] mb-2" style={{ color: colors.foreground }}>
+                  If you explicitly opt in:
+                </p>
+                <ul className="list-disc pl-6 space-y-2 text-[15px] leading-[1.7] mb-4">
+                  <li>Anonymized examples may be used to improve internal AI systems</li>
+                  <li>You may withdraw consent at any time</li>
+                  <li>Your data will be excluded from future training datasets</li>
+                </ul>
+                <p className="text-[15px] leading-[1.7]" style={{ color: colors.foreground }}>
+                  Meta API data, Google API data, and third-party platform data are never used for AI training.
+                </p>
+              </div>
+            </SectionBlock>
+
+            <SectionBlock>
+              <SectionHeading id="payments" className="text-[22px] sm:text-[24px] font-semibold mb-6">
+                6. Payments
+              </SectionHeading>
+              <p className="text-[15px] leading-[1.7] mb-4" style={{ color: colors.foreground }}>
+                Payments are securely processed by Razorpay.
+              </p>
+              <p className="text-[15px] leading-[1.7] mb-2" style={{ color: colors.foreground }}>
+                SkalX AI does not store:
+              </p>
+              <ul className="list-disc pl-6 space-y-2 text-[15px] leading-[1.7]">
+                <li>Card numbers</li>
+                <li>CVV</li>
+                <li>Full payment credentials</li>
+              </ul>
+            </SectionBlock>
+
+            <SectionBlock>
+              <SectionHeading id="data-sharing" className="text-[22px] sm:text-[24px] font-semibold mb-6">
+                7. Data Sharing
+              </SectionHeading>
+              <p className="text-[15px] leading-[1.7] mb-2" style={{ color: colors.foreground }}>
+                We share data only with essential service providers required to operate the platform, such as:
+              </p>
+              <ul className="list-disc pl-6 space-y-2 text-[15px] leading-[1.7] mb-4">
+                <li>AWS (hosting infrastructure)</li>
+                <li>Supabase (database services)</li>
+                <li>Meta and Google (API integrations)</li>
                 <li>Razorpay (payments)</li>
-                <li>Analytics providers (Google Analytics, Meta Analytics)</li>
+                <li>Analytics providers</li>
               </ul>
-              <p>All partners follow strict confidentiality and data-handling agreements.</p>
+              <p className="text-[15px] leading-[1.7]" style={{ color: colors.foreground }}>
+                All partners are subject to confidentiality and data-processing agreements. We do not sell personal data.
+              </p>
+            </SectionBlock>
 
-              <h3 className="font-bold mt-8">8. Data Storage &amp; Security</h3>
-              <ul className="list-disc ml-4">
-                <li>Encrypted tokens</li>
+            <SectionBlock>
+              <SectionHeading id="storage-security" className="text-[22px] sm:text-[24px] font-semibold mb-6">
+                8. Data Storage &amp; Security
+              </SectionHeading>
+              <p className="text-[15px] leading-[1.7] mb-2" style={{ color: colors.foreground }}>
+                We implement industry-standard safeguards, including:
+              </p>
+              <ul className="list-disc pl-6 space-y-2 text-[15px] leading-[1.7] mb-4">
+                <li>SSL/TLS encryption</li>
                 <li>Encrypted database storage</li>
-                <li>Role-based access</li>
-                <li>Access logs & monitoring</li>
-                <li>SSL-secured communication</li>
+                <li>Encrypted token storage</li>
+                <li>Role-based access controls</li>
+                <li>Access logs and monitoring</li>
+                <li>Firewall and infrastructure protection</li>
                 <li>Regular security audits</li>
               </ul>
-
-              <h3 className="font-bold mt-8">9. Data Retention</h3>
-              <p>
-                We keep your data only as long as needed: account lifetime, backup retention (limited duration). API tokens deleted immediately on revocation. You may request account deletion anytime.
+              <p className="text-[15px] leading-[1.7]" style={{ color: colors.foreground }}>
+                Access to sensitive data is restricted to authorized personnel only.
               </p>
+            </SectionBlock>
 
-              <h3 className="font-bold mt-8">10. Your Rights</h3>
-              <p>Depending on your region, you may have rights to access, correct, delete, restrict processing, revoke consent, or request account closure. Email: info@optimx.app</p>
+            <SectionBlock>
+              <SectionHeading id="data-retention" className="text-[22px] sm:text-[24px] font-semibold mb-6">
+                9. Data Retention
+              </SectionHeading>
+              <p className="text-[15px] leading-[1.7] mb-2" style={{ color: colors.foreground }}>
+                We retain data only as long as necessary:
+              </p>
+              <ul className="list-disc pl-6 space-y-2 text-[15px] leading-[1.7] mb-4">
+                <li>Account data: retained until account deletion</li>
+                <li>Operational logs: limited retention</li>
+                <li>API tokens: deleted immediately upon revocation</li>
+                <li>Backups: retained on a limited rolling basis</li>
+              </ul>
+              <p className="text-[15px] leading-[1.7]" style={{ color: colors.foreground }}>
+                You may request account deletion at any time. Deletion requests are processed within a reasonable timeframe, subject to legal obligations.
+              </p>
+            </SectionBlock>
 
-              <h3 className="font-bold mt-8">11. Children’s Privacy</h3>
-              <p>SkalX AI is not intended for users under 18.</p>
+            <SectionBlock>
+              <SectionHeading id="your-rights" className="text-[22px] sm:text-[24px] font-semibold mb-6">
+                10. Your Rights
+              </SectionHeading>
+              <p className="text-[15px] leading-[1.7] mb-2" style={{ color: colors.foreground }}>
+                Depending on your jurisdiction, you may have the right to:
+              </p>
+              <ul className="list-disc pl-6 space-y-2 text-[15px] leading-[1.7] mb-4">
+                <li>Access your personal data</li>
+                <li>Correct inaccurate data</li>
+                <li>Request deletion</li>
+                <li>Restrict or object to processing</li>
+                <li>Withdraw consent (where applicable)</li>
+                <li>Request account closure</li>
+              </ul>
+              <p className="text-[15px] leading-[1.7]" style={{ color: colors.foreground }}>
+                To exercise these rights, contact: info@optimx.app
+              </p>
+            </SectionBlock>
 
-              <h3 className="font-bold mt-8">12. Beta Disclaimer</h3>
-              <p>During the MVP/Beta phase: features may be incomplete, data accuracy may fluctuate, analytics may vary, outages may occur. Feedback is welcome to improve the platform.</p>
+            <SectionBlock>
+              <SectionHeading id="childrens-privacy" className="text-[22px] sm:text-[24px] font-semibold mb-6">
+                11. Children&apos;s Privacy
+              </SectionHeading>
+              <p className="text-[15px] leading-[1.7]" style={{ color: colors.foreground }}>
+                SkalX AI is not intended for users under 18. We do not knowingly collect personal data from minors.
+              </p>
+            </SectionBlock>
 
-              <h3 className="font-bold mt-8">13. Updates to This Policy</h3>
-              <p>We may update this Privacy Policy. Changes will be posted with an updated “Last Updated” date.</p>
+            <SectionBlock>
+              <SectionHeading id="beta-disclaimer" className="text-[22px] sm:text-[24px] font-semibold mb-6">
+                12. Beta Disclaimer
+              </SectionHeading>
+              <p className="text-[15px] leading-[1.7] mb-2" style={{ color: colors.foreground }}>
+                During MVP/Beta phases:
+              </p>
+              <ul className="list-disc pl-6 space-y-2 text-[15px] leading-[1.7] mb-4">
+                <li>Features may be incomplete</li>
+                <li>Analytics may fluctuate</li>
+                <li>Service interruptions may occur</li>
+              </ul>
+              <p className="text-[15px] leading-[1.7]" style={{ color: colors.foreground }}>
+                We continuously improve platform reliability.
+              </p>
+            </SectionBlock>
 
-              <h3 className="font-bold mt-8">14. Contact</h3>
-              <p>
+            <SectionBlock>
+              <SectionHeading id="policy-updates" className="text-[22px] sm:text-[24px] font-semibold mb-6">
+                13. Updates to This Policy
+              </SectionHeading>
+              <p className="text-[15px] leading-[1.7]" style={{ color: colors.foreground }}>
+                We may update this Privacy Policy periodically. Changes will be reflected with an updated &quot;Last Updated&quot; date. Continued use of the Services constitutes acceptance of the updated policy.
+              </p>
+            </SectionBlock>
+
+            <SectionBlock>
+              <SectionHeading id="contact" className="text-[22px] sm:text-[24px] font-semibold mb-6">
+                14. Contact Information
+              </SectionHeading>
+              <p className="text-[15px] leading-[1.7]" style={{ color: colors.foreground }}>
                 Email: info@optimx.app
-                <br />
-                Address: Thiruvanmiyur, Chennai, India
               </p>
-            </article>
+            </SectionBlock>
 
-            <div className="mt-8 flex justify-between items-center">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pt-4">
               <div className="flex items-center gap-3 text-sm" style={{ color: colors.mutedForeground }}>
                 <Sparkles className="h-4 w-4" style={{ color: colors.primary }} />
-                <span>SkalX AI — Privacy & Trust</span>
+                <span>SkalX AI — Privacy &amp; Trust</span>
               </div>
-
-              <div className="flex items-center gap-3">
-                {/* <Button size="sm" variant="outline" asChild>
-                  <a href="#top" onClick={(e) => { e.preventDefault(); topRef.current?.scrollTo({ top: 0, behavior: 'smooth' }); }}>Back to top</a>
-                </Button> */}
-                <Button size="sm" style={{ background: colors.gradientPrimary, color: colors.primaryForeground }}>
-                  <a href="/auth/signin" className="flex items-center gap-2">Start Free Trial <ArrowRight className="h-4 w-4" /></a>
-                </Button>
-              </div>
+              <Button
+                size="sm"
+                style={{ background: colors.gradientPrimary, color: colors.primaryForeground }}
+                asChild
+              >
+                <a href="/auth/signin" className="flex items-center gap-2">
+                  Get Started <ArrowRight className="h-4 w-4" />
+                </a>
+              </Button>
             </div>
           </div>
-        </section>
+
+          {/* Right: Policy pages navigation */}
+          <aside className="hidden lg:block w-full shrink-0" style={{ maxWidth: 200 }}>
+            <nav className="sticky top-24 space-y-2 rounded-xl border p-4" style={{ borderColor: withAlpha(colors.border, 0.5), background: colors.card }}>
+              <div className="text-xs font-medium uppercase tracking-wider mb-3" style={{ color: colors.mutedForeground }}>Legal</div>
+              <Link href="/terms-and-conditions" className="block py-2 text-[14px] rounded px-2 transition-colors hover:underline" style={{ color: colors.mutedForeground }}>
+                Terms &amp; Conditions
+              </Link>
+              <span className="block py-2 text-[14px] rounded px-2 font-medium" style={{ color: colors.primary }}>
+                Privacy Policy
+              </span>
+              <Link href="/cpolicy" className="block py-2 text-[14px] rounded px-2 transition-colors hover:underline" style={{ color: colors.mutedForeground }}>
+                Cookie Policy
+              </Link>
+            </nav>
+          </aside>
+        </div>
       </div>
     </main>
   );

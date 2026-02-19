@@ -630,6 +630,138 @@ export default function SettingsPage(): JSX.Element {
                     </Button>
                   </div>
                 </form>
+
+                {/* Billing overview (from stash) */}
+                <div style={{ borderTop: `1px solid ${colors.border}`, marginTop: 28, paddingTop: 28 }}>
+                  <h3 className="text-lg font-semibold mb-4" style={{ color: colors.foreground }}>Billing overview</h3>
+                  {billingLoading ? (
+                    <p className="text-sm" style={{ color: colors.mutedForeground }}>Loading billing info...</p>
+                  ) : (
+                    <div className="space-y-6">
+                      {/* Subscription Plan */}
+                      <div
+                        className="billing-card"
+                        style={{
+                          background: colors.card,
+                          border: `1px solid ${colors.border}`,
+                          borderRadius: 12,
+                          padding: "20px 24px",
+                        }}
+                      >
+                        <h3 style={{ marginBottom: 4, color: colors.foreground, fontSize: 15, fontWeight: 600 }}>
+                          Subscription Plan:{" "}
+                          <span style={{ color: colors.primary }}>
+                            {subscription?.plan?.name ?? "Pay-as-you-go"}
+                          </span>
+                        </h3>
+                        <p className="text-sm" style={{ color: colors.mutedForeground, margin: 0 }}>
+                          {subscription?.plan?.billingCycle ?? "Credits purchased on demand"}
+                        </p>
+                        {subscription?.nextResetDate && (
+                          <p className="text-sm" style={{ color: colors.mutedForeground, marginBottom: 0, marginTop: 8 }}>
+                            Credits reset on {new Date(subscription.nextResetDate).toLocaleDateString()}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Payment Method */}
+                      <div
+                        className="billing-card"
+                        style={{
+                          background: colors.card,
+                          border: `1px solid ${colors.border}`,
+                          borderRadius: 12,
+                          padding: "20px 24px",
+                        }}
+                      >
+                        <h3 style={{ marginBottom: 4, color: colors.foreground, fontSize: 15, fontWeight: 600 }}>Payment Method</h3>
+                        <p className="text-sm" style={{ color: colors.mutedForeground, margin: "0 0 12px" }}>
+                          All payments are processed securely via Razorpay
+                        </p>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 12,
+                            padding: "16px 20px",
+                            background: colors.input,
+                            borderRadius: 8,
+                            border: `1px solid ${colors.border}`,
+                          }}
+                        >
+                          <span style={{ fontWeight: 600, color: colors.foreground, fontSize: 14 }}>
+                            Razorpay (Cards, UPI, Net Banking)
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Latest Transactions */}
+                      <div
+                        className="billing-card"
+                        style={{
+                          background: colors.card,
+                          border: `1px solid ${colors.border}`,
+                          borderRadius: 12,
+                          padding: "20px 24px",
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                          <h3 style={{ margin: 0, color: colors.foreground, fontSize: 15, fontWeight: 600 }}>Latest Transactions</h3>
+                          <select
+                            style={{
+                              padding: "8px 12px",
+                              borderRadius: 8,
+                              border: `1px solid ${colors.border}`,
+                              background: colors.input,
+                              color: colors.foreground,
+                              fontSize: 13,
+                            }}
+                          >
+                            <option>Sort by: Recent</option>
+                          </select>
+                        </div>
+                        {paymentHistory.length > 0 ? (
+                          <table className="tx-table">
+                            <thead>
+                              <tr>
+                                <th>Invoice</th>
+                                <th>Date</th>
+                                <th>Amount</th>
+                                <th>Status</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {paymentHistory.map((tx) => (
+                                <tr key={tx.id}>
+                                  <td>
+                                    {tx.paymentType === "subscription"
+                                      ? "Subscription"
+                                      : tx.paymentType === "image_topup"
+                                      ? `Image Credits${tx.metadata?.credits ? ` - ${tx.metadata.credits}` : ""}`
+                                      : tx.paymentType === "video_topup"
+                                      ? `Video Credits${tx.metadata?.credits ? ` - ${tx.metadata.credits}s` : ""}`
+                                      : tx.paymentType}
+                                  </td>
+                                  <td>{new Date(tx.createdAt).toLocaleDateString()}</td>
+                                  <td style={{ fontWeight: 700 }}>₹{tx.amount}</td>
+                                  <td>
+                                    <span className={`status-badge status-${tx.status}`}>
+                                      {tx.status === "captured" ? "Complete" : tx.status}
+                                    </span>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        ) : (
+                          <p className="text-sm" style={{ color: colors.mutedForeground, marginBottom: 0, padding: "24px 0" }}>
+                            No transactions yet
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             </TabsContent>
 
@@ -721,6 +853,51 @@ export default function SettingsPage(): JSX.Element {
                     )}
                   </div>
                 </form>
+
+                <div style={{ borderTop: `1px solid ${colors.border}`, marginTop: 32, paddingTop: 24 }}>
+                  <h3 className="text-lg font-semibold mb-2" style={{ color: colors.foreground }}>Policies & Legal</h3>
+                  <p className="text-sm mb-4" style={{ color: colors.mutedForeground }}>Important legal and policy documents</p>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {[
+                      { href: "/terms-and-conditions", label: "Terms & Conditions" },
+                      { href: "/privacy-policy", label: "Privacy Policy" },
+                      { href: "/terms-and-conditions#refund-cancellation", label: "Refund Policy" },
+                      { href: "/cpolicy", label: "Cookie Policy" },
+                      { href: "/terms-and-conditions#data-handling", label: "Data Handling & Security" },
+                      { href: "/terms-and-conditions#ai-usage", label: "AI Use Disclosure" },
+                    ].map((item) => (
+                      <Link key={item.href} href={item.href} className="group block">
+                        <div
+                          className="flex items-center justify-between rounded-lg border px-4 py-3 transition"
+                          style={{
+                            borderColor: colors.border,
+                            backgroundColor: "transparent",
+                            color: colors.foreground,
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.borderColor = colors.primary;
+                            e.currentTarget.style.backgroundColor = "hsl(213 100% 55% / 0.08)";
+                            const view = e.currentTarget.querySelector(".policy-view");
+                            if (view) (view as HTMLElement).style.color = colors.primary;
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.borderColor = colors.border;
+                            e.currentTarget.style.backgroundColor = "transparent";
+                            const view = e.currentTarget.querySelector(".policy-view");
+                            if (view) (view as HTMLElement).style.color = colors.mutedForeground;
+                          }}
+                        >
+                          <span className="text-sm font-medium" style={{ color: colors.foreground }}>
+                            {item.label}
+                          </span>
+                          <span className="policy-view text-xs" style={{ color: colors.mutedForeground }}>
+                            View
+                          </span>
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                </div>
               </div>
             </TabsContent>
 
@@ -880,10 +1057,10 @@ export default function SettingsPage(): JSX.Element {
                   {[
                     { href: "/terms-and-conditions", label: "Terms & Conditions" },
                     { href: "/privacy-policy", label: "Privacy Policy" },
-                    { href: "/refund-cancellation", label: "Refund Policy" },
-                    { href: "/cookie-policy", label: "Cookie Policy" },
-                    { href: "/data-handling-security", label: "Data Handling & Security" },
-                    { href: "/ai-disclosure", label: "AI Use Disclosure" },
+                    { href: "/terms-and-conditions#refund-cancellation", label: "Refund Policy" },
+                    { href: "/cpolicy", label: "Cookie Policy" },
+                    { href: "/terms-and-conditions#data-handling", label: "Data Handling & Security" },
+                    { href: "/terms-and-conditions#ai-usage", label: "AI Use Disclosure" },
                   ].map((item) => (
                     <Link key={item.href} href={item.href} className="group block">
                       <div

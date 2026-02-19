@@ -66,7 +66,7 @@ const Header: React.FC = () => {
       >
         <div className="flex items-center justify-between h-14 px-4 sm:px-6">
           <Link href="/" className="flex items-center" style={{ color: colors.foreground }}>
-            <span className="text-xl font-bold" style={{ lineHeight: 1, color: colors.foreground }}>SkalX AI</span>
+          <img src="/images/SkalX_Logo.png" alt="SkalX AI Logo" className="h-5 w-auto object-contain" />
           </Link>
 
           {/* Desktop Navigation */}

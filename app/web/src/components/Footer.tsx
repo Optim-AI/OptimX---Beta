@@ -22,10 +22,7 @@ const Footer: React.FC = () => {
     'Security & Policy': [
       { name: 'Terms & Conditions', href: '/terms-and-conditions', type: 'route' },
       { name: 'Privacy Policy', href: '/privacy-policy', type: 'route' },
-      { name: 'Refund Policy', href: '/refund-cancellation', type: 'route' },
-      { name: 'Cookie Policy', href: '/cookiepolicy', type: 'route' },
-      { name: 'Data Handling & Security', href: '/data-handling-security', type: 'route' },
-      { name: 'AI Use Disclosure', href: '/ai-disclosure', type: 'route' },
+      { name: 'Cookie Policy', href: '/cpolicy', type: 'route' },
     ],
     Support: [
       { name: 'Contact', href: '/Contact', type: 'route' },
@@ -56,7 +53,6 @@ const Footer: React.FC = () => {
           <div className="col-span-2 md:col-span-1">
             <div className="flex items-center space-x-2 mb-4">
               <img src="/images/SkalX_Logo.png" alt="SkalX AI Logo" className="h-8 w-auto object-contain" />
-              <span className="text-xl font-bold" style={{ color: colors.foreground }}>SkalX AI</span>
             </div>
             <p className="text-sm leading-relaxed mb-4" style={{ color: colors.mutedForeground }}>
               An AI Marketing Team — Without Expanding Headcount.

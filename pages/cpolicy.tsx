@@ -11,7 +11,7 @@ import {
   Link2,
   Shield,
 } from "lucide-react";
-import { Button } from "app/web/src/components/ui/button";
+import { Button } from "@/app/web/src/components/ui/button";
 import colors from "@/lib/ui/colors";
 
 const TOC_ITEMS = [
@@ -47,7 +47,7 @@ function SectionHeading({
 }) {
   const [copied, setCopied] = useState(false);
   const copyLink = () => {
-    const url = `${typeof window !== "undefined" ? window.location.origin : ""}/cookiepolicy#${id}`;
+    const url = `${typeof window !== "undefined" ? window.location.origin : ""}/cpolicy#${id}`;
     navigator.clipboard.writeText(url);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
@@ -461,6 +461,22 @@ const CookiePolicy: React.FC = () => {
               </Button>
             </div>
           </div>
+
+          {/* Right: Policy pages navigation */}
+          <aside className="hidden lg:block w-full shrink-0" style={{ maxWidth: 200 }}>
+            <nav className="sticky top-24 space-y-2 rounded-xl border p-4" style={{ borderColor: withAlpha(colors.border, 0.5), background: colors.card }}>
+              <div className="text-xs font-medium uppercase tracking-wider mb-3" style={{ color: colors.mutedForeground }}>Legal</div>
+              <Link href="/terms-and-conditions" className="block py-2 text-[14px] rounded px-2 transition-colors hover:underline" style={{ color: colors.mutedForeground }}>
+                Terms &amp; Conditions
+              </Link>
+              <Link href="/privacy-policy" className="block py-2 text-[14px] rounded px-2 transition-colors hover:underline" style={{ color: colors.mutedForeground }}>
+                Privacy Policy
+              </Link>
+              <span className="block py-2 text-[14px] rounded px-2 font-medium" style={{ color: colors.primary }}>
+                Cookie Policy
+              </span>
+            </nav>
+          </aside>
         </div>
       </div>
     </main>

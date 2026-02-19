@@ -3,6 +3,9 @@ const nextConfig = {
   async redirects() {
     return [
       { source: '/signin', destination: '/auth/signin', permanent: true },
+      { source: '/refund-cancellation', destination: '/terms-and-conditions', permanent: true },
+      { source: '/cookie-policy', destination: '/cpolicy', permanent: true },
+      { source: '/cookiepolicy', destination: '/cpolicy', permanent: true },
     ];
   },
   experimental: {

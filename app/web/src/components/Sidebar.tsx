@@ -143,33 +143,10 @@ const Sidebar: React.FC<SidebarProps> = ({
       }}
       aria-expanded={!collapsed}
     >
-      {/* Header: logo on left, single SkalX AI label (no duplicate) */}
+      {/* Header: logo */}
       <div className="flex items-center justify-between px-4 py-3">
         <div className="flex items-center gap-3">
-          {/* Logo slot (left) */}
-          <button
-            onClick={() => onLogoClick?.()}
-            aria-label="Logo"
-            className={`flex items-center justify-center rounded-md transition-all duration-200 overflow-hidden ${collapsed ? 'h-10 w-10' : 'h-12 w-12'}`}
-            style={{
-              background: 'transparent',
-              border: `1px solid rgba(255,255,255,0.04)`,
-              padding: 4,
-            }}
-          >
-            {/* Always use the static file path for the logo */}
-            <img src="/images/SkalX_Logo.png" alt="SkalX AI logo" className="h-full w-full object-contain" />
-          </button>
-
-          {/* Title (single SkalX AI) */}
-          {!collapsed && (
-            <div>
-              <span className="text-xl font-bold" style={{ lineHeight: 1 }}>
-                            <span style={{ color: colors.foreground }}>SkalX AI</span>
-                          </span>
-              <p style={{ color: sidebarFg, opacity: 0.85, fontSize: 12 }}></p>
-            </div>
-          )}
+          <img src="/images/SkalX_Logo.png" alt="SkalX AI Logo" className="h-5 w-auto object-contain" />
         </div>
 
         {/* Collapse toggle */}

@@ -1,11 +1,42 @@
 "use client";
-import Link from 'next/link';
-import React, { useRef, useEffect } from "react";
-import { ArrowRight, Sparkles, CheckCircle2, User } from "lucide-react";
+import Link from "next/link";
+import React, { useRef, useEffect, useState } from "react";
+import {
+  ArrowRight,
+  Sparkles,
+  CreditCard,
+  AlertTriangle,
+  CheckCircle2,
+  XCircle,
+  FileText,
+  ChevronDown,
+  Link2,
+  Shield,
+} from "lucide-react";
 import { Button } from "../app/web/src/components/ui/button";
-import colors from '@/lib/ui/colors';
+import colors from "@/lib/ui/colors";
 
-/** Convert "hsl(H S% L%)" -> "hsla(H, S%, L%, a)" for inline usage */
+const TOC_ITEMS = [
+  { id: "acceptance", label: "Acceptance of Terms" },
+  { id: "about", label: "About SkalX AI" },
+  { id: "eligibility", label: "Eligibility" },
+  { id: "account-security", label: "Account & Security" },
+  { id: "acceptable-use", label: "Acceptable Use" },
+  { id: "third-party-api", label: "Third-Party API Compliance" },
+  { id: "ai-usage", label: "AI Usage & Disclosure" },
+  { id: "payments", label: "Payments & Subscriptions" },
+  { id: "refund-cancellation", label: "Refund & Cancellation" },
+  { id: "data-handling", label: "Data Handling & Security" },
+  { id: "data-retention", label: "Data Retention" },
+  { id: "intellectual-property", label: "Intellectual Property" },
+  { id: "beta-disclaimer", label: "Beta Disclaimer" },
+  { id: "data-analytics", label: "Data & Analytics" },
+  { id: "termination", label: "Termination" },
+  { id: "limitation-liability", label: "Limitation of Liability" },
+  { id: "governing-law", label: "Governing Law" },
+  { id: "contact", label: "Contact" },
+] as const;
+
 function withAlpha(token: string, alpha: number) {
   const hslMatch = token.match(/hsl\(\s*([\d.]+)\s+([\d.]+)%\s+([\d.]+)%\s*\)/i);
   if (hslMatch) {
@@ -16,244 +47,1124 @@ function withAlpha(token: string, alpha: number) {
   return token;
 }
 
+function SectionHeading({
+  id,
+  children,
+  className = "",
+}: {
+  id: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  const [copied, setCopied] = useState(false);
+  const copyLink = () => {
+    const url = `${typeof window !== "undefined" ? window.location.origin : ""}/terms-and-conditions#${id}`;
+    navigator.clipboard.writeText(url);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+  return (
+    <div className={`group flex items-center gap-2 ${className}`}>
+      <h2 id={id} className="scroll-mt-28">
+        {children}
+      </h2>
+      <button
+        type="button"
+        onClick={copyLink}
+        className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-white/10"
+        aria-label="Copy link to section"
+      >
+        <Link2 className="h-4 w-4" style={{ color: colors.mutedForeground }} />
+      </button>
+      {copied && (
+        <span className="text-xs" style={{ color: colors.mutedForeground }}>
+          Copied
+        </span>
+      )}
+    </div>
+  );
+}
+
+function SectionBlock({
+  children,
+  className = "",
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      className={`rounded-[18px] p-6 sm:p-8 border ${className}`}
+      style={{
+        background: colors.card,
+        borderColor: withAlpha(colors.border, 0.5),
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function HighlightBox({
+  variant,
+  children,
+}: {
+  variant: "success" | "error" | "warning";
+  children: React.ReactNode;
+}) {
+  const config = {
+    success: {
+      borderColor: "hsl(142 76% 36% / 0.5)",
+      bgColor: "hsl(142 76% 36% / 0.08)",
+      icon: CheckCircle2,
+    },
+    error: {
+      borderColor: "hsl(0 84% 55% / 0.5)",
+      bgColor: "hsl(0 84% 55% / 0.08)",
+      icon: XCircle,
+    },
+    warning: {
+      borderColor: "hsl(38 92% 50% / 0.5)",
+      bgColor: "hsl(38 92% 50% / 0.08)",
+      icon: AlertTriangle,
+    },
+  };
+  const { borderColor, bgColor, icon: Icon } = config[variant];
+  return (
+    <div
+      className="rounded-xl p-4 pl-5 border-l-4"
+      style={{ borderLeftColor: borderColor, backgroundColor: bgColor }}
+    >
+      <div className="flex gap-3">
+        <Icon className="h-5 w-5 shrink-0 mt-0.5" style={{ color: borderColor }} />
+        <div>{children}</div>
+      </div>
+    </div>
+  );
+}
+
 const TermsAndConditions: React.FC = () => {
   const topRef = useRef<HTMLElement | null>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [activeSection, setActiveSection] = useState<string>(TOC_ITEMS[0].id);
+  const [tocOpen, setTocOpen] = useState(false);
 
   useEffect(() => {
-    if (!topRef.current) return;
-    topRef.current.scrollTo({ top: 0 });
+    topRef.current?.scrollTo({ top: 0 });
   }, []);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            setActiveSection(entry.target.id);
+            break;
+          }
+        }
+      },
+      { rootMargin: "-80px 0px -70% 0px", threshold: 0 }
+    );
+    TOC_ITEMS.forEach(({ id }) => {
+      const el = document.getElementById(id);
+      if (el) observer.observe(el);
+    });
+    return () => observer.disconnect();
+  }, []);
+
+  const scrollTo = (id: string) => {
+    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setTocOpen(false);
+  };
 
   return (
     <main
       ref={topRef}
-      className="min-h-screen pb-24 pt-20 relative overflow-hidden"
+      className="min-h-screen pb-24 pt-20 relative"
       style={{ backgroundColor: colors.background, color: colors.foreground }}
     >
-      <style jsx>{`
-        .animation-float { animation: floatY 6s ease-in-out infinite alternate; }
-        @keyframes floatY { from { transform: translateY(-8px);} to { transform: translateY(8px);} }
-        .reveal-left { display:inline-block; transform-origin:left; transform:scaleX(0); opacity:0; animation: revealLeft 0.7s cubic-bezier(0.2,0.9,0.2,1) forwards; }
-        @keyframes revealLeft { to { transform: scaleX(1); opacity:1; } }
-        .glass-card { backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
-      `}</style>
-
-      {/* Background layers + orbs (matching Hero theme) */}
+      {/* Subtle flat background */}
       <div
-        className="absolute inset-0"
+        className="absolute inset-0 pointer-events-none"
         style={{
-          backgroundImage: `linear-gradient(135deg, ${colors.background} 0%, ${withAlpha("hsl(213 90% 96%)", 0.28)} 40%, ${colors.background} 100%)`,
+          background: `linear-gradient(180deg, ${colors.background} 0%, ${withAlpha(colors.card, 0.3)} 50%, ${colors.background} 100%)`,
+          opacity: 0.6,
         }}
       />
-      <div className="absolute inset-0" style={{ background: colors.gradientMesh, opacity: 0.35 }} />
 
-      <div
-        className="absolute -left-10 top-16 w-72 h-72 rounded-full blur-3xl animation-float"
-        style={{ backgroundColor: withAlpha(colors.primary, 0.28) }}
-      />
-      <div
-        className="absolute right-10 bottom-20 w-96 h-96 rounded-full blur-3xl animation-float"
-        style={{ backgroundColor: withAlpha(colors.primary, 0.18), animationDelay: "2s" }}
-      />
-      <div
-        className="absolute inset-0 flex items-start justify-center pointer-events-none"
-        style={{ opacity: 0.05 }}
-      >
-        <div
-          className="w-[600px] h-[600px] rounded-full blur-3xl animation-float"
-          style={{
-            backgroundImage: `linear-gradient(90deg, ${withAlpha(colors.primary, 0.06)} 0%, ${withAlpha(colors.primaryGlow ?? colors.primary, 0.04)} 100%)`,
-            marginTop: "6rem",
-          }}
-        />
-      </div>
-
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-        {/* Header with logo and name (no navbar) */}
+      <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10 max-w-[1600px]">
         <header className="flex items-center gap-3 py-6">
-          {/* Inline logo (simple mark) */}
-          {/* <div
-            className="w-12 h-12 rounded-md flex items-center justify-center glass-card"
-            style={{ background: colors.card, border: `1px solid ${colors.border}`, boxShadow: colors.shadowStrong }}
-          >
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
-              <rect x="2" y="2" width="20" height="20" rx="6" fill={colors.primary} />
-              <path d="M7 12h10" stroke="white" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-              <path d="M7 8h10" stroke={withAlpha("white", 0.85)} strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </div>
-
-          <div>
-            <div className="text-2xl font-bold leading-tight flex items-baseline gap-1">
-              <span style={{ color: colors.foreground }}>SkalX AI</span>
-            </div>
-            <div className="text-sm text-[14px]" style={{ color: colors.mutedForeground }}>Terms &amp; Conditions</div>
-          </div> */}
-
-          <Link href="/" className="flex items-center space-x-1" style={{ color: colors.foreground }}>
-                      <img src="/images/Oli_AI_Logo.svg" alt="SkalX AI Logo" className="h-10 w-auto" />
-                      <span className="text-xl font-bold" style={{ lineHeight: 1 }}>
-                        <span style={{ color: colors.foreground }}>SkalX AI</span>
-                      </span>
-                    </Link>
+          <Link href="/" className="flex items-center" style={{ color: colors.foreground }}>
+            <img src="/images/SkalX_Logo.png" alt="SkalX AI Logo" className="h-8 w-auto object-contain" />
+          </Link>
         </header>
+        {/* Title + Meta */}
+        <div className="mb-10">
+          <h1
+            className="text-[34px] sm:text-[36px] font-bold leading-tight mb-2"
+            style={{ color: colors.foreground }}
+          >
+            Terms &amp; Conditions
+          </h1>
+          <div
+            className="text-[15px]"
+            style={{ color: colors.mutedForeground }}
+          >
+            SkalX AI — Last Updated: February 2026
+          </div>
+        </div>
 
-        {/* Content Card */}
-        <section className="max-w-8xl mx-auto mt-6">
-          <div className="p-8 rounded-2xl glass-card border" style={{ borderColor: withAlpha(colors.border, 0.6), background: colors.card }}>
-            <div className="mb-6">
-              <h1 className="text-4xl font-extrabold mb-2" style={{ color: colors.foreground }}>Terms &amp; Conditions</h1>
-              <div className="text-sm" style={{ color: colors.mutedForeground }}>Last Updated: 14th November, 2025</div>
+        {/* Mobile TOC accordion */}
+        <div className="lg:hidden mb-8">
+          <button
+            type="button"
+            onClick={() => setTocOpen(!tocOpen)}
+            className="w-full flex items-center justify-between gap-2 p-4 rounded-xl border transition-colors"
+            style={{
+              background: colors.card,
+              borderColor: withAlpha(colors.border, 0.5),
+              color: colors.foreground,
+            }}
+          >
+            <span className="text-sm font-medium">Table of Contents</span>
+            <ChevronDown
+              className={`h-5 w-5 transition-transform ${tocOpen ? "rotate-180" : ""}`}
+            />
+          </button>
+          {tocOpen && (
+            <nav
+              className="mt-2 p-4 rounded-xl border"
+              style={{
+                background: colors.card,
+                borderColor: withAlpha(colors.border, 0.5),
+              }}
+            >
+              <ul className="space-y-1">
+                {TOC_ITEMS.map(({ id, label }) => (
+                  <li key={id}>
+                    <button
+                      type="button"
+                      onClick={() => scrollTo(id)}
+                      className={`block w-full text-left py-2 px-2 text-sm rounded transition-colors ${
+                        activeSection === id
+                          ? "font-medium"
+                          : ""
+                      }`}
+                      style={{
+                        color: activeSection === id ? colors.primary : colors.foreground,
+                      }}
+                    >
+                      {label}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+          )}
+        </div>
+
+        <div className="flex flex-col lg:flex-row gap-10 lg:gap-12">
+          {/* Desktop Sticky TOC */}
+          <aside
+            className="hidden lg:block w-full lg:w-[25%] shrink-0"
+            style={{ maxWidth: 280 }}
+          >
+            <nav
+              className="sticky top-24 space-y-1"
+              style={{ paddingTop: 8 }}
+            >
+              {TOC_ITEMS.map(({ id, label }) => (
+                <a
+                  key={id}
+                  href={`#${id}`}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    scrollTo(id);
+                  }}
+                  className={`block py-2 text-[14px] rounded px-2 transition-colors hover:underline ${
+                    activeSection === id ? "font-medium" : ""
+                  }`}
+                  style={{
+                    color: activeSection === id ? colors.primary : colors.mutedForeground,
+                  }}
+                >
+                  {label}
+                </a>
+              ))}
+            </nav>
+          </aside>
+
+          {/* Main content */}
+          <div
+            ref={contentRef}
+            className="flex-1 min-w-0 space-y-12"
+            style={{ maxWidth: 1100 }}
+          >
+            {/* Quick Summary */}
+            <div
+              className="rounded-[18px] p-6 sm:p-8 border shadow-lg"
+              style={{
+                background: withAlpha(colors.primary, 0.06),
+                borderColor: withAlpha(colors.primary, 0.2),
+              }}
+            >
+              <h3
+                className="text-lg font-semibold mb-4"
+                style={{ color: colors.foreground }}
+              >
+                Quick Summary
+              </h3>
+              <ul className="space-y-3">
+                {[
+                  { icon: FileText, text: "These Terms govern your use of SkalX AI and all related services." },
+                  { icon: CheckCircle2, text: "You must be 18+ and use the platform for lawful business purposes." },
+                  { icon: AlertTriangle, text: "AI-generated output requires human review before publishing." },
+                  { icon: CreditCard, text: "Payments are final; approved refunds are issued as credit vouchers only." },
+                  { icon: Shield, text: "Your data is handled securely and never sold." },
+                  { icon: FileText, text: "Governed by the laws of India (Chennai jurisdiction)." },
+                ].map(({ icon: Icon, text }) => (
+                  <li key={text} className="flex items-start gap-3">
+                    <Icon
+                      className="h-5 w-5 shrink-0 mt-0.5"
+                      style={{ color: colors.primary }}
+                    />
+                    <span
+                      className="text-[15px] leading-[1.65]"
+                      style={{ color: colors.foreground }}
+                    >
+                      {text}
+                    </span>
+                  </li>
+                ))}
+              </ul>
             </div>
 
-            <article className="prose prose-invert max-w-none" style={{ color: colors.foreground }}>
-              <h2 className="font-bold">Welcome to SkalX AI</h2>
-              <p>
-              SkalX AI ("Company", "we", "our", "us"). These Terms &amp; Conditions ("Terms") govern your access and use of the SkalX AI app, website, and all related services ("Services"). By accessing or using SkalX AI, you agree to these Terms. If you do not agree, do not use SkalX AI.
+            {/* 1. Acceptance of Terms */}
+            <SectionBlock>
+              <SectionHeading
+                id="acceptance"
+                className="text-[22px] sm:text-[24px] font-semibold mb-6"
+              >
+                1. Acceptance of Terms
+              </SectionHeading>
+              <p
+                className="text-[15px] leading-[1.7] mb-4"
+                style={{ color: colors.foreground }}
+              >
+                These Terms of Service (&quot;Terms&quot;) govern your access to and use of SkalX AI&apos;s website, platform, and related services (&quot;Services&quot;).
               </p>
+              <p
+                className="text-[15px] leading-[1.7]"
+                style={{ color: colors.foreground }}
+              >
+                By accessing or using the Services, you agree to these Terms. If you do not agree, you must discontinue use.
+              </p>
+            </SectionBlock>
 
-              <h3 className="font-bold mt-8">1. About SkalX AI</h3>
-              <p>
-                SkalX AI is an AI-powered campaign creation and marketing automation platform that helps businesses:
+            {/* 2. About SkalX AI */}
+            <SectionBlock>
+              <SectionHeading
+                id="about"
+                className="text-[22px] sm:text-[24px] font-semibold mb-6"
+              >
+                2. About SkalX AI
+              </SectionHeading>
+              <p
+                className="text-[15px] leading-[1.7] mb-4"
+                style={{ color: colors.foreground }}
+              >
+                SkalX AI is an AI-powered campaign creation and marketing automation platform that enables users to:
               </p>
-              <ul className="list-disc ml-4">
-                <li>generate creatives and captions</li>
-                <li>publish posts</li>
-                <li>run ads</li>
-                <li>analyze performance</li>
-                <li>receive AI insights and recommendations</li>
+              <ul className="list-disc pl-6 space-y-2 text-[15px] leading-[1.7] mb-4">
+                <li>Generate creatives (image/video)</li>
+                <li>Create captions and ad copy</li>
+                <li>Publish posts</li>
+                <li>Run advertisements</li>
+                <li>Analyze performance</li>
+                <li>Receive AI insights</li>
               </ul>
-              <p>
-                SkalX AI integrates with third-party services including Meta, Google, and Razorpay.
+              <p
+                className="text-[15px] leading-[1.7]"
+                style={{ color: colors.foreground }}
+              >
+                We integrate with Meta, Google, Razorpay, and other third-party providers.
               </p>
+            </SectionBlock>
 
-              <h3 className="font-bold mt-8">2. Eligibility</h3>
-              <p>You must:</p>
-              <ul className="list-disc ml-4">
-                <li>be at least 18 years old</li>
-                <li>have legal authority to enter this agreement</li>
-                <li>use SkalX AI only for lawful business purposes</li>
+            {/* 3. Eligibility */}
+            <SectionBlock>
+              <SectionHeading
+                id="eligibility"
+                className="text-[22px] sm:text-[24px] font-semibold mb-6"
+              >
+                3. Eligibility
+              </SectionHeading>
+              <p
+                className="text-[15px] leading-[1.7] mb-4"
+                style={{ color: colors.foreground }}
+              >
+                You must:
+              </p>
+              <ul className="list-disc pl-6 space-y-2 text-[15px] leading-[1.7]">
+                <li>Be at least 18 years old</li>
+                <li>Have authority to bind your business</li>
+                <li>Use the Services for lawful purposes only</li>
               </ul>
+            </SectionBlock>
 
-              <h3 className="font-bold mt-8">3. Account Registration</h3>
-              <p>
-                You must provide accurate information. You are responsible for safeguarding your login credentials, maintaining account security, and all actions taken through your account. If you connect Meta, Google, or other social accounts, you authorize SkalX AI to access the necessary data to provide services.
+            {/* 4. Account Registration & Security */}
+            <SectionBlock>
+              <SectionHeading
+                id="account-security"
+                className="text-[22px] sm:text-[24px] font-semibold mb-6"
+              >
+                4. Account Registration &amp; Security
+              </SectionHeading>
+              <p
+                className="text-[15px] leading-[1.7] mb-4"
+                style={{ color: colors.foreground }}
+              >
+                You are responsible for:
               </p>
-
-              <h3 className="font-bold mt-8">4. Use of Services</h3>
-              <p>You agree not to:</p>
-              <ul className="list-disc ml-4">
-                <li>misuse, reverse engineer, or attempt unauthorized access</li>
-                <li>interfere with service operations</li>
-                <li>publish harmful, unlawful, misleading, or abusive content</li>
-                <li>use SkalX AI to violate advertising policies of Meta/Google</li>
-                <li>use AI-generated content for illegal or harmful purposes</li>
+              <ul className="list-disc pl-6 space-y-2 text-[15px] leading-[1.7] mb-4">
+                <li>Providing accurate registration details</li>
+                <li>Safeguarding login credentials</li>
+                <li>All activities conducted under your account</li>
               </ul>
-              <p><strong>SkalX AI may suspend or terminate your access for violations.</strong></p>
+              <p
+                className="text-[15px] leading-[1.7]"
+                style={{ color: colors.foreground }}
+              >
+                If you connect third-party platforms (Meta, Google), you authorize us to access required data solely to provide Services.
+              </p>
+            </SectionBlock>
 
-              <h3 className="font-bold mt-8">5. Meta API &amp; Google API Compliance</h3>
-              <p>By connecting Meta or Google accounts, you acknowledge:</p>
-              <p><strong>We do NOT:</strong></p>
-              <ul className="list-disc ml-4">
-                <li>sell or share your Meta/Google data</li>
-                <li>use your data for advertising outside your campaigns</li>
-                <li>store your data longer than necessary</li>
-                <li>use your data for training internal AI models</li>
-                <li>transfer your data to data brokers</li>
+            {/* 5. Acceptable Use */}
+            <SectionBlock>
+              <SectionHeading
+                id="acceptable-use"
+                className="text-[22px] sm:text-[24px] font-semibold mb-6"
+              >
+                5. Acceptable Use
+              </SectionHeading>
+              <p
+                className="text-[15px] leading-[1.7] mb-4"
+                style={{ color: colors.foreground }}
+              >
+                You agree NOT to:
+              </p>
+              <HighlightBox variant="error">
+                <ul className="list-disc pl-5 space-y-1 text-[15px] leading-[1.7]">
+                  <li>Reverse engineer or replicate the platform</li>
+                  <li>Scrape, extract, or mass-download outputs</li>
+                  <li>Upload illegal, infringing, violent, hateful, or harmful content</li>
+                  <li>Violate Meta/Google advertising policies</li>
+                  <li>Attempt to exploit glitches for refunds</li>
+                  <li>Manipulate prompts to cause failures</li>
+                  <li>Initiate fraudulent chargebacks</li>
+                  <li>Interfere with security or infrastructure</li>
+                </ul>
+              </HighlightBox>
+              <p
+                className="text-[15px] leading-[1.7] mt-4"
+                style={{ color: colors.foreground }}
+              >
+                Violation may result in suspension or permanent termination.
+              </p>
+            </SectionBlock>
+
+            {/* 6. Third-Party API Compliance */}
+            <SectionBlock>
+              <SectionHeading
+                id="third-party-api"
+                className="text-[22px] sm:text-[24px] font-semibold mb-6"
+              >
+                6. Third-Party API Compliance
+              </SectionHeading>
+              <div
+                className="border-t pt-5 mt-5"
+                style={{ borderColor: withAlpha(colors.border, 0.4) }}
+              >
+                <h4
+                  className="text-[18px] font-medium mb-3"
+                  style={{ color: colors.foreground }}
+                >
+                  6.1 Meta Platform Data
+                </h4>
+                <p
+                  className="text-[15px] leading-[1.7] mb-2"
+                  style={{ color: colors.foreground }}
+                >
+                  We:
+                </p>
+                <ul className="list-disc pl-6 space-y-2 text-[15px] leading-[1.7] mb-4">
+                  <li>Use Meta data only for publishing, analytics, and insights</li>
+                  <li>Encrypt and securely store tokens</li>
+                  <li>Delete tokens upon revocation</li>
+                  <li>Do NOT sell, rent, or share Meta data</li>
+                  <li>Do NOT use Meta data for AI training</li>
+                </ul>
+                <p
+                  className="text-[15px] leading-[1.7]"
+                  style={{ color: colors.foreground }}
+                >
+                  Users may revoke access via Facebook Business Integrations.
+                </p>
+              </div>
+              <div
+                className="border-t pt-5 mt-5"
+                style={{ borderColor: withAlpha(colors.border, 0.4) }}
+              >
+                <h4
+                  className="text-[18px] font-medium mb-3"
+                  style={{ color: colors.foreground }}
+                >
+                  6.2 Google API Data
+                </h4>
+                <p
+                  className="text-[15px] leading-[1.7] mb-2"
+                  style={{ color: colors.foreground }}
+                >
+                  Our use complies with Google API Services User Data Policy and Limited Use requirements.
+                </p>
+                <p
+                  className="text-[15px] leading-[1.7] mb-2"
+                  style={{ color: colors.foreground }}
+                >
+                  Google data is:
+                </p>
+                <ul className="list-disc pl-6 space-y-2 text-[15px] leading-[1.7]">
+                  <li>Used only for core features</li>
+                  <li>Not sold</li>
+                  <li>Not used for profiling</li>
+                  <li>Stored securely</li>
+                  <li>Deleted upon revocation</li>
+                </ul>
+              </div>
+            </SectionBlock>
+
+            {/* 7. AI Usage & Responsible Disclosure */}
+            <SectionBlock>
+              <SectionHeading
+                id="ai-usage"
+                className="text-[22px] sm:text-[24px] font-semibold mb-6"
+              >
+                7. AI Usage &amp; Responsible Disclosure
+              </SectionHeading>
+              <p
+                className="text-[15px] leading-[1.7] mb-4"
+                style={{ color: colors.foreground }}
+              >
+                SkalX AI uses AI systems for:
+              </p>
+              <ul className="list-disc pl-6 space-y-2 text-[15px] leading-[1.7] mb-4">
+                <li>Creative generation</li>
+                <li>Caption generation</li>
+                <li>Insights &amp; optimization</li>
+                <li>Automation tasks</li>
               </ul>
-
-              <p><strong>We DO:</strong></p>
-              <ul className="list-disc ml-4">
-                <li>use Meta/Google data only to provide analytics, insights, and publishing</li>
-                <li>store access tokens securely and in encrypted form</li>
-                <li>delete your data promptly when you disconnect or request deletion</li>
+              <p
+                className="text-[15px] leading-[1.7] mb-4"
+                style={{ color: colors.foreground }}
+              >
+                AI output:
+              </p>
+              <ul className="list-disc pl-6 space-y-2 text-[15px] leading-[1.7] mb-4">
+                <li>May be inaccurate or biased</li>
+                <li>Requires human review</li>
+                <li>Is used at your own discretion</li>
               </ul>
-
-              <p><strong>Revoking Access</strong></p>
-              <p>
-                You may revoke SkalX AI’s access anytime through: Facebook Settings → Business Integrations or Google Account → Security → Third-party Access
+              <p
+                className="text-[15px] leading-[1.7] mb-6"
+                style={{ color: colors.foreground }}
+              >
+                We are not liable for business results or output accuracy.
               </p>
+              <div
+                className="border-t pt-5 mt-5"
+                style={{ borderColor: withAlpha(colors.border, 0.4) }}
+              >
+                <h4
+                  className="text-[18px] font-medium mb-3"
+                  style={{ color: colors.foreground }}
+                >
+                  7.1 AI Providers
+                </h4>
+                <p
+                  className="text-[15px] leading-[1.7]"
+                  style={{ color: colors.foreground }}
+                >
+                  We may use third-party AI vendors (e.g., OpenAI). Vendor selection may change. Providers are selected based on privacy and security standards.
+                </p>
+              </div>
+              <div
+                className="border-t pt-5 mt-5"
+                style={{ borderColor: withAlpha(colors.border, 0.4) }}
+              >
+                <h4
+                  className="text-[18px] font-medium mb-3"
+                  style={{ color: colors.foreground }}
+                >
+                  7.2 Data Sent to AI Providers
+                </h4>
+                <p
+                  className="text-[15px] leading-[1.7] mb-2"
+                  style={{ color: colors.foreground }}
+                >
+                  We send only the minimum necessary:
+                </p>
+                <ul className="list-disc pl-6 space-y-2 text-[15px] leading-[1.7] mb-4">
+                  <li>User prompts</li>
+                  <li>Uploaded assets (when required)</li>
+                  <li>Non-sensitive campaign metadata</li>
+                </ul>
+                <p
+                  className="text-[15px] leading-[1.7] mb-2"
+                  style={{ color: colors.foreground }}
+                >
+                  We do NOT send:
+                </p>
+                <ul className="list-disc pl-6 space-y-2 text-[15px] leading-[1.7] mb-4">
+                  <li>Access tokens</li>
+                  <li>API secrets</li>
+                  <li>Meta/Google private data (unless explicitly provided and consented)</li>
+                </ul>
+              </div>
+              <div
+                className="border-t pt-5 mt-5"
+                style={{ borderColor: withAlpha(colors.border, 0.4) }}
+              >
+                <h4
+                  className="text-[18px] font-medium mb-3"
+                  style={{ color: colors.foreground }}
+                >
+                  7.3 AI Training Policy (Opt-In Only)
+                </h4>
+                <p
+                  className="text-[15px] leading-[1.7] mb-4"
+                  style={{ color: colors.foreground }}
+                >
+                  By default, we do NOT use private user content for training.
+                </p>
+                <p
+                  className="text-[15px] leading-[1.7] mb-2"
+                  style={{ color: colors.foreground }}
+                >
+                  If you explicitly opt in:
+                </p>
+                <ul className="list-disc pl-6 space-y-2 text-[15px] leading-[1.7] mb-4">
+                  <li>Anonymized examples may be used</li>
+                  <li>You may withdraw consent anytime</li>
+                  <li>Future datasets will exclude your data</li>
+                </ul>
+                <p
+                  className="text-[15px] leading-[1.7]"
+                  style={{ color: colors.foreground }}
+                >
+                  Meta/Google API data is NEVER used for training.
+                </p>
+              </div>
+              <div
+                className="border-t pt-5 mt-5"
+                style={{ borderColor: withAlpha(colors.border, 0.4) }}
+              >
+                <h4
+                  className="text-[18px] font-medium mb-3"
+                  style={{ color: colors.foreground }}
+                >
+                  7.4 AI Logs &amp; Explainability
+                </h4>
+                <p
+                  className="text-[15px] leading-[1.7]"
+                  style={{ color: colors.foreground }}
+                >
+                  We retain limited generation logs (prompt, metadata, timestamps) for troubleshooting consistent with our retention policy.
+                </p>
+              </div>
+            </SectionBlock>
 
-              <h3 className="font-bold mt-8">6. AI Usage</h3>
-              <p>
-                SkalX AI uses AI to generate text, images, recommendations, and insights. You understand and agree that AI output may contain inaccuracies. You must review and approve AI-generated content. You are responsible for final published content. SkalX AI is not liable for errors in AI-generated output.
-              </p>
+            {/* 8. Payments, Credits & Subscriptions */}
+            <SectionBlock>
+              <SectionHeading
+                id="payments"
+                className="text-[22px] sm:text-[24px] font-semibold mb-6"
+              >
+                8. Payments, Credits &amp; Subscriptions
+              </SectionHeading>
+              <div
+                className="border-b pb-5 mb-5"
+                style={{ borderColor: withAlpha(colors.border, 0.4) }}
+              >
+                <h4
+                  className="text-[18px] font-medium mb-3"
+                  style={{ color: colors.foreground }}
+                >
+                  8.1 Credit-Based System
+                </h4>
+                <p
+                  className="text-[15px] leading-[1.7]"
+                  style={{ color: colors.foreground }}
+                >
+                  Credits are used for AI generation and features. Consumption varies by feature.
+                </p>
+              </div>
+              <div>
+                <h4
+                  className="text-[18px] font-medium mb-3"
+                  style={{ color: colors.foreground }}
+                >
+                  8.2 Subscriptions
+                </h4>
+                <p
+                  className="text-[15px] leading-[1.7] mb-2"
+                  style={{ color: colors.foreground }}
+                >
+                  We offer:
+                </p>
+                <ul className="list-disc pl-6 space-y-2 text-[15px] leading-[1.7] mb-4">
+                  <li>Monthly plans</li>
+                  <li>3-month plans</li>
+                </ul>
+                <p
+                  className="text-[15px] leading-[1.7]"
+                  style={{ color: colors.foreground }}
+                >
+                  Subscriptions renew automatically unless canceled. Cancellation stops future billing but does not provide prorated refunds.
+                </p>
+              </div>
+            </SectionBlock>
 
-              <h4 className="font-bold">6.1 AI Training Policy</h4>
-              <p>
-                SkalX AI may use user-generated content that you manually create, upload, or provide directly inside our platform (such as captions, prompts, uploaded images, and brand assets) to improve and fine-tune certain internal AI models. We do not use Meta API data, Instagram or Facebook insights or media, Google API data, Third-party platform data, or Social login data for any AI model training. Training data is used only with your explicit opt-in consent. You may withdraw your consent at any time, and we will exclude your data from future training datasets.
-              </p>
+            {/* 9. Refund & Cancellation Policy */}
+            <SectionBlock>
+              <SectionHeading
+                id="refund-cancellation"
+                className="text-[22px] sm:text-[24px] font-semibold mb-6"
+              >
+                9. Refund &amp; Cancellation Policy
+              </SectionHeading>
+              <div
+                className="border-t pt-5 mt-5"
+                style={{ borderColor: withAlpha(colors.border, 0.4) }}
+              >
+                <h4
+                  className="text-[18px] font-medium mb-3"
+                  style={{ color: colors.foreground }}
+                >
+                  9.1 General Rule
+                </h4>
+                <p
+                  className="text-[15px] leading-[1.7]"
+                  style={{ color: colors.foreground }}
+                >
+                  All payments are final except in cases of verified technical malfunction. Refunds are issued only as credit vouchers. No cash refunds.
+                </p>
+              </div>
+              <div
+                className="border-t pt-5 mt-5"
+                style={{ borderColor: withAlpha(colors.border, 0.4) }}
+              >
+                <h4
+                  className="text-[18px] font-medium mb-3"
+                  style={{ color: colors.foreground }}
+                >
+                  9.2 Eligible Cases
+                </h4>
+                <HighlightBox variant="success">
+                  <p
+                    className="text-[15px] leading-[1.7] mb-2"
+                    style={{ color: colors.foreground }}
+                  >
+                    Refunds may be granted if:
+                  </p>
+                  <ul className="list-disc pl-5 space-y-1 text-[15px] leading-[1.7]">
+                    <li>System error prevented generation</li>
+                    <li>Credits deducted but output not delivered</li>
+                    <li>Corrupted file due to internal malfunction</li>
+                    <li>Payment processed but credits not credited</li>
+                  </ul>
+                </HighlightBox>
+              </div>
+              <div
+                className="border-t pt-5 mt-5"
+                style={{ borderColor: withAlpha(colors.border, 0.4) }}
+              >
+                <h4
+                  className="text-[18px] font-medium mb-3"
+                  style={{ color: colors.foreground }}
+                >
+                  9.3 Not Eligible
+                </h4>
+                <HighlightBox variant="error">
+                  <p
+                    className="text-[15px] leading-[1.7] mb-2"
+                    style={{ color: colors.foreground }}
+                  >
+                    No refunds for:
+                  </p>
+                  <ul className="list-disc pl-5 space-y-1 text-[15px] leading-[1.7]">
+                    <li>Dissatisfaction with output</li>
+                    <li>Poor ad performance</li>
+                    <li>Used credits</li>
+                    <li>Subscription renewals</li>
+                    <li>Third-party outages</li>
+                    <li>Meta/Google rejection</li>
+                  </ul>
+                </HighlightBox>
+              </div>
+              <div
+                className="border-t pt-5 mt-5"
+                style={{ borderColor: withAlpha(colors.border, 0.4) }}
+              >
+                <h4
+                  className="text-[18px] font-medium mb-3"
+                  style={{ color: colors.foreground }}
+                >
+                  9.4 Reporting Requirement
+                </h4>
+                <HighlightBox variant="warning">
+                  <p
+                    className="text-[15px] leading-[1.7] mb-2"
+                    style={{ color: colors.foreground }}
+                  >
+                    Refund requests must be submitted via the in-app &quot;Report Issue&quot; page with:
+                  </p>
+                  <ul className="list-disc pl-5 space-y-1 text-[15px] leading-[1.7] mb-4">
+                    <li>Screenshot of error</li>
+                    <li>Exact prompt used</li>
+                    <li>Output file (if applicable)</li>
+                    <li>Transaction reference</li>
+                    <li>Issue description</li>
+                  </ul>
+                  <p
+                    className="text-[15px] leading-[1.7]"
+                    style={{ color: colors.foreground }}
+                  >
+                    Must be reported within 48 hours of generation OR 7 days of credit deduction.
+                  </p>
+                </HighlightBox>
+              </div>
+              <div
+                className="border-t pt-5 mt-5"
+                style={{ borderColor: withAlpha(colors.border, 0.4) }}
+              >
+                <h4
+                  className="text-[18px] font-medium mb-3"
+                  style={{ color: colors.foreground }}
+                >
+                  9.5 Refund Format
+                </h4>
+                <p
+                  className="text-[15px] leading-[1.7] mb-2"
+                  style={{ color: colors.foreground }}
+                >
+                  Approved refunds are issued as credit vouchers:
+                </p>
+                <ul className="list-disc pl-6 space-y-2 text-[15px] leading-[1.7]">
+                  <li>Equal to failed generation value</li>
+                  <li>Non-transferable</li>
+                  <li>Valid 60 days</li>
+                  <li>Not convertible to cash</li>
+                </ul>
+              </div>
+            </SectionBlock>
 
-              <h3 className="font-bold mt-8">7. Payments, Credits &amp; Refunds</h3>
-              <p>
-                <strong>Credits:</strong> SkalX AI uses a credit-based system for AI generation and campaign actions. Credit consumption varies by feature.
+            {/* 10. Data Handling & Security */}
+            <SectionBlock>
+              <SectionHeading
+                id="data-handling"
+                className="text-[22px] sm:text-[24px] font-semibold mb-6"
+              >
+                10. Data Handling &amp; Security
+              </SectionHeading>
+              <p
+                className="text-[15px] leading-[1.7] mb-2"
+                style={{ color: colors.foreground }}
+              >
+                We store minimum necessary data:
               </p>
-              <p>
-                <strong>Billing:</strong> Payments are processed via Razorpay. SkalX AI does not store card details.
+              <p
+                className="text-[15px] font-medium mb-1 mt-4"
+                style={{ color: colors.foreground }}
+              >
+                Personal:
               </p>
-              <p>
-                <strong>Refunds:</strong> Refunds apply ONLY to unused credits within 7 days of purchase. No refunds for used credits, subscription cycles already billed, campaigns rejected by Meta/Google, or delays caused by third-party outages.
+              <ul className="list-disc pl-6 space-y-1 text-[15px] leading-[1.7] mb-4">
+                <li>Name, email, business info</li>
+                <li>Uploaded assets</li>
+              </ul>
+              <p
+                className="text-[15px] font-medium mb-1"
+                style={{ color: colors.foreground }}
+              >
+                Operational:
               </p>
-              <p>
-                <strong>Cancellation:</strong> You may cancel anytime, but partial-month refunds are not provided.
+              <ul className="list-disc pl-6 space-y-1 text-[15px] leading-[1.7] mb-4">
+                <li>Prompts</li>
+                <li>Generated creatives</li>
+                <li>Credit logs</li>
+              </ul>
+              <p
+                className="text-[15px] font-medium mb-1"
+                style={{ color: colors.foreground }}
+              >
+                We do NOT permanently store:
               </p>
+              <ul className="list-disc pl-6 space-y-1 text-[15px] leading-[1.7] mb-4">
+                <li>Meta ad data</li>
+                <li>Instagram media fetched via API</li>
+                <li>Google OAuth profile data</li>
+              </ul>
+              <p
+                className="text-[15px] font-medium mb-1"
+                style={{ color: colors.foreground }}
+              >
+                Security measures include:
+              </p>
+              <ul className="list-disc pl-6 space-y-2 text-[15px] leading-[1.7]">
+                <li>SSL/TLS encryption</li>
+                <li>Encrypted token storage</li>
+                <li>Role-based access control</li>
+                <li>Database encryption</li>
+                <li>Audit logs</li>
+                <li>Rate limiting</li>
+                <li>Daily encrypted backups</li>
+              </ul>
+            </SectionBlock>
 
-              <h3 className="font-bold mt-8">8. Intellectual Property</h3>
-              <p>
-                All software, branding, UI, and platform assets belong to SkalX AI. Users own their uploaded content. AI-generated content is licensed to users for business use.
+            {/* 11. Data Retention */}
+            <SectionBlock>
+              <SectionHeading
+                id="data-retention"
+                className="text-[22px] sm:text-[24px] font-semibold mb-6"
+              >
+                11. Data Retention
+              </SectionHeading>
+              <ul className="list-disc pl-6 space-y-2 text-[15px] leading-[1.7] mb-4">
+                <li>Account data: retained until deletion</li>
+                <li>API tokens: deleted immediately upon revocation</li>
+                <li>Analytics logs: 60–90 days</li>
+                <li>Backups: 30-day rolling</li>
+                <li>Support chats: 6 months</li>
+              </ul>
+              <p
+                className="text-[15px] leading-[1.7]"
+                style={{ color: colors.foreground }}
+              >
+                Deletion requests processed within 15 business days.
               </p>
+            </SectionBlock>
 
-              <h3 className="font-bold mt-8">9. Beta Disclaimer</h3>
-              <p>
-                SkalX AI is currently in its MVP/Beta phase. You acknowledge that the service may contain bugs, experience outages, produce inconsistent AI results, and have incomplete features. We appreciate feedback to improve the platform.
+            {/* 12. Intellectual Property */}
+            <SectionBlock>
+              <SectionHeading
+                id="intellectual-property"
+                className="text-[22px] sm:text-[24px] font-semibold mb-6"
+              >
+                12. Intellectual Property
+              </SectionHeading>
+              <p
+                className="text-[15px] font-medium mb-1"
+                style={{ color: colors.foreground }}
+              >
+                SkalX AI retains ownership of:
               </p>
-
-              <h3 className="font-bold mt-8">10. Data &amp; Analytics</h3>
-              <p>
-                We may analyze anonymized usage data to improve features. We do not sell user data, share personal data with advertisers, or use campaign data for profiling outside your use-case.
+              <ul className="list-disc pl-6 space-y-1 text-[15px] leading-[1.7] mb-4">
+                <li>Software</li>
+                <li>Infrastructure</li>
+                <li>Branding</li>
+                <li>UI/UX</li>
+              </ul>
+              <p
+                className="text-[15px] font-medium mb-1"
+                style={{ color: colors.foreground }}
+              >
+                Users retain ownership of:
               </p>
-
-              <h3 className="font-bold mt-8">11. Termination</h3>
-              <p>
-                We may suspend or terminate your account if you violate Terms, your actions threaten system integrity, or required third-party permissions are revoked. You may delete your account anytime by contacting support.
+              <ul className="list-disc pl-6 space-y-1 text-[15px] leading-[1.7] mb-4">
+                <li>Uploaded assets</li>
+                <li>Prompts</li>
+                <li>Generated creatives</li>
+              </ul>
+              <p
+                className="text-[15px] leading-[1.7] mb-4"
+                style={{ color: colors.foreground }}
+              >
+                We receive a limited license to process user content to operate the platform. Users may not replicate or resell core functionality.
               </p>
+            </SectionBlock>
 
-              <h3 className="font-bold mt-8">12. Limitation of Liability</h3>
-              <p>
-                SkalX AI is provided “as is.” We are not liable for business losses, ad rejections by Meta/Google, inaccuracies in AI output, service interruptions caused by third-party APIs, or data loss due to technical issues. Total liability is limited to the amount paid in the last 3 months.
+            {/* 13. Beta Disclaimer */}
+            <SectionBlock>
+              <SectionHeading
+                id="beta-disclaimer"
+                className="text-[22px] sm:text-[24px] font-semibold mb-6"
+              >
+                13. Beta Disclaimer
+              </SectionHeading>
+              <p
+                className="text-[15px] leading-[1.7] mb-4"
+                style={{ color: colors.foreground }}
+              >
+                The platform may operate in MVP/Beta phase.
               </p>
-
-              <h3 className="font-bold mt-8">13. Governing Law</h3>
-              <p>These Terms are governed by the laws of India, and disputes will be resolved in Chennai, Tamil Nadu.</p>
-
-              <h3 className="font-bold mt-8">14. Changes to Terms</h3>
-              <p>We may update these Terms periodically. Continued use of the platform means acceptance of updated Terms.</p>
-
-              <h3 className="font-bold mt-8">15. Contact</h3>
-              <p>
-                support: info@optimx.app
-                <br />
-                Address: Thiruvanmiyur, Chennai, India.
+              <p
+                className="text-[15px] leading-[1.7] mb-2"
+                style={{ color: colors.foreground }}
+              >
+                You acknowledge:
               </p>
-            </article>
+              <ul className="list-disc pl-6 space-y-2 text-[15px] leading-[1.7]">
+                <li>Possible bugs</li>
+                <li>Incomplete features</li>
+                <li>Service interruptions</li>
+                <li>Inconsistent AI outputs</li>
+              </ul>
+            </SectionBlock>
 
-            <div className="mt-8 flex justify-between items-center">
-              <div className="flex items-center gap-3 text-sm" style={{ color: colors.mutedForeground }}>
+            {/* 14. Data & Analytics */}
+            <SectionBlock>
+              <SectionHeading
+                id="data-analytics"
+                className="text-[22px] sm:text-[24px] font-semibold mb-6"
+              >
+                14. Data &amp; Analytics
+              </SectionHeading>
+              <p
+                className="text-[15px] leading-[1.7]"
+                style={{ color: colors.foreground }}
+              >
+                We may use anonymized data to improve features. We do not sell personal data.
+              </p>
+            </SectionBlock>
+
+            {/* 15. Termination */}
+            <SectionBlock>
+              <SectionHeading
+                id="termination"
+                className="text-[22px] sm:text-[24px] font-semibold mb-6"
+              >
+                15. Termination
+              </SectionHeading>
+              <p
+                className="text-[15px] leading-[1.7] mb-4"
+                style={{ color: colors.foreground }}
+              >
+                We may suspend or terminate accounts for:
+              </p>
+              <ul className="list-disc pl-6 space-y-2 text-[15px] leading-[1.7] mb-4">
+                <li>Terms violations</li>
+                <li>Abuse or fraud</li>
+                <li>Chargeback abuse</li>
+                <li>Security threats</li>
+              </ul>
+              <p
+                className="text-[15px] leading-[1.7]"
+                style={{ color: colors.foreground }}
+              >
+                Users may delete accounts at any time.
+              </p>
+            </SectionBlock>
+
+            {/* 16. Limitation of Liability */}
+            <SectionBlock>
+              <SectionHeading
+                id="limitation-liability"
+                className="text-[22px] sm:text-[24px] font-semibold mb-6"
+              >
+                16. Limitation of Liability
+              </SectionHeading>
+              <p
+                className="text-[15px] leading-[1.7] mb-4"
+                style={{ color: colors.foreground }}
+              >
+                Services are provided &quot;as is.&quot; We are not liable for:
+              </p>
+              <ul className="list-disc pl-6 space-y-2 text-[15px] leading-[1.7] mb-4">
+                <li>Business losses</li>
+                <li>Ad rejection</li>
+                <li>AI inaccuracies</li>
+                <li>Third-party outages</li>
+              </ul>
+              <p
+                className="text-[15px] leading-[1.7]"
+                style={{ color: colors.foreground }}
+              >
+                Total liability is limited to amounts paid in the last 3 months.
+              </p>
+            </SectionBlock>
+
+            {/* 17. Governing Law */}
+            <SectionBlock>
+              <SectionHeading
+                id="governing-law"
+                className="text-[22px] sm:text-[24px] font-semibold mb-6"
+              >
+                17. Governing Law
+              </SectionHeading>
+              <p
+                className="text-[15px] leading-[1.7]"
+                style={{ color: colors.foreground }}
+              >
+                Governed by the laws of India. Jurisdiction: Chennai, Tamil Nadu.
+              </p>
+            </SectionBlock>
+
+            {/* 18. Contact */}
+            <SectionBlock>
+              <SectionHeading
+                id="contact"
+                className="text-[22px] sm:text-[24px] font-semibold mb-6"
+              >
+                18. Contact
+              </SectionHeading>
+              <p
+                className="text-[15px] leading-[1.7]"
+                style={{ color: colors.foreground }}
+              >
+                Email: info@optimx.app
+              </p>
+            </SectionBlock>
+
+            {/* Footer CTA */}
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pt-4">
+              <div
+                className="flex items-center gap-3 text-sm"
+                style={{ color: colors.mutedForeground }}
+              >
                 <Sparkles className="h-4 w-4" style={{ color: colors.primary }} />
-                <span>SkalX AI — Marketing Made Simple, For Everyone.</span>
+                <span>SkalX AI — Billing &amp; Support</span>
               </div>
-
-              <div className="flex items-center gap-3">
-                {/* <Button size="sm" variant="outline" asChild>
-                  <a href="#top" onClick={(e) => { e.preventDefault(); topRef.current?.scrollTo({ top: 0, behavior: 'smooth' }); }}>Back to top</a>
-                </Button> */}
-                <Button size="sm" style={{ background: colors.gradientPrimary, color: colors.primaryForeground }}>
-                  <a href="/auth/signin" className="flex items-center gap-2">Start Free Trial <ArrowRight className="h-4 w-4" /></a>
-                </Button>
-              </div>
+              <Button
+                size="sm"
+                style={{
+                  background: colors.gradientPrimary,
+                  color: colors.primaryForeground,
+                }}
+                asChild
+              >
+                <a href="/auth/signin" className="flex items-center gap-2">
+                  Get Started <ArrowRight className="h-4 w-4" />
+                </a>
+              </Button>
             </div>
           </div>
-        </section>
+
+          {/* Right: Policy pages navigation */}
+          <aside className="hidden lg:block w-full shrink-0" style={{ maxWidth: 200 }}>
+            <nav className="sticky top-24 space-y-2 rounded-xl border p-4" style={{ borderColor: withAlpha(colors.border, 0.5), background: colors.card }}>
+              <div className="text-xs font-medium uppercase tracking-wider mb-3" style={{ color: colors.mutedForeground }}>Legal</div>
+              <span className="block py-2 text-[14px] rounded px-2 font-medium" style={{ color: colors.primary }}>
+                Terms &amp; Conditions
+              </span>
+              <Link href="/privacy-policy" className="block py-2 text-[14px] rounded px-2 transition-colors hover:underline" style={{ color: colors.mutedForeground }}>
+                Privacy Policy
+              </Link>
+              <Link href="/cpolicy" className="block py-2 text-[14px] rounded px-2 transition-colors hover:underline" style={{ color: colors.mutedForeground }}>
+                Cookie Policy
+              </Link>
+            </nav>
+          </aside>
+        </div>
       </div>
     </main>
   );
