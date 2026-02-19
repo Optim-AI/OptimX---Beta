@@ -106,8 +106,9 @@ export default function Welcome(): React.ReactElement {
         try {
           const profileRes = await authFetch('/api/profile/get');
           const profileData = await profileRes.json();
-          if (profileData.success && profileData.data && profileData.data.business_name) {
-            // Returning user - skip welcome, go directly to creative studio
+          const p = profileData.success ? profileData.data : null;
+          if (p && (p.business_name || p.businessName)) {
+            // Returning user with completed onboarding - skip welcome, go directly to creative studio
             router.replace('/creative-studio');
             return;
           }

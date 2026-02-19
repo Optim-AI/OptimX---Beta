@@ -1,6 +1,9 @@
 // pages/index.tsx
-import React from "react";
+import React, { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
+import { useRouter } from "next/router";
+import { supabase } from '@/auth/supabase/client';
+import { authFetch } from '@/lib/utils';
 import "../styles/globals.css";
 
 /**
@@ -21,21 +24,62 @@ const FAQ = dynamic(() => import("../app/web/src/components/FAQ"), { ssr: false 
 const FinalCTA = dynamic(() => import("../app/web/src/components/FinalCTA"), { ssr: false });
 const Footer = dynamic(() => import("../app/web/src/components/Footer"), { ssr: false });
 
-const Home: React.FC = () => (
-  <div className="min-h-screen relative" style={{ backgroundColor: '#121212' }}>
-    <ParallaxBackground />
-    <Header />
-    <main className="relative z-10">
-      <Hero />
-      <ComparisonSection />
-      <HowCreditsWork />
-      <BuiltFor />
-      <PricingPreview />
-      <FAQ />
-      <FinalCTA />
-    </main>
-    <Footer />
-  </div>
-);
+const Home: React.FC = () => {
+  const router = useRouter();
+  const [checking, setChecking] = useState(true);
+
+  useEffect(() => {
+    // If the URL has a hash (e.g. /#pricing), skip the redirect so the user can see the section
+    if (window.location.hash) {
+      setChecking(false);
+      return;
+    }
+    (async () => {
+      try {
+        const { data } = await supabase.auth.getUser();
+        if (data?.user) {
+          // Check if user has completed onboarding
+          try {
+            const profileRes = await authFetch('/api/profile/get');
+            const profileData = await profileRes.json();
+            const p = profileData.success ? profileData.data : null;
+            if (p && (p.business_name || p.businessName)) {
+              router.replace("/creative-studio");
+            } else {
+              router.replace("/welcome");
+            }
+          } catch {
+            router.replace("/creative-studio");
+          }
+          return;
+        }
+      } catch {
+        // not signed in, show landing page
+      }
+      setChecking(false);
+    })();
+  }, [router]);
+
+  if (checking) {
+    return <div style={{ minHeight: "100vh", backgroundColor: "#121212" }} />;
+  }
+
+  return (
+    <div className="min-h-screen relative" style={{ backgroundColor: '#121212' }}>
+      <ParallaxBackground />
+      <Header />
+      <main className="relative z-10">
+        <Hero />
+        <ComparisonSection />
+        <HowCreditsWork />
+        <BuiltFor />
+        <PricingPreview />
+        <FAQ />
+        <FinalCTA />
+      </main>
+      <Footer />
+    </div>
+  );
+};
 
 export default Home;
