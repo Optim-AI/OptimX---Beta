@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/router';
+import { showAlert, showError, showConfirm } from '@/app/web/src/components/ui/AlertModal';
 import Link from 'next/link';
 import Sidebar from '@/app/web/src/components/Sidebar';
 import colors from '@/lib/ui/colors';
@@ -97,6 +98,7 @@ export default function VideoSessionPage() {
     addon: number;
     total: number;
   } | null>(null);
+  const [hasInsufficientCredits, setHasInsufficientCredits] = useState(false);
 
   // Auth state
   const [isAuthReady, setIsAuthReady] = useState(false);
@@ -275,23 +277,54 @@ export default function VideoSessionPage() {
 
   // ============== Load Credits ==============
 
+  const loadCredits = useCallback(async () => {
+    try {
+      const response = await authFetch('/api/credits/balance');
+      const data = await response.json();
+      if (data.success) {
+        setCredits(data.credits);
+        setVideoCredits(data.videoCredits);
+        setHasInsufficientCredits((data.videoCredits?.total ?? 0) <= 0);
+      }
+    } catch (err) {
+      console.error('Error loading credits:', err);
+    }
+  }, []);
+
   useEffect(() => {
     if (!isAuthReady) return;
-
-    async function loadCredits() {
-      try {
-        const response = await authFetch('/api/credits/balance');
-        const data = await response.json();
-        if (data.success) {
-          setCredits(data.credits);
-          setVideoCredits(data.videoCredits);
-        }
-      } catch (err) {
-        console.error('Error loading credits:', err);
-      }
-    }
     loadCredits();
-  }, [isAuthReady]);
+  }, [isAuthReady, loadCredits]);
+
+  // ============== Navigation Warning During Video Generation ==============
+
+  useEffect(() => {
+    if (!isGeneratingVideo) return;
+
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = 'Video generation is in progress. Are you sure you want to leave?';
+      return e.returnValue;
+    };
+
+    const handleRouteChange = () => {
+      if (isGeneratingVideo) {
+        const confirmed = window.confirm('Video generation is in progress. Are you sure you want to leave? Your video may be lost.');
+        if (!confirmed) {
+          router.events.emit('routeChangeError');
+          throw 'Route change aborted due to video generation in progress';
+        }
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    router.events.on('routeChangeStart', handleRouteChange);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      router.events.off('routeChangeStart', handleRouteChange);
+    };
+  }, [isGeneratingVideo, router.events]);
 
   // ============== Auto-save Session ==============
 
@@ -383,12 +416,12 @@ export default function VideoSessionPage() {
         setShowBrandOnboarding(false);
       } else {
         console.error('Brand analysis failed:', data.error || 'Unknown error');
-        alert(`Could not analyze website: ${data.error || 'Unknown error'}. Please try manual setup.`);
+        showError(`Could not analyze website: ${data.error || 'Unknown error'}. Please try manual setup.`);
         // Keep modal open on error
       }
     } catch (err: any) {
       console.error('Brand analysis error:', err);
-      alert(`Error analyzing website: ${err.message || 'Unknown error'}. Please try manual setup.`);
+      showError(`Error analyzing website: ${err.message || 'Unknown error'}. Please try manual setup.`);
       // Keep modal open on error
     } finally {
       setIsAnalyzingBrand(false);
@@ -487,7 +520,7 @@ export default function VideoSessionPage() {
         setIsFetchingLogo(false);
       }
     } catch (error: any) {
-      alert(`Failed to scrape product: ${error.message}`);
+      showError(`Failed to scrape product: ${error.message}`);
     } finally {
       setIsScrapingProduct(false);
     }
@@ -571,7 +604,7 @@ export default function VideoSessionPage() {
         adAngle: scriptData.ad_angle,
       });
     } catch (error: any) {
-      alert(`Failed to generate script: ${error.message}`);
+      showError(`Failed to generate script: ${error.message}`);
     } finally {
       setIsGeneratingScript(false);
     }
@@ -581,6 +614,12 @@ export default function VideoSessionPage() {
 
   async function handleGenerateVideo() {
     if (!adBuilderData.product) return;
+
+    // Check for sufficient credits before generating
+    if (hasInsufficientCredits || (videoCredits && videoCredits.total <= 0)) {
+      showError('You have insufficient video credits. Please purchase more credits to generate videos.', 'Insufficient Credits');
+      return;
+    }
 
     setIsGeneratingVideo(true);
     try {
@@ -632,8 +671,13 @@ export default function VideoSessionPage() {
           timestamp: Date.now(),
         },
       ]);
+
+      // Refresh credits after successful generation
+      await loadCredits();
     } catch (error: any) {
-      alert(`Failed to generate video: ${error.message}`);
+      showError(`Failed to generate video: ${error.message}`);
+      // Refresh credits in case they were deducted before the error
+      await loadCredits();
     } finally {
       setIsGeneratingVideo(false);
     }
@@ -702,7 +746,7 @@ export default function VideoSessionPage() {
 
   async function handleCreateNewSession(name: string) {
     if (!brand) {
-      alert('Please set up brand guidelines first');
+      showAlert('Please set up brand guidelines first', 'Brand Required');
       return;
     }
 
@@ -711,7 +755,7 @@ export default function VideoSessionPage() {
       s => s.name.toLowerCase() === name.toLowerCase()
     );
     if (isDuplicate) {
-      alert('A session with this name already exists. Please choose a different name.');
+      showAlert('A session with this name already exists. Please choose a different name.', 'Duplicate Name');
       return;
     }
 
@@ -742,11 +786,11 @@ export default function VideoSessionPage() {
         setShowNewSessionModal(false);
         router.push(`/creative-studio/video?id=${data.session.id}`);
       } else {
-        alert('Failed to create session: ' + (data.error || 'Unknown error'));
+        showError('Failed to create session: ' + (data.error || 'Unknown error'));
       }
     } catch (err) {
       console.error('Create session error:', err);
-      alert('Failed to create session');
+      showError('Failed to create session');
     } finally {
       setIsCreatingSession(false);
     }
@@ -774,11 +818,11 @@ export default function VideoSessionPage() {
           router.push('/creative-studio');
         }
       } else {
-        alert('Failed to delete session: ' + (data.error || 'Unknown error'));
+        showError('Failed to delete session: ' + (data.error || 'Unknown error'));
       }
     } catch (err) {
       console.error('Delete session error:', err);
-      alert('Failed to delete session');
+      showError('Failed to delete session');
     } finally {
       setIsDeletingSession(false);
       setDeleteSessionId(null);
@@ -1632,7 +1676,7 @@ export default function VideoSessionPage() {
                   )}
 
                   {/* Generated Voiceover Script */}
-                  {!isGeneratingScript && adBuilderData.voiceover.script && (
+                  {!isGeneratingScript && adBuilderData.voiceover.enabled && (
                     <div className="p-4 rounded-lg" style={{ backgroundColor: colors.muted }}>
                       <label className="block text-sm font-medium mb-2" style={{ color: colors.foreground }}>
                         Full Voiceover Script
@@ -1653,7 +1697,7 @@ export default function VideoSessionPage() {
                   )}
 
                   {/* Headline & Subtext (editable) + Text style & position */}
-                  {!isGeneratingScript && adBuilderData.onScreenText.enabled && adBuilderData.voiceover.script && (
+                  {!isGeneratingScript && adBuilderData.onScreenText.enabled && adBuilderData.voiceover.enabled && (
                     <div className="space-y-4">
                       <div className="grid grid-cols-2 gap-4">
                         <div>
@@ -1861,10 +1905,15 @@ export default function VideoSessionPage() {
                     </div>
                   )}
 
+                  {/* Insufficient Credits Warning */}
+                  {hasInsufficientCredits && (
+                    <InsufficientCreditsAlert type="video" />
+                  )}
+
                   {/* Generate CTA */}
                   <button
                     onClick={handleGenerateVideo}
-                    disabled={isGeneratingVideo}
+                    disabled={isGeneratingVideo || hasInsufficientCredits}
                     className="w-full px-6 py-4 text-white rounded-xl disabled:opacity-50 disabled:cursor-not-allowed text-lg font-semibold transition-all hover:opacity-95"
                     style={{ backgroundColor: colors.primary, boxShadow: colors.shadowGlow }}
                   >
@@ -1877,6 +1926,35 @@ export default function VideoSessionPage() {
                       'Generate Video'
                     )}
                   </button>
+
+                  {/* Video Generation Progress */}
+                  {isGeneratingVideo && (
+                    <div className="mt-4 p-6 rounded-xl border" style={{ backgroundColor: colors.muted, borderColor: colors.border }}>
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className="relative">
+                          <div className="w-10 h-10 rounded-full border-3 border-t-transparent animate-spin" style={{ borderColor: colors.primary, borderTopColor: 'transparent' }} />
+                          <div className="absolute inset-0 w-10 h-10 rounded-full border-3 border-t-transparent animate-spin" style={{ borderColor: 'transparent', borderBottomColor: colors.primary, animationDirection: 'reverse', animationDuration: '1.5s' }} />
+                        </div>
+                        <div>
+                          <p className="font-semibold" style={{ color: colors.foreground }}>AI is generating your video</p>
+                          <p className="text-sm" style={{ color: colors.mutedForeground }}>This may take 1-2 minutes. Please don't close this page.</p>
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <Check className="w-4 h-4" style={{ color: colors.primary }} />
+                          <span className="text-sm" style={{ color: colors.foreground }}>Preparing your video assets...</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="w-4 h-4 rounded-full border-2 border-t-transparent animate-spin" style={{ borderColor: colors.primary, borderTopColor: 'transparent' }} />
+                          <span className="text-sm" style={{ color: colors.mutedForeground }}>AI is composing scenes and visuals...</span>
+                        </div>
+                      </div>
+                      <div className="mt-4 w-full rounded-full h-1.5 overflow-hidden" style={{ backgroundColor: colors.border }}>
+                        <div className="h-full rounded-full animate-pulse" style={{ backgroundColor: colors.primary, width: '60%', transition: 'width 2s ease' }} />
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Generated Videos */}

@@ -6,6 +6,7 @@ import { supabase } from '@/auth/supabase/client';
 import { Image, Video, ArrowLeft, Plus, Minus, Check, Shield, CheckCircle, Mail, X } from 'lucide-react';
 import colors from '@/lib/ui/colors';
 import { authFetch } from '@/lib/utils';
+import Sidebar from '@/app/web/src/components/Sidebar';
 import {
     BUY_CREDITS_PRICING,
     calculateTotalsInr,
@@ -242,8 +243,11 @@ export default function BuyCreditsPage() {
 
   if (loading) {
     return (
-      <div className="app-page" style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', color: colors.foreground }}>
-        Loading...
+      <div className="min-h-screen flex app-page">
+        <Sidebar />
+        <div className="flex-1" style={{ display: 'grid', placeItems: 'center', color: colors.foreground }}>
+          Loading...
+        </div>
       </div>
     );
   }
@@ -253,7 +257,9 @@ export default function BuyCreditsPage() {
       {/* Load Razorpay Script */}
       <script src="https://checkout.razorpay.com/v1/checkout.js" async />
 
-      <div className="page app-page">
+      <div className="min-h-screen flex app-page">
+        <Sidebar />
+        <div className="page flex-1" style={{ borderLeft: `1px solid ${colors.border}` }}>
         <div className="container">
           <header className="top-bar">
             <button className="back-btn" onClick={() => router.back()}>
@@ -478,6 +484,7 @@ export default function BuyCreditsPage() {
           </div>
         </div>
       </div>
+      </div>
 
       {/* Payment Success Modal */}
       {showSuccess && purchaseInfo && (
@@ -516,6 +523,7 @@ export default function BuyCreditsPage() {
           padding: 40px 32px;
           font-family: Poppins, Inter, system-ui;
           color: ${colors.foreground};
+          overflow-y: auto;
         }
         .container {
           max-width: 1100px;

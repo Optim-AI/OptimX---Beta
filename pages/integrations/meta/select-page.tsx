@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import dynamic from "next/dynamic";
 import type { FacebookPage } from '@/integrations/meta/oauth-session';
+import { showError } from '@/app/web/src/components/ui/AlertModal';
 
 function SelectFacebookPageComponent() {
   const router = useRouter();
@@ -55,7 +56,7 @@ function SelectFacebookPageComponent() {
       }
     } catch (err: any) {
       console.error("Failed to finalize:", err);
-      alert(`Failed to connect page: ${err.message}. Please try again.`);
+      showError(`Failed to connect page: ${err.message}. Please try again.`);
       setSelecting(false);
       setSelectedPageId(null);
     }

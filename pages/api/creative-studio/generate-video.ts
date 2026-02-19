@@ -3,6 +3,8 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { GoogleGenAI } from "@google/genai";
 import sharp from "sharp";
+import { getUserIdFromRequest } from '@/auth/request';
+import { CreditsDAO } from '@/database/models/Credits.dao';
 
 export const config = {
   api: {
@@ -161,6 +163,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
+    // Authenticate user and check credits
+    const userId = await getUserIdFromRequest(req);
+    if (!userId) {
+      return res.status(401).json({ ok: false, error: 'Unauthorized - no valid session' });
+    }
+
+    const balance = await CreditsDAO.getFullBalance(userId);
+    const videoTotal = (balance?.videoCredits?.subscription ?? 0) + (balance?.videoCredits?.addon ?? 0);
+    if (videoTotal <= 0) {
+      return res.status(402).json({ ok: false, error: 'Insufficient video credits. Please purchase more credits.' });
+    }
+
     const ai = new GoogleGenAI({ apiKey });
     
     const { 
@@ -367,6 +381,19 @@ ${reference_images.length > 0 ? `CRITICAL — USE REFERENCE IMAGES PRECISELY: De
       return res.status(500).json({ ok: false, error: "No video data available in response" });
     }
 
+    // Deduct video credits after successful generation
+    try {
+      await CreditsDAO.deductVideoCredits(userId, initialDurationSeconds);
+      console.log(`✅ Deducted ${initialDurationSeconds}s video credits for user ${userId}`);
+    } catch (creditError) {
+      console.error(`⚠ Failed to deduct video credits for user ${userId}:`, creditError);
+      // Don't fail the response - video was already generated
+    }
+
+    // Get updated balance to return
+    const updatedBalance = await CreditsDAO.getFullBalance(userId);
+    const updatedVideoTotal = (updatedBalance?.videoCredits?.subscription ?? 0) + (updatedBalance?.videoCredits?.addon ?? 0);
+
     return res.status(200).json({
       ok: true,
       videoUrl,
@@ -374,6 +401,7 @@ ${reference_images.length > 0 ? `CRITICAL — USE REFERENCE IMAGES PRECISELY: De
       aspectRatio: videoAspectRatio,
       referenceImagesUsed: reference_images.length,
       model: "veo-3.1-fast-generate-preview",
+      creditsRemaining: updatedVideoTotal,
     });
   } catch (error: any) {
     console.error("❌ Video generation error:", error);

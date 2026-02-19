@@ -102,6 +102,20 @@ export default function Welcome(): React.ReactElement {
         }
         // If plans are disabled, user can proceed with pay-as-you-go
 
+        // Check if returning user (already completed onboarding)
+        try {
+          const profileRes = await authFetch('/api/profile/get');
+          const profileData = await profileRes.json();
+          if (profileData.success && profileData.data && profileData.data.business_name) {
+            // Returning user - skip welcome, go directly to creative studio
+            router.replace('/creative-studio');
+            return;
+          }
+        } catch (profileErr) {
+          // Profile check failed, continue to show welcome page
+          console.error('Profile check error:', profileErr);
+        }
+
         // Extract and set user name
         const name = extractName(user);
         if (name) setUserName(capitalize(name.split(" ")[0]));

@@ -30,7 +30,7 @@ export function SystemBubble({ children, images, imageUrls, onImageClick, onUseA
   };
   
   return (
-    <div className="flex gap-4 max-w-4xl">
+    <div className="flex gap-4 max-w-4xl overflow-hidden">
       <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center" style={{ backgroundColor: colors.muted }}>
         <span className="text-xs" style={{ color: colors.foreground }}>AI</span>
       </div>
@@ -122,8 +122,8 @@ type UserBubbleProps = {
 
 export function UserBubble({ message }: UserBubbleProps) {
   return (
-    <div className="flex gap-4 max-w-3xl ml-auto">
-      <div className="flex-1 flex flex-col items-end gap-2">
+    <div className="flex gap-4 max-w-4xl ml-auto overflow-hidden">
+      <div className="flex-1 flex flex-col items-end gap-2 min-w-0">
         {message.images && message.images.length > 0 && (
           <div className="flex flex-wrap gap-2 mb-2">
             {message.images.map((img, idx) => (
@@ -138,7 +138,7 @@ export function UserBubble({ message }: UserBubbleProps) {
           </div>
         )}
         {message.content && (
-          <div className="p-4 rounded-2xl rounded-tr-sm text-sm leading-relaxed max-w-full" style={{ backgroundColor: colors.primary, color: colors.primaryForeground }}>
+          <div className="p-4 rounded-2xl rounded-tr-sm text-sm leading-relaxed max-w-full" style={{ backgroundColor: colors.primary, color: colors.primaryForeground, overflowWrap: 'break-word', wordBreak: 'break-word' }}>
             {message.content}
           </div>
         )}

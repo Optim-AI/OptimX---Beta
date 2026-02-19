@@ -22,7 +22,7 @@ export default function BrandCard({
   onConfirm,
 }: BrandCardProps) {
   return (
-    <div className="flex gap-4 max-w-3xl">
+    <div className="flex gap-4 max-w-4xl">
       <div className="flex-shrink-0 w-8" />
       <div className="flex-1">
         <div className="border-2 border-gray-700 rounded-xl p-6 bg-gray-800 shadow-sm">

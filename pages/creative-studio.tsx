@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
+import { showAlert, showError } from '@/app/web/src/components/ui/AlertModal';
 import Link from 'next/link';
 import Sidebar from '@/app/web/src/components/Sidebar';
 import colors from '@/lib/ui/colors';
@@ -94,8 +95,10 @@ export default function CreativeStudioLanding() {
       try {
         const parsed = JSON.parse(storedBrand);
         setBrand(parsed);
-        // On page entry: show brand guideline modal so user sees/edits stored guideline
-        setShowBrandGuidelineModal(true);
+        // Only show brand guideline modal on first visit (not every page entry)
+        if (!localStorage.getItem('brand:guideline_seen')) {
+          setShowBrandGuidelineModal(true);
+        }
       } catch (e) {
         console.error('Failed to parse stored brand:', e);
         setShowBrandOnboarding(true);
@@ -130,7 +133,7 @@ export default function CreativeStudioLanding() {
 
   async function handleCreateSession(name: string) {
     if (!brand) {
-      alert('Please set up your brand first.');
+      showAlert('Please set up your brand first.', 'Brand Required');
       return;
     }
 
@@ -158,11 +161,11 @@ export default function CreativeStudioLanding() {
           router.push(`/creative-studio/video?id=${data.session.id}`);
         }
       } else {
-        alert('Failed to create session: ' + (data.error || 'Unknown error'));
+        showError('Failed to create session: ' + (data.error || 'Unknown error'));
       }
     } catch (err) {
       console.error('Error creating session:', err);
-      alert('Failed to create session');
+      showError('Failed to create session');
     } finally {
       setIsCreatingSession(false);
     }
@@ -230,12 +233,12 @@ export default function CreativeStudioLanding() {
       } else {
         const errorMsg = data.error || 'Could not analyze website.';
         setShowBrandOnboarding(true);
-        alert(`${errorMsg} Please try manual setup.`);
+        showError(`${errorMsg} Please try manual setup.`);
       }
     } catch (err: any) {
       console.error('Brand analysis error:', err);
       setShowBrandOnboarding(true);
-      alert(`Error analyzing website: ${err?.message || 'Unknown error'}. Please try manual setup.`);
+      showError(`Error analyzing website: ${err?.message || 'Unknown error'}. Please try manual setup.`);
     } finally {
       setIsAnalyzingBrand(false);
     }
@@ -286,6 +289,7 @@ export default function CreativeStudioLanding() {
   function updateBrandGuideline(updated: BrandSnapshot) {
     setBrand(updated);
     localStorage.setItem('brand:snapshot', JSON.stringify(updated));
+    localStorage.setItem('brand:guideline_seen', 'true');
     setShowBrandGuidelineModal(false);
   }
 
@@ -522,7 +526,10 @@ export default function CreativeStudioLanding() {
           <BrandGuidelineModal
             brand={brand}
             onUpdate={updateBrandGuideline}
-            onClose={() => setShowBrandGuidelineModal(false)}
+            onClose={() => {
+              localStorage.setItem('brand:guideline_seen', 'true');
+              setShowBrandGuidelineModal(false);
+            }}
           />
         )}
       </div>

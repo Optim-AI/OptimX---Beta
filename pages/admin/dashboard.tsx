@@ -17,6 +17,8 @@ import {
   Save,
   MessageSquare,
   Eye,
+  Users,
+  CreditCard,
 } from 'lucide-react';
 import colors from '@/lib/ui/colors';
 
@@ -65,7 +67,31 @@ interface ReportData {
   userFullName: string | null;
 }
 
-type ActiveSection = 'plans' | 'reports';
+interface UserData {
+  id: string;
+  fullName: string | null;
+  email: string | null;
+  businessName: string | null;
+  createdAt: string | null;
+  plan: string;
+  subscriptionStatus: string | null;
+  imageCredits: number;
+  videoCredits: number;
+}
+
+interface UserPayment {
+  id: string;
+  amount: number;
+  currency: string;
+  status: string;
+  paymentType: string;
+  planName: string | null;
+  metadata: any;
+  createdAt: string;
+  razorpayPaymentId: string | null;
+}
+
+type ActiveSection = 'plans' | 'reports' | 'users';
 
 export default function AdminDashboard() {
   const router = useRouter();
@@ -98,6 +124,13 @@ export default function AdminDashboard() {
   const [selectedReport, setSelectedReport] = useState<ReportData | null>(null);
   const [updatingReportStatus, setUpdatingReportStatus] = useState(false);
 
+  // Users state
+  const [usersData, setUsersData] = useState<UserData[]>([]);
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<UserData | null>(null);
+  const [userPayments, setUserPayments] = useState<UserPayment[]>([]);
+  const [paymentsLoading, setPaymentsLoading] = useState(false);
+
   useEffect(() => {
     // Check if admin is logged in
     const token = localStorage.getItem('admin_token');
@@ -115,6 +148,9 @@ export default function AdminDashboard() {
   useEffect(() => {
     if (activeSection === 'reports' && reportsData.length === 0) {
       fetchReports();
+    }
+    if (activeSection === 'users' && usersData.length === 0) {
+      fetchUsers();
     }
   }, [activeSection]);
 
@@ -183,6 +219,71 @@ export default function AdminDashboard() {
     } finally {
       setReportsLoading(false);
     }
+  }
+
+  async function fetchUsers() {
+    setUsersLoading(true);
+
+    try {
+      const token = localStorage.getItem('admin_token');
+      const response = await fetch('/api/admin/users/list', {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (response.status === 401) {
+        localStorage.removeItem('admin_token');
+        localStorage.removeItem('admin_username');
+        router.replace('/admin/login');
+        return;
+      }
+
+      const result = await response.json();
+
+      if (!result.success) {
+        setError(result.error || 'Failed to fetch users');
+        return;
+      }
+
+      setUsersData(result.users);
+    } catch (err: any) {
+      setError(err.message || 'Failed to fetch users');
+    } finally {
+      setUsersLoading(false);
+    }
+  }
+
+  async function fetchUserPayments(userId: string) {
+    setPaymentsLoading(true);
+    setUserPayments([]);
+
+    try {
+      const token = localStorage.getItem('admin_token');
+      const response = await fetch(`/api/admin/users/payments?userId=${userId}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const result = await response.json();
+
+      if (!result.success) {
+        setError(result.error || 'Failed to fetch payments');
+        return;
+      }
+
+      setUserPayments(result.payments);
+    } catch (err: any) {
+      setError(err.message || 'Failed to fetch payments');
+    } finally {
+      setPaymentsLoading(false);
+    }
+  }
+
+  function handleSelectUser(user: UserData) {
+    setSelectedUser(user);
+    fetchUserPayments(user.id);
   }
 
   async function handleUpdateReportStatus(reportId: string, status: string) {
@@ -478,6 +579,13 @@ export default function AdminDashboard() {
             {reportCounts.open > 0 && (
               <span className="badge">{reportCounts.open}</span>
             )}
+          </button>
+          <button
+            className={`section-btn ${activeSection === 'users' ? 'active' : ''}`}
+            onClick={() => setActiveSection('users')}
+          >
+            <Users size={18} />
+            Users
           </button>
         </div>
 
@@ -789,6 +897,123 @@ export default function AdminDashboard() {
             </div>
           </>
         )}
+
+        {activeSection === 'users' && (
+          <>
+            {/* User Statistics */}
+            <div className="stats-grid">
+              <div className="stat-card">
+                <div className="stat-icon total">
+                  <Users size={24} />
+                </div>
+                <div className="stat-content">
+                  <div className="stat-value">{usersData.length}</div>
+                  <div className="stat-label">Total Users</div>
+                </div>
+              </div>
+
+              <div className="stat-card">
+                <div className="stat-icon active">
+                  <CheckCircle size={24} />
+                </div>
+                <div className="stat-content">
+                  <div className="stat-value">{usersData.filter((u) => u.subscriptionStatus === 'active' || u.subscriptionStatus === 'trialing').length}</div>
+                  <div className="stat-label">Active Subscriptions</div>
+                </div>
+              </div>
+
+              <div className="stat-card">
+                <div className="stat-icon mode">
+                  <CreditCard size={24} />
+                </div>
+                <div className="stat-content">
+                  <div className="stat-value">{usersData.filter((u) => u.plan !== 'Pay-as-you-go').length}</div>
+                  <div className="stat-label">On Plans</div>
+                </div>
+              </div>
+
+              <div className="stat-card">
+                <div className="stat-icon inactive">
+                  <TrendingUp size={24} />
+                </div>
+                <div className="stat-content">
+                  <div className="stat-value">{usersData.filter((u) => u.plan === 'Pay-as-you-go').length}</div>
+                  <div className="stat-label">Pay-as-you-go</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Users Table */}
+            <div className="plans-card">
+              <div className="plans-header">
+                <h3>All Users</h3>
+                <button className="refresh-btn" onClick={fetchUsers} disabled={usersLoading}>
+                  <RefreshCw size={16} className={usersLoading ? 'spin' : ''} />
+                  {usersLoading ? 'Loading...' : 'Refresh'}
+                </button>
+              </div>
+
+              {usersLoading && usersData.length === 0 ? (
+                <div className="empty-state">
+                  <RefreshCw size={24} className="spin" />
+                  <p>Loading users...</p>
+                </div>
+              ) : usersData.length > 0 ? (
+                <div className="table-wrapper">
+                  <table className="plans-table">
+                    <thead>
+                      <tr>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Business</th>
+                        <th>Plan</th>
+                        <th>Image Credits</th>
+                        <th>Video Credits</th>
+                        <th>Joined</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {usersData.map((user) => (
+                        <tr key={user.id} className="report-row" onClick={() => handleSelectUser(user)}>
+                          <td className="plan-name">{user.fullName || '—'}</td>
+                          <td>
+                            <span className="user-cell" title={user.email || user.id}>
+                              {user.email || user.id.slice(0, 8) + '...'}
+                            </span>
+                          </td>
+                          <td>{user.businessName || '—'}</td>
+                          <td>
+                            <span className="billing-badge">{user.plan}</span>
+                          </td>
+                          <td>{user.imageCredits}</td>
+                          <td>{user.videoCredits}s</td>
+                          <td style={{ whiteSpace: 'nowrap' }}>{user.createdAt ? formatDate(user.createdAt) : '—'}</td>
+                          <td>
+                            <button
+                              className="edit-btn"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleSelectUser(user);
+                              }}
+                              title="View payments"
+                            >
+                              <Eye size={16} />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="empty-state">
+                  <p>No users found</p>
+                </div>
+              )}
+            </div>
+          </>
+        )}
       </div>
 
       {/* Edit Plan Modal */}
@@ -986,6 +1211,138 @@ export default function AdminDashboard() {
 
             <div className="modal-footer">
               <button className="cancel-btn" onClick={() => setSelectedReport(null)}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* User Detail / Payment History Modal */}
+      {selectedUser && (
+        <div className="modal-overlay" onClick={() => { setSelectedUser(null); setUserPayments([]); }}>
+          <div className="modal-content report-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '800px' }}>
+            <div className="modal-header">
+              <h3>User Details</h3>
+              <button className="close-btn" onClick={() => { setSelectedUser(null); setUserPayments([]); }}>
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="modal-body">
+              <div className="report-detail-grid">
+                <div className="report-detail-item">
+                  <label>Name</label>
+                  <span className="detail-value">{selectedUser.fullName || '—'}</span>
+                </div>
+
+                <div className="report-detail-item">
+                  <label>Email</label>
+                  <span className="detail-value">{selectedUser.email || '—'}</span>
+                </div>
+
+                <div className="report-detail-item">
+                  <label>Business</label>
+                  <span className="detail-value">{selectedUser.businessName || '—'}</span>
+                </div>
+
+                <div className="report-detail-item">
+                  <label>Plan</label>
+                  <span className="billing-badge">{selectedUser.plan}</span>
+                </div>
+
+                <div className="report-detail-item">
+                  <label>Image Credits</label>
+                  <span className="detail-value" style={{ fontWeight: 700 }}>{selectedUser.imageCredits}</span>
+                </div>
+
+                <div className="report-detail-item">
+                  <label>Video Credits</label>
+                  <span className="detail-value" style={{ fontWeight: 700 }}>{selectedUser.videoCredits}s</span>
+                </div>
+
+                <div className="report-detail-item">
+                  <label>Joined</label>
+                  <span className="detail-value">{selectedUser.createdAt ? formatDate(selectedUser.createdAt) : '—'}</span>
+                </div>
+
+                <div className="report-detail-item">
+                  <label>User ID</label>
+                  <span className="detail-value" style={{ fontSize: '12px', fontFamily: 'monospace' }}>{selectedUser.id}</span>
+                </div>
+              </div>
+
+              {/* Payment History */}
+              <div style={{ marginTop: '24px' }}>
+                <h4 style={{ fontSize: '16px', fontWeight: 700, marginBottom: '16px', color: '#0f172a' }}>
+                  Payment History
+                </h4>
+
+                {paymentsLoading ? (
+                  <div className="empty-state" style={{ padding: '20px' }}>
+                    <RefreshCw size={20} className="spin" />
+                    <p>Loading payments...</p>
+                  </div>
+                ) : userPayments.length > 0 ? (
+                  <div className="table-wrapper">
+                    <table className="plans-table">
+                      <thead>
+                        <tr>
+                          <th>Date</th>
+                          <th>Type</th>
+                          <th>Amount</th>
+                          <th>Plan / Credits</th>
+                          <th>Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {userPayments.map((payment) => {
+                          const pStatusColor = payment.status === 'captured' ? { bg: '#d1fae5', color: '#065f46' }
+                            : payment.status === 'failed' ? { bg: '#fef2f2', color: '#dc2626' }
+                            : { bg: '#f1f5f9', color: '#475569' };
+                          return (
+                            <tr key={payment.id}>
+                              <td style={{ whiteSpace: 'nowrap' }}>{formatDate(payment.createdAt)}</td>
+                              <td>
+                                <span className="billing-badge">
+                                  {payment.paymentType === 'subscription' ? 'Subscription'
+                                    : payment.paymentType === 'image_topup' ? 'Image Credits'
+                                    : payment.paymentType === 'video_topup' ? 'Video Credits'
+                                    : payment.paymentType}
+                                </span>
+                              </td>
+                              <td className="price">
+                                {payment.currency === 'INR' ? '₹' : payment.currency}{payment.amount}
+                              </td>
+                              <td>
+                                {payment.planName || (payment.metadata as any)?.credits
+                                  ? `${payment.planName || ''}${(payment.metadata as any)?.credits ? ` (${(payment.metadata as any).credits} credits)` : ''}`
+                                  : '—'}
+                              </td>
+                              <td>
+                                <span
+                                  className="report-status-badge"
+                                  style={{ background: pStatusColor.bg, color: pStatusColor.color }}
+                                >
+                                  {payment.status === 'captured' ? 'Complete' : payment.status}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="empty-state" style={{ padding: '20px' }}>
+                    <p>No payments found for this user</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="modal-footer">
+              <button className="cancel-btn" onClick={() => { setSelectedUser(null); setUserPayments([]); }}>
                 Close
               </button>
             </div>

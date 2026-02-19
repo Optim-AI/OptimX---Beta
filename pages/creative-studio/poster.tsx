@@ -3,6 +3,7 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/router';
+import { showAlert, showError, showSuccess } from '@/app/web/src/components/ui/AlertModal';
 import { supabase } from '@/auth/supabase/client';
 import Sidebar from '@/app/web/src/components/Sidebar';
 import colors from '@/lib/ui/colors';
@@ -273,22 +274,25 @@ export default function PosterSessionPage() {
 
   // ============== Load Credits ==============
 
+  const loadCredits = useCallback(async () => {
+    try {
+      const response = await authFetch('/api/credits/balance');
+      const data = await response.json();
+      if (data.success) {
+        setCredits(data.credits);
+        if ((data.imageCredits?.total ?? data.credits ?? 0) <= 0) {
+          setHasInsufficientCredits(true);
+        }
+      }
+    } catch (err) {
+      console.error('Error loading credits:', err);
+    }
+  }, []);
+
   useEffect(() => {
     if (!isAuthReady) return;
-
-    async function loadCredits() {
-      try {
-        const response = await authFetch('/api/credits/balance');
-        const data = await response.json();
-        if (data.success) {
-          setCredits(data.credits);
-        }
-      } catch (err) {
-        console.error('Error loading credits:', err);
-      }
-    }
     loadCredits();
-  }, [isAuthReady]);
+  }, [isAuthReady, loadCredits]);
 
   // ============== Load Feature Access ==============
 
@@ -594,8 +598,13 @@ export default function PosterSessionPage() {
   }
 
   async function handleConfigSubmit() {
+    if (hasInsufficientCredits) {
+      addMessage('system', 'You have no credits remaining. Please purchase more credits to generate posters.');
+      return;
+    }
+
     if (!config.theme) {
-      alert('Please select a theme before generating.');
+      showAlert('Please select a theme before generating.', 'Theme Required');
       return;
     }
     
@@ -812,6 +821,8 @@ export default function PosterSessionPage() {
     } finally {
       setIsGenerating(false);
       setThinkingMessages([]);
+      // Full credits refresh to ensure accuracy
+      await loadCredits();
     }
   }
 
@@ -837,13 +848,13 @@ export default function PosterSessionPage() {
       const data = await response.json();
       
       if (data.ok) {
-        alert('Poster saved to your library!');
+        showSuccess('Poster saved to your library!');
       } else {
-        alert('Failed to save poster: ' + (data.error || 'Unknown error'));
+        showError('Failed to save poster: ' + (data.error || 'Unknown error'));
       }
     } catch (err) {
       console.error('Save poster error:', err);
-      alert('Failed to save poster');
+      showError('Failed to save poster');
     } finally {
       setSavingPoster(null);
     }
@@ -867,11 +878,11 @@ export default function PosterSessionPage() {
       if (data.ok && data.campaignId) {
         router.push(`/create-campaign?id=${data.campaignId}`);
       } else {
-        alert('Failed to create campaign: ' + (data.error || 'Unknown error'));
+        showError('Failed to create campaign: ' + (data.error || 'Unknown error'));
       }
     } catch (err) {
       console.error('Create campaign error:', err);
-      alert('Failed to create campaign');
+      showError('Failed to create campaign');
     } finally {
       setCreatingCampaign(null);
     }
@@ -892,6 +903,12 @@ export default function PosterSessionPage() {
   }
 
   async function handleUseAsReference(url: string, index: number) {
+    // Block if no credits
+    if (hasInsufficientCredits) {
+      addMessage('system', 'You have no credits remaining. Please purchase more credits to generate posters.');
+      return;
+    }
+
     // Prevent double-clicks or multiple rapid calls
     if (isAddingReferenceRef.current) {
       console.log('Already adding reference, skipping...');
@@ -1088,7 +1105,7 @@ export default function PosterSessionPage() {
 
   async function handleCreateNewSession(name: string) {
     if (!brand) {
-      alert('Please set up brand guidelines first');
+      showAlert('Please set up brand guidelines first', 'Brand Required');
       return;
     }
     
@@ -1097,7 +1114,7 @@ export default function PosterSessionPage() {
       s => s.name.toLowerCase() === name.toLowerCase()
     );
     if (isDuplicate) {
-      alert('A session with this name already exists. Please choose a different name.');
+      showAlert('A session with this name already exists. Please choose a different name.', 'Duplicate Name');
       return;
     }
     
@@ -1128,11 +1145,11 @@ export default function PosterSessionPage() {
         setShowNewSessionModal(false);
         router.push(`/creative-studio/poster?id=${data.session.id}`);
       } else {
-        alert('Failed to create session: ' + (data.error || 'Unknown error'));
+        showError('Failed to create session: ' + (data.error || 'Unknown error'));
       }
     } catch (err) {
       console.error('Create session error:', err);
-      alert('Failed to create session');
+      showError('Failed to create session');
     } finally {
       setIsCreatingSession(false);
     }
@@ -1160,11 +1177,11 @@ export default function PosterSessionPage() {
           router.push('/creative-studio');
         }
       } else {
-        alert('Failed to delete session: ' + (data.error || 'Unknown error'));
+        showError('Failed to delete session: ' + (data.error || 'Unknown error'));
       }
     } catch (err) {
       console.error('Delete session error:', err);
-      alert('Failed to delete session');
+      showError('Failed to delete session');
     } finally {
       setIsDeletingSession(false);
       setDeleteSessionId(null);
@@ -1176,8 +1193,8 @@ export default function PosterSessionPage() {
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center app-page">
-        <div className="flex items-center gap-3 text-gray-600">
-          <div className="animate-spin rounded-full h-6 w-6 border-2 border-gray-300 border-t-blue-600" />
+        <div className="flex items-center gap-3" style={{ color: colors.mutedForeground }}>
+          <div className="animate-spin rounded-full h-6 w-6 border-2 border-t-transparent" style={{ borderColor: colors.border, borderTopColor: colors.primary }} />
           <span>Loading session...</span>
         </div>
       </div>
@@ -1252,8 +1269,8 @@ export default function PosterSessionPage() {
         </div>
 
         {/* Chat Container */}
-        <div className="flex-1 overflow-y-auto">
-          <div className="max-w-4xl mx-auto px-6 py-8">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden">
+          <div className="max-w-4xl mx-auto px-6 py-8 overflow-hidden">
             <div className="space-y-6">
               {/* Initial system message */}
               {messages.length === 0 && phase === 'input' && (
@@ -1275,11 +1292,11 @@ export default function PosterSessionPage() {
                     {msg.role === 'user' ? (
                       <UserBubble message={msg} />
                     ) : (
-                      <SystemBubble 
+                      <SystemBubble
                         images={msg.images}
                         imageUrls={hideImageUrls ? undefined : msg.imageUrls}
                         onImageClick={(url) => setPreviewImageUrl(url)}
-                        onUseAsReference={(url) => handleUseAsReference(url, 0)}
+                        onUseAsReference={hasInsufficientCredits ? undefined : (url) => handleUseAsReference(url, 0)}
                         onDownload={(url) => {
                           const link = document.createElement('a');
                           link.href = url;
@@ -1300,7 +1317,7 @@ export default function PosterSessionPage() {
                   {thinkingMessages.map((msg, idx) => (
                     <SystemBubble key={idx}>
                       <div className="flex items-center gap-2">
-                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-gray-300 border-t-blue-600" />
+                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-t-transparent" style={{ borderColor: colors.border, borderTopColor: colors.primary }} />
                         <span>{msg}</span>
                       </div>
                     </SystemBubble>
@@ -1312,7 +1329,6 @@ export default function PosterSessionPage() {
               {hasInsufficientCredits && (
                 <InsufficientCreditsAlert
                   type="image"
-                  onClose={() => setHasInsufficientCredits(false)}
                 />
               )}
 
@@ -1378,8 +1394,8 @@ export default function PosterSessionPage() {
                   posterPrompt={posterPrompt}
                   onSavePoster={savePoster}
                   onCreateCampaign={createCampaignFromPoster}
-                  onRegenerate={handleRegenerateClick}
-                  onUseAsReference={handleUseAsReference}
+                  onRegenerate={hasInsufficientCredits ? undefined : handleRegenerateClick}
+                  onUseAsReference={hasInsufficientCredits ? undefined : handleUseAsReference}
                   savingPoster={savingPoster}
                   creatingCampaign={creatingCampaign}
                   showRegeneratePrompt={showRegeneratePrompt}
@@ -1579,6 +1595,7 @@ export default function PosterSessionPage() {
                 </svg>
                 Open in New Tab
               </button>
+              {!hasInsufficientCredits && (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -1593,6 +1610,7 @@ export default function PosterSessionPage() {
                 </svg>
                 Use as Reference
               </button>
+              )}
             </div>
           </div>
         )}
@@ -1734,7 +1752,7 @@ function ProductInput({
   const [isDragging, setIsDragging] = useState(false);
 
   return (
-    <div className="flex gap-4 max-w-3xl ml-auto">
+    <div className="flex gap-4 max-w-4xl">
       <div className="flex-shrink-0 w-8" />
       <form onSubmit={onSubmit} className="flex-1">
         <div
@@ -1825,7 +1843,7 @@ function PosterPromptInput({
   onSubmit: () => void;
 }) {
   return (
-    <div className="flex gap-4 max-w-3xl ml-auto">
+    <div className="flex gap-4 max-w-4xl">
       <div className="flex-shrink-0 w-8" />
       <form onSubmit={(e) => { e.preventDefault(); onSubmit(); }} className="flex-1">
         <div className="border-2 rounded-xl p-6 shadow-sm" style={{ borderColor: colors.border, backgroundColor: colors.card }}>
@@ -1875,7 +1893,7 @@ function ConfigInput({
   const aspectRatios = ASPECT_RATIOS;
 
   return (
-    <div className="flex gap-4 max-w-3xl ml-auto">
+    <div className="flex gap-4 max-w-4xl">
       <div className="flex-shrink-0 w-8" />
       <div className="flex-1">
         <div className="border-2 rounded-xl p-6 space-y-6 shadow-sm" style={{ borderColor: colors.border, backgroundColor: colors.card }}>
@@ -2018,8 +2036,8 @@ function PosterGrid({
   posterPrompt: string;
   onSavePoster: (url: string, index: number) => Promise<void>;
   onCreateCampaign: (url: string, index: number) => Promise<void>;
-  onRegenerate: () => void;
-  onUseAsReference: (url: string, index: number) => void;
+  onRegenerate?: () => void;
+  onUseAsReference?: (url: string, index: number) => void;
   savingPoster: number | null;
   creatingCampaign: number | null;
   showRegeneratePrompt: boolean;
@@ -2188,19 +2206,22 @@ function PosterGrid({
                 value={regeneratePrompt}
                 onChange={(e) => onRegeneratePromptChange(e.target.value)}
                 placeholder="e.g., Make it more colorful, Add more text, Change the background to dark..."
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 resize-none"
+                className="w-full px-3 py-2 rounded-lg text-sm focus:outline-none focus:ring-2 resize-none"
+                style={{ border: `1px solid ${colors.border}`, backgroundColor: colors.input, color: colors.foreground }}
                 rows={3}
               />
               <div className="flex gap-2 mt-3">
                 <button
                   onClick={onRegenerateSubmit}
-                  className="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 transition-colors"
+                  className="px-4 py-2 text-white rounded-lg text-sm font-medium transition-colors"
+                  style={{ backgroundColor: colors.primary }}
                 >
                   Generate
                 </button>
                 <button
                   onClick={onRegenerateCancel}
-                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
+                  className="px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                  style={{ border: `1px solid ${colors.border}`, color: colors.foreground, backgroundColor: colors.muted }}
                 >
                   Cancel
                 </button>
@@ -2215,44 +2236,29 @@ function PosterGrid({
                 key={idx}
                 className="group"
               >
-                {/* Poster - Clickable for preview */}
-                <div 
-                  className="mb-4 rounded-lg overflow-hidden bg-gray-50 border border-gray-100 cursor-pointer relative"
-                  onClick={() => setPreviewImage(poster)}
+                {/* Poster - Clickable for preview, with menu overlay */}
+                <div
+                  className="rounded-lg overflow-visible cursor-pointer relative"
+                  style={{ backgroundColor: colors.muted, border: `1px solid ${colors.border}` }}
                 >
-                  <img
-                    src={poster}
-                    alt={`Generated poster ${idx + 1}`}
-                    className="w-full h-auto block transition-transform duration-200 group-hover:scale-[1.02]"
-                    style={{ imageRendering: 'auto' }}
-                  />
-                  {/* Hover overlay */}
-                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
-                    <span className="opacity-0 group-hover:opacity-100 transition-opacity text-white bg-black/50 px-3 py-1.5 rounded-lg text-sm font-medium">
-                      Click to preview
-                    </span>
+                  <div onClick={() => setPreviewImage(poster)}>
+                    <img
+                      src={poster}
+                      alt={`Generated poster ${idx + 1}`}
+                      className="w-full h-auto block rounded-lg transition-transform duration-200 group-hover:scale-[1.02]"
+                      style={{ imageRendering: 'auto' }}
+                    />
+                    {/* Hover overlay */}
+                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center rounded-lg pointer-events-none">
+                      <span className="opacity-0 group-hover:opacity-100 transition-opacity text-white bg-black/50 px-3 py-1.5 rounded-lg text-sm font-medium">
+                        Click to preview
+                      </span>
+                    </div>
                   </div>
-                </div>
 
-                {/* Subtle Divider */}
-                <div className="h-px bg-gray-100 mb-4" />
-
-                {/* Action Area */}
-                <div className="flex items-center gap-2">
-                  {/* Primary CTA - Use in Campaign (only show if feature enabled) */}
-                  {canCreateCampaigns && (
-                    <button
-                      onClick={() => onCreateCampaign(poster, idx)}
-                      disabled={creatingCampaign === idx}
-                      className="flex-1 px-4 py-2.5 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {creatingCampaign === idx ? 'Creating...' : 'Use in Campaign'}
-                    </button>
-                  )}
-
-                  {/* More Actions Menu - Click based, not hover */}
-                  <div 
-                    className="relative"
+                  {/* Three-dots menu - overlaid on image bottom-right */}
+                  <div
+                    className="absolute bottom-2 right-2"
                     ref={openMenuIndex === idx ? menuRef : null}
                   >
                     <button
@@ -2260,11 +2266,11 @@ function PosterGrid({
                         e.stopPropagation();
                         setOpenMenuIndex(openMenuIndex === idx ? null : idx);
                       }}
-                      className="p-2.5 border rounded-lg transition-colors"
+                      className="p-2 rounded-lg transition-colors shadow-md"
                       style={{
-                        borderColor: openMenuIndex === idx ? colors.primary : colors.border,
-                        backgroundColor: openMenuIndex === idx ? 'hsl(213 100% 55% / 0.15)' : 'transparent',
-                        color: colors.foreground,
+                        backgroundColor: openMenuIndex === idx ? colors.primary : 'rgba(0,0,0,0.6)',
+                        color: 'white',
+                        backdropFilter: 'blur(8px)',
                       }}
                       aria-label="More actions"
                     >
@@ -2283,10 +2289,10 @@ function PosterGrid({
                       </svg>
                     </button>
 
-                    {/* Dropdown Menu - with seamless connection to button */}
+                    {/* Dropdown Menu */}
                     {openMenuIndex === idx && (
-                      <div 
-                        className="absolute right-0 mt-1 w-48 rounded-lg shadow-lg z-20"
+                      <div
+                        className="absolute right-0 bottom-full mb-1 w-48 rounded-lg shadow-xl z-50 max-h-60 overflow-y-auto"
                         style={{ backgroundColor: colors.card, border: `1px solid ${colors.border}` }}
                         onClick={(e) => e.stopPropagation()}
                       >
@@ -2326,7 +2332,8 @@ function PosterGrid({
                               }
                               setOpenMenuIndex(null);
                             }}
-                            className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2"
+                            className="w-full text-left px-4 py-2.5 text-sm transition-colors flex items-center gap-2"
+                            style={{ color: colors.foreground }}
                           >
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
@@ -2339,41 +2346,62 @@ function PosterGrid({
                               setOpenMenuIndex(null);
                             }}
                             disabled={savingPoster === idx}
-                            className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                            className="w-full text-left px-4 py-2.5 text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                            style={{ color: colors.foreground }}
                           >
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
                             </svg>
                             {savingPoster === idx ? 'Saving...' : 'Save to Library'}
                           </button>
-                          <div className="border-t border-gray-100 my-1" />
+                          {onUseAsReference && (
+                          <>
+                          <div className="my-1" style={{ borderTop: `1px solid ${colors.border}` }} />
                           <button
                             onClick={() => {
                               onUseAsReference(poster, idx);
                               setOpenMenuIndex(null);
                             }}
-                            className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2"
+                            className="w-full text-left px-4 py-2.5 text-sm transition-colors flex items-center gap-2"
+                            style={{ color: colors.foreground }}
                           >
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                             </svg>
                             Use as Reference
                           </button>
+                          </>
+                          )}
                         </div>
                       </div>
                     )}
                   </div>
                 </div>
+
+                {/* Action Button below image */}
+                {canCreateCampaigns && (
+                  <div className="mt-3">
+                    <button
+                      onClick={() => onCreateCampaign(poster, idx)}
+                      disabled={creatingCampaign === idx}
+                      className="w-full px-4 py-2.5 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      style={{ backgroundColor: colors.primary }}
+                    >
+                      {creatingCampaign === idx ? 'Creating...' : 'Use in Campaign'}
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
           </div>
 
           {/* Regenerate Button - Improved UX */}
-          {!showRegeneratePrompt && (
-            <div className="pt-4 border-t border-gray-100 flex justify-center">
+          {!showRegeneratePrompt && onRegenerate && (
+            <div className="pt-4 flex justify-center" style={{ borderTop: `1px solid ${colors.border}` }}>
               <button
                 onClick={onRegenerate}
-                className="px-6 py-2.5 border-2 border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 hover:border-gray-400 transition-all flex items-center gap-2"
+                className="px-6 py-2.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2"
+                style={{ border: `2px solid ${colors.primary}`, color: colors.primary, backgroundColor: 'transparent' }}
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
