@@ -2,6 +2,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { getUserIdFromRequest } from '@/auth/request';
 import { FeatureService } from '@/lib/features';
+import { extractDbError } from '@/database/client';
 
 /**
  * GET /api/features/access
@@ -25,10 +26,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       ...access,
     });
   } catch (error: any) {
-    console.error('Get feature access error:', error);
+    const dbErr = extractDbError(error);
+    console.error('Get feature access error:', JSON.stringify(dbErr, null, 2));
+    console.error('Full error stack:', error.stack);
     return res.status(500).json({
       error: 'Failed to get feature access',
       message: error.message,
+      dbError: dbErr,
     });
   }
 }

@@ -32,10 +32,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       ...access,
     });
   } catch (error: any) {
-    console.error('Check feature access error:', error);
+    const { extractDbError } = await import('@/database/client');
+    const dbErr = extractDbError(error);
+    console.error('Check feature access error:', JSON.stringify(dbErr, null, 2));
+    console.error('Full error stack:', error.stack);
     return res.status(500).json({
       error: 'Failed to check feature access',
       message: error.message,
+      dbError: dbErr,
     });
   }
 }

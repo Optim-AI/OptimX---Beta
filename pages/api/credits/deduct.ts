@@ -58,7 +58,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         : result.balance?.videoCredits.total
     });
   } catch (error: any) {
-    console.error('Credits deduct error:', error);
+    const { extractDbError } = await import('@/database/client');
+    const dbErr = extractDbError(error);
+    console.error('Credits deduct error:', JSON.stringify(dbErr, null, 2));
+    console.error('Full error stack:', error.stack);
 
     // Check if insufficient credits
     if (error.message?.includes('Insufficient')) {

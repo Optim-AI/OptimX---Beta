@@ -32,10 +32,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       data: profile
     });
   } catch (error: any) {
-    console.error('Profile get error:', error);
+    const { extractDbError } = await import('@/database/client');
+    const dbErr = extractDbError(error);
+    console.error('Profile get error:', JSON.stringify(dbErr, null, 2));
+    console.error('Full error stack:', error.stack);
     return res.status(500).json({
       error: 'Failed to get profile',
-      message: error.message
+      message: error.message,
+      dbError: dbErr,
     });
   }
 }

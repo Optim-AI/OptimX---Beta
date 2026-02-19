@@ -40,10 +40,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       credits: balance.imageCredits.total
     });
   } catch (error: any) {
-    console.error('Credits balance error:', error);
+    const { extractDbError } = await import('@/database/client');
+    const dbErr = extractDbError(error);
+    console.error('Credits balance error:', JSON.stringify(dbErr, null, 2));
+    console.error('Full error stack:', error.stack);
     return res.status(500).json({
       error: 'Failed to get credits balance',
-      message: error.message
+      message: error.message,
+      dbError: dbErr,
     });
   }
 }

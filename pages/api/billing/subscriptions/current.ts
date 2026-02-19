@@ -52,10 +52,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       credits,
     });
   } catch (error: any) {
-    console.error('Get subscription error:', error);
+    const { extractDbError } = await import('@/database/client');
+    const dbErr = extractDbError(error);
+    console.error('Get subscription error:', JSON.stringify(dbErr, null, 2));
+    console.error('Full error stack:', error.stack);
     return res.status(500).json({
       error: 'Failed to get subscription',
       message: error.message,
+      dbError: dbErr,
     });
   }
 }

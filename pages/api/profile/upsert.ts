@@ -99,11 +99,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       isNewUser
     });
   } catch (error: any) {
-    console.error('Profile upsert error:', error?.message ?? error);
+    const { extractDbError } = await import('@/database/client');
+    const dbErr = extractDbError(error);
+    console.error('Profile upsert error:', JSON.stringify(dbErr, null, 2));
     if (error?.stack) console.error('Stack:', error.stack);
     return res.status(500).json({
       error: 'Failed to upsert profile',
-      message: error?.message ?? String(error)
+      message: error?.message ?? String(error),
+      dbError: dbErr,
     });
   }
 }
