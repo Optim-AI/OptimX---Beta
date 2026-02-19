@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/router";
 import { supabase } from '@/auth/supabase/client';
 import colors from '@/lib/ui/colors';
@@ -411,6 +412,10 @@ export default function SignInPage(): React.ReactElement {
           height: 20px;
           width: 20px;
         }
+        .oauth-btn:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
 
         .segmented {
           display: flex;
@@ -492,6 +497,10 @@ export default function SignInPage(): React.ReactElement {
           font-size: 15px;
           width: 100%;
           box-shadow: 0 0 24px hsl(213 100% 55% / 0.2);
+        }
+        .cta:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
         }
         .policy {
           font-size: 12px;
@@ -579,6 +588,28 @@ export default function SignInPage(): React.ReactElement {
               <div className="brand-sub">Welcome, Please create an account.</div>
             </div>
 
+            <p
+              className="policy"
+              style={{
+                marginTop: 20,
+                marginBottom: 8,
+                textAlign: "left",
+                width: "100%",
+                fontSize: 12,
+                color: "var(--muted)",
+              }}
+            >
+              By signing in, you acknowledge our{" "}
+              <Link href="/privacy-policy" style={{ color: "var(--link-color)", textDecoration: "underline", fontWeight: 600 }}>
+                Privacy Policy
+              </Link>{" "}
+              and{" "}
+              <Link href="/terms-and-conditions" style={{ color: "var(--link-color)", textDecoration: "underline", fontWeight: 600 }}>
+                Terms &amp; Conditions
+              </Link>
+              .
+            </p>
+
             <div className="oauth-row" role="group" aria-label="Third party sign in">
               <button className="oauth-btn" onClick={() => oauthLogin("google")} type="button" aria-label="Google Signin">
                 {/* Inline Google 'G' logo so you don't need an external image file */}
@@ -599,7 +630,7 @@ export default function SignInPage(): React.ReactElement {
               </button>
             </div>
 
-            <div style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, marginTop: 32 }}>
+            <div style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, marginTop: 24 }}>
               <div style={{ flex: 1, height: 1, background: colors.border }} />
               <div style={{ color: colors.mutedForeground, fontSize: 13 }}>Or continue with</div>
               <div style={{ flex: 1, height: 1, background: colors.border }} />
@@ -649,17 +680,6 @@ export default function SignInPage(): React.ReactElement {
 
               {error && <div className="msg" style={{ color: "#d9534f" }}>{error}</div>}
               {info && <div className="msg" style={{ color: "#2f855a" }}>{info}</div>}
-
-              <div className="policy" style={{ marginTop: 52 }}>
-                By proceeding, you consent to our{" "}
-                <a href="#" onClick={(e) => e.preventDefault()}>
-                  Privacy policy
-                </a>{" "}
-                &amp;{" "}
-                <a href="#" onClick={(e) => e.preventDefault()}>
-                  Terms &amp; Conditions
-                </a>
-              </div>
 
               {mode === "magic" ? (
                 <button className="cta" onClick={sendMagicLink} disabled={loading} type="button">

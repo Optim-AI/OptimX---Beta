@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { supabase } from '@/auth/supabase/client';
 import { authFetch } from '@/lib/utils';
@@ -394,6 +395,10 @@ export default function SignUpPage(): React.ReactElement {
         .oauth-btn span {
           white-space: nowrap;
         }
+        .oauth-btn:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
 
         .form {
           margin-top: 12px;
@@ -531,6 +536,29 @@ export default function SignUpPage(): React.ReactElement {
               <div className="brand-sub">Create an account to get started.</div>
             </div>
 
+            <p
+              className="policy"
+              style={{
+                marginTop: 20,
+                marginBottom: 8,
+                textAlign: 'left',
+                width: '100%',
+                fontSize: 12,
+                color: 'var(--muted)',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              By signing up, you acknowledge our{' '}
+              <Link href="/privacy-policy" style={{ color: 'var(--link-color)', textDecoration: 'underline', fontWeight: 600 }}>
+                Privacy Policy
+              </Link>{' '}
+              and{' '}
+              <Link href="/terms-and-conditions" style={{ color: 'var(--link-color)', textDecoration: 'underline', fontWeight: 600 }}>
+                Terms &amp; Conditions
+              </Link>
+              .
+            </p>
+
             <div className="oauth-row" role="group" aria-label="Third party sign in">
               <button
                 className="oauth-btn"
@@ -560,7 +588,7 @@ export default function SignUpPage(): React.ReactElement {
               </button>
             </div>
 
-            <div style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, marginTop: 32 }}>
+            <div style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, marginTop: 24 }}>
               <div style={{ flex: 1, height: 1, background: colors.border }} />
               <div style={{ color: colors.mutedForeground, fontSize: 13 }}>Or sign up with email</div>
               <div style={{ flex: 1, height: 1, background: colors.border }} />
@@ -599,10 +627,6 @@ export default function SignUpPage(): React.ReactElement {
 
               {error && <div className="msg" style={{ color: '#d9534f' }}>{error}</div>}
               {info && <div className="msg" style={{ color: '#2f855a' }}>{info}</div>}
-
-              <div className="policy" style={{ marginTop: 40 }}>
-                By creating an account, you agree to our <a href="#" onClick={(e) => e.preventDefault()}>Privacy policy</a> &amp; <a href="#" onClick={(e) => e.preventDefault()}>Terms &amp; Conditions</a>
-              </div>
 
               <button className="cta" type="submit" disabled={loading}>{loading ? 'Creating...' : 'Create account'}</button>
             </form>
