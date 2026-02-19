@@ -573,6 +573,7 @@ export default function VideoSessionPage() {
           platform: adBuilderData.adSetup.platform,
           aspect_ratio: adBuilderData.adSetup.aspect_ratio,
           voiceover: adBuilderData.voiceover.enabled,
+          language: adBuilderData.voiceover.language ?? 'english',
           tone: adBuilderData.voiceover.tone,
           key_message: adBuilderData.voiceover.key_message,
           cta: adBuilderData.voiceover.cta,
@@ -1239,6 +1240,32 @@ export default function VideoSessionPage() {
 
                   {adBuilderData.voiceover.enabled && (
                     <>
+                      {/* Language Selection */}
+                      <div>
+                        <label className="block text-sm font-medium mb-2" style={{ color: colors.foreground }}>Voiceover Language</label>
+                        <div className="flex gap-3">
+                          {(['english', 'tamil', 'hindi'] as const).map((lang) => (
+                            <button
+                              key={lang}
+                              onClick={() =>
+                                setAdBuilderData({
+                                  ...adBuilderData,
+                                  voiceover: { ...adBuilderData.voiceover, language: lang },
+                                })
+                              }
+                              className="px-4 py-2 rounded-lg border-2 text-sm font-medium transition-colors"
+                              style={{
+                                borderColor: (adBuilderData.voiceover.language ?? 'english') === lang ? colors.primary : colors.border,
+                                backgroundColor: (adBuilderData.voiceover.language ?? 'english') === lang ? 'hsl(213 100% 55% / 0.2)' : 'transparent',
+                                color: (adBuilderData.voiceover.language ?? 'english') === lang ? colors.primary : colors.foreground,
+                              }}
+                            >
+                              {lang === 'english' ? 'English' : lang === 'tamil' ? 'Tamil' : 'Hindi'}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
                       {/* Tone Selection */}
                       <div>
                         <label className="block text-sm font-medium mb-2" style={{ color: colors.foreground }}>Tone</label>

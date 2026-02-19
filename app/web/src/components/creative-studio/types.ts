@@ -79,6 +79,7 @@ export type AdSetup = {
 
 export type VoiceoverConfig = {
   enabled: boolean;
+  language?: "english" | "tamil" | "hindi";
   tone: "Energetic" | "Calm" | "Premium" | "Fun";
   key_message?: string;
   cta?: string;
