@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { supabase } from '@/auth/supabase/client';
 import { Coins } from "lucide-react";
 import { toast } from "sonner";
+import { SkeletonInline } from "./ui/skeletons";
 
 export default function NavBar() {
   const [username, setUsername] = useState("Loading...");
@@ -141,14 +142,14 @@ export default function NavBar() {
       <h1 className="text-lg font-semibold text-gray-800">
         Hi!{" "}
         <span className="text-blue-600 font-bold">
-          {loading ? "Loading..." : username}
+          {loading ? <SkeletonInline width="100px" /> : username}
         </span>
       </h1>
 
       <div className="flex items-center gap-2 bg-blue-50 text-blue-600 px-4 py-2 rounded-full">
         <Coins className="h-4 w-4" />
         <span className="font-semibold">
-          {loading ? "Loading..." : `${credits} Credits`}
+          {loading ? <SkeletonInline width="80px" /> : `${credits} Credits`}
         </span>
       </div>
     </nav>

@@ -6,6 +6,7 @@ import Link from "next/link";
 import Sidebar from "../app/web/src/components/Sidebar";
 import { supabase } from '@/auth/supabase/client';
 import { apiFetch } from '@/api/fetch';
+import { SkeletonNotificationCard } from '@/app/web/src/components/ui/skeletons';
 
 /**
  * Notifications page
@@ -305,7 +306,13 @@ export default function NotificationsPage(): JSX.Element {
         </div>
 
         {loading ? (
-          <div className="text-sm text-slate-500">Loading notifications…</div>
+          <div className="space-y-4">
+            <SkeletonNotificationCard />
+            <SkeletonNotificationCard />
+            <SkeletonNotificationCard />
+            <SkeletonNotificationCard />
+            <SkeletonNotificationCard />
+          </div>
         ) : error ? (
           <div className="text-sm text-red-600">Error: {error}</div>
         ) : notifications.length === 0 ? (

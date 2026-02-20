@@ -6,6 +6,8 @@ import { useRouter } from "next/router";
 import Sidebar from "../app/web/src/components/Sidebar";
 import { supabase } from '@/auth/supabase/client';
 import colors from '@/lib/ui/colors';
+import { SkeletonInline } from '@/app/web/src/components/ui/skeletons';
+import { Skeleton } from '@/app/web/src/components/ui/skeleton';
 
 type BetaInsertPayload = {
   user_id: string;
@@ -230,8 +232,14 @@ export default function IntegrationsBetaPage(): React.ReactElement {
               }}
             >
               {loading ? (
-                <div className="text-sm text-slate-500">
-                  Loading your details…
+                <div className="space-y-4">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <div key={i} className="space-y-2">
+                      <Skeleton className="h-4 w-28 rounded" />
+                      <Skeleton className="h-10 w-full rounded-lg" />
+                    </div>
+                  ))}
+                  <Skeleton className="h-10 w-40 rounded-lg" />
                 </div>
               ) : (
                 <>
@@ -428,7 +436,7 @@ export default function IntegrationsBetaPage(): React.ReactElement {
         </div>
 
         <div className="mt-4 text-sm text-slate-500 px-6">
-          {loading ? "Checking your profile…" : "Beta integration request ready."}
+          {loading ? <SkeletonInline width="160px" /> : "Beta integration request ready."}
         </div>
       </main>
     </div>

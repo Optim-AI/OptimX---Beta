@@ -6,6 +6,7 @@ import { useRouter } from "next/router";
 import { supabase } from '@/auth/supabase/client';
 import { authFetch } from '@/lib/utils';
 import colors from '@/lib/ui/colors';
+import { PulseSpinner } from '@/app/web/src/components/ui/skeletons';
 
 /** Capitalize first letter */
 function capitalize(str: string) {
@@ -85,37 +86,20 @@ export default function Welcome(): React.ReactElement {
           return;
         }
 
-        // Check if plan system is enabled
-        const plansCheckResponse = await authFetch('/api/billing/plans/status');
-        const plansStatus = await plansCheckResponse.json();
-
-        // If plans are enabled, check if user has selected a plan
-        if (plansStatus.plansEnabled) {
-          const subResponse = await authFetch('/api/billing/subscriptions/current');
-          const subData = await subResponse.json();
-
-          if (!subData.hasSubscription) {
-            // Plans are enabled but user hasn't selected one
-            router.replace('/#pricing');
-            return;
-          }
-        }
-        // If plans are disabled, user can proceed with pay-as-you-go
-
         // Check if returning user (already completed onboarding)
         try {
           const profileRes = await authFetch('/api/profile/get');
           const profileData = await profileRes.json();
           const p = profileData.success ? profileData.data : null;
           if (p && (p.business_name || p.businessName)) {
-            // Returning user with completed onboarding - skip welcome, go directly to creative studio
             router.replace('/creative-studio');
             return;
           }
         } catch (profileErr) {
-          // Profile check failed, continue to show welcome page
           console.error('Profile check error:', profileErr);
         }
+
+        // New user: fall through to show welcome page with "Get Started" button
 
         // Extract and set user name
         const name = extractName(user);
@@ -143,7 +127,7 @@ export default function Welcome(): React.ReactElement {
           color: colors.foreground,
         }}
       >
-        Loading…
+        <PulseSpinner />
       </div>
     );
   }

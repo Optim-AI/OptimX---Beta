@@ -56,7 +56,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Initialize free credits for new users (pay-as-you-go welcome bonus)
     if (isNewUser) {
       const INITIAL_IMAGE_CREDITS = 10;
-      const INITIAL_VIDEO_SECONDS = 8;
+      const INITIAL_VIDEO_SECONDS = 30;
 
       try {
         // Initialize credit record

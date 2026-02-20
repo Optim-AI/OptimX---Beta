@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from "react";
 import { BarChart3, Clock, TrendingUp, Zap } from "lucide-react";
 import Sidebar from '../app/web/src/components/Sidebar';
+import { SkeletonMetricGrid, SkeletonRecommendationCard } from '@/app/web/src/components/ui/skeletons';
 
 type MetaMetrics = {
   total_spend: number;
@@ -236,7 +237,7 @@ export default function Insights() {
             </div>
 
             {loadingMeta ? (
-              <div>Loading Meta metrics…</div>
+              <SkeletonMetricGrid columns={6} />
             ) : metaSummary?.meta ? (
               <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
                 <div className="p-3 bg-gray-50 rounded">
@@ -287,7 +288,7 @@ export default function Insights() {
             </div>
 
             {loadingGoogle ? (
-              <div>Loading Google metrics…</div>
+              <SkeletonMetricGrid columns={6} />
             ) : googleMetrics ? (
               <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
                 {/* adapt to the shape of googleMetrics you provide */}
@@ -346,7 +347,11 @@ export default function Insights() {
           </div>
 
           {aiLoading ? (
-            <div>AI is thinking…</div>
+            <div className="space-y-4">
+              <SkeletonRecommendationCard />
+              <SkeletonRecommendationCard />
+              <SkeletonRecommendationCard />
+            </div>
           ) : recs.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {recs.map((r, i) => (

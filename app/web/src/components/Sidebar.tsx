@@ -28,6 +28,7 @@ import {
 import colors from '@/lib/ui/colors';
 import { authFetch } from '@/lib/utils';
 import { useSubscription } from '@/app/web/src/hooks/use-subscription';
+import { SkeletonNavItem } from './ui/skeletons';
 
 type NavItem = {
   href: string;
@@ -174,6 +175,9 @@ const Sidebar: React.FC<SidebarProps> = ({
           
           // Check feature access for gated items
           if (item.featureKey) {
+            if (featuresLoading) {
+              return <SkeletonNavItem key={item.href} className={collapsed ? 'justify-center' : ''} />;
+            }
             const access = featureAccess[item.featureKey];
             // Hide if feature is not enabled and not coming soon
             if (!access || (!access.enabled && !access.comingSoon)) {

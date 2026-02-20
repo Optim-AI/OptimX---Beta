@@ -14,6 +14,7 @@ import { Button } from "../app/web/src/components/ui/button";
 
 import { BarChart3, Share2 } from "lucide-react";
 import colors from '@/lib/ui/colors';
+import { SkeletonPageLoader, SkeletonMetricGrid, SkeletonCard, SkeletonRecommendationCard } from '@/app/web/src/components/ui/skeletons';
 
 import {
   ResponsiveContainer,
@@ -753,7 +754,7 @@ export default function Analytics(): JSX.Element {
       <div className="min-h-screen flex app-page">
         <Sidebar />
         <main className="flex-1 p-8 flex items-center justify-center" style={{ color: colors.foreground }}>
-          <div>Loading...</div>
+          <SkeletonPageLoader variant="analytics" />
         </main>
       </div>
     );
@@ -875,7 +876,7 @@ export default function Analytics(): JSX.Element {
             </div>
 
             {statusLoading ? (
-              <div style={{ color: colors.mutedForeground }}>Checking connection status…</div>
+              <SkeletonMetricGrid columns={6} />
             ) : !metaConnected ? (
               <div className="p-6 text-center">
                 <div className="text-lg font-semibold" style={{ color: colors.foreground }}>Please connect Meta</div>
@@ -893,7 +894,7 @@ export default function Analytics(): JSX.Element {
                 </div>
               </div>
             ) : loadingMeta ? (
-              <div style={{ color: colors.mutedForeground }}>Loading Meta metrics…</div>
+              <SkeletonMetricGrid columns={6} />
             ) : (
               // Always show overview — if metrics empty we set zeros in state
               <div>
@@ -1176,7 +1177,12 @@ export default function Analytics(): JSX.Element {
           </div>
 
           {campaignsLoading ? (
-            <div style={{ color: colors.mutedForeground }}>Loading campaigns…</div>
+            <div className="grid grid-cols-1 gap-3">
+              <SkeletonCard />
+              <SkeletonCard />
+              <SkeletonCard />
+              <SkeletonCard />
+            </div>
           ) : filteredCampaigns.length === 0 ? (
             <div className="text-sm" style={{ color: colors.mutedForeground }}>No campaigns found.</div>
           ) : null}
@@ -1221,7 +1227,11 @@ export default function Analytics(): JSX.Element {
             Please connect Meta to generate recommendations.
           </div>
         ) : recLoading && recsRequested ? (
-          <div className="text-sm" style={{ color: colors.mutedForeground }}>Generating recommendations…</div>
+          <div className="space-y-3">
+            <SkeletonRecommendationCard />
+            <SkeletonRecommendationCard />
+            <SkeletonRecommendationCard />
+          </div>
         ) : !recsRequested ? (
           <div className="text-sm" style={{ color: colors.mutedForeground }}>
             No recommendations yet. Click "Get Recommendations".

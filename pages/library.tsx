@@ -14,6 +14,7 @@ import { campaignClient } from '@/database/client-helpers';
 import type { JSX } from "react";
 // exact colors import path you requested — do NOT change
 import colors from '@/lib/ui/colors';
+import { SkeletonCard } from '@/app/web/src/components/ui/skeletons';
 
 type Campaign = {
   id: string;
@@ -196,7 +197,12 @@ export default function CampaignsPage(): JSX.Element {
         {/* Campaigns List */}
         <div className="space-y-3">
           {loading ? (
-            <div className="text-sm text-slate-500">Loading campaigns...</div>
+            <div className="space-y-3">
+              <SkeletonCard />
+              <SkeletonCard />
+              <SkeletonCard />
+              <SkeletonCard />
+            </div>
           ) : filtered.length === 0 ? (
             <div className="text-sm text-slate-500">No campaigns found. Create one to get started.</div>
           ) : null}

@@ -7,6 +7,7 @@ import { Image, Video, ArrowLeft, Plus, Minus, Check, Shield, CheckCircle, Mail,
 import colors from '@/lib/ui/colors';
 import { authFetch } from '@/lib/utils';
 import Sidebar from '@/app/web/src/components/Sidebar';
+import { SkeletonPageLoader } from '@/app/web/src/components/ui/skeletons';
 import {
     BUY_CREDITS_PRICING,
     calculateTotalsInr,
@@ -246,7 +247,7 @@ export default function BuyCreditsPage() {
       <div className="min-h-screen flex app-page">
         <Sidebar />
         <div className="flex-1" style={{ display: 'grid', placeItems: 'center', color: colors.foreground }}>
-          Loading...
+          <SkeletonPageLoader variant="buy-credits" />
         </div>
       </div>
     );

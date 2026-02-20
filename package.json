@@ -111,6 +111,9 @@
     "supabase:start": "supabase start",
     "supabase:stop": "supabase stop",
     "supabase:reset": "supabase db reset",
+    "db:reset": "./scripts/db-reset.sh local",
+    "db:reset:staging": "./scripts/db-reset.sh staging",
+    "db:reset:production": "./scripts/db-reset.sh production",
     "supabase:status": "supabase status",
     "supabase:migrate-local": "chmod +x ./scripts/migrate-supabase-to-local.sh && ./scripts/migrate-supabase-to-local.sh",
     "setup": "chmod +x ./scripts/setup-supabase.sh && ./scripts/setup-supabase.sh"

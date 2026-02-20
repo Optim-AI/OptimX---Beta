@@ -16,6 +16,7 @@ import { storageClient } from '@/lib/storage/client';
 import { toast } from "sonner";
 import { Sparkles, Image as ImageIcon, Video } from "lucide-react";
 import { authFetch } from "@/lib/utils";
+import { SkeletonImageGrid, SkeletonVideoGrid } from "@/app/web/src/components/ui/skeletons";
 
 type UserImage = {
   id: string;
@@ -770,7 +771,7 @@ export default function ImageLibraryPage(): JSX.Element {
             }}
           >
             {loading ? (
-              <div style={{ color: colors.mutedForeground }}>Loading...</div>
+              <SkeletonImageGrid count={12} />
             ) : images.length === 0 ? (
               <div style={{ color: colors.mutedForeground }}>
                 No generated images found. Create a campaign to generate images
@@ -806,7 +807,7 @@ export default function ImageLibraryPage(): JSX.Element {
             }}
           >
             {videosLoading ? (
-              <div style={{ color: colors.mutedForeground }}>Loading...</div>
+              <SkeletonVideoGrid count={8} />
             ) : videos.length === 0 ? (
               <div style={{ color: colors.mutedForeground }}>
                 No generated videos found. Create a video in Creative Studio and they&apos;ll appear here.

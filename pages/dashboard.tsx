@@ -25,6 +25,7 @@ import colors from '@/lib/ui/colors';
 import { apiFetch } from '@/api/fetch';
 import { supabase } from '@/auth/supabase/client';
 import { campaignClient } from '@/database/client-helpers';
+import { SkeletonPageLoader, SkeletonCampaignRow } from '@/app/web/src/components/ui/skeletons';
 
 /* -------------------- Helpers & tokens -------------------- */
 function hexToRgba(hex: string, alpha = 1) {
@@ -669,7 +670,7 @@ export default function DashboardPage(): JSX.Element {
       <div className="min-h-screen flex app-page">
         <Sidebar />
         <main className="flex-1 p-10 flex items-center justify-center">
-          <div>Loading...</div>
+          <SkeletonPageLoader variant="dashboard" />
         </main>
       </div>
     );
@@ -873,7 +874,13 @@ export default function DashboardPage(): JSX.Element {
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  {loadingCampaigns ? <div>Loading campaigns…</div> : campaigns.length === 0 ? <div className="text-sm text-gray-500">No campaigns yet. Create a campaign to get started.</div> : null}
+                  {loadingCampaigns ? (
+                    <>
+                      <SkeletonCampaignRow />
+                      <SkeletonCampaignRow />
+                      <SkeletonCampaignRow />
+                    </>
+                  ) : campaigns.length === 0 ? <div className="text-sm text-gray-500">No campaigns yet. Create a campaign to get started.</div> : null}
 
                   {campaigns.slice(0, 5).map((campaign) => (
                     <div key={campaign.id} className="flex items-center justify-between p-3 rounded-lg hover:bg-muted/50 transition-colors">
