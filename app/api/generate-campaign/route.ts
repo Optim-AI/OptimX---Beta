@@ -701,6 +701,20 @@ export async function POST(request: Request) {
 
     const dataUrl = `data:image/png;base64,${finalBuffer.toString("base64")}`;
 
+    // Always upload generated image to Supabase storage for cleanup support
+    let imagePublicUrl: string = dataUrl;
+    let imageStoragePath: string | null = null;
+    try {
+      const storagePath = `generated/${user.id}/${Date.now()}_poster.png`;
+      const publicUrl = await uploadBufferToSupabase(finalBuffer, storagePath, "image/png");
+      if (publicUrl) {
+        imagePublicUrl = publicUrl;
+        imageStoragePath = storagePath;
+      }
+    } catch (e) {
+      console.warn("Generated image upload to storage failed, falling back to data URL", e);
+    }
+
     // Deduct 1 image credit using new credit system
     let updatedBalance: number | null = null;
     try {
@@ -732,10 +746,11 @@ export async function POST(request: Request) {
         return NextResponse.json(
           {
             ok: true,
-            image: publicUrl ? publicUrl : dataUrl,
-            images: [publicUrl ? publicUrl : dataUrl],
+            image: publicUrl ? publicUrl : imagePublicUrl,
+            images: [publicUrl ? publicUrl : imagePublicUrl],
             dataUrl,
             savedPublicUrl: publicUrl ?? null,
+            imageStoragePath: imageStoragePath ?? path,
             creditsRemaining: updatedBalance,
             credits_depleted:
               updatedBalance !== null ? updatedBalance <= 0 : undefined,
@@ -750,8 +765,9 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         ok: true,
-        image: dataUrl,
-        images: [dataUrl],
+        image: imagePublicUrl,
+        images: [imagePublicUrl],
+        imageStoragePath,
         creditsRemaining: updatedBalance,
         credits_depleted:
           updatedBalance !== null ? updatedBalance <= 0 : undefined,

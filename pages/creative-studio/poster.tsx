@@ -210,6 +210,9 @@ export default function PosterSessionPage() {
             content: m.content,
             timestamp: m.timestamp,
             imageUrls: m.imageUrls, // Restore poster URLs for chat history
+            imageStoragePaths: m.imageStoragePaths, // Restore storage paths
+            expiredImageCount: m.expiredImageCount, // Restore expired image count
+            imageThumbnail: m.imageThumbnail, // Restore thumbnail display flag
             images: undefined, // File objects aren't stored in serialized messages
           }));
           setMessages(restoredMessages);
@@ -339,6 +342,9 @@ export default function PosterSessionPage() {
         content: m.content,
         timestamp: m.timestamp,
         imageUrls: m.imageUrls, // Preserve poster URLs in chat history
+        imageStoragePaths: m.imageStoragePaths, // Preserve storage paths for cleanup
+        expiredImageCount: m.expiredImageCount, // Preserve expired image count
+        imageThumbnail: m.imageThumbnail, // Preserve thumbnail display flag
       }));
       
       const payload = {
@@ -391,14 +397,41 @@ export default function PosterSessionPage() {
   }, [phase, messages, savedProductData, posterPrompt, config, generatedPosters, saveSession]);
 
   // ============== Message Handlers ==============
-  
-  function addMessage(role: 'user' | 'system', content: string, images?: File[], imageUrls?: string[]) {
+
+  /** Upload data URLs to Supabase storage via save-poster API, return public URLs */
+  async function uploadDataUrlsToStorage(dataUrls: string[]): Promise<string[]> {
+    const publicUrls: string[] = [];
+    for (const dataUrl of dataUrls) {
+      try {
+        const resp = await authFetch('/api/creative-studio/save-poster', {
+          method: 'POST',
+          body: JSON.stringify({
+            imageUrl: dataUrl,
+            name: 'product',
+          }),
+        });
+        const data = await resp.json();
+        if (data.ok && data.imageUrl) {
+          publicUrls.push(data.imageUrl);
+        } else {
+          publicUrls.push(dataUrl); // fallback
+        }
+      } catch {
+        publicUrls.push(dataUrl); // fallback
+      }
+    }
+    return publicUrls;
+  }
+
+  function addMessage(role: 'user' | 'system', content: string, images?: File[], imageUrls?: string[], imageStoragePaths?: string[], imageThumbnail?: boolean) {
     const newMessage: Message = {
       id: generateId(),
       role,
       content,
       images,
       imageUrls,
+      imageStoragePaths,
+      imageThumbnail,
       timestamp: Date.now(),
     };
     setMessages(prev => [...prev, newMessage]);
@@ -564,23 +597,28 @@ export default function PosterSessionPage() {
 
   async function handleProductSubmit(e?: React.FormEvent) {
     e?.preventDefault();
-    
+
     if (!productPrompt.trim() && productImages.length === 0) return;
-    
+
     // Save product data
     const productImageDataUrls: string[] = [];
     for (const img of productImages) {
       const dataUrl = await fileToDataUrl(img);
       productImageDataUrls.push(dataUrl);
     }
-    
+
     setSavedProductData({
       prompt: productPrompt,
       images: [...productImages],
       imageDataUrls: productImageDataUrls,
     });
-    
-    addMessage('user', productPrompt || 'Product images uploaded', productImages.length > 0 ? [...productImages] : undefined);
+
+    // Upload to storage so we store URLs, not data URLs in the DB
+    const storageUrls = productImageDataUrls.length > 0
+      ? await uploadDataUrlsToStorage(productImageDataUrls)
+      : [];
+
+    addMessage('user', productPrompt || 'Product images uploaded', productImages.length > 0 ? [...productImages] : undefined, storageUrls.length > 0 ? storageUrls : undefined);
     addMessage('system', `Got it! Now describe the poster you want to create.`);
     
     setPhase('poster-prompt');
@@ -758,6 +796,7 @@ export default function PosterSessionPage() {
       
       // Process results
       const posters: string[] = [];
+      const storagePaths: string[] = [];
       let creditError = false;
       let lastError = '';
       let latestCredits: number | undefined;
@@ -768,6 +807,7 @@ export default function PosterSessionPage() {
           
           if (data.ok && data.image) {
             posters.push(data.image);
+            storagePaths.push(data.imageStoragePath || '');
             // Track latest credits value
             if (data.creditsRemaining !== undefined) {
               latestCredits = data.creditsRemaining;
@@ -800,10 +840,11 @@ export default function PosterSessionPage() {
         setPhase('ready');
         // Add message with poster images in chat history
         addMessage(
-          'system', 
+          'system',
           `Here ${posters.length === 1 ? 'is your poster' : `are your ${posters.length} poster variants`}! Click on any to preview, save, or use in a campaign.`,
           undefined,
-          posters
+          posters,
+          storagePaths.length > 0 ? storagePaths : undefined
         );
       } else if (creditError) {
         throw new Error('You have no credits remaining. Please purchase more credits to generate posters.');
@@ -841,6 +882,7 @@ export default function PosterSessionPage() {
             theme: config.theme,
             aspectRatio: config.aspectRatio,
             brandName: brand?.name,
+            originalChatUrl: url,
           },
         }),
       });
@@ -1014,8 +1056,9 @@ export default function PosterSessionPage() {
             
             // Convert data URL to File object
             const dataUrl = result.dataUrl;
+            const publicUrl = result.publicUrl;
             const contentType = result.contentType || 'image/jpeg';
-            
+
             // Extract base64 data and convert to File
             const base64Data = dataUrl.split(',')[1];
             const binaryString = atob(base64Data);
@@ -1024,15 +1067,18 @@ export default function PosterSessionPage() {
               bytes[i] = binaryString.charCodeAt(i);
             }
             const blob = new Blob([bytes], { type: contentType });
-            
+
             // Determine file extension
             let extension = 'jpg';
             if (contentType.includes('png')) extension = 'png';
             else if (contentType.includes('gif')) extension = 'gif';
             else if (contentType.includes('webp')) extension = 'webp';
-            
+
             const file = new File([blob], `fetched_${Date.now()}.${extension}`, { type: contentType });
-            
+
+            // Use public storage URL if available, fall back to data URL
+            const displayUrl = publicUrl || dataUrl;
+
             setProductPrompt(currentInput);
             setProductImages([file]);
             setSavedProductData({
@@ -1040,9 +1086,9 @@ export default function PosterSessionPage() {
               images: [file],
               imageDataUrls: [dataUrl],
             });
-            
-            // Show the fetched image
-            addMessage('system', `Got it! I've fetched the image from the URL. Now describe the poster you want to create.`, [file]);
+
+            // Show the fetched image (use Supabase storage URL so DB stays small)
+            addMessage('system', `Got it! I've fetched the image from the URL. Now describe the poster you want to create.`, undefined, [displayUrl], undefined, true);
             setPhase('poster-prompt');
           } catch (err: any) {
             setThinkingMessages([]);
@@ -1054,10 +1100,7 @@ export default function PosterSessionPage() {
         // Regular text input and/or uploaded images (no URL to fetch)
         setProductPrompt(currentInput);
         setProductImages(currentImages);
-        
-        // Add user message
-        addMessage('user', currentInput || 'Product images uploaded', currentImages.length > 0 ? currentImages : undefined);
-        
+
         // Process product and move to next phase
         setTimeout(async () => {
           // Save product data
@@ -1066,13 +1109,20 @@ export default function PosterSessionPage() {
             const dataUrl = await fileToDataUrl(img);
             productImageDataUrls.push(dataUrl);
           }
-          
+
           setSavedProductData({
             prompt: currentInput,
             images: currentImages,
             imageDataUrls: productImageDataUrls,
           });
-          
+
+          // Upload to storage so we store URLs, not data URLs in the DB
+          const storageUrls = productImageDataUrls.length > 0
+            ? await uploadDataUrlsToStorage(productImageDataUrls)
+            : [];
+
+          // Add user message with File objects for live display and storage URLs for persistence
+          addMessage('user', currentInput || 'Product images uploaded', currentImages.length > 0 ? currentImages : undefined, storageUrls.length > 0 ? storageUrls : undefined);
           addMessage('system', `Got it! Now describe the poster you want to create.`);
           setPhase('poster-prompt');
         }, 0);
@@ -1295,6 +1345,8 @@ export default function PosterSessionPage() {
                       <SystemBubble
                         images={msg.images}
                         imageUrls={hideImageUrls ? undefined : msg.imageUrls}
+                        expiredImageCount={msg.expiredImageCount}
+                        imageThumbnail={msg.imageThumbnail}
                         onImageClick={(url) => setPreviewImageUrl(url)}
                         onUseAsReference={hasInsufficientCredits ? undefined : (url) => handleUseAsReference(url, 0)}
                         onDownload={(url) => {

@@ -116,7 +116,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         const record = await GeneratedImageDAO.insert(
           userId,
           publicUrl,
-          uploadedPath || null
+          uploadedPath || null,
+          metadata || undefined
         );
 
         return res.status(200).json({

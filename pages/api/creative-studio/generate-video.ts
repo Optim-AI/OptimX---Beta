@@ -5,6 +5,7 @@ import { GoogleGenAI } from "@google/genai";
 import sharp from "sharp";
 import { getUserIdFromRequest } from '@/auth/request';
 import { CreditsDAO } from '@/database/models/Credits.dao';
+import { supabaseAdmin } from '@/auth/supabase/client';
 
 export const config = {
   api: {
@@ -135,16 +136,15 @@ async function pollVideoOperation(
   return raw as VeoVideo;
 }
 
-// Resolve video to base64 data URL (download from URI if needed)
-async function videoToDataUrl(video: VeoVideo, apiKey: string): Promise<string> {
+// Resolve video to a Buffer (download from URI if needed)
+async function videoToBuffer(video: VeoVideo, apiKey: string): Promise<Buffer> {
   if (video.videoBytes) {
-    return `data:video/mp4;base64,${video.videoBytes}`;
+    return Buffer.from(video.videoBytes, "base64");
   }
   if (video.uri) {
     const response = await fetch(video.uri, { headers: { "x-goog-api-key": apiKey } });
     if (!response.ok) throw new Error(`Failed to download video: ${response.status}`);
-    const buffer = await response.arrayBuffer();
-    return `data:video/mp4;base64,${Buffer.from(buffer).toString("base64")}`;
+    return Buffer.from(await response.arrayBuffer());
   }
   throw new Error("No video data in response");
 }
@@ -373,12 +373,41 @@ ${reference_images.length > 0 ? `CRITICAL — USE REFERENCE IMAGES PRECISELY: De
     const finalVideo = videoResult;
     console.log('✅ Video generated successfully!');
 
-    let videoUrl: string;
+    let videoBuffer: Buffer;
     try {
-      videoUrl = await videoToDataUrl(finalVideo, apiKey);
+      videoBuffer = await videoToBuffer(finalVideo, apiKey);
     } catch (e) {
       console.error('Failed to resolve video:', e);
       return res.status(500).json({ ok: false, error: "No video data available in response" });
+    }
+
+    // Upload video to Supabase storage
+    let videoUrl: string;
+    let videoStoragePath: string | null = null;
+    try {
+      const storagePath = `generated/${userId}/${Date.now()}_video.mp4`;
+      const { error: uploadError } = await supabaseAdmin.storage
+        .from("campaign-assets")
+        .upload(storagePath, videoBuffer, {
+          contentType: "video/mp4",
+          cacheControl: "3600",
+          upsert: true,
+        });
+
+      if (uploadError) {
+        console.warn("Video storage upload failed, falling back to data URL:", uploadError);
+        videoUrl = `data:video/mp4;base64,${videoBuffer.toString("base64")}`;
+      } else {
+        const { data } = supabaseAdmin.storage
+          .from("campaign-assets")
+          .getPublicUrl(storagePath);
+        videoUrl = (data as any)?.publicUrl ?? `data:video/mp4;base64,${videoBuffer.toString("base64")}`;
+        videoStoragePath = storagePath;
+        console.log('✅ Video uploaded to storage:', storagePath);
+      }
+    } catch (e) {
+      console.warn("Video storage upload error, falling back to data URL:", e);
+      videoUrl = `data:video/mp4;base64,${videoBuffer.toString("base64")}`;
     }
 
     // Deduct video credits after successful generation
@@ -397,6 +426,7 @@ ${reference_images.length > 0 ? `CRITICAL — USE REFERENCE IMAGES PRECISELY: De
     return res.status(200).json({
       ok: true,
       videoUrl,
+      videoStoragePath,
       duration: initialDurationSeconds,
       aspectRatio: videoAspectRatio,
       referenceImagesUsed: reference_images.length,

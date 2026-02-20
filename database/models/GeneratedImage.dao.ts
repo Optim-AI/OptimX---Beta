@@ -17,7 +17,8 @@ export class GeneratedImageDAO {
   static async insert(
     userId: string,
     imageUrl: string,
-    imagePath: string | null
+    imagePath: string | null,
+    metadata?: Record<string, any>
   ): Promise<GeneratedImage> {
     const now = new Date().toISOString();
 
@@ -28,6 +29,7 @@ export class GeneratedImageDAO {
         userId,
         imageUrl,
         imagePath,
+        metadata: metadata || null,
         createdAt: now,
       })
       .returning();
@@ -48,6 +50,30 @@ export class GeneratedImageDAO {
       .where(eq(userGeneratedImage.userId, userId))
       .orderBy(desc(userGeneratedImage.createdAt))
       .limit(limit);
+  }
+
+  /**
+   * Get all saved image URLs for a user (for expiry protection).
+   * Returns a Set containing both imageUrl and metadata.originalChatUrl values.
+   */
+  static async getSavedUrls(userId: string): Promise<Set<string>> {
+    const rows = await db
+      .select({
+        imageUrl: userGeneratedImage.imageUrl,
+        metadata: userGeneratedImage.metadata,
+      })
+      .from(userGeneratedImage)
+      .where(eq(userGeneratedImage.userId, userId));
+
+    const urls = new Set<string>();
+    for (const row of rows) {
+      if (row.imageUrl) urls.add(row.imageUrl);
+      const meta = row.metadata as Record<string, any> | null;
+      if (meta?.originalChatUrl && typeof meta.originalChatUrl === 'string') {
+        urls.add(meta.originalChatUrl);
+      }
+    }
+    return urls;
   }
 
   /**

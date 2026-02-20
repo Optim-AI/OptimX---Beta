@@ -150,6 +150,9 @@ export type Message = {
   content: string;
   images?: File[];
   imageUrls?: string[]; // For displaying generated poster URLs in chat history
+  imageStoragePaths?: string[]; // Parallel to imageUrls — Supabase storage paths for deletion
+  expiredImageCount?: number; // How many images were expired/removed (for skeleton UI)
+  imageThumbnail?: boolean; // If true, render imageUrls as simple thumbnails (no action buttons)
   timestamp: number;
 };
 
@@ -160,6 +163,9 @@ export type SerializedMessage = {
   content: string;
   timestamp: number;
   imageUrls?: string[]; // Persist generated poster URLs in chat history
+  imageStoragePaths?: string[]; // Supabase storage paths for deletion
+  expiredImageCount?: number; // How many images were expired/removed
+  imageThumbnail?: boolean; // If true, render imageUrls as simple thumbnails
 };
 
 export type UserInput = {

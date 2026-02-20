@@ -8,6 +8,9 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { getUserIdFromRequest } from "@/auth/request";
 import { CreativeStudioSessionDAO } from "@/database/models/CreativeStudioSession.dao";
+import { GeneratedImageDAO } from "@/database/models/GeneratedImage.dao";
+import { SettingsDAO } from "@/database/models/Settings.dao";
+import { supabaseAdmin } from "@/auth/supabase/client";
 
 // Increase body size limit to 50MB for large image payloads (multiple poster data URLs)
 export const config = {
@@ -243,6 +246,7 @@ async function handleCreateSession(
 /**
  * GET /api/creative-studio/sessions?id=xxx
  * Returns a single session by ID
+ * Also performs read-time image expiry cleanup.
  */
 async function handleGetSession(
   req: NextApiRequest,
@@ -268,6 +272,79 @@ async function handleGetSession(
       productName: (session.adBuilderData as any)?.product?.product_name,
     });
 
+    // ---- Read-time image expiry cleanup ----
+    const messages = session.messages as any[] | undefined;
+    let messagesModified = false;
+
+    if (messages && Array.isArray(messages) && messages.length > 0) {
+      // Read retention setting (default 7 days)
+      let retentionDays = 7;
+      try {
+        const settingValue = await SettingsDAO.getSetting("image_retention_days");
+        if (typeof settingValue === "number") retentionDays = settingValue;
+      } catch (e) {
+        console.warn("Failed to read image_retention_days setting, using default 7", e);
+      }
+
+      const cutoffTimestamp = Date.now() - retentionDays * 86_400_000;
+      let savedUrls: Set<string> | null = null; // Lazy-loaded
+
+      for (const msg of messages) {
+        if (!msg.imageUrls || !Array.isArray(msg.imageUrls) || msg.imageUrls.length === 0) continue;
+        if (msg.timestamp >= cutoffTimestamp) continue;
+
+        // Lazy-load saved URLs on first need
+        if (savedUrls === null) {
+          try {
+            savedUrls = await GeneratedImageDAO.getSavedUrls(userId);
+          } catch (e) {
+            console.warn("Failed to load saved URLs, skipping expiry for this session", e);
+            savedUrls = new Set();
+          }
+        }
+
+        const keptUrls: string[] = [];
+        const keptPaths: string[] = [];
+        const storagePaths: string[] = msg.imageStoragePaths || [];
+        let removedCount = 0;
+
+        for (let i = 0; i < msg.imageUrls.length; i++) {
+          const url = msg.imageUrls[i];
+          if (savedUrls.has(url)) {
+            // Protected — keep it
+            keptUrls.push(url);
+            if (storagePaths[i]) keptPaths.push(storagePaths[i]);
+          } else {
+            // Expired — delete from storage if we have a path
+            removedCount++;
+            const storagePath = storagePaths[i];
+            if (storagePath) {
+              try {
+                await supabaseAdmin.storage
+                  .from("campaign-assets")
+                  .remove([storagePath]);
+              } catch (e) {
+                console.warn(`Failed to delete storage file ${storagePath}:`, e);
+              }
+            }
+          }
+        }
+
+        if (removedCount > 0) {
+          msg.imageUrls = keptUrls.length > 0 ? keptUrls : undefined;
+          msg.imageStoragePaths = keptPaths.length > 0 ? keptPaths : undefined;
+          msg.expiredImageCount = (msg.expiredImageCount || 0) + removedCount;
+          messagesModified = true;
+        }
+      }
+    }
+
+    // Fire-and-forget: persist cleaned-up messages back to DB
+    if (messagesModified) {
+      CreativeStudioSessionDAO.updateByIdAndUserId(sessionId, userId, { messages })
+        .catch((e: any) => console.warn("Failed to persist expired-image cleanup:", e));
+    }
+
     // Transform response to match frontend types
     const transformedSession = {
       id: session.id,
@@ -276,7 +353,7 @@ async function handleGetSession(
       sessionType: session.sessionType,
       brandSnapshot: session.brandSnapshot,
       phase: session.phase,
-      messages: session.messages,
+      messages: messages ?? session.messages,
       productData: session.productData,
       posterPrompt: session.posterPrompt,
       config: session.config,

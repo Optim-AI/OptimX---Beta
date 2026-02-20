@@ -9,13 +9,16 @@ type SystemBubbleProps = {
   children: React.ReactNode;
   images?: File[];
   imageUrls?: string[];
+  expiredImageCount?: number;
+  imageThumbnail?: boolean;
   onImageClick?: (url: string) => void;
   onUseAsReference?: (url: string) => void;
   onDownload?: (url: string) => void;
 };
 
-export function SystemBubble({ children, images, imageUrls, onImageClick, onUseAsReference, onDownload }: SystemBubbleProps) {
+export function SystemBubble({ children, images, imageUrls, expiredImageCount, imageThumbnail, onImageClick, onUseAsReference, onDownload }: SystemBubbleProps) {
   const hasImages = (images && images.length > 0) || (imageUrls && imageUrls.length > 0);
+  const hasExpired = expiredImageCount && expiredImageCount > 0;
   
   const handleDownload = (url: string, idx: number) => {
     if (onDownload) {
@@ -38,6 +41,41 @@ export function SystemBubble({ children, images, imageUrls, onImageClick, onUseA
         <div className="p-4 rounded-2xl rounded-tl-sm text-sm leading-relaxed" style={{ backgroundColor: colors.card, color: colors.foreground, border: `1px solid ${colors.border}` }}>
           {children}
         </div>
+        {hasExpired && (
+          <div className="flex flex-wrap gap-4 mt-2">
+            {Array.from({ length: expiredImageCount! }).map((_, idx) => (
+              <div
+                key={`expired-${idx}`}
+                className="w-40 h-40 rounded-lg flex flex-col items-center justify-center gap-2"
+                style={{
+                  border: `2px dashed ${colors.border}`,
+                  backgroundColor: colors.muted,
+                }}
+              >
+                <svg
+                  className="w-8 h-8"
+                  style={{ color: colors.mutedForeground }}
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={1.5}
+                    d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                  />
+                </svg>
+                <span
+                  className="text-xs font-medium"
+                  style={{ color: colors.mutedForeground }}
+                >
+                  Image removed
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
         {hasImages && (
           <div className="flex flex-wrap gap-4 mt-2">
             {/* File images */}
@@ -50,8 +88,16 @@ export function SystemBubble({ children, images, imageUrls, onImageClick, onUseA
                 style={{ border: `1px solid ${colors.border}` }}
               />
             ))}
-            {/* URL images (generated posters) with action buttons */}
-            {imageUrls && imageUrls.map((url, idx) => (
+            {/* URL images (generated posters / product images) */}
+            {imageUrls && imageUrls.map((url, idx) => imageThumbnail ? (
+              <img
+                key={`url-${idx}`}
+                src={url}
+                alt={`Image ${idx + 1}`}
+                className="w-32 h-32 object-cover rounded-lg shadow-sm"
+                style={{ border: `1px solid ${colors.border}` }}
+              />
+            ) : (
               <div
                 key={`url-${idx}`}
                 className="relative group"
@@ -121,15 +167,31 @@ type UserBubbleProps = {
 };
 
 export function UserBubble({ message }: UserBubbleProps) {
+  const hasFileImages = message.images && message.images.length > 0;
+  const hasUrlImages = !hasFileImages && message.imageUrls && message.imageUrls.length > 0;
+
   return (
     <div className="flex gap-4 max-w-4xl ml-auto overflow-hidden">
       <div className="flex-1 flex flex-col items-end gap-2 min-w-0">
-        {message.images && message.images.length > 0 && (
+        {hasFileImages && (
           <div className="flex flex-wrap gap-2 mb-2">
-            {message.images.map((img, idx) => (
+            {message.images!.map((img, idx) => (
               <img
                 key={idx}
                 src={URL.createObjectURL(img)}
+                alt={`Upload ${idx + 1}`}
+                className="w-24 h-24 object-cover rounded-lg"
+                style={{ border: `1px solid ${colors.border}` }}
+              />
+            ))}
+          </div>
+        )}
+        {hasUrlImages && (
+          <div className="flex flex-wrap gap-2 mb-2">
+            {message.imageUrls!.map((url, idx) => (
+              <img
+                key={idx}
+                src={url}
                 alt={`Upload ${idx + 1}`}
                 className="w-24 h-24 object-cover rounded-lg"
                 style={{ border: `1px solid ${colors.border}` }}

@@ -19,6 +19,7 @@ import {
   Eye,
   Users,
   CreditCard,
+  Settings,
 } from 'lucide-react';
 import colors from '@/lib/ui/colors';
 
@@ -91,7 +92,7 @@ interface UserPayment {
   razorpayPaymentId: string | null;
 }
 
-type ActiveSection = 'plans' | 'reports' | 'users';
+type ActiveSection = 'plans' | 'reports' | 'users' | 'settings';
 
 export default function AdminDashboard() {
   const router = useRouter();
@@ -131,6 +132,11 @@ export default function AdminDashboard() {
   const [userPayments, setUserPayments] = useState<UserPayment[]>([]);
   const [paymentsLoading, setPaymentsLoading] = useState(false);
 
+  // Settings state
+  const [imageRetentionDays, setImageRetentionDays] = useState<number>(7);
+  const [settingsLoading, setSettingsLoading] = useState(false);
+  const [savingSettings, setSavingSettings] = useState(false);
+
   useEffect(() => {
     // Check if admin is logged in
     const token = localStorage.getItem('admin_token');
@@ -151,6 +157,9 @@ export default function AdminDashboard() {
     }
     if (activeSection === 'users' && usersData.length === 0) {
       fetchUsers();
+    }
+    if (activeSection === 'settings') {
+      fetchImageRetention();
     }
   }, [activeSection]);
 
@@ -284,6 +293,57 @@ export default function AdminDashboard() {
   function handleSelectUser(user: UserData) {
     setSelectedUser(user);
     fetchUserPayments(user.id);
+  }
+
+  async function fetchImageRetention() {
+    setSettingsLoading(true);
+    try {
+      const token = localStorage.getItem('admin_token');
+      const response = await fetch('/api/admin/settings/image-retention', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (response.status === 401) {
+        localStorage.removeItem('admin_token');
+        localStorage.removeItem('admin_username');
+        router.replace('/admin/login');
+        return;
+      }
+      const result = await response.json();
+      if (result.success) {
+        setImageRetentionDays(result.image_retention_days);
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to fetch settings');
+    } finally {
+      setSettingsLoading(false);
+    }
+  }
+
+  async function handleSaveImageRetention() {
+    setSavingSettings(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const token = localStorage.getItem('admin_token');
+      const response = await fetch('/api/admin/settings/image-retention', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ days: imageRetentionDays }),
+      });
+      const result = await response.json();
+      if (!result.success) {
+        setError(result.error || 'Failed to save setting');
+        return;
+      }
+      setSuccess(result.message);
+    } catch (err: any) {
+      setError(err.message || 'Failed to save setting');
+    } finally {
+      setSavingSettings(false);
+    }
   }
 
   async function handleUpdateReportStatus(reportId: string, status: string) {
@@ -586,6 +646,13 @@ export default function AdminDashboard() {
           >
             <Users size={18} />
             Users
+          </button>
+          <button
+            className={`section-btn ${activeSection === 'settings' ? 'active' : ''}`}
+            onClick={() => setActiveSection('settings')}
+          >
+            <Settings size={18} />
+            Settings
           </button>
         </div>
 
@@ -1011,6 +1078,61 @@ export default function AdminDashboard() {
                   <p>No users found</p>
                 </div>
               )}
+            </div>
+          </>
+        )}
+
+        {activeSection === 'settings' && (
+          <>
+            <div className="plans-card">
+              <div className="plans-header">
+                <h3>Image Retention</h3>
+                <button className="refresh-btn" onClick={fetchImageRetention} disabled={settingsLoading}>
+                  <RefreshCw size={16} className={settingsLoading ? 'spin' : ''} />
+                  {settingsLoading ? 'Loading...' : 'Refresh'}
+                </button>
+              </div>
+
+              <div style={{ maxWidth: '480px' }}>
+                <p style={{ fontSize: '14px', color: '#64748b', marginBottom: '20px', lineHeight: 1.6 }}>
+                  Generated poster images in chat sessions are automatically removed after this many days.
+                  Images saved to a user's library are exempt from deletion. Set to 0 to expire immediately on next load.
+                </p>
+
+                <div className="form-group">
+                  <label>Retention period (days)</label>
+                  <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                    <input
+                      type="number"
+                      min={0}
+                      max={365}
+                      value={imageRetentionDays}
+                      onChange={(e) => setImageRetentionDays(parseInt(e.target.value) || 0)}
+                      style={{ width: '120px' }}
+                    />
+                    <button
+                      className="save-btn"
+                      onClick={handleSaveImageRetention}
+                      disabled={savingSettings}
+                    >
+                      {savingSettings ? (
+                        <>
+                          <RefreshCw size={16} className="spin" />
+                          Saving...
+                        </>
+                      ) : (
+                        <>
+                          <Save size={16} />
+                          Save
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  <span className="help-text">
+                    Default: 7 days. Range: 0–365. Set to 0 to remove images on next session load.
+                  </span>
+                </div>
+              </div>
             </div>
           </>
         )}

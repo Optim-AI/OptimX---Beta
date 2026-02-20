@@ -1,6 +1,8 @@
 // pages/api/creative-studio/fetch-image.ts
 import type { NextApiRequest, NextApiResponse } from "next";
 import { JSDOM } from "jsdom";
+import { supabaseAdmin } from "@/auth/supabase/client";
+import { getUserIdFromRequest } from "@/auth/request";
 
 // Helper to convert relative URLs to absolute
 function toAbsolute(base: string, src: string): string {
@@ -173,13 +175,44 @@ export default async function handler(
     const arrayBuffer = await response.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    // Convert to base64 data URL
+    // Convert to base64 data URL (needed for Gemini inline image generation)
     const base64 = buffer.toString("base64");
     const dataUrl = `data:${contentType};base64,${base64}`;
+
+    // Upload to Supabase storage so we store a URL, not a data URL in the DB
+    let publicUrl: string | null = null;
+    let storagePath: string | null = null;
+    try {
+      const userId = await getUserIdFromRequest(req);
+      const uid = userId || "anonymous";
+      const ext = contentType.split("/")[1]?.split(";")[0] || "png";
+      storagePath = `generated/${uid}/${Date.now()}_product.${ext}`;
+
+      const { error: uploadError } = await supabaseAdmin.storage
+        .from("campaign-assets")
+        .upload(storagePath, buffer, {
+          contentType,
+          cacheControl: "3600",
+          upsert: true,
+        });
+
+      if (!uploadError) {
+        const { data } = supabaseAdmin.storage
+          .from("campaign-assets")
+          .getPublicUrl(storagePath);
+        publicUrl = (data as any)?.publicUrl ?? null;
+      } else {
+        console.warn("Product image storage upload failed:", uploadError);
+      }
+    } catch (e) {
+      console.warn("Product image storage upload error:", e);
+    }
 
     return res.status(200).json({
       ok: true,
       dataUrl,
+      publicUrl,
+      storagePath,
       contentType,
       size: buffer.length,
     });
