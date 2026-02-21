@@ -75,6 +75,7 @@ export default function OnboardingInfoPage() {
     setSaving(true);
     setError(null);
     try {
+      // Save all collected onboarding details to the user profile
       await profileClient.upsert({
         businessName: companyName.trim(),
         primaryGoal,

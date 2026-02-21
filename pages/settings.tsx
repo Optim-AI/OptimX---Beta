@@ -35,7 +35,7 @@ type ProfilePayload = {
   font?: string | null;
   logo_path?: string | null;
   ref_images?: string[] | null;
-  tagline?: string | null;
+  gst_number?: string | null;
   heard_from?: string | null;
   heard_from_other?: string | null;
 };
@@ -128,7 +128,7 @@ function normalizeProfile(data: any): ProfilePayload {
     font: data.font ?? null,
     logo_path: data.logoPath ?? data.logo_path ?? null,
     ref_images: data.refImages ?? data.ref_images ?? null,
-    tagline: data.tagline ?? null,
+    gst_number: data.gstNumber ?? data.gst_number ?? null,
     heard_from: data.heardFrom ?? data.heard_from ?? null,
     heard_from_other: data.heardFromOther ?? data.heard_from_other ?? null,
   };
@@ -168,7 +168,7 @@ export default function SettingsPage(): JSX.Element {
 
   const [businessName, setBusinessName] = useState("");
   const [location, setLocation] = useState("");
-  const [tagline, setTagline] = useState("");
+  const [gstNumber, setGstNumber] = useState("");
   const [businessType, setBusinessType] = useState<string | null>(
     BUSINESS_TYPES[0]
   );
@@ -211,7 +211,7 @@ export default function SettingsPage(): JSX.Element {
           // Drizzle returns camelCase keys; fall back to snake_case for compatibility
           setBusinessName(data.businessName ?? data.business_name ?? "");
           setLocation(data.location ?? "");
-          setTagline(data.tagline ?? "");
+          setGstNumber(data.gstNumber ?? data.gst_number ?? "");
           setBusinessType(data.businessType ?? data.business_type ?? BUSINESS_TYPES[0]);
           setBusinessSize(data.businessSize ?? data.business_size ?? BUSINESS_SIZES[0]);
           const useCaseData = data.useCase ?? data.use_case;
@@ -352,7 +352,8 @@ export default function SettingsPage(): JSX.Element {
           Array.isArray(profile.ref_images) && profile.ref_images.length
             ? profile.ref_images
             : null,
-        tagline: tagline || profile.tagline || null,
+        gst_number: gstNumber || profile.gst_number || null,
+        gstNumber: gstNumber || profile.gst_number || null,
         heard_from: heardFrom || profile.heard_from || null,
         heardFrom: heardFrom || profile.heard_from || null,
         heard_from_other:
@@ -673,14 +674,14 @@ export default function SettingsPage(): JSX.Element {
                     </div>
 
                     <div className="md:col-span-2">
-                      <label htmlFor="tagline" style={labelStyle}>Tagline</label>
+                      <label htmlFor="gst_number" style={labelStyle}>GST Number</label>
                       <input
-                        id="tagline"
+                        id="gst_number"
                         className="settings-input"
                         style={inputStyle}
-                        value={tagline}
-                        onChange={(e) => setTagline(e.target.value)}
-                        placeholder="Your brand tagline"
+                        value={gstNumber}
+                        onChange={(e) => setGstNumber(e.target.value)}
+                        placeholder="e.g. 27XXXXX1234X1Z5"
                       />
                     </div>
 
