@@ -158,7 +158,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!apiKey) {
     return res.status(500).json({
       ok: false,
-      error: "GEMINI_VEO_API_KEY is not configured. Add GEMINI_VEO_API_KEY (or GEMINI_API_KEY) in your host's Environment Variables (e.g. Vercel → Settings → Environment Variables), ensure it's enabled for Production, then redeploy.",
+      error: "Error Contact Support",
     });
   }
 
@@ -189,8 +189,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       voiceover_script,
       headline,
       subtext,
-      text_style,
-      text_position,
+
+
+
       align_brand,
       product_images,
       brand_logo,
@@ -270,47 +271,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       "Neon": { prefix: "A neon-lit", details: "Neon and glowing visuals with bold colors, cyberpunk or nightlife atmosphere, and high contrast." },
     };
 
-    // Text style and position for on-screen text (readability, accessibility, branding)
-    const textStyle = typeof text_style === "string" ? text_style : "animated_effects";
-    const textPosition = typeof text_position === "string" ? text_position : "lower_third";
-    const useBrandAlignment = align_brand === true || align_brand === "true";
-
-    const textStyleInstructions: Record<string, string> = {
-      kinetic: "Use KINETIC TYPOGRAPHY: dynamic, moving text that adds energy. Text should animate with motion—scaling, tracking, or moving in sync with the beat or message.",
-      animated_titles: "Use ANIMATED TITLES: typewriter effect, glitch, or bouncing so the text stands out. Choose one style (e.g. typewriter reveal, subtle glitch, or bounce-in) and apply it clearly.",
-      subtitles_captions: "Use SUBTITLES/CAPTIONS style: karaoke-style word-by-word or phrase highlighting for accessibility. Clear, readable captions that sync with speech or key moments; high contrast so they are always legible.",
-      specialized: "Use SPECIALIZED text style: meme-style bold text, testimonial quote styling, or countdown numbers—whichever fits the message. Make it distinctive and on-brand.",
-      animated_effects: "Use ANIMATED EFFECTS: fade-in, drop-in, or sliding text entrances. Text should appear with a clear motion (fade, drop from top, or slide from side) and remain readable.",
-    };
-    const textPositionInstructions: Record<string, string> = {
-      lower_third: "POSITION: Place text in the LOWER THIRD of the frame so it does not obstruct key visuals. Keep within safe margins.",
-      center: "POSITION: Place text prominently in the CENTER of the frame. Ensure it does not fully obscure the main subject.",
-      top_third: "POSITION: Place text in the TOP THIRD of the frame. Keep within safe margins and avoid overlapping critical action.",
-      full_width: "POSITION: Use a full-width caption bar or banner style (e.g. bottom or top bar) so text is clearly separated from the main image.",
-    };
-
-    const hasOnScreenText = !!(headline || subtext);
-    const onScreenTextBlock = hasOnScreenText
-      ? `
-ON-SCREEN TEXT (CRITICAL — follow exactly):
-
-- SPELLING: Display the headline and subtext EXACTLY as written. Do not change, paraphrase, or introduce spelling or typo errors. Copy character-for-character. No misspellings.
-
-- TEXT INTEGRITY — DO NOT: Use distorted letters, warped text, stretched or bent typography, broken or fragmented letters, extra characters, random symbols, or gibberish. Every character must be clean, legible, and exactly as provided. Typography must be crisp and correct with no visual distortion.
-
-- STYLE: ${textStyleInstructions[textStyle] ?? textStyleInstructions.animated_effects}
-
-- ${textPositionInstructions[textPosition] ?? textPositionInstructions.lower_third}
-
-- READABILITY & CONTRAST: Use high-contrast colors (e.g. white text on dark semi-transparent overlay, or dark bold text on light overlay). Use clear, bold Sans Serif typography so text is always visible and readable. Ensure text remains on screen long enough to be read comfortably (at least 2–3 seconds for short lines, longer for full sentences).
-
-${useBrandAlignment && brand_name ? "- BRANDING: Align font weight and color with a professional, consistent look suitable for " + brand_name + ". Keep typography and colors cohesive with the ad." : ""}
-
-${headline ? `Headline (display exactly): "${headline}"` : ""}
-${subtext ? `Subtext (display exactly): "${subtext}"` : ""}
-`
-      : "";
-
+     
+    
     if (final_video_prompt) {
       const styleConfig = styleDescriptions[style] || { prefix: "A professional", details: "" };
       
@@ -322,7 +284,7 @@ ${final_video_prompt}
 
 Aspect ratio: ${videoAspectRatio}
 ${voiceover_script ? `Voiceover: "${voiceover_script}"` : "No voiceover - use music/sound effects."}
-${onScreenTextBlock}
+
 
 ${reference_images.length > 0 ? `CRITICAL — USE REFERENCE IMAGES PRECISELY: The attached reference images are the source of truth. You MUST use them exactly as provided:
 - The product/hero image(s) must appear in the video with the SAME appearance, design, colors, and packaging — do not redesign or alter.
@@ -332,7 +294,8 @@ Generate a video ad that features this exact product and brand logo as depicted 
       videoPrompt = `Create a ${initialDurationSeconds}-second video ad (${videoAspectRatio} aspect ratio).
 
 ${prompt}
-${onScreenTextBlock}
+
+CRITICAL — NO ON-SCREEN TEXT: Do NOT add any text, captions, titles, subtitles, headlines, or text overlays to the video. The video must be purely visual with zero written text displayed.
 
 ${reference_images.length > 0 ? `CRITICAL — USE REFERENCE IMAGES PRECISELY: Depict the product and brand logo exactly as in the attached reference images. Same look, design, and branding. Do not redesign or alter. The brand logo must appear exactly as provided.` : ''}`;
     } else {

@@ -12,12 +12,18 @@ const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABAS
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE;
 
-// Basic sanity checks (won't crash in client builds, but helpful server-side)
-if (!SUPABASE_URL) {
-  console.warn("Missing SUPABASE_URL env var (NEXT_PUBLIC_SUPABASE_URL or SUPABASE_URL).");
+const isValidUrl = (url: string) =>
+  url && (url.startsWith("http://") || url.startsWith("https://"));
+
+if (!isValidUrl(SUPABASE_URL || "")) {
+  throw new Error(
+    "Invalid supabaseUrl: Add NEXT_PUBLIC_SUPABASE_URL to .env.local (e.g. https://your-project.supabase.co or http://localhost:54321 for local dev)"
+  );
 }
 if (!SUPABASE_ANON_KEY) {
-  console.warn("Missing SUPABASE_ANON_KEY env var (NEXT_PUBLIC_SUPABASE_ANON_KEY or SUPABASE_ANON_KEY).");
+  throw new Error(
+    "Missing SUPABASE_ANON_KEY: Add NEXT_PUBLIC_SUPABASE_ANON_KEY to .env.local"
+  );
 }
 
 // Browser / client safe Supabase instance (use this in React components)

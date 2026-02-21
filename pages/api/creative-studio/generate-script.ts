@@ -162,7 +162,7 @@ ${voiceover ? `- Voiceover Language: ${String(language || "english").charAt(0).t
 - Tone: ${tone || "Energetic"}
 ${key_message ? `- Key Message: ${key_message}` : ""}
 ${cta ? `- CTA: ${cta}` : ""}
-${on_screen_text ? `- On-Screen Text: Enabled` : "- On-Screen Text: Disabled"}
+- On-Screen Text: DISABLED (CRITICAL: The video must NOT contain any on-screen text, captions, titles, headlines, or text overlays. Purely visual only.)
 
 DIRECTOR REQUIREMENTS:
 - Create a shot-by-shot plan where the sum of all shot durations equals ${durationSecondsClamped} seconds. Use time ranges like "0-3s", "3-7s", etc., ending at ${durationSecondsClamped}s.
@@ -184,7 +184,7 @@ Return your response as a JSON object with this exact structure (use real timing
       "duration": "Xs",
       "time_range": "0-Xs",
       "visual_description": "Director-grade visual description",
-      "on_screen_text": "Max 6 words",
+      "on_screen_text": "",
       "emotion": "Emotion to evoke",
       "motion_style": "Camera and motion style",
       "voiceover_line": "Voiceover for this scene (if enabled)"
@@ -198,12 +198,14 @@ Return your response as a JSON object with this exact structure (use real timing
     "brand_polish": "Brand polish (e.g. Apple/Stripe quality)"
   },
   "voiceover_script": "${voiceover ? `Full voiceover script in ${language === "tamil" ? "Tamil" : language === "hindi" ? "Hindi" : "English"}, readable in exactly ${durationSecondsClamped} seconds, ${tone || "Energetic"} tone.` : "N/A - Voiceover disabled"}",
-  "headline": "${on_screen_text ? "Short headline (3-5 words)" : "N/A"}",
-  "subtext": "${on_screen_text ? "Supporting text (5-8 words)" : "N/A"}",
-  "final_video_prompt": "Single cinematic prompt (300-800 tokens) for the full ${durationSecondsClamped}-second video: camera, lighting, composition, pacing, color grading, shot transitions, premium quality."
+  "headline": "N/A",
+  "subtext": "N/A",
+  "final_video_prompt": "Single cinematic prompt (300-800 tokens) for the full ${durationSecondsClamped}-second video: camera, lighting, composition, pacing, color grading, shot transitions, premium quality. CRITICAL: Do NOT describe or include any on-screen text, captions, titles, headlines, or text overlays. The video is purely visual with no written text."
 }
 
-IMPORTANT: shot_plan and storyboard durations must cover 0 to ${durationSecondsClamped} seconds total. final_video_prompt must describe the entire ${durationSecondsClamped}-second film with rich cinematic language. Return ONLY valid JSON; no markdown or extra text.`;
+IMPORTANT: shot_plan and storyboard durations must cover 0 to ${durationSecondsClamped} seconds total. final_video_prompt must describe the entire ${durationSecondsClamped}-second film with rich cinematic language. Return ONLY valid JSON; no markdown or extra text.
+
+CRITICAL — NO ON-SCREEN TEXT: Set headline, subtext, and every storyboard on_screen_text to empty string or "N/A". The video must NEVER display any text, captions, titles, or overlays. Purely visual only.`;
 
     // Call Gemini API as Creative Director Brain
     // Using gemini-2.5-flash with v1beta REST API
@@ -421,6 +423,16 @@ IMPORTANT: shot_plan and storyboard durations must cover 0 to ${durationSecondsC
       };
       
       console.log("Using fallback scriptData with extracted fields");
+    }
+
+    // Force no on-screen text: always strip headline, subtext, and storyboard on_screen_text
+    scriptData.headline = "";
+    scriptData.subtext = "";
+    if (scriptData.storyboard && Array.isArray(scriptData.storyboard)) {
+      scriptData.storyboard = scriptData.storyboard.map((scene: any) => ({
+        ...scene,
+        on_screen_text: "",
+      }));
     }
 
     return res.status(200).json({

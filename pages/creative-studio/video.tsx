@@ -24,8 +24,6 @@ import {
   VIDEO_DURATIONS,
   VIDEO_PLATFORMS,
   VIDEO_ASPECT_RATIOS,
-  VIDEO_TEXT_STYLES,
-  VIDEO_TEXT_POSITIONS,
 } from '@/app/web/src/components/creative-studio';
 import { authFetch } from '@/lib/utils';
 import { supabase } from '@/auth/supabase/client';
@@ -559,6 +557,7 @@ export default function VideoSessionPage() {
 
   async function handleGenerateScript() {
     if (!adBuilderData.product) return;
+    if (!adBuilderData.userDescription?.trim()) return;
 
     setIsGeneratingScript(true);
     try {
@@ -648,11 +647,6 @@ export default function VideoSessionPage() {
           quality: adBuilderData.adSetup.quality || 'standard',
           final_video_prompt: finalPrompt,
           voiceover_script: adBuilderData.voiceover.script,
-          headline: adBuilderData.onScreenText.headline,
-          subtext: adBuilderData.onScreenText.subtext,
-          text_style: adBuilderData.onScreenText.textStyle ?? 'animated_effects',
-          text_position: adBuilderData.onScreenText.textPosition ?? 'lower_third',
-          align_brand: adBuilderData.onScreenText.alignBrand ?? true,
           product_images: adBuilderData.product.product_images,
           hero_image: adBuilderData.product.hero_image,
           brand_logo: brandLogo,
@@ -681,6 +675,32 @@ export default function VideoSessionPage() {
       await loadCredits();
     } finally {
       setIsGeneratingVideo(false);
+    }
+  }
+
+  // ============== Download Video ==============
+
+  async function handleDownloadVideo(video: GeneratedVideo) {
+    try {
+      let blob: Blob;
+      if (video.url.startsWith('data:')) {
+        const res = await fetch(video.url);
+        blob = await res.blob();
+      } else {
+        const res = await fetch(video.url, { mode: 'cors' });
+        if (!res.ok) throw new Error('Failed to fetch video');
+        blob = await res.blob();
+      }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `optimx-video-${video.id}.mp4`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      showError(err?.message || 'Failed to download video. Try opening the link in a new tab.');
     }
   }
 
@@ -914,16 +934,23 @@ export default function VideoSessionPage() {
         {/* Progress Steps */}
         <div className="border-b px-6 py-4 flex-shrink-0" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
           <div className="max-w-4xl mx-auto flex items-center justify-between">
-            {[1, 2, 3, 4].map((s) => (
+            {[1, 2, 3, 4].map((s) => {
+              const isStep4Blocked = s === 4 && !adBuilderData.voiceover?.script;
+              return (
               <React.Fragment key={s}>
                 <button
-                  onClick={() => setStep(s as AdBuilderStep)}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors"
+                  onClick={() => {
+                    if (isStep4Blocked) return;
+                    setStep(s as AdBuilderStep);
+                  }}
+                  disabled={isStep4Blocked}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                   style={{
                     backgroundColor: 'transparent',
                     color: step === s ? colors.primary : step > s ? colors.foreground : colors.mutedForeground,
                     fontWeight: step === s ? 600 : 400,
                   }}
+                  title={isStep4Blocked ? 'Generate a script first' : undefined}
                 >
                   <div
                     className="w-8 h-8 rounded-full flex items-center justify-center"
@@ -943,7 +970,8 @@ export default function VideoSessionPage() {
                 </button>
                 {s < 4 && <div className="flex-1 h-px mx-2" style={{ backgroundColor: colors.border }} />}
               </React.Fragment>
-            ))}
+            );
+            })}
           </div>
         </div>
 
@@ -1189,13 +1217,13 @@ export default function VideoSessionPage() {
                 </div>
 
                 <div className="rounded-lg border p-6 space-y-6" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
-                  {/* User Description Input */}
+                  {/* User Description Input - Required to enable Generate Script */}
                   <div>
                     <label className="block text-sm font-medium mb-2" style={{ color: colors.foreground }}>
-                      Describe Your Video Ad Vision
+                      Describe Your Video Ad Vision <span style={{ color: colors.destructive }}>*</span>
                     </label>
                     <p className="text-xs mb-2" style={{ color: colors.mutedForeground }}>
-                      Tell us what you want in your video ad. Our AI will analyze your product and enhance your vision into a premium commercial script.
+                      Tell us what you want in your video ad. You must enter this to generate a script and proceed to preview.
                     </p>
                     <textarea
                       value={adBuilderData.userDescription || ''}
@@ -1334,36 +1362,10 @@ export default function VideoSessionPage() {
                     </>
                   )}
 
-                  {/* On-Screen Text Toggle */}
-                  <div className="flex items-center justify-between pt-4 border-t" style={{ borderColor: colors.border }}>
-                    <div>
-                      <label className="block text-sm font-medium" style={{ color: colors.foreground }}>On-Screen Text</label>
-                      <p className="text-xs" style={{ color: colors.mutedForeground }}>Show text overlays on video</p>
-                    </div>
-                    <button
-                      onClick={() =>
-                        setAdBuilderData({
-                          ...adBuilderData,
-                          onScreenText: { ...adBuilderData.onScreenText, enabled: !adBuilderData.onScreenText.enabled },
-                        })
-                      }
-                      className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors"
-                      style={{ backgroundColor: adBuilderData.onScreenText.enabled ? colors.primary : colors.muted }}
-                    >
-                      <span
-                        className="inline-block h-4 w-4 transform rounded-full transition-transform"
-                        style={{
-                          backgroundColor: colors.cardForeground,
-                          transform: adBuilderData.onScreenText.enabled ? 'translateX(1.5rem)' : 'translateX(0.25rem)',
-                        }}
-                      />
-                    </button>
-                  </div>
-
-                  {/* Generate Script Button */}
+                  {/* Generate Script Button - Disabled until ad vision is entered */}
                   <button
                     onClick={handleGenerateScript}
-                    disabled={isGeneratingScript}
+                    disabled={isGeneratingScript || !adBuilderData.userDescription?.trim()}
                     className="w-full px-6 py-3 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
                     style={{ backgroundColor: colors.primary }}
                   >
@@ -1376,6 +1378,11 @@ export default function VideoSessionPage() {
                       'Generate Script with AI'
                     )}
                   </button>
+                  {!adBuilderData.userDescription?.trim() && !isGeneratingScript && (
+                    <p className="text-xs mt-1" style={{ color: colors.mutedForeground }}>
+                      Enter your ad vision above to enable script generation.
+                    </p>
+                  )}
 
                   {/* Loading Skeleton while generating */}
                   {isGeneratingScript && (
@@ -1565,25 +1572,6 @@ export default function VideoSessionPage() {
                               />
                             </div>
 
-                            {/* On-Screen Text */}
-                            <div className="mb-3">
-                              <label className="block text-xs font-medium mb-1" style={{ color: colors.foreground }}>
-                                On-Screen Text (max 6 words)
-                              </label>
-                              <input
-                                type="text"
-                                value={scene.on_screen_text || ''}
-                                onChange={(e) => {
-                                  const newStoryboard = [...(adBuilderData.storyboard || [])];
-                                  newStoryboard[idx] = { ...scene, on_screen_text: e.target.value };
-                                  setAdBuilderData({ ...adBuilderData, storyboard: newStoryboard });
-                                }}
-                                placeholder="e.g., Discover Premium Quality"
-                                className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2"
-                                style={{ borderColor: colors.border, backgroundColor: colors.input, color: colors.foreground }}
-                              />
-                            </div>
-
                             {/* Emotion & Motion Style (side by side) */}
                             <div className="grid grid-cols-2 gap-3 mb-3">
                               <div>
@@ -1723,113 +1711,6 @@ export default function VideoSessionPage() {
                     </div>
                   )}
 
-                  {/* Headline & Subtext (editable) + Text style & position */}
-                  {!isGeneratingScript && adBuilderData.onScreenText.enabled && adBuilderData.voiceover.enabled && (
-                    <div className="space-y-4">
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-sm font-medium mb-2" style={{ color: colors.foreground }}>Headline</label>
-                          <input
-                            type="text"
-                            value={adBuilderData.onScreenText.headline || ''}
-                            onChange={(e) =>
-                              setAdBuilderData({
-                                ...adBuilderData,
-                                onScreenText: { ...adBuilderData.onScreenText, headline: e.target.value },
-                              })
-                            }
-                            className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2"
-                            style={{ borderColor: colors.border, backgroundColor: colors.input, color: colors.foreground }}
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium mb-2" style={{ color: colors.foreground }}>Subtext</label>
-                          <input
-                            type="text"
-                            value={adBuilderData.onScreenText.subtext || ''}
-                            onChange={(e) =>
-                              setAdBuilderData({
-                                ...adBuilderData,
-                                onScreenText: { ...adBuilderData.onScreenText, subtext: e.target.value },
-                              })
-                            }
-                            className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2"
-                            style={{ borderColor: colors.border, backgroundColor: colors.input, color: colors.foreground }}
-                          />
-                        </div>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium mb-2" style={{ color: colors.foreground }}>Text style</label>
-                        <p className="text-xs mb-2" style={{ color: colors.mutedForeground }}>How the on-screen text appears (kinetic, animated, captions, etc.)</p>
-                        <div className="flex flex-wrap gap-2">
-                          {VIDEO_TEXT_STYLES.map((opt) => (
-                            <button
-                              key={opt.id}
-                              type="button"
-                              onClick={() =>
-                                setAdBuilderData({
-                                  ...adBuilderData,
-                                  onScreenText: { ...adBuilderData.onScreenText, textStyle: opt.id },
-                                })
-                              }
-                              className="px-3 py-2 rounded-lg border-2 text-sm font-medium transition-colors"
-                              style={{
-                                borderColor: (adBuilderData.onScreenText.textStyle ?? 'animated_effects') === opt.id ? colors.primary : colors.border,
-                                backgroundColor: (adBuilderData.onScreenText.textStyle ?? 'animated_effects') === opt.id ? 'hsl(213 100% 55% / 0.2)' : 'transparent',
-                                color: (adBuilderData.onScreenText.textStyle ?? 'animated_effects') === opt.id ? colors.primary : colors.foreground,
-                              }}
-                              title={opt.description}
-                            >
-                              {opt.label}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium mb-2" style={{ color: colors.foreground }}>Text position</label>
-                        <p className="text-xs mb-2" style={{ color: colors.mutedForeground }}>Where text sits (lower third recommended for readability)</p>
-                        <div className="flex flex-wrap gap-2">
-                          {VIDEO_TEXT_POSITIONS.map((opt) => (
-                            <button
-                              key={opt.id}
-                              type="button"
-                              onClick={() =>
-                                setAdBuilderData({
-                                  ...adBuilderData,
-                                  onScreenText: { ...adBuilderData.onScreenText, textPosition: opt.id },
-                                })
-                              }
-                              className="px-3 py-2 rounded-lg border-2 text-sm font-medium transition-colors"
-                              style={{
-                                borderColor: (adBuilderData.onScreenText.textPosition ?? 'lower_third') === opt.id ? colors.primary : colors.border,
-                                backgroundColor: (adBuilderData.onScreenText.textPosition ?? 'lower_third') === opt.id ? 'hsl(213 100% 55% / 0.2)' : 'transparent',
-                                color: (adBuilderData.onScreenText.textPosition ?? 'lower_third') === opt.id ? colors.primary : colors.foreground,
-                              }}
-                              title={opt.description}
-                            >
-                              {opt.label}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                      <label className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={adBuilderData.onScreenText.alignBrand ?? true}
-                          onChange={(e) =>
-                            setAdBuilderData({
-                              ...adBuilderData,
-                              onScreenText: { ...adBuilderData.onScreenText, alignBrand: e.target.checked },
-                            })
-                          }
-                          className="rounded focus:ring-2"
-                          style={{ accentColor: colors.primary }}
-                        />
-                        <span className="text-sm" style={{ color: colors.foreground }}>Align text style with brand (fonts & colors)</span>
-                      </label>
-                    </div>
-                  )}
-
                   <div className="flex justify-between pt-4 border-t" style={{ borderColor: colors.border }}>
                     <button
                       onClick={() => setStep(2)}
@@ -1843,6 +1724,7 @@ export default function VideoSessionPage() {
                       disabled={!adBuilderData.voiceover.script}
                       className="px-6 py-2 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
                       style={{ backgroundColor: colors.primary }}
+                      title={!adBuilderData.voiceover.script ? 'Generate a script first to continue' : undefined}
                     >
                       Continue to Preview
                     </button>
@@ -2001,14 +1883,14 @@ export default function VideoSessionPage() {
                             <span className="text-sm" style={{ color: colors.mutedForeground }}>
                               {new Date(video.timestamp).toLocaleString()}
                             </span>
-                            <a
-                              href={video.url}
-                              download={`video-${video.id}.mp4`}
+                            <button
+                              type="button"
+                              onClick={() => handleDownloadVideo(video)}
                               className="px-4 py-2 rounded-lg text-sm"
                               style={{ backgroundColor: colors.muted, color: colors.foreground }}
                             >
                               Download
-                            </a>
+                            </button>
                           </div>
                         </div>
                       ))}
