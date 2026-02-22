@@ -51,7 +51,7 @@ let _supabaseAdmin: SupabaseClient | null = null;
 export const supabaseAdmin: SupabaseClient = new Proxy({} as SupabaseClient, {
   get(_, prop) {
     if (!_supabaseAdmin) {
-      const key = SUPABASE_SERVICE_ROLE_KEY || SUPABASE_SERVICE_ROLE;
+      const key = SUPABASE_SERVICE_ROLE_KEY;
       if (!key) {
         throw new Error(
           "Missing SUPABASE_SERVICE_ROLE_KEY: Required for server-side admin operations. Add to .env.local"
