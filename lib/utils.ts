@@ -45,6 +45,22 @@ export async function getAuthHeaders(): Promise<HeadersInit> {
 }
 
 /**
+ * Safely parse JSON from a Response. When the response is HTML (e.g. error pages),
+ * response.json() throws. This helper avoids that and returns a fallback.
+ */
+export async function safeResponseJson<T = unknown>(response: Response): Promise<T> {
+  const text = await response.text();
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    const msg = !response.ok
+      ? `Server error (${response.status}). Please try again.`
+      : 'Invalid response from server.';
+    throw new Error(msg);
+  }
+}
+
+/**
  * Authenticated fetch wrapper - automatically includes auth token
  */
 export async function authFetch(url: string, options: RequestInit = {}): Promise<Response> {

@@ -25,7 +25,7 @@ import {
   VIDEO_PLATFORMS,
   VIDEO_ASPECT_RATIOS,
 } from '@/app/web/src/components/creative-studio';
-import { authFetch } from '@/lib/utils';
+import { authFetch, safeResponseJson } from '@/lib/utils';
 import { supabase } from '@/auth/supabase/client';
 import { Check } from 'lucide-react';
 
@@ -395,7 +395,7 @@ export default function VideoSessionPage() {
         body: JSON.stringify({ url: website }),
       });
 
-      const data = await response.json();
+      const data = await safeResponseJson<{ result?: unknown; error?: string }>(response);
 
       // API returns { result: {...} } on success, { error: string } on failure
       if (data.result) {
@@ -467,6 +467,54 @@ export default function VideoSessionPage() {
     setBrand(updated);
     saveBrandSnapshot(updated);
     setShowBrandGuidelineModal(false);
+  }
+
+  async function handleWebsiteReanalyze(website: string) {
+    setIsAnalyzingBrand(true);
+    try {
+      const response = await authFetch('/api/brand/fullAnalyze', {
+        method: 'POST',
+        body: JSON.stringify({ url: website }),
+      });
+      const data = await safeResponseJson<{ result?: unknown; error?: string }>(response);
+      if (data.result) {
+        const result = data.result;
+        const brandSnapshot: BrandSnapshot = {
+          name: result.facts?.company_name || 'Unknown Brand',
+          description: result.positioning?.primary_value_proposition || '',
+          audience: result.facts?.who_it_is_for?.join(', ') || '',
+          offering: result.facts?.what_they_sell?.join(', ') || '',
+          tone: result.brandVoice || result.personality || 'professional',
+          logo: result.logo,
+          logoUrl: result.logoUrl,
+          primaryColors: result.primaryColors,
+          fontStyles: result.fontStyles,
+          brandVoice: result.brandVoice,
+          coreValueProp: result.coreValueProp,
+          ctaPatterns: result.ctaPatterns,
+          productCategory: result.productCategory,
+          pricePositioning: result.pricePositioning,
+          personality: result.personality,
+          colors: result.colors
+            ? {
+                primary: result.colors.primary ?? undefined,
+                secondary: result.colors.secondary ?? undefined,
+                accent: result.colors.accent ?? undefined,
+              }
+            : undefined,
+        };
+        setBrand(brandSnapshot);
+        saveBrandSnapshot(brandSnapshot);
+        setShowBrandGuidelineModal(false);
+      } else {
+        showError(data.error || 'Could not analyze website. Please try again.');
+      }
+    } catch (err: any) {
+      console.error('Brand re-analyze error:', err);
+      showError(`Error analyzing website: ${err?.message || 'Unknown error'}. Please try again.`);
+    } finally {
+      setIsAnalyzingBrand(false);
+    }
   }
 
   // ============== Product Handlers ==============
@@ -582,7 +630,7 @@ export default function VideoSessionPage() {
         }),
       });
 
-      const result = await response.json();
+      const result = await safeResponseJson<{ ok: boolean; error?: string; script?: unknown }>(response);
       if (!result.ok) throw new Error(result.error);
 
       const scriptData = result.script;
@@ -653,7 +701,7 @@ export default function VideoSessionPage() {
         }),
       });
 
-      const result = await response.json();
+      const result = await safeResponseJson<{ ok: boolean; error?: string; videoUrl?: string }>(response);
       if (!result.ok) throw new Error(result.error);
 
       const videoId = `video_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -1930,6 +1978,8 @@ export default function VideoSessionPage() {
             brand={brand}
             onUpdate={updateBrandGuideline}
             onClose={() => setShowBrandGuidelineModal(false)}
+            onWebsiteReanalyze={handleWebsiteReanalyze}
+            isAnalyzingBrand={isAnalyzingBrand}
           />
         )}
 

@@ -2,11 +2,13 @@
 // Creative Studio Landing Page - Refactored for modular architecture
 
 import React, { useState, useEffect } from 'react';
+import dynamic from 'next/dynamic';
 import { useRouter } from 'next/router';
 import { showAlert, showError } from '@/app/web/src/components/ui/AlertModal';
 import Link from 'next/link';
-import Sidebar from '@/app/web/src/components/Sidebar';
 import colors from '@/lib/ui/colors';
+
+const Sidebar = dynamic(() => import('@/app/web/src/components/Sidebar'), { ssr: false });
 import {
   type BrandSnapshot,
   type SessionListItem,
@@ -16,7 +18,7 @@ import {
   BrandGuidelineModal,
   formatTimestamp,
 } from '@/app/web/src/components/creative-studio';
-import { authFetch } from '@/lib/utils';
+import { authFetch, safeResponseJson } from '@/lib/utils';
 
 export default function CreativeStudioLanding() {
   const router = useRouter();
@@ -191,7 +193,7 @@ export default function CreativeStudioLanding() {
         body: JSON.stringify({ url: website }),
       });
 
-      const data = await response.json();
+      const data = await safeResponseJson<{ result?: unknown; error?: string }>(response);
 
       // API returns { result: {...} } on success, { error: string } on failure
       if (data.result) {
@@ -291,6 +293,58 @@ export default function CreativeStudioLanding() {
     localStorage.setItem('brand:snapshot', JSON.stringify(updated));
     localStorage.setItem('brand:guideline_seen', 'true');
     setShowBrandGuidelineModal(false);
+  }
+
+  async function handleWebsiteReanalyze(website: string) {
+    setIsAnalyzingBrand(true);
+    try {
+      const response = await authFetch('/api/brand/fullAnalyze', {
+        method: 'POST',
+        body: JSON.stringify({ url: website }),
+      });
+      const data = await safeResponseJson<{ result?: unknown; error?: string }>(response);
+      if (data.result) {
+        const result = data.result;
+        const brandSnapshot: BrandSnapshot = {
+          name: result.facts?.company_name || 'Unknown Brand',
+          description: result.positioning?.primary_value_proposition || '',
+          audience: Array.isArray(result.facts?.who_it_is_for)
+            ? result.facts.who_it_is_for.join(', ')
+            : (result.facts?.who_it_is_for as string) || '',
+          offering: Array.isArray(result.facts?.what_they_sell)
+            ? result.facts.what_they_sell.join(', ')
+            : (result.facts?.what_they_sell as string) || '',
+          tone: result.brandVoice || result.personality || 'professional',
+          logo: result.logo,
+          logoUrl: result.logoUrl,
+          primaryColors: result.primaryColors,
+          fontStyles: result.fontStyles,
+          brandVoice: result.brandVoice,
+          coreValueProp: result.coreValueProp,
+          ctaPatterns: result.ctaPatterns,
+          productCategory: result.productCategory,
+          pricePositioning: result.pricePositioning,
+          personality: result.personality,
+          colors: result.colors
+            ? {
+                primary: result.colors.primary ?? undefined,
+                secondary: result.colors.secondary ?? undefined,
+                accent: result.colors.accent ?? undefined,
+              }
+            : undefined,
+        };
+        setBrand(brandSnapshot);
+        localStorage.setItem('brand:snapshot', JSON.stringify(brandSnapshot));
+        setShowBrandGuidelineModal(false);
+      } else {
+        showError(data.error || 'Could not analyze website. Please try again.');
+      }
+    } catch (err: any) {
+      console.error('Brand re-analyze error:', err);
+      showError(`Error analyzing website: ${err?.message || 'Unknown error'}. Please try again.`);
+    } finally {
+      setIsAnalyzingBrand(false);
+    }
   }
 
   // ============== Separate sessions by type ==============
@@ -530,6 +584,8 @@ export default function CreativeStudioLanding() {
               localStorage.setItem('brand:guideline_seen', 'true');
               setShowBrandGuidelineModal(false);
             }}
+            onWebsiteReanalyze={handleWebsiteReanalyze}
+            isAnalyzingBrand={isAnalyzingBrand}
           />
         )}
       </div>

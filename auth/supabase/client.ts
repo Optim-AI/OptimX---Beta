@@ -46,14 +46,24 @@ export const supabase: SupabaseClient =
 
 // Admin server-side client — use **only** in server code (API routes, server functions).
 // WARNING: keep SERVICE_ROLE_KEY secret; do NOT import/use this inside client-side code.
-export const supabaseAdmin: SupabaseClient = createClient(
-  String(SUPABASE_URL),
-  String(SUPABASE_SERVICE_ROLE_KEY),
-  {
-    auth: {
-      // don't persist sessions server-side
-      persistSession: false,
-      detectSessionInUrl: false,
-    },
-  }
-);
+// Lazy-initialized to avoid throwing during page loads (when only supabase is needed).
+let _supabaseAdmin: SupabaseClient | null = null;
+export const supabaseAdmin: SupabaseClient = new Proxy({} as SupabaseClient, {
+  get(_, prop) {
+    if (!_supabaseAdmin) {
+      const key = SUPABASE_SERVICE_ROLE_KEY || SUPABASE_SERVICE_ROLE;
+      if (!key) {
+        throw new Error(
+          "Missing SUPABASE_SERVICE_ROLE_KEY: Required for server-side admin operations. Add to .env.local"
+        );
+      }
+      _supabaseAdmin = createClient(String(SUPABASE_URL), String(key), {
+        auth: {
+          persistSession: false,
+          detectSessionInUrl: false,
+        },
+      });
+    }
+    return (_supabaseAdmin as any)[prop];
+  },
+});
