@@ -492,7 +492,7 @@ export default function PosterSessionPage() {
       
       // API returns { result: {...} } on success, { error: string } on failure
       if (data.result) {
-        const result = data.result;
+        const result = data.result as Record<string, any>;
         const brandSnapshot: BrandSnapshot = {
           name: result.facts?.company_name || 'Unknown Brand',
           description: result.positioning?.primary_value_proposition || '',
@@ -591,7 +591,7 @@ export default function PosterSessionPage() {
       });
       const data = await safeResponseJson<{ result?: unknown; error?: string }>(response);
       if (data.result) {
-        const result = data.result;
+        const result = data.result as Record<string, any>;
         const brandSnapshot: BrandSnapshot = {
           name: result.facts?.company_name || 'Unknown Brand',
           description: result.positioning?.primary_value_proposition || '',
