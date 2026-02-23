@@ -265,15 +265,42 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       "2D Animation": { prefix: "A polished 2D animated", details: "Flat, illustrated 2D animation with clean lines and expressive character." },
       "Motion Graphics": { prefix: "A sleek motion graphics", details: "Professional motion graphics with clean transitions and dynamic typography." },
       "Bold & Energetic": { prefix: "A bold, high-energy", details: "Dynamic, fast-paced visuals with punchy edits and vibrant colors." },
-      "Whimsical": { prefix: "A whimsical, playful", details: "Playful, fantasy-inspired visuals with soft colors and charming, imaginative style." },
+      "Hook": { prefix: "A performance-first scroll-stopping", details: "Fast cuts, high motion energy, tight framing, strong contrast lighting, immediate visual impact." },
       "Retro": { prefix: "A retro, vintage", details: "Vintage aesthetic with nostalgic 70s/80s influences, grain, and period-appropriate color grading." },
       "Minimalist": { prefix: "A clean, minimalist", details: "Minimal design with simple compositions, ample negative space, and restrained visuals." },
       "Neon": { prefix: "A neon-lit", details: "Neon and glowing visuals with bold colors, cyberpunk or nightlife atmosphere, and high contrast." },
     };
 
-     
-    
-    if (final_video_prompt) {
+    const isHookMode = style === "Hook";
+
+    if (final_video_prompt && isHookMode) {
+      // HOOK MODE: Performance-first, attention warfare. Strict 4-part structure.
+      videoPrompt = `HOOK MODE — Performance-first 8-second ad. This is attention warfare, NOT cinematic storytelling.
+
+MANDATORY 4-PART STRUCTURE (follow exactly):
+- 0–2s: PATTERN INTERRUPT — Stop scrolling immediately. Bold visual hook. No slow build-ups, no landscape establishing shots, no calm mood builds, no brand logo fade-in first.
+- 2–4s: EMOTIONAL TRIGGER — Amplify one of: Pain (problem), Desire (aspiration), Urgency (limited time), or Curiosity (unexpected setup). High emotional tension.
+- 4–6s: PRODUCT REVEAL — Product must appear clearly by mid-video. No mysterious slow storytelling. Fast, clear product visibility.
+- 6–8s: STRONG CALL-TO-ACTION — Clear visual CTA moment. Drive action.
+
+PACING (Hook dominates tempo):
+- Fast cuts, high motion energy, tight framing, strong contrast lighting
+- No slow intros, no ambient product spins, no overly abstract visuals
+- 100% visual storytelling — NO on-screen text, captions, headlines, subtitles, overlays, or typography
+- If voiceover exists, it carries the message; visuals must be self-explanatory
+
+Product: ${product_name || 'the product'}
+Brand: ${brand_name || 'the brand'}
+
+${final_video_prompt}
+
+Aspect ratio: ${videoAspectRatio}
+${voiceover_script ? `Voiceover: "${voiceover_script}"` : "No voiceover - use music/sound effects."}
+
+CRITICAL — NO ON-SCREEN TEXT: Zero captions, headlines, subtitles, overlays, or typography. Video must be 100% visual.
+
+${reference_images.length > 0 ? `CRITICAL — USE REFERENCE IMAGES PRECISELY: The attached reference images are the source of truth. You MUST use them exactly as provided. The product/hero image(s) must appear in the video with the SAME appearance, design, colors, and packaging. The brand logo must appear EXACTLY as shown. Product must be clearly visible by 4–6 seconds.` : "Create visuals based on the description above. Product must be clearly visible by 4–6 seconds."}`;
+    } else if (final_video_prompt) {
       const styleConfig = styleDescriptions[style] || { prefix: "A professional", details: "" };
       
       videoPrompt = `${styleConfig.prefix} ${initialDurationSeconds}-second commercial video ad for ${brand_name || 'the brand'} featuring ${product_name || 'the product'}.
@@ -291,13 +318,26 @@ ${reference_images.length > 0 ? `CRITICAL — USE REFERENCE IMAGES PRECISELY: Th
 - The brand logo (from brand guidelines) must appear in the video EXACTLY as shown in the reference — same logo asset, no redraw or stylization.
 Generate a video ad that features this exact product and brand logo as depicted in the reference images.` : "Create visuals based on the description above."}`;
     } else if (prompt) {
-      videoPrompt = `Create a ${initialDurationSeconds}-second video ad (${videoAspectRatio} aspect ratio).
+      if (isHookMode) {
+        videoPrompt = `HOOK MODE — Performance-first 8-second ad. Attention warfare.
+
+MANDATORY 4-PART STRUCTURE: 0–2s Pattern Interrupt → 2–4s Emotional Trigger → 4–6s Product Reveal → 6–8s Strong CTA.
+Fast cuts, high motion, tight framing, strong contrast. NO on-screen text. Product must appear clearly by 4–6s.
+
+${prompt}
+
+CRITICAL — NO ON-SCREEN TEXT: Zero captions, headlines, subtitles, overlays. 100% visual only.
+
+${reference_images.length > 0 ? `CRITICAL — USE REFERENCE IMAGES PRECISELY: Depict the product and brand logo exactly as in the attached reference images. Product must appear by mid-video.` : ''}`;
+      } else {
+        videoPrompt = `Create a ${initialDurationSeconds}-second video ad (${videoAspectRatio} aspect ratio).
 
 ${prompt}
 
 CRITICAL — NO ON-SCREEN TEXT: Do NOT add any text, captions, titles, subtitles, headlines, or text overlays to the video. The video must be purely visual with zero written text displayed.
 
 ${reference_images.length > 0 ? `CRITICAL — USE REFERENCE IMAGES PRECISELY: Depict the product and brand logo exactly as in the attached reference images. Same look, design, and branding. Do not redesign or alter. The brand logo must appear exactly as provided.` : ''}`;
+      }
     } else {
       return res.status(400).json({ ok: false, error: "Either 'prompt' or 'final_video_prompt' is required" });
     }

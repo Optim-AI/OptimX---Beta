@@ -59,6 +59,22 @@ async function fetchUrlToBuffer(url: string) {
   return Buffer.from(arr);
 }
 
+async function fetchUrlToDataUrl(url: string): Promise<string | null> {
+  try {
+    const resp = await fetch(url, {
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; SkalX AI/1.0)", Accept: "image/*" },
+    });
+    if (!resp.ok) return null;
+    const contentType = resp.headers.get("content-type") || "image/png";
+    if (!contentType.startsWith("image/")) return null;
+    const arr = await resp.arrayBuffer();
+    const base64 = Buffer.from(arr).toString("base64");
+    return `data:${contentType.split(";")[0]};base64,${base64}`;
+  } catch {
+    return null;
+  }
+}
+
 async function uploadBufferToSupabase(
   buffer: Buffer,
   path: string,
@@ -202,24 +218,25 @@ function buildPromptFromInputs(body: any) {
     );
   }
 
-  // Logo guidance
+  // Logo guidance (only when a logo image has been provided)
   const placement: LogoPlacement | undefined = body.logoPlacement as LogoPlacement | undefined;
+  if (body.logoProvided) {
+    parts.push(
+      "Use the uploaded image only as the brand logo. First extract the logo cleanly by removing any background, borders, or surrounding design.",
+      "Do not place the entire uploaded picture inside the creative. Use only the isolated logo graphic.",
+      "Resize and position the logo the way a professional designer would — balanced, tasteful, and context-aware. Do not stretch or distort it.",
+      "Place the logo in a location that complements the layout. If the creative includes a product in the scene, apply the logo naturally to the product surface when it makes visual sense. Make it look printed or embedded, not floating.",
+      "Match lighting, shadows, and perspective so the logo feels realistically part of the scene.",
+      "If the layout does not include a product surface for application, place the logo neatly within the composition, maintaining premium brand aesthetics.",
+      "Never generate or modify the logo. Do not create a new version. Do not add filters or effects to it.",
+      "Never add any watermarks, symbols, brand marks, or signatures.",
+      "The logo placement should always support the focal point of the creative. It should be visible but never dominate."
+    );
 
-  parts.push(
-    "Use the uploaded image only as the brand logo. First extract the logo cleanly by removing any background, borders, or surrounding design.",
-    "Do not place the entire uploaded picture inside the creative. Use only the isolated logo graphic.",
-    "Resize and position the logo the way a professional designer would — balanced, tasteful, and context-aware. Do not stretch or distort it.",
-    "Place the logo in a location that complements the layout. If the creative includes a product in the scene, apply the logo naturally to the product surface when it makes visual sense. Make it look printed or embedded, not floating.",
-    "Match lighting, shadows, and perspective so the logo feels realistically part of the scene.",
-    "If the layout does not include a product surface for application, place the logo neatly within the composition, maintaining premium brand aesthetics.",
-    "Never generate or modify the logo. Do not create a new version. Do not add filters or effects to it.",
-    "Never add any watermarks, symbols, brand marks, or signatures.",
-    "The logo placement should always support the focal point of the creative. It should be visible but never dominate."
-  );
-
-  if (placement) {
-    const placementInstruction = placementToPrompt(placement);
-    if (placementInstruction) parts.push(placementInstruction);
+    if (placement) {
+      const placementInstruction = placementToPrompt(placement);
+      if (placementInstruction) parts.push(placementInstruction);
+    }
   }
 
   // Size / Aspect
@@ -454,15 +471,32 @@ export async function POST(request: Request) {
     const targetW = Number(target?.width || 1080);
     const targetH = Number(target?.height || 1080);
 
+    // Resolve logo: prefer logoDataUrl (data: or http), fallback to brandSnapshot logo/logoUrl
+    let resolvedLogoDataUrl: string | null = null;
+    const logoSource =
+      logoDataUrl && typeof logoDataUrl === "string"
+        ? logoDataUrl
+        : (body.brandSnapshot?.logo ?? body.brandSnapshot?.logoUrl);
+
+    if (logoSource) {
+      if (logoSource.startsWith("data:")) {
+        resolvedLogoDataUrl = logoSource;
+      } else if (logoSource.startsWith("http")) {
+        // Fetch logo from URL (e.g. when poster fetch failed or brand has URL only)
+        const dataUrl = await fetchUrlToDataUrl(logoSource);
+        if (dataUrl) resolvedLogoDataUrl = dataUrl;
+        else console.warn("Failed to fetch logo from URL:", logoSource);
+      }
+    }
+
     // Upload logo/ref inline images to Supabase to have public URLs as needed
     let logoPublicUrl: string | null = null;
-    let logoProvided = false;
-    if (logoDataUrl && typeof logoDataUrl === "string" && logoDataUrl.startsWith("data:")) {
+    let logoProvided = !!(resolvedLogoDataUrl && resolvedLogoDataUrl.startsWith("data:"));
+    if (resolvedLogoDataUrl && resolvedLogoDataUrl.startsWith("data:")) {
       try {
-        const buf = dataUrlToBuffer(logoDataUrl);
+        const buf = dataUrlToBuffer(resolvedLogoDataUrl);
         const safe = `temp/${Date.now()}_logo.png`;
         logoPublicUrl = await uploadBufferToSupabase(buf, safe, "image/png");
-        logoProvided = !!logoPublicUrl;
       } catch (e) {
         console.warn("logo upload failed", e);
       }
@@ -572,9 +606,9 @@ export async function POST(request: Request) {
       }
     }
 
-    // Add brand logo
-    if (logoDataUrl && typeof logoDataUrl === "string" && logoDataUrl.startsWith("data:")) {
-      const m = logoDataUrl.match(/^data:(.+);base64,(.+)$/);
+    // Add brand logo (use resolved logo from data URL or fetched URL)
+    if (resolvedLogoDataUrl && resolvedLogoDataUrl.startsWith("data:")) {
+      const m = resolvedLogoDataUrl.match(/^data:(.+);base64,(.+)$/);
       if (m) {
         const mimeType = m[1];
         const base64Data = m[2];
@@ -584,7 +618,12 @@ export async function POST(request: Request) {
             data: base64Data,
           },
         });
-        parts.push({ text: "The image above is the BRAND LOGO from the brand guideline. You MUST include this logo in the poster design in a visible, professional location (e.g. corner or bottom). Do not redesign or replace the logo; use it exactly as provided. Every poster must feature this brand logo." });
+        const placementHint = logoPlacement
+          ? ` Place it in the ${logoPlacement.replace(/-/g, " ")} position.`
+          : "";
+        parts.push({
+          text: `The image above is the BRAND LOGO from the brand guideline. You MUST include this logo in the poster design in a visible, professional location (e.g. corner or bottom). Do not redesign or replace the logo; use it exactly as provided. Every poster must feature this brand logo.${placementHint}`,
+        });
       }
     }
 

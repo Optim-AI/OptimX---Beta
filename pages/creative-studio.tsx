@@ -37,6 +37,10 @@ export default function CreativeStudioLanding() {
   const [newSessionType, setNewSessionType] = useState<SessionType>('poster');
   const [isCreatingSession, setIsCreatingSession] = useState(false);
 
+  // Delete session state
+  const [deleteSessionId, setDeleteSessionId] = useState<string | null>(null);
+  const [isDeletingSession, setIsDeletingSession] = useState(false);
+
   // Credits state
   const [imageCredits, setImageCredits] = useState<number | null>(null);
   const [videoCredits, setVideoCredits] = useState<number | null>(null);
@@ -179,7 +183,77 @@ export default function CreativeStudioLanding() {
     }
   }
 
+  function handleSessionDelete(e: React.MouseEvent, sessionId: string) {
+    e.stopPropagation();
+    e.preventDefault();
+    setDeleteSessionId(sessionId);
+  }
+
+  async function confirmDeleteSession() {
+    if (!deleteSessionId) return;
+    setIsDeletingSession(true);
+    try {
+      const response = await authFetch(`/api/creative-studio/sessions?id=${deleteSessionId}`, {
+        method: 'DELETE',
+      });
+      const data = await response.json();
+      if (data.ok) {
+        setSessions((prev) => prev.filter((s) => s.id !== deleteSessionId));
+      } else {
+        showError('Failed to delete session: ' + (data.error || 'Unknown error'));
+      }
+    } catch (err) {
+      console.error('Delete session error:', err);
+      showError('Failed to delete session');
+    } finally {
+      setIsDeletingSession(false);
+      setDeleteSessionId(null);
+    }
+  }
+
   // ============== Brand Handlers ==============
+
+  async function handleWebsiteAnalyzeForEdit(website: string): Promise<BrandSnapshot | null> {
+    try {
+      const response = await authFetch('/api/brand/fullAnalyze', {
+        method: 'POST',
+        body: JSON.stringify({ url: website }),
+      });
+      const data = await response.json();
+      if (!data.result) {
+        showError(data.error || 'Could not analyze website. Please try manual setup.');
+        return null;
+      }
+      const result = data.result;
+      return {
+        name: result.facts?.company_name || 'Unknown Brand',
+        description: result.positioning?.primary_value_proposition || '',
+        audience: Array.isArray(result.facts?.who_it_is_for)
+          ? result.facts.who_it_is_for.join(', ')
+          : (result.facts?.who_it_is_for as string) || '',
+        offering: Array.isArray(result.facts?.what_they_sell)
+          ? result.facts.what_they_sell.join(', ')
+          : (result.facts?.what_they_sell as string) || '',
+        tone: result.brandVoice || result.personality || 'professional',
+        logo: result.logo,
+        logoUrl: result.logoUrl,
+        primaryColors: result.primaryColors,
+        fontStyles: result.fontStyles,
+        brandVoice: result.brandVoice,
+        coreValueProp: result.coreValueProp,
+        ctaPatterns: result.ctaPatterns,
+        productCategory: result.productCategory,
+        pricePositioning: result.pricePositioning,
+        personality: result.personality,
+        colors: result.colors
+          ? { primary: result.colors.primary ?? undefined, secondary: result.colors.secondary ?? undefined, accent: result.colors.accent ?? undefined }
+          : undefined,
+      };
+    } catch (err: any) {
+      showError(`Error analyzing website: ${err?.message || 'Unknown error'}. Please try manual setup.`);
+      return null;
+    }
+  }
 
   async function handleWebsiteBrandSetup(website: string) {
     setIsAnalyzingBrand(true);
@@ -377,7 +451,7 @@ export default function CreativeStudioLanding() {
                 <Link href="/report" className="font-medium underline" style={{ color: 'hsl(38 92% 65%)' }}>
                   send us a screenshot
                 </Link>
-                {' '}and we&apos;ll refund the credit as an apology. We&apos;re continuously improving the system to deliver better results every day.
+                {' '}and we&apos;ll refund the credit as an apology. We&apos;re continuously improving the system to deliver better results every day. Subject to Terms &amp; Conditions.
               </p>
             </div>
 
@@ -388,12 +462,23 @@ export default function CreativeStudioLanding() {
                 <div className="max-h-[420px] overflow-y-auto overflow-x-hidden rounded-xl pr-1 -mr-1">
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                     {sessions.map((session) => (
-                      <button
+                      <div
                         key={session.id}
                         onClick={() => handleSessionClick(session)}
-                        className="text-left p-4 rounded-xl hover:shadow-sm transition-all"
+                        className="group relative text-left p-4 rounded-xl hover:shadow-sm transition-all cursor-pointer"
                         style={{ backgroundColor: colors.background, border: `1px solid ${colors.border}` }}
                       >
+                        <button
+                          onClick={(e) => handleSessionDelete(e, session.id)}
+                          className="absolute top-3 right-3 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500/20"
+                          style={{ color: colors.destructive }}
+                          title="Delete session"
+                          aria-label="Delete session"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
                         <div className="flex items-center gap-3 mb-2">
                           <span className="text-xl">
                             {session.sessionType === 'poster' ? '🖼️' : '🎬'}
@@ -409,7 +494,7 @@ export default function CreativeStudioLanding() {
                         <p className="text-xs mt-1" style={{ color: colors.mutedForeground }}>
                           {formatTimestamp(session.updatedAt)}
                         </p>
-                      </button>
+                      </div>
                     ))}
                   </div>
                 </div>
@@ -461,14 +546,20 @@ export default function CreativeStudioLanding() {
                 {/* Poster Generation Card */}
                 <button
                   onClick={handleStartPosterSession}
-                  className="group relative aspect-square rounded-2xl border-2 shadow-sm transition-all flex flex-col items-center justify-center p-6 text-center"
+                  className="group relative aspect-[4/3] rounded-2xl border-2 shadow-sm transition-all flex flex-col items-center justify-center p-5 text-center"
                   style={{ borderColor: colors.border, backgroundColor: colors.background }}
                 >
-                  <div className="flex items-center justify-center w-16 h-16 rounded-xl mb-4 group-hover:scale-110 transition-transform" style={{ backgroundColor: 'hsl(213 100% 55% / 0.2)', color: colors.primary }}>
-                    <span className="text-3xl">🖼️</span>
+                  <div className="flex items-center justify-center w-14 h-14 rounded-xl mb-3 group-hover:scale-110 transition-transform overflow-hidden" style={{ backgroundColor: 'hsl(213 100% 55% / 0.2)', color: colors.primary }}>
+                    <svg viewBox="0 0 48 48" className="w-9 h-9" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="4" y="6" width="40" height="36" rx="2" />
+                      <rect x="8" y="10" width="20" height="14" rx="1" fill="currentColor" fillOpacity="0.2" />
+                      <line x1="8" y1="28" x2="28" y2="28" />
+                      <line x1="8" y1="32" x2="20" y2="32" />
+                      <rect x="32" y="10" width="8" height="10" rx="1" />
+                    </svg>
                   </div>
                   <div className="text-base font-semibold" style={{ color: colors.foreground }}>Poster Generation</div>
-                  <p className="mt-2 text-sm max-w-xs" style={{ color: colors.mutedForeground }}>
+                  <p className="mt-1.5 text-sm max-w-xs" style={{ color: colors.mutedForeground }}>
                     Chat with AI to create high-conversion marketing posters.
                   </p>
                 </button>
@@ -476,14 +567,18 @@ export default function CreativeStudioLanding() {
                 {/* Video Generation Card */}
                 <button
                   onClick={handleStartVideoSession}
-                  className="group relative aspect-square rounded-2xl border-2 shadow-sm transition-all flex flex-col items-center justify-center p-6 text-center"
+                  className="group relative aspect-[4/3] rounded-2xl border-2 shadow-sm transition-all flex flex-col items-center justify-center p-5 text-center"
                   style={{ borderColor: colors.border, backgroundColor: colors.background }}
                 >
-                  <div className="flex items-center justify-center w-16 h-16 rounded-xl mb-4 group-hover:scale-110 transition-transform" style={{ backgroundColor: 'hsl(270 80% 55% / 0.2)', color: 'hsl(270 80% 70%)' }}>
-                    <span className="text-3xl">🎬</span>
+                  <div className="flex items-center justify-center w-14 h-14 rounded-xl mb-3 group-hover:scale-110 transition-transform overflow-hidden" style={{ backgroundColor: 'hsl(270 80% 55% / 0.2)', color: 'hsl(270 80% 70%)' }}>
+                    <svg viewBox="0 0 48 48" className="w-9 h-9" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="4" y="8" width="40" height="32" rx="2" />
+                      <polygon points="20,14 20,34 34,24" fill="currentColor" fillOpacity="0.9" />
+                      <rect x="8" y="36" width="12" height="4" rx="0.5" fill="currentColor" fillOpacity="0.3" />
+                    </svg>
                   </div>
                   <div className="text-base font-semibold" style={{ color: colors.foreground }}>Video Generation</div>
-                  <p className="mt-2 text-sm max-w-xs" style={{ color: colors.mutedForeground }}>
+                  <p className="mt-1.5 text-sm max-w-xs" style={{ color: colors.mutedForeground }}>
                     Plan and generate video-first ad concepts and storyboards.
                   </p>
                 </button>
@@ -530,7 +625,57 @@ export default function CreativeStudioLanding() {
               localStorage.setItem('brand:guideline_seen', 'true');
               setShowBrandGuidelineModal(false);
             }}
+            onWebsiteAnalyze={handleWebsiteAnalyzeForEdit}
           />
+        )}
+
+        {/* Delete Confirmation Modal */}
+        {deleteSessionId && (
+          <div
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+            onClick={(e) => {
+              if (e.target === e.currentTarget && !isDeletingSession) {
+                setDeleteSessionId(null);
+              }
+            }}
+          >
+            <div className="rounded-xl shadow-xl max-w-md w-full animate-in fade-in zoom-in-95 duration-200" style={{ backgroundColor: colors.card, border: `1px solid ${colors.border}` }}>
+              <div className="p-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="flex items-center justify-center w-12 h-12 rounded-full" style={{ backgroundColor: 'hsl(0 84% 55% / 0.2)' }}>
+                    <svg className="w-6 h-6" style={{ color: colors.destructive }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold" style={{ color: colors.foreground }}>Delete Session</h3>
+                    <p className="text-sm" style={{ color: colors.mutedForeground }}>This action cannot be undone</p>
+                  </div>
+                </div>
+                <p className="mb-6" style={{ color: colors.mutedForeground }}>
+                  Are you sure you want to delete this session? All data including generated posters or videos will be permanently removed.
+                </p>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setDeleteSessionId(null)}
+                    disabled={isDeletingSession}
+                    className="flex-1 px-4 py-3 rounded-lg font-medium transition-colors disabled:opacity-50"
+                    style={{ backgroundColor: colors.muted, color: colors.foreground }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={confirmDeleteSession}
+                    disabled={isDeletingSession}
+                    className="flex-1 px-4 py-3 text-white rounded-lg font-medium transition-colors disabled:opacity-50"
+                    style={{ backgroundColor: colors.destructive }}
+                  >
+                    {isDeletingSession ? 'Deleting...' : 'Delete'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </div>

@@ -479,6 +479,48 @@ export default function PosterSessionPage() {
     }
   }
   
+  async function handleWebsiteAnalyzeForEdit(website: string): Promise<BrandSnapshot | null> {
+    try {
+      const response = await authFetch('/api/brand/fullAnalyze', {
+        method: 'POST',
+        body: JSON.stringify({ url: website }),
+      });
+      const data = await response.json();
+      if (!data.result) {
+        showError(data.error || 'Could not analyze website. Please try manual setup.');
+        return null;
+      }
+      const result = data.result;
+      return {
+        name: result.facts?.company_name || 'Unknown Brand',
+        description: result.positioning?.primary_value_proposition || '',
+        audience: Array.isArray(result.facts?.who_it_is_for)
+          ? result.facts.who_it_is_for.join(', ')
+          : (result.facts?.who_it_is_for as string) || '',
+        offering: Array.isArray(result.facts?.what_they_sell)
+          ? result.facts.what_they_sell.join(', ')
+          : (result.facts?.what_they_sell as string) || '',
+        tone: result.brandVoice || result.personality || 'professional',
+        logo: result.logo,
+        logoUrl: result.logoUrl,
+        primaryColors: result.primaryColors,
+        fontStyles: result.fontStyles,
+        brandVoice: result.brandVoice,
+        coreValueProp: result.coreValueProp,
+        ctaPatterns: result.ctaPatterns,
+        productCategory: result.productCategory,
+        pricePositioning: result.pricePositioning,
+        personality: result.personality,
+        colors: result.colors
+          ? { primary: result.colors.primary ?? undefined, secondary: result.colors.secondary ?? undefined, accent: result.colors.accent ?? undefined }
+          : undefined,
+      };
+    } catch (err: any) {
+      showError(`Error analyzing website: ${err?.message || 'Unknown error'}. Please try manual setup.`);
+      return null;
+    }
+  }
+
   async function handleWebsiteBrandSetup(website: string) {
     setIsAnalyzingBrand(true);
     
@@ -714,18 +756,19 @@ export default function PosterSessionPage() {
       };
       const target = aspectDimensions[config.aspectRatio] || { width: 1080, height: 1080 };
       
-      // Prepare logo data URL if brand has logo
+      // Prepare logo data URL from brand guideline (check both logo and logoUrl)
+      const logoSource = brand?.logo ?? brand?.logoUrl;
       let logoDataUrl: string | undefined;
-      if (brand?.logo) {
-        if (brand.logo.startsWith('data:')) {
-          logoDataUrl = brand.logo;
-        } else if (brand.logo.startsWith('http')) {
-          // Fetch logo via proxy
+      if (logoSource) {
+        if (logoSource.startsWith('data:')) {
+          logoDataUrl = logoSource;
+        } else if (logoSource.startsWith('http')) {
+          // Fetch logo via proxy (works for direct image URLs)
           try {
             const logoResponse = await fetch('/api/creative-studio/fetch-image', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ url: brand.logo }),
+              body: JSON.stringify({ url: logoSource, directFetch: true }),
             });
             const logoData = await logoResponse.json();
             if (logoData.ok && logoData.dataUrl) {
@@ -756,6 +799,8 @@ export default function PosterSessionPage() {
         refDataUrls,
         logoDataUrl,
         logoProvided: !!logoDataUrl,
+        // Pass logo placement for proper positioning (default: bottom-right when logo exists)
+        ...(logoDataUrl && { logoPlacement: (brand as any)?.logoPlacement ?? 'bottom-right' }),
       };
 
       // Generate variants in parallel for faster results
@@ -1506,6 +1551,7 @@ export default function PosterSessionPage() {
             brand={brand}
             onUpdate={updateBrandGuideline}
             onClose={() => setShowBrandGuidelineModal(false)}
+            onWebsiteAnalyze={handleWebsiteAnalyzeForEdit}
           />
         )}
 

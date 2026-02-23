@@ -120,8 +120,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const durationSeconds = typeof duration === 'number' ? Math.max(5, Math.min(120, duration)) : parseInt(String(duration || '6'), 10) || 6;
     const durationSecondsClamped = Math.max(5, Math.min(120, durationSeconds));
 
+    const isHookMode = style === "Hook";
+
     // System prompt: Creative Ad Film Director — interprets user vision, duration, and needs to write the best script
-    const systemPrompt = `You are an award-winning creative ad film director. You think and write like one: story, emotion, rhythm, and every second on screen is intentional.
+    const systemPrompt = isHookMode
+      ? `You are a performance-first ad creative director specializing in scroll-stopping, conversion-focused video ads. This is attention warfare, NOT cinematic storytelling.
+
+Your mindset for HOOK MODE:
+- Stop scrolling in the first 2 seconds. Trigger emotion immediately. Deliver fast product clarity. Drive action.
+- No slow build-ups, no aesthetic intros, no brand logo fade-in first. No landscape establishing shots, no calm mood builds, no ambient product spins.
+- Every 8-second video MUST follow this exact 4-part structure: 0–2s Pattern Interrupt → 2–4s Emotional Trigger → 4–6s Product Reveal → 6–8s Strong CTA.
+- Emotion angle: prioritize one of Pain (problem amplification), Desire (aspiration/upgrade), Urgency (limited time), or Curiosity (unexpected visual setup).
+- Product must appear clearly by mid-video (4–6s). No mysterious slow storytelling. This is ad logic, not art school.
+- NO on-screen text: no captions, headlines, subtitles, overlays, or typography. 100% visual storytelling. If voiceover exists, it carries the message.
+- Pacing: fast cuts, high motion energy, tight framing, strong contrast lighting. Hook always dominates tempo.
+- Avoid: symbolic metaphors, overly artistic ambiguity, conceptual scenes without product clarity.`
+
+      : `You are an award-winning creative ad film director. You think and write like one: story, emotion, rhythm, and every second on screen is intentional.
 
 Your mindset:
 - When the user describes their "Video Ad Vision," you interpret it like a creative brief. What do they really want? (e.g. trust, desire, urgency, aspiration, humor, premium feel.) Infer the emotional goal, the audience vibe, and the single idea the ad must land.
@@ -143,6 +158,18 @@ Rules:
 - Avoid generic or templated lines. Reflect the user's vision and the product's story. The script should feel written for this brand, this product, and this specific vision.`;
 
     // User message: Ad vision drives the script; director interprets needs, duration, and description for the best creative
+    const hookModeRequirements = isHookMode ? `
+
+HOOK MODE — MANDATORY 4-PART STRUCTURE (8 seconds exactly):
+- Scene 1 (0–2s): PATTERN INTERRUPT — Bold visual hook. Stop scrolling. Fast cut, high impact. No slow intro.
+- Scene 2 (2–4s): EMOTIONAL TRIGGER — Pain, Desire, Urgency, or Curiosity. High emotional tension.
+- Scene 3 (4–6s): PRODUCT REVEAL — Product must appear clearly. Fast, direct. No mystery.
+- Scene 4 (6–8s): STRONG CTA — Clear visual call-to-action moment.
+
+Storyboard MUST have exactly 4 scenes with time_range: "0-2s", "2-4s", "4-6s", "6-8s".
+visual_style_guide.motion_style must emphasize: fast cuts, high motion energy, tight framing, strong contrast.
+NO on-screen text. Purely visual.` : '';
+
     const userPrompt = `As a creative ad film director, write a complete commercial script that truly serves the user's vision and the chosen duration. The ad must be exactly ${durationSecondsClamped} seconds long — all shots and voiceover must fit this duration.
 
 ${user_description ? `USER'S VIDEO AD VISION (interpret this like a creative brief — what do they want to feel, achieve, or say?):\n"${user_description}"\n\nUse this to drive the story, mood, pacing, and how you present the product. Infer their need: e.g. build trust, create desire, show premium quality, urgency, aspiration, or a specific emotion. Every shot and line should feel written for this vision and this duration.` : "No specific vision provided — create a strong, product-led creative that fits the duration and style."}
@@ -170,6 +197,7 @@ DIRECTOR REQUIREMENTS:
 - Specify camera (angle, movement), lighting, and composition for each shot.
 - Voiceover (if enabled): write a script in ${language === "tamil" ? "Tamil" : language === "hindi" ? "Hindi" : "English"} that can be read in ${durationSecondsClamped} seconds (~${Math.floor(durationSecondsClamped * 2.2)}–${Math.floor(durationSecondsClamped * 2.5)} words). ${key_message ? `Weave in: "${key_message}".` : ""} ${cta ? `End with CTA: "${cta}".` : ""}
 - final_video_prompt: 300–800 tokens, director-grade, describing the full ${durationSecondsClamped}-second film (cinematic lighting, movement, pacing, color, premium brand quality), aligned with the user's described vision.
+${hookModeRequirements}
 
 Return your response as a JSON object with this exact structure (use real timings that sum to ${durationSecondsClamped}s):
 {

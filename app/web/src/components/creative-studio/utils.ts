@@ -511,18 +511,15 @@ export const ASPECT_RATIOS = [
  */
 export const VIDEO_STYLES = [
   "Product Close-up",
+  "Hook",
   "Lifestyle",
   "Cinematic",
   "Luxury",
   "Minimalist",
   "Bold & Energetic",
-  "Stop Motion",
-  "3D Animation",
-  "2D Animation",
+  "2D Animation", 
   "Motion Graphics",
-  "Whimsical",
   "Retro",
-  "Neon",
 ] as const;
 
 /**

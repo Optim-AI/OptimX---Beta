@@ -22,16 +22,34 @@ import {
   DEFAULT_AD_BUILDER_DATA,
   VIDEO_STYLES,
   VIDEO_DURATIONS,
-  VIDEO_PLATFORMS,
-  VIDEO_ASPECT_RATIOS,
 } from '@/app/web/src/components/creative-studio';
+
+// Aspect ratio options with orientation for video ad setup (9:16, 16:9 only)
+const ASPECT_RATIO_OPTIONS: { ratio: '9:16' | '16:9'; orientation: string }[] = [
+  { ratio: '9:16', orientation: 'Portrait' },
+  { ratio: '16:9', orientation: 'Landscape' },
+];
+
+// Ad style descriptions shown when a style is selected
+const AD_STYLE_DESCRIPTIONS: Record<string, string> = {
+  'Hook': 'Conversion-focused, scroll-stopping format. Rapid cuts, emotional trigger, early product clarity, and strong visuals..',
+  'Product Close-up': 'Detail-driven product showcase. Macro angles, tight framing, shallow depth of field, maximum product clarity and texture emphasis.',
+  'Lifestyle': 'Real-world usage in relatable scenarios. Natural lighting, human context, and emotional connection around everyday moments.',
+  'Cinematic': 'High-production, film-style visuals. Dramatic lighting, smooth camera movement, polished color grading, storytelling energy.',
+  'Luxury': 'Premium, elegant aesthetic. Refined compositions, slow confident pacing, upscale atmosphere and aspirational tone.',
+  'Minimalist': 'Clean, distraction-free presentation. Simple compositions, negative space, restrained motion, and focused product presence.',
+  'Bold & Energetic': 'High-intensity, dynamic pacing. Fast edits, strong motion, punchy camera movement, vibrant visual impact.',
+  '2D Animation': 'Illustrated, flat animated style. Clean vector visuals, expressive motion, stylized storytelling instead of live-action realism.',
+  'Motion Graphics': 'Design-forward animated composition. Typography-free visual transitions, graphic elements, and smooth animated visual flow.',
+  'Retro': 'Vintage-inspired aesthetic. Film grain, nostalgic color tones, old-school styling with classic visual energy.',
+};
 import { authFetch } from '@/lib/utils';
 import { supabase } from '@/auth/supabase/client';
 import { Check } from 'lucide-react';
 
 // ============== Types ==============
 
-type AdBuilderStep = 1 | 2 | 3 | 4;
+type AdBuilderStep = 1 | 2 | 3;
 
 type ProductData = {
   product_name: string;
@@ -207,7 +225,9 @@ export default function VideoSessionPage() {
             };
           }
           setAdBuilderData(savedAdBuilderData);
-          setStep((savedAdBuilderData as any).step || 1);
+          const savedStep = (savedAdBuilderData as any).step;
+          const stepMap: Record<number, AdBuilderStep> = { 1: 1, 2: 1, 3: 2, 4: 3 };
+          setStep(stepMap[savedStep] ?? 1);
           
           // Restore product-related state from adBuilderData.product
           if (savedAdBuilderData.product) {
@@ -383,6 +403,48 @@ export default function VideoSessionPage() {
       });
     } catch (err) {
       console.error('Error saving brand snapshot:', err);
+    }
+  }
+
+  async function handleWebsiteAnalyzeForEdit(website: string): Promise<BrandSnapshot | null> {
+    try {
+      const response = await authFetch('/api/brand/fullAnalyze', {
+        method: 'POST',
+        body: JSON.stringify({ url: website }),
+      });
+      const data = await response.json();
+      if (!data.result) {
+        showError(data.error || 'Could not analyze website. Please try manual setup.');
+        return null;
+      }
+      const result = data.result;
+      return {
+        name: result.facts?.company_name || 'Unknown Brand',
+        description: result.positioning?.primary_value_proposition || '',
+        audience: Array.isArray(result.facts?.who_it_is_for)
+          ? result.facts.who_it_is_for.join(', ')
+          : (result.facts?.who_it_is_for as string) || '',
+        offering: Array.isArray(result.facts?.what_they_sell)
+          ? result.facts.what_they_sell.join(', ')
+          : (result.facts?.what_they_sell as string) || '',
+        tone: result.brandVoice || result.personality || 'professional',
+        logo: result.logo,
+        logoUrl: result.logoUrl,
+        primaryColors: result.primaryColors,
+        fontStyles: result.fontStyles,
+        brandVoice: result.brandVoice,
+        coreValueProp: result.coreValueProp,
+        ctaPatterns: result.ctaPatterns,
+        productCategory: result.productCategory,
+        pricePositioning: result.pricePositioning,
+        personality: result.personality,
+        colors: result.colors
+          ? { primary: result.colors.primary ?? undefined, secondary: result.colors.secondary ?? undefined, accent: result.colors.accent ?? undefined }
+          : undefined,
+      };
+    } catch (err: any) {
+      showError(`Error analyzing website: ${err?.message || 'Unknown error'}. Please try manual setup.`);
+      return null;
     }
   }
 
@@ -704,22 +766,20 @@ export default function VideoSessionPage() {
     }
   }
 
-  // ============== Platform/Aspect Ratio ==============
+  // ============== Aspect Ratio ==============
 
-  function updatePlatform(platform: typeof VIDEO_PLATFORMS[number]) {
-    const aspectRatioMap: Record<string, '9:16' | '1:1' | '16:9' | '4:5'> = {
-      'Instagram Reels / TikTok': '9:16',
-      'YouTube Shorts': '9:16',
-      'Instagram Feed': '4:5',
-      'YouTube Ad': '16:9',
+  function updateAspectRatio(ratio: '9:16' | '16:9') {
+    const platformMap: Record<string, 'Instagram Reels / TikTok' | 'YouTube Shorts' | 'Instagram Feed' | 'YouTube Ad'> = {
+      '9:16': 'Instagram Reels / TikTok',
+      '16:9': 'YouTube Ad',
     };
 
     setAdBuilderData({
       ...adBuilderData,
       adSetup: {
         ...adBuilderData.adSetup,
-        platform,
-        aspect_ratio: aspectRatioMap[platform],
+        aspect_ratio: ratio,
+        platform: platformMap[ratio],
       },
     });
   }
@@ -934,23 +994,23 @@ export default function VideoSessionPage() {
         {/* Progress Steps */}
         <div className="border-b px-6 py-4 flex-shrink-0" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
           <div className="max-w-4xl mx-auto flex items-center justify-between">
-            {[1, 2, 3, 4].map((s) => {
-              const isStep4Blocked = s === 4 && !adBuilderData.voiceover?.script;
+            {[1, 2, 3].map((s) => {
+              const isStep3Blocked = s === 3 && !adBuilderData.voiceover?.script;
               return (
               <React.Fragment key={s}>
                 <button
                   onClick={() => {
-                    if (isStep4Blocked) return;
+                    if (isStep3Blocked) return;
                     setStep(s as AdBuilderStep);
                   }}
-                  disabled={isStep4Blocked}
+                  disabled={isStep3Blocked}
                   className="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                   style={{
                     backgroundColor: 'transparent',
                     color: step === s ? colors.primary : step > s ? colors.foreground : colors.mutedForeground,
                     fontWeight: step === s ? 600 : 400,
                   }}
-                  title={isStep4Blocked ? 'Generate a script first' : undefined}
+                  title={isStep3Blocked ? 'Generate a script first' : undefined}
                 >
                   <div
                     className="w-8 h-8 rounded-full flex items-center justify-center"
@@ -962,13 +1022,12 @@ export default function VideoSessionPage() {
                     {step > s ? '✓' : s}
                   </div>
                   <span className="hidden sm:inline">
-                    {s === 1 && 'Product'}
-                    {s === 2 && 'Ad Setup'}
-                    {s === 3 && 'Script'}
-                    {s === 4 && 'Generate'}
+                    {s === 1 && 'Ad Setup'}
+                    {s === 2 && 'Script'}
+                    {s === 3 && 'Generate'}
                   </span>
                 </button>
-                {s < 4 && <div className="flex-1 h-px mx-2" style={{ backgroundColor: colors.border }} />}
+                {s < 3 && <div className="flex-1 h-px mx-2" style={{ backgroundColor: colors.border }} />}
               </React.Fragment>
             );
             })}
@@ -978,53 +1037,57 @@ export default function VideoSessionPage() {
         {/* Step Content */}
         <div className="flex-1 overflow-y-auto" style={{ backgroundColor: colors.background }}>
           <div className="max-w-4xl mx-auto px-6 py-8">
-            {/* Step 1: Product Input */}
+            {/* Step 1: Ad Setup (Product + Style/Duration/Aspect Ratio) */}
             {step === 1 && (
               <div className="space-y-6">
                 <div>
-                  <h2 className="text-2xl font-bold mb-2" style={{ color: colors.foreground }}>Product Input</h2>
-                  <p style={{ color: colors.mutedForeground }}>Add your product by URL or upload images</p>
+                  <h2 className="text-2xl font-bold mb-2" style={{ color: colors.foreground }}>Ad Setup</h2>
+                  <p style={{ color: colors.mutedForeground }}>Add your product, then configure style, duration, and aspect ratio</p>
                 </div>
 
-                {/* URL Input */}
+                {/* Product Input */}
                 <div className="rounded-lg border p-6" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
-                  <label className="block text-sm font-medium mb-2" style={{ color: colors.foreground }}>
-                    Product URL (D2C, Shopify, Amazon, etc.)
-                  </label>
-                  <form onSubmit={handleProductUrlSubmit} className="flex gap-3">
-                    <input
-                      type="url"
-                      value={productUrl}
-                      onChange={(e) => setProductUrl(e.target.value)}
-                      placeholder="https://example.com/product"
-                      className="flex-1 px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                      style={{ borderColor: colors.border, backgroundColor: colors.input, color: colors.foreground }}
-                      disabled={isScrapingProduct}
-                    />
-                    <button
-                      type="submit"
-                      disabled={!productUrl.trim() || isScrapingProduct}
-                      className="px-4 py-2 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                      style={{ backgroundColor: colors.primary }}
-                    >
-                      {isScrapingProduct ? 'Scraping...' : 'Scrape'}
-                    </button>
-                  </form>
-                </div>
-
-                {/* Image Upload */}
-                <div className="rounded-lg border p-6" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
-                  <label className="block text-sm font-medium mb-2" style={{ color: colors.foreground }}>
-                    Or Upload Product Images (1-3 images)
-                  </label>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    onChange={handleImageUpload}
-                    className="block w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold"
-                    style={{ color: colors.mutedForeground }}
-                  />
+                  <h3 className="text-sm font-semibold mb-4" style={{ color: colors.foreground }}>Product</h3>
+                  <p className="text-xs mb-4" style={{ color: colors.mutedForeground }}>Add your product by URL or upload images to enable ad configuration</p>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-medium mb-2" style={{ color: colors.foreground }}>
+                        Product URL (D2C, Shopify, Amazon, etc.)
+                      </label>
+                      <form onSubmit={handleProductUrlSubmit} className="flex gap-3">
+                        <input
+                          type="url"
+                          value={productUrl}
+                          onChange={(e) => setProductUrl(e.target.value)}
+                          placeholder="https://example.com/product"
+                          className="flex-1 px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                          style={{ borderColor: colors.border, backgroundColor: colors.input, color: colors.foreground }}
+                          disabled={isScrapingProduct}
+                        />
+                        <button
+                          type="submit"
+                          disabled={!productUrl.trim() || isScrapingProduct}
+                          className="px-4 py-2 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                          style={{ backgroundColor: colors.primary }}
+                        >
+                          {isScrapingProduct ? 'Scraping...' : 'Scrape'}
+                        </button>
+                      </form>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium mb-2" style={{ color: colors.foreground }}>
+                        Or Upload Product Images (1-3 images)
+                      </label>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        onChange={handleImageUpload}
+                        className="block w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold"
+                        style={{ color: colors.mutedForeground }}
+                      />
+                    </div>
+                  </div>
                 </div>
 
                 {/* Product Preview */}
@@ -1085,33 +1148,35 @@ export default function VideoSessionPage() {
                         </div>
                       </div>
                     </div>
-
-                    <div className="mt-6 flex justify-end">
-                      <button
-                        onClick={() => setStep(2)}
-                        className="px-6 py-2 text-white rounded-lg"
-                        style={{ backgroundColor: colors.primary }}
-                      >
-                        Continue to Ad Setup
-                      </button>
-                    </div>
                   </div>
                 )}
-              </div>
-            )}
 
-            {/* Step 2: Ad Setup */}
-            {step === 2 && (
-              <div className="space-y-6">
-                <div>
-                  <h2 className="text-2xl font-bold mb-2" style={{ color: colors.foreground }}>Ad Setup</h2>
-                  <p style={{ color: colors.mutedForeground }}>Configure your ad style, duration, and platform</p>
-                </div>
+                {/* Ad Configuration - disabled until product exists */}
+                <div
+                  className="rounded-lg border p-6 space-y-6"
+                  style={{
+                    backgroundColor: colors.card,
+                    borderColor: colors.border,
+                    opacity: adBuilderData.product ? 1 : 0.6,
+                    pointerEvents: adBuilderData.product ? 'auto' : 'none',
+                  }}
+                >
+                  {!adBuilderData.product && (
+                    <p className="text-sm mb-4 p-3 rounded-lg" style={{ backgroundColor: colors.muted, color: colors.mutedForeground }}>
+                      Add a product above (via URL or image upload) to configure your ad style, duration, and aspect ratio.
+                    </p>
+                  )}
+                  <h3 className="text-sm font-semibold" style={{ color: colors.foreground }}>Ad Configuration</h3>
 
-                <div className="rounded-lg border p-6 space-y-6" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
                   {/* Style */}
                   <div>
                     <label className="block text-sm font-medium mb-2" style={{ color: colors.foreground }}>Ad Style</label>
+                    {AD_STYLE_DESCRIPTIONS[adBuilderData.adSetup.style] && (
+                      <p className="text-xs mb-3 p-3 rounded-lg" style={{ backgroundColor: 'hsl(270 80% 55% / 0.12)', border: '1px solid hsl(270 80% 55% / 0.3)', color: colors.mutedForeground }}>
+                        <strong style={{ color: colors.foreground }}>{adBuilderData.adSetup.style}:</strong>{' '}
+                        {AD_STYLE_DESCRIPTIONS[adBuilderData.adSetup.style]}
+                      </p>
+                    )}
                     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                       {VIDEO_STYLES.map((style) => (
                         <button
@@ -1164,42 +1229,49 @@ export default function VideoSessionPage() {
                     </p>
                   </div>
 
-                  {/* Platform */}
+                  {/* Aspect Ratio */}
                   <div>
-                    <label className="block text-sm font-medium mb-2" style={{ color: colors.foreground }}>Platform</label>
-                    <div className="grid grid-cols-2 gap-3">
-                      {VIDEO_PLATFORMS.map((platform) => (
-                        <button
-                          key={platform}
-                          onClick={() => updatePlatform(platform)}
-                          className="px-4 py-3 rounded-lg border-2 text-sm font-medium transition-colors"
-                          style={{
-                            borderColor: adBuilderData.adSetup.platform === platform ? colors.primary : colors.border,
-                            backgroundColor: adBuilderData.adSetup.platform === platform ? 'hsl(213 100% 55% / 0.2)' : 'transparent',
-                            color: adBuilderData.adSetup.platform === platform ? colors.primary : colors.foreground,
-                          }}
-                        >
-                          {platform}
-                        </button>
-                      ))}
+                    <label className="block text-sm font-medium mb-2" style={{ color: colors.foreground }}>Aspect Ratio</label>
+                    <div className="grid grid-cols-2 gap-4">
+                      {ASPECT_RATIO_OPTIONS.map(({ ratio, orientation }) => {
+                        const isSelected = adBuilderData.adSetup.aspect_ratio === ratio;
+                        const previewWidth = ratio === '9:16' ? 32 : 64;
+                        return (
+                          <button
+                            key={ratio}
+                            onClick={() => updateAspectRatio(ratio)}
+                            className="flex flex-col items-center gap-3 px-4 py-4 rounded-lg border-2 text-sm font-medium transition-colors"
+                            style={{
+                              borderColor: isSelected ? colors.primary : colors.border,
+                              backgroundColor: isSelected ? 'hsl(213 100% 55% / 0.2)' : 'transparent',
+                              color: isSelected ? colors.primary : colors.foreground,
+                            }}
+                          >
+                            {ratio}
+                            <span className="text-xs" style={{ color: colors.mutedForeground }}>{orientation}</span>
+                            <div
+                              className="rounded border-2 flex-shrink-0"
+                              style={{
+                                borderColor: isSelected ? colors.primary : colors.border,
+                                backgroundColor: colors.muted,
+                                aspectRatio: ratio.replace(':', '/'),
+                                width: previewWidth,
+                              }}
+                              aria-hidden
+                            />
+                          </button>
+                        );
+                      })}
                     </div>
-                    <p className="mt-2 text-xs" style={{ color: colors.mutedForeground }}>
-                      Aspect Ratio: {adBuilderData.adSetup.aspect_ratio}
-                    </p>
                   </div>
 
-                  <div className="flex justify-between pt-4">
+                  <div className="flex justify-end pt-4">
                     <button
-                      onClick={() => setStep(1)}
-                      className="px-6 py-2 border rounded-lg"
-                      style={{ borderColor: colors.border, color: colors.foreground }}
-                    >
-                      Back
-                    </button>
-                    <button
-                      onClick={() => setStep(3)}
-                      className="px-6 py-2 text-white rounded-lg"
+                      onClick={() => setStep(2)}
+                      disabled={!adBuilderData.product}
+                      className="px-6 py-2 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
                       style={{ backgroundColor: colors.primary }}
+                      title={!adBuilderData.product ? 'Add a product first' : undefined}
                     >
                       Continue to Script
                     </button>
@@ -1208,8 +1280,8 @@ export default function VideoSessionPage() {
               </div>
             )}
 
-            {/* Step 3: Script */}
-            {step === 3 && (
+            {/* Step 2: Script */}
+            {step === 2 && (
               <div className="space-y-6">
                 <div>
                   <h2 className="text-2xl font-bold mb-2" style={{ color: colors.foreground }}>Voiceover & Script</h2>
@@ -1713,14 +1785,14 @@ export default function VideoSessionPage() {
 
                   <div className="flex justify-between pt-4 border-t" style={{ borderColor: colors.border }}>
                     <button
-                      onClick={() => setStep(2)}
+                      onClick={() => setStep(1)}
                       className="px-6 py-2 border rounded-lg"
                       style={{ borderColor: colors.border, color: colors.foreground }}
                     >
                       Back
                     </button>
                     <button
-                      onClick={() => setStep(4)}
+                      onClick={() => setStep(3)}
                       disabled={!adBuilderData.voiceover.script}
                       className="px-6 py-2 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
                       style={{ backgroundColor: colors.primary }}
@@ -1733,8 +1805,8 @@ export default function VideoSessionPage() {
               </div>
             )}
 
-            {/* Step 4: Generate – Final confirmation checkpoint */}
-            {step === 4 && (
+            {/* Step 3: Generate – Final confirmation checkpoint */}
+            {step === 3 && (
               <div className="space-y-6">
                 <div>
                   <h2 className="text-2xl font-bold mb-2" style={{ color: colors.foreground }}>Review &amp; Generate</h2>
@@ -1762,7 +1834,7 @@ export default function VideoSessionPage() {
                       }}
                     >
                       <span className="text-xs font-semibold" style={{ color: colors.mutedForeground }}>
-                        {['9:16', '4:5'].includes(adBuilderData.adSetup.aspect_ratio || '') ? 'Portrait' : adBuilderData.adSetup.aspect_ratio === '1:1' ? 'Square' : 'Landscape'}
+                        {adBuilderData.adSetup.aspect_ratio === '9:16' ? 'Portrait' : adBuilderData.adSetup.aspect_ratio === '1:1' ? 'Square' : 'Landscape'}
                       </span>
                     </div>
                   </div>
@@ -1786,8 +1858,8 @@ export default function VideoSessionPage() {
                       <p className="font-medium" style={{ color: colors.foreground }}>{adBuilderData.adSetup.duration}s</p>
                     </div>
                     <div>
-                      <p className="text-sm" style={{ color: colors.mutedForeground }}>Platform</p>
-                      <p className="font-medium" style={{ color: colors.foreground }}>{adBuilderData.adSetup.platform}</p>
+                      <p className="text-sm" style={{ color: colors.mutedForeground }}>Aspect Ratio</p>
+                      <p className="font-medium" style={{ color: colors.foreground }}>{adBuilderData.adSetup.aspect_ratio} ({adBuilderData.adSetup.aspect_ratio === '9:16' ? 'Portrait' : 'Landscape'})</p>
                     </div>
                     <div>
                       <p className="text-sm mb-2" style={{ color: colors.mutedForeground }}>Selected product image</p>
@@ -1900,7 +1972,7 @@ export default function VideoSessionPage() {
 
                 <div className="flex justify-start">
                   <button
-                    onClick={() => setStep(3)}
+                    onClick={() => setStep(2)}
                     className="px-6 py-2 border rounded-lg"
                     style={{ borderColor: colors.border, color: colors.foreground }}
                   >
@@ -1930,6 +2002,7 @@ export default function VideoSessionPage() {
             brand={brand}
             onUpdate={updateBrandGuideline}
             onClose={() => setShowBrandGuidelineModal(false)}
+            onWebsiteAnalyze={handleWebsiteAnalyzeForEdit}
           />
         )}
 
