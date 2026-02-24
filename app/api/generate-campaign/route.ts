@@ -1,8 +1,39 @@
 // app/api/generate-campaign/route.ts
 import axios from "axios";
+import sharp from "sharp";
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from '@/auth/supabase/client'; // adjust path if necessary
 import { CreditsDAO } from '@/database/models/Credits.dao';
+
+/* Gemini supports: image/jpeg, image/png, image/gif, image/webp. NOT image/svg+xml. */
+const GEMINI_UNSUPPORTED_MIMES = ["image/svg+xml", "image/vnd.microsoft.icon", "image/x-icon", "image/ico"];
+
+function isUnsupportedMime(mimeType: string): boolean {
+  const normalized = mimeType.toLowerCase().trim();
+  return GEMINI_UNSUPPORTED_MIMES.some((t) => normalized.includes(t));
+}
+
+async function normalizeImageForGemini(dataUrl: string): Promise<{ mimeType: string; base64Data: string } | null> {
+  const m = dataUrl.match(/^data:(.+?);base64,(.+)$/);
+  if (!m) return null;
+  const mimeType = m[1].toLowerCase().split(";")[0].trim();
+  const base64Data = m[2];
+
+  if (!isUnsupportedMime(mimeType)) {
+    return { mimeType, base64Data };
+  }
+
+  try {
+    const buffer = Buffer.from(base64Data, "base64");
+    // SVG: use density for proper rasterization; Sharp may fail on complex SVGs (external refs, bad XML)
+    const sharpInput = mimeType.includes("svg") ? { density: 144 } : undefined;
+    const converted = await sharp(buffer, sharpInput).png().toBuffer();
+    return { mimeType: "image/png", base64Data: converted.toString("base64") };
+  } catch (e) {
+    console.warn("Failed to convert unsupported image for Gemini (SVG/ICO etc.):", e);
+    return null;
+  }
+}
 
 const NANO_API_KEY = process.env.NANO_API_KEY;
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash-image";
@@ -494,9 +525,12 @@ export async function POST(request: Request) {
     let logoProvided = !!(resolvedLogoDataUrl && resolvedLogoDataUrl.startsWith("data:"));
     if (resolvedLogoDataUrl && resolvedLogoDataUrl.startsWith("data:")) {
       try {
-        const buf = dataUrlToBuffer(resolvedLogoDataUrl);
-        const safe = `temp/${Date.now()}_logo.png`;
-        logoPublicUrl = await uploadBufferToSupabase(buf, safe, "image/png");
+        const normalized = await normalizeImageForGemini(resolvedLogoDataUrl);
+        if (normalized) {
+          const buf = Buffer.from(normalized.base64Data, "base64");
+          const safe = `temp/${Date.now()}_logo.png`;
+          logoPublicUrl = await uploadBufferToSupabase(buf, safe, "image/png");
+        }
       } catch (e) {
         console.warn("logo upload failed", e);
       }
@@ -514,10 +548,13 @@ export async function POST(request: Request) {
         const d = refDataUrls[i];
         try {
           if (typeof d === "string" && d.startsWith("data:")) {
-            const buf = dataUrlToBuffer(d);
-            const safe = `temp/${Date.now()}_ref_${i}.png`;
-            const p = await uploadBufferToSupabase(buf, safe, "image/png");
-            if (p) refPublicUrls.push(p);
+            const normalized = await normalizeImageForGemini(d);
+            if (normalized) {
+              const buf = Buffer.from(normalized.base64Data, "base64");
+              const safe = `temp/${Date.now()}_ref_${i}.png`;
+              const p = await uploadBufferToSupabase(buf, safe, "image/png");
+              if (p) refPublicUrls.push(p);
+            }
           } else if (typeof d === "string") {
             refPublicUrls.push(d);
           }
@@ -570,14 +607,12 @@ export async function POST(request: Request) {
     
     // Add main product image FIRST (most important reference)
     if (productDataUrl && typeof productDataUrl === "string" && productDataUrl.startsWith("data:")) {
-      const m = productDataUrl.match(/^data:(.+);base64,(.+)$/);
-      if (m) {
-        const mimeType = m[1];
-        const base64Data = m[2];
+      const normalized = await normalizeImageForGemini(productDataUrl);
+      if (normalized && !isUnsupportedMime(normalized.mimeType)) {
         parts.push({
           inline_data: {
-            mimeType,
-            data: base64Data,
+            mimeType: normalized.mimeType,
+            data: normalized.base64Data,
           },
         });
         parts.push({ text: "The image above is the MAIN PRODUCT IMAGE. This is the primary subject. Use this exact product in the poster design. Do NOT alter, regenerate, or replace this product image." });
@@ -590,14 +625,12 @@ export async function POST(request: Request) {
       for (const d of refDataUrls) {
         if (typeof d !== "string") continue;
         if (!d.startsWith("data:")) continue;
-        const m = d.match(/^data:(.+);base64,(.+)$/);
-        if (!m) continue;
-        const mimeType = m[1];
-        const base64Data = m[2];
+        const normalized = await normalizeImageForGemini(d);
+        if (!normalized || isUnsupportedMime(normalized.mimeType)) continue;
         parts.push({
           inline_data: {
-            mimeType,
-            data: base64Data,
+            mimeType: normalized.mimeType,
+            data: normalized.base64Data,
           },
         });
         parts.push({ text: "The image above is an additional reference image for style/context." });
@@ -608,14 +641,12 @@ export async function POST(request: Request) {
 
     // Add brand logo (use resolved logo from data URL or fetched URL)
     if (resolvedLogoDataUrl && resolvedLogoDataUrl.startsWith("data:")) {
-      const m = resolvedLogoDataUrl.match(/^data:(.+);base64,(.+)$/);
-      if (m) {
-        const mimeType = m[1];
-        const base64Data = m[2];
+      const normalized = await normalizeImageForGemini(resolvedLogoDataUrl);
+      if (normalized && !isUnsupportedMime(normalized.mimeType)) {
         parts.push({
           inline_data: {
-            mimeType,
-            data: base64Data,
+            mimeType: normalized.mimeType,
+            data: normalized.base64Data,
           },
         });
         const placementHint = logoPlacement
