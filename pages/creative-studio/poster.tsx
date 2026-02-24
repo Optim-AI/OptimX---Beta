@@ -440,9 +440,18 @@ export default function PosterSessionPage() {
 
   // ============== Input Handlers ==============
   
+  const GEMINI_UNSUPPORTED_IMAGE_TYPES = ['image/svg+xml', 'image/vnd.microsoft.icon', 'image/x-icon', 'image/ico'];
+
   function handleImageSelect(files: FileList | null) {
     if (files) {
-      const newImages = Array.from(files).filter(f => f.type.startsWith('image/'));
+      const newImages = Array.from(files).filter(f => {
+        if (!f.type.startsWith('image/')) return false;
+        if (GEMINI_UNSUPPORTED_IMAGE_TYPES.some(t => f.type.toLowerCase().includes(t))) {
+          showError('SVG and ICO images are not supported for poster generation. Please use JPEG, PNG, GIF, or WebP.');
+          return false;
+        }
+        return true;
+      });
       setInputImages(prev => [...prev, ...newImages]);
     }
   }
@@ -628,7 +637,14 @@ export default function PosterSessionPage() {
   
   function handleProductImageSelect(files: FileList | null) {
     if (files) {
-      const newImages = Array.from(files).filter(f => f.type.startsWith('image/'));
+      const newImages = Array.from(files).filter(f => {
+        if (!f.type.startsWith('image/')) return false;
+        if (GEMINI_UNSUPPORTED_IMAGE_TYPES.some(t => f.type.toLowerCase().includes(t))) {
+          showError('SVG and ICO images are not supported for poster generation. Please use JPEG, PNG, GIF, or WebP.');
+          return false;
+        }
+        return true;
+      });
       setProductImages(prev => [...prev, ...newImages]);
     }
   }
