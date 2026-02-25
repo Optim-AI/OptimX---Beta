@@ -45,7 +45,7 @@ const AD_STYLE_DESCRIPTIONS: Record<string, string> = {
 };
 import { authFetch } from '@/lib/utils';
 import { supabase } from '@/auth/supabase/client';
-import { Check } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight } from 'lucide-react';
 
 // ============== Types ==============
 
@@ -87,12 +87,16 @@ export default function VideoSessionPage() {
   const [step, setStep] = useState<AdBuilderStep>(1);
   const [adBuilderData, setAdBuilderData] = useState<AdBuilderData>(DEFAULT_AD_BUILDER_DATA);
   const [generatedVideos, setGeneratedVideos] = useState<GeneratedVideo[]>([]);
+  const [selectedVideoId, setSelectedVideoId] = useState<string | null>(null);
 
   // Loading states
   const [isScrapingProduct, setIsScrapingProduct] = useState(false);
   const [isFetchingLogo, setIsFetchingLogo] = useState(false);
   const [isGeneratingScript, setIsGeneratingScript] = useState(false);
   const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
+
+  // Video generation progress steps (0–5: each step completes, then next animates)
+  const [generationStep, setGenerationStep] = useState(0);
 
   // Product input state
   const [productUrl, setProductUrl] = useState('');
@@ -121,6 +125,7 @@ export default function VideoSessionPage() {
 
   // Auto-save ref
   const autoSaveTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+  const variationsScrollRef = React.useRef<HTMLDivElement | null>(null);
 
   // ============== Wait for Auth ==============
 
@@ -149,6 +154,35 @@ export default function VideoSessionPage() {
     };
   }, []);
 
+  // Keep selectedVideoId in sync with generatedVideos
+  useEffect(() => {
+    if (generatedVideos.length === 0) {
+      setSelectedVideoId(null);
+      return;
+    }
+    const ids = new Set(generatedVideos.map((v) => v.id));
+    if (!selectedVideoId || !ids.has(selectedVideoId)) {
+      setSelectedVideoId(generatedVideos[generatedVideos.length - 1].id);
+    }
+  }, [generatedVideos]);
+
+  // Animate video generation steps (0–5) while generating
+  useEffect(() => {
+    if (!isGeneratingVideo) {
+      setGenerationStep(0);
+      return;
+    }
+    setGenerationStep(0);
+    const stepDuration = 3000;
+    const interval = setInterval(() => {
+      setGenerationStep((prev) => {
+        if (prev >= 5) return 5;
+        return prev + 1;
+      });
+    }, stepDuration);
+    return () => clearInterval(interval);
+  }, [isGeneratingVideo]);
+
   // ============== Load Session ==============
 
   // Track previous session ID for saving on switch
@@ -167,6 +201,7 @@ export default function VideoSessionPage() {
       setStep(1);
       setAdBuilderData(DEFAULT_AD_BUILDER_DATA);
       setGeneratedVideos([]);
+      setSelectedVideoId(null);
       setProductUrl('');
       setUploadedImages([]);
       setSelectedImageIndex(null);
@@ -249,7 +284,11 @@ export default function VideoSessionPage() {
 
         // Restore generated videos
         if (loadedSession.generatedVideos) {
-          setGeneratedVideos(loadedSession.generatedVideos);
+          const videos = loadedSession.generatedVideos as GeneratedVideo[];
+          setGeneratedVideos(videos);
+          if (videos.length > 0) {
+            setSelectedVideoId(videos[videos.length - 1].id);
+          }
         }
 
         prevSessionIdRef.current = typeof sessionId === 'string' ? sessionId : null;
@@ -719,15 +758,14 @@ export default function VideoSessionPage() {
       if (!result.ok) throw new Error(result.error);
 
       const videoId = `video_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      setGeneratedVideos([
-        ...generatedVideos,
-        {
-          id: videoId,
-          url: result.videoUrl,
-          prompt: finalPrompt,
-          timestamp: Date.now(),
-        },
-      ]);
+      const newVideo = {
+        id: videoId,
+        url: result.videoUrl,
+        prompt: finalPrompt,
+        timestamp: Date.now(),
+      };
+      setGeneratedVideos((prev) => [...prev, newVideo]);
+      setSelectedVideoId(videoId);
 
       // Refresh credits after successful generation
       await loadCredits();
@@ -1816,7 +1854,7 @@ export default function VideoSessionPage() {
                 <div className="p-4 rounded-xl text-sm leading-relaxed relative z-10" style={{ backgroundColor: 'hsl(30 60% 22%)', border: '1px solid hsl(30 50% 40%)', color: '#FAFAFA' }}>
                   If a generation glitches or looks incorrect,{' '}
                   <Link href="/report" className="font-medium underline" style={{ color: 'hsl(38 92% 65%)' }}>send us a screenshot</Link>
-                  {' '}and we&apos;ll refund the credit. We&apos;re constantly improving the system to make it better every day.
+                  {' '}and we&apos;ll refund the credit. We&apos;re constantly improving the system to make it better every day. Subject to Terms & Conditions.
                 </div>
 
                 <div className="rounded-lg border p-6" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
@@ -1922,51 +1960,155 @@ export default function VideoSessionPage() {
                         </div>
                       </div>
                       <div className="space-y-2">
-                        <div className="flex items-center gap-2">
-                          <Check className="w-4 h-4" style={{ color: colors.primary }} />
-                          <span className="text-sm" style={{ color: colors.foreground }}>Preparing your video assets...</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <div className="w-4 h-4 rounded-full border-2 border-t-transparent animate-spin" style={{ borderColor: colors.primary, borderTopColor: 'transparent' }} />
-                          <span className="text-sm" style={{ color: colors.mutedForeground }}>AI is composing scenes and visuals...</span>
-                        </div>
+                        {[
+                          'Analyzing your prompt',
+                          'Building campaign strategy',
+                          'Writing script',
+                          'Generating scenes',
+                          'Rendering final video',
+                        ].map((label, i) => {
+                          const isCompleted = i < generationStep || (generationStep >= 5 && i <= 4);
+                          const shouldFadeIn = i === generationStep && generationStep < 5;
+                          if (i > generationStep && generationStep < 5) return null;
+                          return (
+                            <div
+                              key={label}
+                              className="flex items-center gap-2"
+                              style={{
+                                opacity: shouldFadeIn ? 0 : 1,
+                                animation: shouldFadeIn ? 'videoStepFadeIn 0.5s ease-out forwards' : undefined,
+                              }}
+                            >
+                              {isCompleted ? (
+                                <Check className="w-4 h-4 flex-shrink-0" style={{ color: colors.primary }} />
+                              ) : (
+                                <div className="w-4 h-4 flex-shrink-0 rounded-full border-2 border-t-transparent animate-spin" style={{ borderColor: colors.primary, borderTopColor: 'transparent' }} />
+                              )}
+                              <span className="text-sm" style={{ color: isCompleted ? colors.foreground : colors.mutedForeground }}>{label}{!isCompleted && '...'}</span>
+                            </div>
+                          );
+                        })}
                       </div>
+                      <style jsx global>{`
+                        @keyframes videoStepFadeIn {
+                          from { opacity: 0; transform: translateY(-4px); }
+                          to { opacity: 1; transform: translateY(0); }
+                        }
+                      `}</style>
                       <div className="mt-4 w-full rounded-full h-1.5 overflow-hidden" style={{ backgroundColor: colors.border }}>
-                        <div className="h-full rounded-full animate-pulse" style={{ backgroundColor: colors.primary, width: '60%', transition: 'width 2s ease' }} />
+                        <div
+                          className="h-full rounded-full transition-all duration-500 ease-out"
+                          style={{
+                            backgroundColor: colors.primary,
+                            width: `${Math.min(100, (generationStep / 5) * 80 + 20)}%`,
+                          }}
+                        />
                       </div>
                     </div>
                   )}
                 </div>
 
-                {/* Generated Videos */}
+                {/* Generated Videos - Primary + Variations */}
                 {generatedVideos.length > 0 && (
                   <div className="rounded-lg border p-6" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
                     <h3 className="text-lg font-semibold mb-4" style={{ color: colors.foreground }}>Generated Videos</h3>
-                    <div className="space-y-4">
-                      {generatedVideos.map((video) => (
-                        <div key={video.id} className="rounded-lg p-4" style={{ border: `1px solid ${colors.border}` }}>
-                          <video
-                            src={video.url}
-                            controls
-                            className="w-full rounded-lg"
-                            style={{ maxHeight: '400px' }}
-                          />
-                          <div className="mt-2 flex justify-between items-center">
+
+                    {/* Primary: Large preview of best version */}
+                    {(() => {
+                      const primary = generatedVideos.find((v) => v.id === selectedVideoId) ?? generatedVideos[0];
+                      return (
+                        <div className="mb-6">
+                          <p className="text-sm font-medium mb-2" style={{ color: colors.mutedForeground }}>Best Version</p>
+                          <div className="rounded-xl overflow-hidden" style={{ border: `2px solid ${colors.border}` }}>
+                            <video
+                              key={primary.id}
+                              src={primary.url}
+                              controls
+                              className="w-full rounded-lg"
+                              style={{ maxHeight: '420px' }}
+                            />
+                          </div>
+                          <div className="mt-3 flex justify-between items-center">
                             <span className="text-sm" style={{ color: colors.mutedForeground }}>
-                              {new Date(video.timestamp).toLocaleString()}
+                              {new Date(primary.timestamp).toLocaleString()}
                             </span>
                             <button
                               type="button"
-                              onClick={() => handleDownloadVideo(video)}
-                              className="px-4 py-2 rounded-lg text-sm"
-                              style={{ backgroundColor: colors.muted, color: colors.foreground }}
+                              onClick={() => handleDownloadVideo(primary)}
+                              className="px-4 py-2 rounded-lg text-sm font-medium transition-colors hover:opacity-90"
+                              style={{ backgroundColor: colors.primary, color: 'white' }}
                             >
                               Download
                             </button>
                           </div>
                         </div>
-                      ))}
-                    </div>
+                      );
+                    })()}
+
+                    {/* Variations: Horizontal scroll thumbnails */}
+                    {generatedVideos.length > 1 && (
+                      <div>
+                        <p className="text-sm font-medium mb-3" style={{ color: colors.mutedForeground }}>Variations</p>
+                        <div className="relative flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const el = variationsScrollRef.current;
+                              if (el) el.scrollBy({ left: -152, behavior: 'smooth' });
+                            }}
+                            className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center transition-opacity hover:opacity-100 opacity-80 disabled:opacity-40 disabled:pointer-events-none"
+                            style={{ backgroundColor: colors.muted, color: colors.foreground }}
+                            aria-label="Previous variations"
+                          >
+                            <ChevronLeft className="w-4 h-4" />
+                          </button>
+                          <div
+                            ref={variationsScrollRef}
+                            className="flex gap-3 overflow-x-auto pb-2 flex-1 min-w-0 scroll-smooth"
+                            style={{ scrollbarWidth: 'thin', WebkitOverflowScrolling: 'touch' }}
+                          >
+                            {generatedVideos.map((video) => {
+                              const isSelected = video.id === selectedVideoId;
+                              return (
+                                <button
+                                  key={video.id}
+                                  type="button"
+                                  onClick={() => setSelectedVideoId(video.id)}
+                                  className="flex-shrink-0 rounded-lg overflow-hidden transition-all focus:outline-none focus:ring-2 focus:ring-offset-2"
+                                  style={{
+                                    border: `2px solid ${isSelected ? colors.primary : colors.border}`,
+                                    width: '140px',
+                                    boxShadow: isSelected ? `0 0 0 1px ${colors.primary}` : undefined,
+                                  }}
+                                >
+                                  <video
+                                    src={video.url}
+                                    muted
+                                    playsInline
+                                    className="w-full aspect-video object-cover"
+                                  />
+                                  <span className="block py-1.5 text-xs font-medium truncate px-2" style={{ color: colors.foreground }}>
+                                    v{generatedVideos.indexOf(video) + 1}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const el = variationsScrollRef.current;
+                              if (el) el.scrollBy({ left: 152, behavior: 'smooth' });
+                            }}
+                            className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center transition-opacity hover:opacity-100 opacity-80 disabled:opacity-40 disabled:pointer-events-none"
+                            style={{ backgroundColor: colors.muted, color: colors.foreground }}
+                            aria-label="Next variations"
+                          >
+                            <ChevronRight className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
