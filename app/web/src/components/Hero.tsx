@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useCallback, useRef, useEffect } from "react";
+import Image from "next/image";
 import { Button } from "./ui/button";
 import {
   Dialog,
@@ -34,13 +35,22 @@ function withAlpha(token: string, alpha: number) {
   return token;
 }
 
-type TabType = "Campaign Strategy" | "Ad Creatives" | "Social Posts";
-const TABS: TabType[] = ["Campaign Strategy", "Ad Creatives", "Social Posts"];
-const PLATFORMS = [
-  { id: "meta", label: "Meta" },
-  { id: "google", label: "Google" },
-  { id: "linkedin", label: "LinkedIn" },
+const AD_CREATIVE_IMAGES = [
+  "/images/partners/download__5_-2d306f55-d9c8-4c5b-acbd-5b6812d25c56.png",
+  "/images/partners/jimmys-cocktails-green-apple-martini.png",
+  "/images/partners/download__2_-df378dbd-3706-431d-bbfd-8f2286e45de1.png",
+  "/images/partners/plum-cc332b6e-16f6-42a6-937c-cca1d9a11816.png",
+  "/images/partners/eaa4a0c4-064b-487b-8d58-a28b77d2a015_1763752969200_gen-b7af8568-d936-4c20-a335-9a90a4f28709.png",
+  "/images/partners/download_dark_choco-b1dee636-d24e-4528-840a-9cee4a332923.png",
+  "/images/partners/download__23_-5bb7c097-7ed8-4e26-9f09-b2c3c0dab73f.png",
+  "/images/partners/download__24_-f934ff9b-83a1-48c1-a07b-1bdd9ceb13a9.png",
+  "/images/partners/download__8_-acc0be34-f324-4ae1-a42b-803835bca987.png",
+  "/images/partners/wild_date-a0935436-0c67-4d06-a04a-92172fdb7fd9.png",
+  "/images/partners/download__10_-0c8442ce-4905-42ec-a447-17f470161620.png",
+  "/images/partners/bombay-shaving-legend-365.png",
+  "/images/partners/boat-stone-350-deadpool.png",
 ];
+
 const PROGRESS_STEPS = [
   "Analyzing website...",
   "Identifying target audience...",
@@ -93,13 +103,10 @@ const Hero: React.FC = () => {
   const router = useRouter();
   const isMobile = useIsMobile();
   const [url, setUrl] = useState("");
-  const [activeTab, setActiveTab] = useState<TabType>("Campaign Strategy");
-  const [platforms, setPlatforms] = useState<Set<string>>(new Set(["meta"]));
   const [phase, setPhase] = useState<"idle" | "generating" | "results">("idle");
   const [progressStep, setProgressStep] = useState(0);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [inputError, setInputError] = useState<string | null>(null);
-  const [pillBounce, setPillBounce] = useState<string | null>(null);
   const [parallax, setParallax] = useState({ x: 0, y: 0 });
   const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null);
   const [smoothPos, setSmoothPos] = useState({ x: 0, y: 0 });
@@ -185,23 +192,6 @@ const Hero: React.FC = () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
       if (fadeTimeoutRef.current) clearTimeout(fadeTimeoutRef.current);
     };
-  }, []);
-
-  const togglePlatform = useCallback((id: string) => {
-    setPillBounce(id);
-    setTimeout(() => setPillBounce(null), 400);
-    setPlatforms((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }, []);
-
-  const handleTabClick = useCallback((tab: TabType) => {
-    setPillBounce(tab);
-    setTimeout(() => setPillBounce(null), 400);
-    setActiveTab(tab);
   }, []);
 
   const scrollToSection = (id: string) => {
@@ -320,6 +310,16 @@ const Hero: React.FC = () => {
         @media (max-width: 768px) {
           .hero-float-orb { opacity: 0.5; }
         }
+        @keyframes adCarouselScroll {
+          0% { transform: translateX(0); }
+          100% { transform: translateX(-50%); }
+        }
+        .hero-ad-carousel-track {
+          animation: adCarouselScroll 45s linear infinite;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .hero-ad-carousel-track { animation: none; }
+        }
         .hero-float-orb-inner {
           transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.2s, filter 0.2s;
         }
@@ -403,40 +403,15 @@ const Hero: React.FC = () => {
       )}
 
       <ParallaxLayer speed={0.08} className="relative" style={{ zIndex: 10 }}>
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10 w-full max-w-4xl">
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10 w-full max-w-6xl">
         {/* Headline - PRD */}
-        <div className="text-center mb-4 mx-auto max-w-4xl animate-[fadeUp_0.7s_cubic-bezier(0.16,1,0.3,1)_both" style={{ animationDelay: "0.1s" }}>
-          <h1 className="text-4xl sm:text-[46px] font-normal leading-tight tracking-tight" style={{ color: colors.foreground }}>
-            Your AI Marketing Team.
+        <div className="text-center mb-4 mx-auto max-w-6xl animate-[fadeUp_0.7s_cubic-bezier(0.16,1,0.3,1)_both" style={{ animationDelay: "0.1s" }}>
+          <h1 className="text-4xl sm:text-[46px] font-normal leading-tight tracking-tight md:whitespace-nowrap" style={{ color: colors.foreground }}>
+          Create High Converting ads From a Single Prompt..
           </h1>
         </div>
         <p className="text-center text-xl mb-8 max-w-3xl mx-auto font-extralight animate-[fadeUp_0.7s_cubic-bezier(0.16,1,0.3,1)_both" style={{ color: colors.mutedForeground, animationDelay: "0.25s" }}>
-        Create, launch, and optimise campaigns, with one AI growth engine.
-        </p>
-
-        {/* CTAs - matching reference: same height, padding (~12–16px vertical, ~24–32px horizontal), font size, border radius (Start Free keeps its gradient color) */}
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-4 animate-[fadeUp_0.7s_cubic-bezier(0.16,1,0.3,1)_both" style={{ animationDelay: "0.35s" }}>
-          <Button
-            variant="hero"
-            size="lg"
-            className="px-8 py-4 text-base rounded-xl w-full sm:w-auto min-w-[160px]"
-            asChild
-            style={{ background: colors.gradientPrimary, color: colors.primaryForeground, boxShadow: colors.shadowGlow }}
-          >
-            <Link href="/auth/signup" className="flex items-center justify-center w-full">Start Free</Link>
-          </Button>
-          <Button
-            variant="outline"
-            size="lg"
-            className="px-8 py-4 text-base rounded-xl w-full sm:w-auto min-w-[160px]"
-            onClick={() => scrollToSection("how-it-works")}
-            style={{ borderColor: colors.border, color: colors.foreground }}
-          >
-            See How It Works
-          </Button>
-        </div>
-        <p className="text-center text-sm mb-12" style={{ color: colors.mutedForeground }}>
-        Average launch time: 4 minutes.
+        Generate strategy, creatives, and platform ready ads in minutes.
         </p>
 
         {/* Product Preview UI - interactive mock */}
@@ -465,29 +440,29 @@ const Hero: React.FC = () => {
                   </p>
                 )}
               </div>
-              <div>
-                <div className="text-xs font-medium mb-2.5 uppercase tracking-wider" style={{ color: colors.mutedForeground }}>Output type</div>
-                <div className="flex flex-wrap gap-2">
-                  {TABS.map((tab) => (
-                    <button key={tab} type="button" onClick={() => handleTabClick(tab)} className={`hero-pill px-4 py-2.5 rounded-full text-sm font-medium ${pillBounce === tab ? "hero-pill-bounce" : ""}`} style={activeTab === tab ? { background: colors.primary, color: colors.primaryForeground, boxShadow: colors.shadowSoft } : { background: colors.muted, color: colors.mutedForeground }}>
-                      {tab}
-                    </button>
-                  ))}
-                </div>
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+                <Button
+                  variant="hero"
+                  size="lg"
+                  className="px-8 py-4 text-base rounded-xl w-full sm:w-auto min-w-[160px]"
+                  asChild
+                  style={{ background: colors.gradientPrimary, color: colors.primaryForeground, boxShadow: colors.shadowGlow }}
+                >
+                  <Link href="/auth/signup" className="flex items-center justify-center w-full">Start Free</Link>
+                </Button>
+                <Button
+                  variant="outline"
+                  size="lg"
+                  className="px-8 py-4 text-base rounded-xl w-full sm:w-auto min-w-[160px]"
+                  onClick={() => scrollToSection("how-it-works")}
+                  style={{ borderColor: colors.border, color: colors.foreground }}
+                >
+                  See How It Works
+                </Button>
               </div>
-              <div>
-                <div className="text-xs font-medium mb-2.5 uppercase tracking-wider" style={{ color: colors.mutedForeground }}>Platforms</div>
-                <div className="flex gap-2 overflow-x-auto [&::-webkit-scrollbar]:hidden">
-                  {PLATFORMS.map((p) => (
-                    <button key={p.id} type="button" onClick={() => togglePlatform(p.id)} className={`hero-pill px-4 py-2.5 rounded-full text-sm font-medium whitespace-nowrap flex-shrink-0 flex items-center gap-2 ${pillBounce === p.id ? "hero-pill-bounce" : ""}`} style={platforms.has(p.id) ? { background: withAlpha(colors.primary, 0.12), color: colors.primary, border: `1.5px solid ${withAlpha(colors.primary, 0.4)}` } : { background: colors.muted, color: colors.mutedForeground, border: "1.5px solid transparent" }}>
-                      {platforms.has(p.id) && <Check className="h-4 w-4" />}{p.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <Button variant="hero" size="lg" className="hero-btn-generate w-full h-12 rounded-[18px] text-base font-semibold" onClick={runGenerate} style={{ background: colors.gradientPrimary, color: colors.primaryForeground, boxShadow: colors.shadowGlow }}>
-                <Sparkles className="h-5 w-5" /> Generate
-              </Button>
+              <p className="text-center text-sm" style={{ color: colors.mutedForeground }}>
+              2 min launch, no agency, no design skills.
+              </p>
             </div>
           )}
           {phase === "generating" && (
@@ -519,6 +494,37 @@ const Hero: React.FC = () => {
             </div>
           )}
         </div>
+        </div>
+
+        {/* Sample AD CREATIVES carousel - full width, breaks out of max-w-4xl */}
+        <div className="w-full max-w-7xl mx-auto mb-12 overflow-hidden px-4 sm:px-6 lg:px-8">
+        <p className="text-center text-medium mb-9" style={{ color: colors.mutedForeground }}>
+            Sample ad creatives made with SkalX
+          </p>
+          <div className="relative overflow-hidden -mx-4 sm:mx-0">
+            <div className="hero-ad-carousel-track flex gap-4 w-max" style={{ width: "max-content" }}>
+              {[...AD_CREATIVE_IMAGES, ...AD_CREATIVE_IMAGES].map((src, index) => (
+                <div
+                  key={index}
+                  className="flex-shrink-0 w-[220px] sm:w-[260px] md:w-[280px] rounded-[16px] overflow-hidden"
+                  style={{
+                    border: "1px solid rgba(255,255,255,0.08)",
+                    boxShadow: "0 4px 12px hsl(0 0% 0% / 0.3)",
+                  }}
+                >
+                  <div className="relative aspect-[3/4] w-full">
+                    <Image
+                      src={src}
+                      alt={`Ad creative ${(index % AD_CREATIVE_IMAGES.length) + 1}`}
+                      fill
+                      className="object-cover"
+                      sizes="(max-width: 640px) 200px, (max-width: 768px) 240px, 260px"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </ParallaxLayer>
 

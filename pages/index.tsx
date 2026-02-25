@@ -72,7 +72,7 @@ const Home: React.FC = () => {
       <Header />
       <main className="relative z-10">
         <Hero />
-        <ComparisonSection />
+        {/* <ComparisonSection /> */}
         <HowCreditsWork />
         <BuiltFor />
         <PricingPreview />
