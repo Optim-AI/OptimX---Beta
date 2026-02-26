@@ -132,7 +132,7 @@ export default function BrandGuidelineModal({
                   <p style={{ color: colors.foreground }}>{brand.tagline}</p>
                 </div>
               )}
-              <div className="flex justify-end pt-4 border-t" style={{ borderColor: colors.border }}>
+              <div className="flex justify-end gap-3 pt-4 border-t" style={{ borderColor: colors.border }}>
                 <button
                   onClick={() => {
                     setEditing(true);
@@ -142,6 +142,13 @@ export default function BrandGuidelineModal({
                   style={{ backgroundColor: colors.primary, color: colors.primaryForeground }}
                 >
                   Edit
+                </button>
+                <button
+                  onClick={onClose}
+                  className="px-4 py-2 text-white rounded-lg font-medium hover:opacity-90 transition-colors"
+                  style={{ backgroundColor: colors.primary, color: colors.primaryForeground }}
+                >
+                  Done
                 </button>
               </div>
             </>

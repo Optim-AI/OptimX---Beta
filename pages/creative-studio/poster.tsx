@@ -65,6 +65,11 @@ function pickMessage<T>(options: T[]): T {
   return options[Math.floor(Math.random() * options.length)];
 }
 
+/** Safely trim - handles non-string values (e.g. from session, API) to prevent "trim is not a function" */
+function safeTrim(value: unknown): string {
+  return (typeof value === 'string' ? value : '').trim();
+}
+
 // ============== Page Component ==============
 
 export default function PosterSessionPage() {
@@ -723,7 +728,7 @@ export default function PosterSessionPage() {
   async function handleProductSubmit(e?: React.FormEvent) {
     e?.preventDefault();
 
-    if (!productPrompt.trim() && productImages.length === 0) return;
+    if (!safeTrim(productPrompt) && productImages.length === 0) return;
 
     // Save product data
     const productImageDataUrls: string[] = [];
@@ -746,9 +751,10 @@ export default function PosterSessionPage() {
     addMessage('user', productPrompt || 'Product images uploaded', productImages.length > 0 ? [...productImages] : undefined, storageUrls.length > 0 ? storageUrls : undefined);
 
     // If user wrote a direct prompt only (no images) → skip poster-prompt, go to theme/aspect selection
-    if (productImages.length === 0 && productPrompt.trim()) {
-      setPosterPrompt(productPrompt.trim());
-      const echo = productPrompt.trim().length > 60 ? productPrompt.trim().slice(0, 60) + '...' : productPrompt.trim();
+    const trimmedProductPrompt = safeTrim(productPrompt);
+    if (productImages.length === 0 && trimmedProductPrompt) {
+      setPosterPrompt(trimmedProductPrompt);
+      const echo = trimmedProductPrompt.length > 60 ? trimmedProductPrompt.slice(0, 60) + '...' : trimmedProductPrompt;
       addMessage('system', pickMessage([
         `${echo} — nice! Pick a vibe and format below.`,
         `Got it! "${echo}" — what theme and aspect ratio work for you?`,
@@ -769,10 +775,11 @@ export default function PosterSessionPage() {
   // ============== Poster Generation Handlers ==============
   
   function handlePosterPromptSubmit() {
-    if (!posterPrompt.trim()) return;
+    const trimmedPosterPrompt = safeTrim(posterPrompt);
+    if (!trimmedPosterPrompt) return;
     
     addMessage('user', posterPrompt);
-    const echo = posterPrompt.trim().length > 50 ? posterPrompt.trim().slice(0, 50) + '...' : posterPrompt.trim();
+    const echo = trimmedPosterPrompt.length > 50 ? trimmedPosterPrompt.slice(0, 50) + '...' : trimmedPosterPrompt;
     addMessage('system', pickMessage([
       `${echo} — perfect! Pick a theme and format below.`,
       "Great prompt! What vibe and aspect ratio?",
@@ -804,8 +811,8 @@ export default function PosterSessionPage() {
       const hasProductImage = savedProductData?.images && savedProductData.images.length > 0;
       
       // Build base user request - use promptOverride when provided (e.g. from edited form), else posterPrompt or product data
-      let userRequest = (promptOverride?.trim() || posterPrompt || savedProductData?.prompt || '').trim();
-      if (!userRequest.trim()) {
+      let userRequest = safeTrim(promptOverride) || safeTrim(posterPrompt) || safeTrim(savedProductData?.prompt) || '';
+      if (!userRequest) {
         // Fallback: build from brand
         const promptParts: string[] = [];
         if (brand?.name) promptParts.push(`Create a marketing poster for ${brand.name}`);
@@ -1101,7 +1108,7 @@ export default function PosterSessionPage() {
   }
 
   function handleRegenerateSubmit() {
-    const editedPrompt = regeneratePrompt.trim();
+    const editedPrompt = safeTrim(regeneratePrompt);
     if (editedPrompt) {
       setPosterPrompt(editedPrompt);
     }
@@ -1112,9 +1119,9 @@ export default function PosterSessionPage() {
   }
 
   function handleUseAsReferenceConfirm(url: string, index: number) {
-    const promptToUse = regeneratePrompt.trim() || posterPrompt;
-    if (regeneratePrompt.trim()) {
-      setPosterPrompt(regeneratePrompt.trim());
+    const promptToUse = safeTrim(regeneratePrompt) || safeTrim(posterPrompt);
+    if (safeTrim(regeneratePrompt)) {
+      setPosterPrompt(safeTrim(regeneratePrompt));
     }
     setPendingUseAsReference(null);
     setRegeneratePrompt('');
@@ -1190,11 +1197,11 @@ export default function PosterSessionPage() {
   async function handleSubmit(e?: React.FormEvent) {
     e?.preventDefault();
     
-    const hasInput = inputValue.trim() || inputImages.length > 0;
+    const hasInput = safeTrim(inputValue) || inputImages.length > 0;
     if (!hasInput) return;
     
     // Capture input values before clearing
-    const currentInput = inputValue.trim();
+    const currentInput = safeTrim(inputValue);
     const currentImages = [...inputImages];
     
     // Clear inputs immediately
@@ -1328,9 +1335,9 @@ export default function PosterSessionPage() {
           addMessage('user', currentInput || 'Product images uploaded', currentImages.length > 0 ? currentImages : undefined, storageUrls.length > 0 ? storageUrls : undefined);
 
           // If user wrote a direct prompt (no link, no images) → skip poster-prompt, go to theme/aspect selection
-          if (currentImages.length === 0 && currentInput.trim()) {
-            setPosterPrompt(currentInput.trim());
-            const echo = currentInput.trim().length > 60 ? currentInput.trim().slice(0, 60) + '...' : currentInput.trim();
+          if (currentImages.length === 0 && currentInput) {
+            setPosterPrompt(currentInput);
+            const echo = currentInput.length > 60 ? currentInput.slice(0, 60) + '...' : currentInput;
             addMessage('system', pickMessage([
               `${echo} — nice! Pick a vibe and format below.`,
               `Got it! "${echo}" — what theme and aspect ratio work for you?`,
@@ -1904,6 +1911,14 @@ function ChatInput({
   isDragging: boolean;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
 }) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+  }, [value]);
+
   return (
     <form onSubmit={onSubmit}>
       <div
@@ -1938,6 +1953,7 @@ function ChatInput({
         <div className="flex gap-3 items-end">
           <div className="flex-1">
             <textarea
+              ref={textareaRef}
               value={value}
               onChange={(e) => onChange(e.target.value)}
               onKeyDown={(e) => {
@@ -1968,7 +1984,7 @@ function ChatInput({
 
             <button
               type="submit"
-              disabled={!value.trim() && images.length === 0}
+              disabled={!safeTrim(value) && images.length === 0}
               className="px-4 py-2 text-white rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
               style={{ backgroundColor: colors.primary }}
             >
@@ -2008,6 +2024,13 @@ function ProductInput({
   fileInputRef: React.RefObject<HTMLInputElement | null>;
 }) {
   const [isDragging, setIsDragging] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+  }, [prompt]);
 
   return (
     <div className="flex gap-4 max-w-4xl">
@@ -2044,13 +2067,14 @@ function ProductInput({
 
           <div className="flex gap-3 items-end">
             <textarea
+              ref={textareaRef}
               value={prompt}
               onChange={(e) => onPromptChange(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSubmit(); } }}
               placeholder="Describe what you want to promote or upload product images..."
               rows={1}
               className="flex-1 resize-none border-0 focus:outline-none text-sm bg-transparent"
-              style={{ color: colors.foreground }}
+              style={{ minHeight: '24px', maxHeight: '200px', color: colors.foreground }}
             />
 
             <div className="flex gap-2 flex-shrink-0">
@@ -2067,7 +2091,7 @@ function ProductInput({
 
               <button
                 type="submit"
-                disabled={!prompt.trim() && images.length === 0}
+                disabled={!safeTrim(prompt) && images.length === 0}
                 className="px-4 py-2 text-white rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                 style={{ backgroundColor: colors.primary }}
               >
@@ -2100,6 +2124,14 @@ function PosterPromptInput({
   onPromptChange: (value: string) => void;
   onSubmit: () => void;
 }) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+  }, [prompt]);
+
   return (
     <div className="flex gap-4 max-w-4xl">
       <div className="flex-shrink-0 w-8" />
@@ -2109,18 +2141,19 @@ function PosterPromptInput({
             Describe the poster you want
           </label>
           <textarea
+            ref={textareaRef}
             value={prompt}
             onChange={(e) => onPromptChange(e.target.value)}
             placeholder="e.g., A vibrant poster highlighting the product with bold text and modern design..."
             className="w-full border rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 resize-none placeholder:opacity-70"
-            style={{ borderColor: colors.border, backgroundColor: colors.input, color: colors.foreground }}
-            rows={4}
+            style={{ minHeight: '60px', maxHeight: '200px', borderColor: colors.border, backgroundColor: colors.input, color: colors.foreground }}
+            rows={1}
             onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { onSubmit(); } }}
           />
           <div className="flex justify-end mt-4">
             <button
               type="submit"
-              disabled={!prompt.trim()}
+              disabled={!safeTrim(prompt)}
               className="px-6 py-2.5 text-white rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all"
               style={{ backgroundColor: colors.primary }}
             >
@@ -2351,6 +2384,14 @@ function PosterGrid({
   const [openMenuIndex, setOpenMenuIndex] = useState<number | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const regenerateTextareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    const el = regenerateTextareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+  }, [regeneratePrompt]);
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -2540,12 +2581,13 @@ function PosterGrid({
               <div>
                 <label className="block text-sm font-medium mb-2" style={{ color: colors.foreground }}>Prompt</label>
                 <textarea
+                  ref={regenerateTextareaRef}
                   value={regeneratePrompt}
                   onChange={(e) => onRegeneratePromptChange(e.target.value)}
                   placeholder="e.g., Make it more colorful, Add more text, Change the background to dark..."
                   className="w-full px-3 py-2 rounded-lg text-sm focus:outline-none focus:ring-2 resize-none"
-                  style={{ border: `1px solid ${colors.border}`, backgroundColor: colors.input, color: colors.foreground }}
-                  rows={3}
+                  style={{ minHeight: '60px', maxHeight: '200px', border: `1px solid ${colors.border}`, backgroundColor: colors.input, color: colors.foreground }}
+                  rows={1}
                 />
               </div>
 
