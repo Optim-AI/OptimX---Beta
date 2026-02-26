@@ -34,14 +34,14 @@ export const THEME_CONFIG: Record<string, {
     textures: "Clean surfaces, professional materials",
     negativeSpace: "Organized spacing, clear sections, readable layout"
   },
-  elegant: {
-    visualStyle: "Luxury goods photography style, sophisticated design, refined aesthetic",
-    colorPalette: "Gold and silk textures, rich deep colors, metallic accents, premium color schemes",
-    typography: "Serif fonts, elegant typography, sophisticated letterforms, classic typefaces",
-    composition: "Classical composition, balanced elegance, refined spacing",
-    lighting: "Chiaroscuro lighting (dramatic light and shadow), soft directional lighting, luxury photography",
-    textures: "Gold textures, silk materials, premium surfaces, luxury finishes",
-    negativeSpace: "Generous spacing, elegant proportions, refined layout"
+  commercial: {
+    visualStyle: "High-impact FMCG advertising poster. Looks like a TV ad frame converted into a poster. Designed for retail promotion. Bold, attention-grabbing. People interacting with product (if relevant), smiling expressions, warm skin tones, vibrant background gradients or kitchen/home environment, dynamic color blocking shapes or banners",
+    colorPalette: "High saturation. Red, yellow, orange accents. Strong contrast. Retail shelf visibility focus. White/yellow/red for headline contrast",
+    typography: "Large uppercase headline. Thick bold font style. High readability. Strong color contrast (white/yellow/red). Slight drop shadow or outline for emphasis. Big bold headline typography. Secondary supporting tagline",
+    composition: "Layout Structure: Top: Brand logo (top or top-right). Center: Headline. Mid/Lower: Hero product or people. Bottom corner: Pack shot. Optional corner: Offer badge (Limited Offer, Free, New Launch). Prominent product placement (foreground, clearly visible packaging). Large brand logo placement. Strong visual hierarchy. No chaotic floating layouts",
+    lighting: "Bright commercial lighting. High contrast. Saturated colors. Clean retail-ready look. Studio-quality product lighting",
+    textures: "Clean surfaces, professional materials, retail-ready finishes",
+    negativeSpace: "Controlled layout. Clear sections for logo, headline, product, CTA. No chaotic floating elements"
   },
   premium: {
     visualStyle: "Luxury goods photography style, high-end aesthetic, sophisticated design",
@@ -255,7 +255,24 @@ export function buildPosterPrompt(options: {
   parts.push(`Textures: ${themeConfig.textures}`);
   parts.push(`Negative Space: ${themeConfig.negativeSpace}`);
   parts.push("");
-  
+
+  // ========== COMMERCIAL THEME: FMCG CAMPAIGN BRAIN (STRONG INJECTION) ==========
+  if (theme === "commercial") {
+    parts.push("=== COMMERCIAL THEME — FMCG CAMPAIGN BRAIN (MANDATORY) ===");
+    parts.push("You are generating a controlled advertising composition, NOT random loud posters.");
+    parts.push("");
+    parts.push("Mood: Energetic, family-friendly, emotion-driven, aspirational but mass-market.");
+    parts.push("");
+    parts.push("Emotional Angle: Show enjoyment of food, celebration, togetherness, or delight. Expressions should feel authentic and joyful. FMCG ads sell emotion, not design.");
+    parts.push("");
+    parts.push("Layout Template (MANDATORY): Top = Brand logo. Center = Headline. Mid/Lower = Hero product or people. Bottom corner = Pack shot. Optional corner = Offer badge (Limited Offer, Free, New Launch).");
+    parts.push("");
+    parts.push("Typography Bias: Large uppercase headline. Thick bold font. High readability. Strong color contrast (white/yellow/red). Slight drop shadow or outline for emphasis.");
+    parts.push("");
+    parts.push("Color Bias: High saturation. Red, yellow, orange accents. Strong contrast. Retail shelf visibility focus.");
+    parts.push("");
+  }
+
   // ========== ASPECT RATIO COMPOSITION RULES (CRITICAL - MANDATORY) ==========
   parts.push(`=== ASPECT RATIO: ${aspectRatio} (MANDATORY - OVERRIDES ARTISTIC FREEDOM) ===`);
   parts.push(compositionRules);
@@ -481,29 +498,96 @@ export const DEFAULT_POSTER_CONFIG: PosterConfig = {
   variantCount: 3, // Default to 3 variants
 };
 
+/** Base path for theme example images (served from public) */
+export const THEME_IMAGES_BASE = "/images/posters/themes";
+
 /**
- * Available poster themes
+ * Available poster themes with notes, visual hints, and AI-generated example images
  */
 export const POSTER_THEMES = [
-  { id: "minimal", label: "Minimal", description: "Clean, simple, modern" },
-  { id: "professional", label: "Professional", description: "Corporate, trustworthy" },
-  { id: "elegant", label: "Elegant", description: "Luxury, sophisticated" },
-  { id: "premium", label: "Premium", description: "High-end, refined" },
-  { id: "bold", label: "Bold", description: "Strong, impactful" },
-  { id: "playful", label: "Playful", description: "Fun, energetic" },
-  { id: "trendy", label: "Trendy", description: "Modern, contemporary" },
-  { id: "festive", label: "Festive", description: "Celebratory, joyful" },
-  { id: "dynamic", label: "Dynamic", description: "Motion, energy" },
+  {
+    id: "minimal",
+    label: "Minimal",
+    description: "Clean, simple, modern",
+    note: "Lots of white space, clean lines, minimal text. Best for brands that want a modern, uncluttered look. Think: Apple, Muji.",
+    previewStyle: "linear-gradient(135deg, #f5f5f5 0%, #e0e0e0 100%)",
+    exampleImage: `${THEME_IMAGES_BASE}/theme-minimal.png`,
+  },
+  {
+    id: "professional",
+    label: "Professional",
+    description: "Corporate, trustworthy",
+    note: "Trust-building blues and whites, grid-based layout, clear hierarchy. Ideal for B2B, finance, or corporate brands.",
+    previewStyle: "linear-gradient(135deg, #1e3a5f 0%, #3b82f6 50%, #f8fafc 100%)",
+    exampleImage: `${THEME_IMAGES_BASE}/theme-professional.png`,
+  },
+  {
+    id: "commercial",
+    label: "Commercial",
+    description: "FMCG, retail-ready",
+    note: "High-impact FMCG style: prominent product, bold headlines, bright lighting, family-friendly mood. Perfect for FMCG, retail, food & beverage, or mass-market brands.",
+    previewStyle: "linear-gradient(135deg, #dc2626 0%, #f59e0b 50%, #fbbf24 100%)",
+    exampleImage: `${THEME_IMAGES_BASE}/theme-commercial.png`,
+  },
+  {
+    id: "premium",
+    label: "Premium",
+    description: "High-end, refined",
+    note: "Rich colors, metallic accents, refined spacing. Polished luxury feel for high-end brands.",
+    previewStyle: "linear-gradient(135deg, #0f0f0f 0%, #8b7355 50%, #d4af37 100%)",
+    exampleImage: `${THEME_IMAGES_BASE}/theme-premium.png`,
+  },
+  {
+    id: "bold",
+    label: "Bold",
+    description: "Strong, impactful",
+    note: "High-contrast colors, oversized typography, strong shapes. Great for grabbing attention — events, sales, youth brands.",
+    previewStyle: "linear-gradient(135deg, #000000 0%, #fbbf24 50%, #ef4444 100%)",
+    exampleImage: `${THEME_IMAGES_BASE}/theme-bold.png`,
+  },
+  {
+    id: "playful",
+    label: "Playful",
+    description: "Fun, energetic",
+    note: "Bright gradients, rounded shapes, friendly vibe. Ideal for kids' brands, apps, or anything fun and casual.",
+    previewStyle: "linear-gradient(135deg, #ec4899 0%, #8b5cf6 50%, #06b6d4 100%)",
+    exampleImage: `${THEME_IMAGES_BASE}/theme-playful.png`,
+  },
+  {
+    id: "trendy",
+    label: "Trendy",
+    description: "Modern, contemporary",
+    note: "Current design trends, fresh layouts, modern palettes. Good for startups, tech, or fashion-forward brands.",
+    previewStyle: "linear-gradient(135deg, #6366f1 0%, #a855f7 50%, #ec4899 100%)",
+    exampleImage: `${THEME_IMAGES_BASE}/theme-trendy.png`,
+  },
+  {
+    id: "festive",
+    label: "Festive",
+    description: "Celebratory, joyful",
+    note: "Warm colors, celebratory mood, decorative elements. Perfect for holidays, launches, or special occasions.",
+    previewStyle: "linear-gradient(135deg, #dc2626 0%, #f59e0b 50%, #fbbf24 100%)",
+    exampleImage: `${THEME_IMAGES_BASE}/theme-festive.png`,
+  },
+  {
+    id: "dynamic",
+    label: "Dynamic",
+    description: "Motion, energy",
+    note: "Sense of movement, energetic angles, high-action feel. Best for sports, fitness, or action-oriented brands.",
+    previewStyle: "linear-gradient(135deg, #059669 0%, #10b981 50%, #34d399 100%)",
+    exampleImage: `${THEME_IMAGES_BASE}/theme-dynamic.png`,
+  },
 ];
 
 /**
- * Available aspect ratios
+ * Available aspect ratios with visual dimensions for UI display
+ * width/height used to render proportional shape preview
  */
 export const ASPECT_RATIOS = [
-  { id: "1:1", label: "Square (1:1)", description: "Instagram feed, Facebook" },
-  { id: "4:5", label: "Portrait (4:5)", description: "Instagram feed optimal" },
-  { id: "9:16", label: "Story (9:16)", description: "Instagram/FB Stories, Reels" },
-  { id: "1.91:1", label: "Landscape (1.91:1)", description: "Facebook/LinkedIn banner" },
+  { id: "1:1", label: "1:1", description: "Instagram feed, Facebook", width: 1, height: 1 },
+  { id: "4:5", label: "4:5", description: "Instagram feed optimal", width: 4, height: 5 },
+  { id: "9:16", label: "9:16", description: "Instagram/FB Stories, Reels", width: 9, height: 16 },
+  { id: "1.91:1", label: "1.91:1", description: "Facebook/LinkedIn banner", width: 1.91, height: 1 },
 ] as const;
 
 /**

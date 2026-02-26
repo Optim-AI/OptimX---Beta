@@ -24,6 +24,15 @@ import {
   VIDEO_DURATIONS,
 } from '@/app/web/src/components/creative-studio';
 
+/** Build full voiceover script from scene-by-scene storyboard (source of truth for voiceover) */
+function getVoiceoverFromStoryboard(storyboard: Array<{ voiceover_line?: string; voiceover_script?: string }> | null | undefined): string {
+  if (!storyboard?.length) return '';
+  return storyboard
+    .map((s) => (s.voiceover_line || s.voiceover_script || '').trim())
+    .filter(Boolean)
+    .join(' ');
+}
+
 // Aspect ratio options with orientation for video ad setup (9:16, 16:9 only)
 const ASPECT_RATIO_OPTIONS: { ratio: '9:16' | '16:9'; orientation: string }[] = [
   { ratio: '9:16', orientation: 'Portrait' },
@@ -692,7 +701,7 @@ export default function VideoSessionPage() {
         ...adBuilderData,
         voiceover: {
           ...adBuilderData.voiceover,
-          script: scriptData.voiceover_script,
+          script: getVoiceoverFromStoryboard(scriptData.storyboard) || scriptData.voiceover_script || '',
         },
         onScreenText: {
           ...adBuilderData.onScreenText,
@@ -724,14 +733,15 @@ export default function VideoSessionPage() {
 
     setIsGeneratingVideo(true);
     try {
-      if (!adBuilderData.voiceover.script) {
+      const voiceoverScript = getVoiceoverFromStoryboard(adBuilderData.storyboard) || adBuilderData.voiceover.script;
+      if (!adBuilderData.storyboard?.length || (adBuilderData.voiceover.enabled && !voiceoverScript)) {
         await handleGenerateScript();
         await new Promise((resolve) => setTimeout(resolve, 500));
       }
 
       const finalPrompt =
         adBuilderData.finalVideoPrompt ||
-        adBuilderData.voiceover.script ||
+        (getVoiceoverFromStoryboard(adBuilderData.storyboard) || adBuilderData.voiceover.script) ||
         `Create a ${adBuilderData.adSetup.duration}-second ${adBuilderData.adSetup.style.toLowerCase()} video ad for ${adBuilderData.product.product_name}.`;
 
       // Prefer brand guideline logo when available so the fetched/configured logo is used in the video
@@ -747,7 +757,7 @@ export default function VideoSessionPage() {
           aspect_ratio: adBuilderData.adSetup.aspect_ratio,
           quality: adBuilderData.adSetup.quality || 'standard',
           final_video_prompt: finalPrompt,
-          voiceover_script: adBuilderData.voiceover.script,
+          voiceover_script: getVoiceoverFromStoryboard(adBuilderData.storyboard) || adBuilderData.voiceover.script,
           product_images: adBuilderData.product.product_images,
           hero_image: adBuilderData.product.hero_image,
           brand_logo: brandLogo,
@@ -1033,7 +1043,7 @@ export default function VideoSessionPage() {
         <div className="border-b px-6 py-4 flex-shrink-0" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
           <div className="max-w-4xl mx-auto flex items-center justify-between">
             {[1, 2, 3].map((s) => {
-              const isStep3Blocked = s === 3 && !adBuilderData.voiceover?.script;
+              const isStep3Blocked = s === 3 && (!adBuilderData.storyboard?.length || (adBuilderData.voiceover.enabled && !getVoiceoverFromStoryboard(adBuilderData.storyboard)));
               return (
               <React.Fragment key={s}>
                 <button
@@ -1720,10 +1730,10 @@ export default function VideoSessionPage() {
                               </div>
                             </div>
 
-                            {/* Voiceover for this scene */}
+                            {/* Voiceover for this scene — source of truth for voiceover when voiceover is enabled */}
                             <div>
                               <label className="block text-xs font-medium mb-1" style={{ color: colors.foreground }}>
-                                Scene Voiceover (optional)
+                                Scene Voiceover
                               </label>
                               <textarea
                                 value={scene.voiceover_line || scene.voiceover_script || ''}
@@ -1800,27 +1810,6 @@ export default function VideoSessionPage() {
                     </div>
                   )}
 
-                  {/* Generated Voiceover Script */}
-                  {!isGeneratingScript && adBuilderData.voiceover.enabled && (
-                    <div className="p-4 rounded-lg" style={{ backgroundColor: colors.muted }}>
-                      <label className="block text-sm font-medium mb-2" style={{ color: colors.foreground }}>
-                        Full Voiceover Script
-                      </label>
-                      <textarea
-                        value={adBuilderData.voiceover.script}
-                        onChange={(e) =>
-                          setAdBuilderData({
-                            ...adBuilderData,
-                            voiceover: { ...adBuilderData.voiceover, script: e.target.value },
-                          })
-                        }
-                        className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2"
-                        style={{ borderColor: colors.border, backgroundColor: colors.input, color: colors.foreground }}
-                        rows={4}
-                      />
-                    </div>
-                  )}
-
                   <div className="flex justify-between pt-4 border-t" style={{ borderColor: colors.border }}>
                     <button
                       onClick={() => setStep(1)}
@@ -1831,10 +1820,10 @@ export default function VideoSessionPage() {
                     </button>
                     <button
                       onClick={() => setStep(3)}
-                      disabled={!adBuilderData.voiceover.script}
+                      disabled={!adBuilderData.storyboard?.length || (adBuilderData.voiceover.enabled && !getVoiceoverFromStoryboard(adBuilderData.storyboard))}
                       className="px-6 py-2 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
                       style={{ backgroundColor: colors.primary }}
-                      title={!adBuilderData.voiceover.script ? 'Generate a script first to continue' : undefined}
+                      title={!adBuilderData.storyboard?.length ? 'Generate a script first to continue' : adBuilderData.voiceover.enabled && !getVoiceoverFromStoryboard(adBuilderData.storyboard) ? 'Add voiceover to at least one scene' : undefined}
                     >
                       Continue to Preview
                     </button>
@@ -1914,12 +1903,12 @@ export default function VideoSessionPage() {
                     </div>
                   </div>
 
-                  {/* Generated script */}
-                  {adBuilderData.voiceover?.script && (
+                  {/* Script (built from scene-by-scene voiceover) */}
+                  {(getVoiceoverFromStoryboard(adBuilderData.storyboard) || adBuilderData.voiceover?.script) && (
                     <div className="mb-6 p-4 rounded-lg" style={{ backgroundColor: colors.muted, border: `1px solid ${colors.border}` }}>
-                      <p className="text-sm font-medium mb-2" style={{ color: colors.mutedForeground }}>Generated script</p>
+                      <p className="text-sm font-medium mb-2" style={{ color: colors.mutedForeground }}>Voiceover script (from scenes)</p>
                       <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: colors.foreground }}>
-                        {adBuilderData.voiceover.script}
+                        {getVoiceoverFromStoryboard(adBuilderData.storyboard) || adBuilderData.voiceover?.script}
                       </p>
                     </div>
                   )}

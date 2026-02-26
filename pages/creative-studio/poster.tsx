@@ -60,6 +60,11 @@ async function downloadImageToLocal(url: string, filename: string): Promise<void
   URL.revokeObjectURL(blobUrl);
 }
 
+/** Pick a random message from options for conversational variety */
+function pickMessage<T>(options: T[]): T {
+  return options[Math.floor(Math.random() * options.length)];
+}
+
 // ============== Page Component ==============
 
 export default function PosterSessionPage() {
@@ -121,6 +126,15 @@ export default function PosterSessionPage() {
 
   // Image preview state (for chat history images)
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
+
+  // Initial greeting - picked once per session for conversational variety
+  const [initialGreeting] = useState(() =>
+    pickMessage([
+      "Hi! Paste your website link, upload a product image, or describe what you want to create.",
+      "Hey! What would you like to create? Share a link, upload images, or describe your idea.",
+      "Ready to create? Add a website URL, product images, or tell me about your poster.",
+    ])
+  );
 
   // Credits state
   const [credits, setCredits] = useState<number | null>(null);
@@ -593,15 +607,25 @@ export default function PosterSessionPage() {
         saveBrandSnapshot(brandSnapshot);
         setShowBrandOnboarding(false);
         setPhase('brand-review');
-        addMessage('system', `I've analyzed your website and extracted your brand information. Please review it below.`);
+        addMessage('system', pickMessage([
+          "I've pulled your brand info from the site — take a look and tweak anything you'd like.",
+          "Got it! I've analyzed your website. Review the details below and adjust as needed.",
+          "Here's what I found from your site. Let me know if anything needs updating.",
+        ]));
       } else {
         console.error('Brand analysis failed:', data.error || 'Unknown error');
-        addMessage('system', `I had trouble analyzing that website: ${data.error || 'Unknown error'}. Please try a different URL or set up your brand manually.`);
+        addMessage('system', pickMessage([
+          `That URL didn't work — ${data.error || 'Unknown error'}. Try a different link or set up your brand manually.`,
+          `I couldn't analyze that site: ${data.error || 'Unknown error'}. Want to try another URL or enter details manually?`,
+        ]));
         // Keep modal open on error
       }
     } catch (err: any) {
       console.error('Brand analysis error:', err);
-      addMessage('system', `There was an error analyzing your website: ${err.message || 'Unknown error'}. Please try again or set up your brand manually.`);
+      addMessage('system', pickMessage([
+        `Something went wrong: ${err.message || 'Unknown error'}. Try again or set up your brand manually.`,
+        `Couldn't analyze that — ${err.message || 'Unknown error'}. Want to try a different URL or add your brand manually?`,
+      ]));
       // Keep modal open on error
     } finally {
       setIsAnalyzingBrand(false);
@@ -631,7 +655,11 @@ export default function PosterSessionPage() {
     saveBrandSnapshot(brandSnapshot);
     setShowBrandOnboarding(false);
     setPhase('brand-review');
-    addMessage('system', `Great! I've set up your brand profile. Please review it below.`);
+    addMessage('system', pickMessage([
+      "Your brand profile is ready — take a look and adjust anything you'd like.",
+      "All set! Review the details below and let me know if you want to change anything.",
+      "Here's your brand profile. Tweak it as needed, then we'll get creating.",
+    ]));
   }
 
   function handleSkipBrandSetup() {
@@ -647,7 +675,11 @@ export default function PosterSessionPage() {
     setBrand(minimalBrand);
     saveBrandSnapshot(minimalBrand);
     setPhase('product-input');
-    addMessage('system', `No problem! You can set up your brand guidelines later. Let's start creating - tell me about what you want to promote.`);
+    addMessage('system', pickMessage([
+      "No worries — you can add brand details later. What do you want to promote?",
+      "All good! We can set up brand guidelines anytime. What are you creating today?",
+      "Sure thing! Tell me about what you want to create.",
+    ]));
   }
 
   function handleBrandConfirm() {
@@ -655,7 +687,11 @@ export default function PosterSessionPage() {
       saveBrandSnapshot(brand);
     }
     setPhase('product-input');
-    addMessage('system', `Great! Your brand is set. Now tell me about the product or service you want to promote, or upload some product images.`);
+    addMessage('system', pickMessage([
+      "Brand's set! What are we promoting? Describe it or drop in some product images.",
+      "Nice — we're ready. Tell me about your product or upload a few images.",
+      "All set! What's the product or service? You can describe it or add images.",
+    ]));
   }
 
   function updateBrandGuideline(updated: BrandSnapshot) {
@@ -712,11 +748,20 @@ export default function PosterSessionPage() {
     // If user wrote a direct prompt only (no images) → skip poster-prompt, go to theme/aspect selection
     if (productImages.length === 0 && productPrompt.trim()) {
       setPosterPrompt(productPrompt.trim());
-      addMessage('system', `Thats's amazing! Now select a theme and aspect ratio for your poster.`);
+      const echo = productPrompt.trim().length > 60 ? productPrompt.trim().slice(0, 60) + '...' : productPrompt.trim();
+      addMessage('system', pickMessage([
+        `${echo} — nice! Pick a vibe and format below.`,
+        `Got it! "${echo}" — what theme and aspect ratio work for you?`,
+        `Love it. Pick a theme and format for your poster.`,
+      ]));
       setPhase('config');
     } else {
       // User attached images → show poster-prompt to describe what they want
-      addMessage('system', `Got it! Now describe the poster you want to create.`);
+      addMessage('system', pickMessage([
+        "Love these images! What style are you going for — bold, minimal, playful?",
+        "Got it! Describe the poster you want — mood, vibe, any text?",
+        "Nice. What kind of poster? Tell me the style and feel you're after.",
+      ]));
       setPhase('poster-prompt');
     }
   }
@@ -727,14 +772,22 @@ export default function PosterSessionPage() {
     if (!posterPrompt.trim()) return;
     
     addMessage('user', posterPrompt);
-    addMessage('system', `Great prompt! Now select a theme and aspect ratio for your poster.`);
+    const echo = posterPrompt.trim().length > 50 ? posterPrompt.trim().slice(0, 50) + '...' : posterPrompt.trim();
+    addMessage('system', pickMessage([
+      `${echo} — perfect! Pick a theme and format below.`,
+      "Great prompt! What vibe and aspect ratio?",
+      "Love it. Choose a theme and format — we're almost there.",
+    ]));
     
     setPhase('config');
   }
 
-  async function handleConfigSubmit() {
+  async function handleConfigSubmit(promptOverride?: string) {
     if (hasInsufficientCredits) {
-      addMessage('system', 'You have no credits remaining. Please purchase more credits to generate posters.');
+      addMessage('system', pickMessage([
+        "You're out of credits — grab more to keep creating.",
+        "No credits left. Purchase more to generate posters.",
+      ]));
       return;
     }
 
@@ -750,8 +803,8 @@ export default function PosterSessionPage() {
     try {
       const hasProductImage = savedProductData?.images && savedProductData.images.length > 0;
       
-      // Build base user request from poster prompt or product data
-      let userRequest = posterPrompt || savedProductData?.prompt || '';
+      // Build base user request - use promptOverride when provided (e.g. from edited form), else posterPrompt or product data
+      let userRequest = (promptOverride?.trim() || posterPrompt || savedProductData?.prompt || '').trim();
       if (!userRequest.trim()) {
         // Fallback: build from brand
         const promptParts: string[] = [];
@@ -941,7 +994,11 @@ export default function PosterSessionPage() {
         // Add message with poster images in chat history
         addMessage(
           'system',
-          `Here ${posters.length === 1 ? 'is your poster' : `are your ${posters.length} poster variants`}! Click on any to preview, save, or use in a campaign.`,
+          pickMessage(
+            posters.length === 1
+              ? ["Here's your poster! Click to preview, save, or use in a campaign.", "Done! Preview, save, or add to a campaign.", "Your poster is ready. Click to preview or save."]
+              : [`Here are your ${posters.length} variants! Click any to preview, save, or use in a campaign.`, `Done! ${posters.length} options for you. Preview, save, or add to a campaign.`, `Your posters are ready. Pick your favorite and go from there.`]
+          ),
           undefined,
           posters,
           storagePaths.length > 0 ? storagePaths : undefined
@@ -954,7 +1011,10 @@ export default function PosterSessionPage() {
     } catch (err: any) {
       console.error('Generation error:', err);
       const errorMessage = err?.message || 'Sorry, there was an error generating your posters. Please try again.';
-      addMessage('system', errorMessage);
+      addMessage('system', pickMessage([
+        errorMessage,
+        `Something went wrong. ${errorMessage}`,
+      ]));
       // Don't go back to config if it's a credit error - user can't generate anyway
       if (!hasInsufficientCredits) {
         setPhase('config');
@@ -1041,18 +1101,20 @@ export default function PosterSessionPage() {
   }
 
   function handleRegenerateSubmit() {
-    if (regeneratePrompt.trim()) {
-      setPosterPrompt(regeneratePrompt);
+    const editedPrompt = regeneratePrompt.trim();
+    if (editedPrompt) {
+      setPosterPrompt(editedPrompt);
     }
     setShowRegeneratePrompt(false);
     setRegeneratePrompt('');
-    handleConfigSubmit();
+    // Pass edited prompt directly - React setState is async, so handleConfigSubmit would read stale posterPrompt otherwise
+    handleConfigSubmit(editedPrompt || undefined);
   }
 
   function handleUseAsReferenceConfirm(url: string, index: number) {
     const promptToUse = regeneratePrompt.trim() || posterPrompt;
     if (regeneratePrompt.trim()) {
-      setPosterPrompt(regeneratePrompt);
+      setPosterPrompt(regeneratePrompt.trim());
     }
     setPendingUseAsReference(null);
     setRegeneratePrompt('');
@@ -1062,7 +1124,10 @@ export default function PosterSessionPage() {
   async function handleUseAsReference(url: string, index: number, promptOverride?: string) {
     // Block if no credits
     if (hasInsufficientCredits) {
-      addMessage('system', 'You have no credits remaining. Please purchase more credits to generate posters.');
+      addMessage('system', pickMessage([
+        "You're out of credits — grab more to keep creating.",
+        "No credits left. Purchase more to generate posters.",
+      ]));
       return;
     }
 
@@ -1074,7 +1139,11 @@ export default function PosterSessionPage() {
     isAddingReferenceRef.current = true;
     
     try {
-      addMessage('system', "Great! I'll use this poster as a reference. You can adjust the theme, format, and add a prompt to create variations.");
+      addMessage('system', pickMessage([
+        "Using this as your reference — tweak the theme, format, or add a prompt for variations.",
+        "Got it! I'll use this poster as reference. Adjust the settings below and hit Generate.",
+        "Nice pick! Tweak the theme or format, add a prompt if you'd like, then generate.",
+      ]));
 
       // Fetch the image and convert to File
       const response = await fetch(url);
@@ -1086,9 +1155,10 @@ export default function PosterSessionPage() {
       
       // Set ONLY this poster as the reference (replace, don't accumulate)
       // User can add more references by clicking "Use as Reference" on additional posters
+      // Use promptOverride when user edited the prompt in the form - otherwise fall back to posterPrompt/product data
       const promptToUse = promptOverride ?? posterPrompt ?? savedProductData?.prompt ?? '';
       setSavedProductData({
-        prompt: posterPrompt || savedProductData?.prompt || '',
+        prompt: promptToUse || savedProductData?.prompt || '',
         images: [file],
         imageDataUrls: [dataUrl],
       });
@@ -1096,10 +1166,17 @@ export default function PosterSessionPage() {
       // Go to config phase so user can edit theme, format, and add prompt
       setPhase('config');
       
-      addMessage('system', "I've set this poster as your reference image. Now you can:\n• Select a different theme\n• Choose a different format\n• Add a prompt describing the changes you want\n\nThen click 'Generate 3 Variants' to create new variations inspired by this poster!");
+      addMessage('system', pickMessage([
+        "Reference set! Change the theme or format, add a prompt if you want, then hit Generate.",
+        "All set. Tweak the vibe, pick a format, and describe any changes — then we'll create variations.",
+        "Using this as reference. Adjust settings below and click Generate when you're ready.",
+      ]));
     } catch (error: any) {
       console.error('Error using poster as reference:', error);
-      addMessage('system', `Sorry, I couldn't use this poster as a reference: ${error.message || 'Unknown error'}.`);
+      addMessage('system', pickMessage([
+        `Couldn't use that as reference — ${error.message || 'Unknown error'}. Try again?`,
+        `Something went wrong: ${error.message || 'Unknown error'}. Want to try another poster?`,
+      ]));
     } finally {
       // Reset the flag after a short delay
       setTimeout(() => {
@@ -1166,7 +1243,10 @@ export default function PosterSessionPage() {
             setThinkingMessages([]);
             
             if (!response.ok || !result.ok) {
-              addMessage('system', `I couldn't fetch the image: ${result.error || 'Unknown error'}. Please try uploading the image directly or contact support.`);
+              addMessage('system', pickMessage([
+                `That link didn't work — ${result.error || 'Unknown error'}. Try uploading the image directly.`,
+                `Couldn't fetch the image: ${result.error || 'Unknown error'}. Upload it instead?`,
+              ]));
               return;
             }
             
@@ -1204,12 +1284,19 @@ export default function PosterSessionPage() {
             });
 
             // Show the fetched image (use Supabase storage URL so DB stays small)
-            addMessage('system', `Got it! I've fetched the image from the URL. Now describe the poster you want to create.`, undefined, [displayUrl], undefined, true);
+            addMessage('system', pickMessage([
+              "Got the image! What style are you going for?",
+              "Image fetched. Describe the poster — mood, vibe, any text?",
+              "Nice. What kind of poster do you want? Tell me the style and feel.",
+            ]), undefined, [displayUrl], undefined, true);
             setPhase('poster-prompt');
           } catch (err: any) {
             setThinkingMessages([]);
             console.error('Error fetching image:', err);
-            addMessage('system', `There was an error fetching the image: ${err.message || 'Unknown error'}. Please try uploading it directly or contact support.`);
+            addMessage('system', pickMessage([
+              `Couldn't fetch that — ${err.message || 'Unknown error'}. Try uploading the image directly.`,
+              `Something went wrong: ${err.message || 'Unknown error'}. Upload the image instead?`,
+            ]));
           }
         }, 0);
       } else {
@@ -1243,11 +1330,20 @@ export default function PosterSessionPage() {
           // If user wrote a direct prompt (no link, no images) → skip poster-prompt, go to theme/aspect selection
           if (currentImages.length === 0 && currentInput.trim()) {
             setPosterPrompt(currentInput.trim());
-            addMessage('system', `That's amazing! Now select a theme and aspect ratio for your poster.`);
+            const echo = currentInput.trim().length > 60 ? currentInput.trim().slice(0, 60) + '...' : currentInput.trim();
+            addMessage('system', pickMessage([
+              `${echo} — nice! Pick a vibe and format below.`,
+              `Got it! "${echo}" — what theme and aspect ratio work for you?`,
+              `Love it. Pick a theme and format for your poster.`,
+            ]));
             setPhase('config');
           } else {
             // User attached images → show poster-prompt to describe what they want
-            addMessage('system', `Got it! Now describe the poster you want to create.`);
+            addMessage('system', pickMessage([
+              "Love these images! What style are you going for — bold, minimal, playful?",
+              "Got it! Describe the poster you want — mood, vibe, any text?",
+              "Nice. What kind of poster? Tell me the style and feel you're after.",
+            ]));
             setPhase('poster-prompt');
           }
         }, 0);
@@ -1450,7 +1546,7 @@ export default function PosterSessionPage() {
               {/* Initial AI message - conversational prompt */}
               {messages.length === 0 && (phase === 'input' || phase === 'product-input') && (
                 <SystemBubble>
-                  HI, paste your website link, upload a product image, or describe what you want to create. At least one input is required.
+                  {initialGreeting}
                 </SystemBubble>
               )}
 
@@ -2107,13 +2203,36 @@ function ConfigInput({
                   key={theme.id}
                   type="button"
                   onClick={() => onConfigChange({ ...config, theme: theme.id })}
-                  className="px-3 py-2 rounded-lg text-sm font-medium transition-all"
+                  title={theme.note}
+                  className="px-3 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2"
                   style={config.theme === theme.id ? { backgroundColor: colors.primary, color: 'white' } : { backgroundColor: colors.muted, color: colors.foreground }}
                 >
+                  {theme.exampleImage ? (
+                    <img src={theme.exampleImage} alt="" className="w-8 h-8 rounded object-cover flex-shrink-0" />
+                  ) : theme.previewStyle ? (
+                    <span className="w-8 h-8 rounded flex-shrink-0" style={{ background: theme.previewStyle, border: '1px solid rgba(0,0,0,0.1)' }} aria-hidden />
+                  ) : null}
                   {theme.label}
                 </button>
               ))}
             </div>
+            {config.theme && (() => {
+              const selected = themes.find((t) => t.id === config.theme);
+              if (!selected?.note) return null;
+              return (
+                <div className="mt-3 p-3 rounded-lg flex gap-3" style={{ backgroundColor: colors.muted, border: `1px solid ${colors.border}` }}>
+                  {selected.exampleImage ? (
+                    <img src={selected.exampleImage} alt={`${selected.label} example`} className="w-20 h-20 rounded-lg object-cover flex-shrink-0" style={{ border: `1px solid ${colors.border}` }} />
+                  ) : selected.previewStyle ? (
+                    <div className="w-20 h-20 rounded-lg flex-shrink-0" style={{ background: selected.previewStyle, border: `1px solid ${colors.border}` }} />
+                  ) : null}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium mb-1" style={{ color: colors.foreground }}>{selected.label} — what to expect</p>
+                    <p className="text-xs" style={{ color: colors.mutedForeground }}>{selected.note}</p>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
 
           {/* Aspect Ratio */}
@@ -2121,16 +2240,26 @@ function ConfigInput({
             <label className="block text-sm font-medium mb-3" style={{ color: colors.foreground }}>
               Aspect Ratio
             </label>
-            <div className="flex gap-2">
+            <div className="flex gap-4 flex-wrap">
               {aspectRatios.map((ar) => (
                 <button
                   key={ar.id}
                   type="button"
+                  title={ar.description}
                   onClick={() => onConfigChange({ ...config, aspectRatio: ar.id as PosterConfig['aspectRatio'] })}
-                  className="px-4 py-2 rounded-lg text-sm font-medium transition-all"
+                  className="flex flex-col items-center gap-1.5 px-3 py-2.5 rounded-lg text-xs font-medium transition-all"
                   style={config.aspectRatio === ar.id ? { backgroundColor: colors.primary, color: 'white' } : { backgroundColor: colors.muted, color: colors.foreground }}
                 >
-                  {ar.label}
+                  <span
+                    className="rounded-sm border-2 flex-shrink-0"
+                    style={{
+                      width: ar.width >= ar.height ? 36 : (36 * ar.width) / ar.height,
+                      height: ar.width >= ar.height ? (36 * ar.height) / ar.width : 36,
+                      borderColor: 'currentColor',
+                      opacity: 0.9,
+                    }}
+                  />
+                  <span>{ar.label}</span>
                 </button>
               ))}
             </div>
@@ -2371,17 +2500,40 @@ function PosterGrid({
                 <label className="block text-sm font-medium mb-2" style={{ color: colors.foreground }}>Theme</label>
                 <div className="grid grid-cols-3 gap-2">
                   {POSTER_THEMES.map((theme) => (
-                    <button
-                      key={theme.id}
-                      type="button"
-                      onClick={() => onConfigChange({ ...config, theme: theme.id })}
-                      className="px-3 py-2 rounded-lg text-sm font-medium transition-all"
-                      style={config.theme === theme.id ? { backgroundColor: colors.primary, color: 'white' } : { backgroundColor: colors.muted, color: colors.foreground }}
-                    >
-                      {theme.label}
-                    </button>
+                <button
+                  key={theme.id}
+                  type="button"
+                  title={theme.note}
+                  onClick={() => onConfigChange({ ...config, theme: theme.id })}
+                  className="px-3 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2"
+                  style={config.theme === theme.id ? { backgroundColor: colors.primary, color: 'white' } : { backgroundColor: colors.muted, color: colors.foreground }}
+                >
+                  {theme.exampleImage ? (
+                    <img src={theme.exampleImage} alt="" className="w-8 h-8 rounded object-cover flex-shrink-0" />
+                  ) : theme.previewStyle ? (
+                    <span className="w-8 h-8 rounded flex-shrink-0" style={{ background: theme.previewStyle, border: '1px solid rgba(0,0,0,0.1)' }} aria-hidden />
+                  ) : null}
+                  {theme.label}
+                </button>
                   ))}
                 </div>
+                {config.theme && (() => {
+                  const selected = POSTER_THEMES.find((t) => t.id === config.theme);
+                  if (!selected?.note) return null;
+                  return (
+                    <div className="mt-3 p-3 rounded-lg flex gap-3" style={{ backgroundColor: colors.muted, border: `1px solid ${colors.border}` }}>
+                      {selected.exampleImage ? (
+                        <img src={selected.exampleImage} alt={`${selected.label} example`} className="w-16 h-16 rounded-lg object-cover flex-shrink-0" style={{ border: `1px solid ${colors.border}` }} />
+                      ) : selected.previewStyle ? (
+                        <div className="w-16 h-16 rounded-lg flex-shrink-0" style={{ background: selected.previewStyle, border: `1px solid ${colors.border}` }} />
+                      ) : null}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium mb-0.5" style={{ color: colors.foreground }}>{selected.label} — what to expect</p>
+                        <p className="text-xs" style={{ color: colors.mutedForeground }}>{selected.note}</p>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Prompt */}
@@ -2400,16 +2552,26 @@ function PosterGrid({
               {/* Aspect Ratio */}
               <div>
                 <label className="block text-sm font-medium mb-2" style={{ color: colors.foreground }}>Aspect Ratio</label>
-                <div className="flex gap-2 flex-wrap">
+                <div className="flex gap-4 flex-wrap">
                   {ASPECT_RATIOS.map((ar) => (
                     <button
                       key={ar.id}
                       type="button"
+                      title={ar.description}
                       onClick={() => onConfigChange({ ...config, aspectRatio: ar.id as PosterConfig['aspectRatio'] })}
-                      className="px-4 py-2 rounded-lg text-sm font-medium transition-all"
+                      className="flex flex-col items-center gap-1.5 px-3 py-2.5 rounded-lg text-xs font-medium transition-all"
                       style={config.aspectRatio === ar.id ? { backgroundColor: colors.primary, color: 'white' } : { backgroundColor: colors.muted, color: colors.foreground }}
                     >
-                      {ar.label}
+                      <span
+                        className="rounded-sm border-2 flex-shrink-0"
+                        style={{
+                          width: ar.width >= ar.height ? 32 : (32 * ar.width) / ar.height,
+                          height: ar.width >= ar.height ? (32 * ar.height) / ar.width : 32,
+                          borderColor: 'currentColor',
+                          opacity: 0.9,
+                        }}
+                      />
+                      <span>{ar.label}</span>
                     </button>
                   ))}
                 </div>
