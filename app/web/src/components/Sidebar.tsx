@@ -24,6 +24,7 @@ import {
   Zap,
   Coins,
   Flag,
+  Brain,
 } from 'lucide-react';
 import colors from '@/lib/ui/colors';
 import { authFetch } from '@/lib/utils';
@@ -41,6 +42,7 @@ type NavItem = {
 const NAV_ITEMS: NavItem[] = [
   { href: '/dashboard', label: 'Dashboard', Icon: Home, featureKey: 'dashboard' },
   { href: '/creative-studio', label: 'Creative Studio', Icon: Palette }, // Always visible
+  { href: '/creative-intelligence', label: 'Creative Intelligence', Icon: Brain }, // Always visible
   { href: '/buy-credits', label: 'Buy Credits', Icon: Coins }, // Always visible (pay-as-you-go)
   { href: '/create-campaign', label: 'Create Campaign', Icon: PlusCircle, featureKey: 'create_campaigns' },
   { href: '/analytics', label: 'Analytics', Icon: BarChart3, featureKey: 'basic_analytics' },

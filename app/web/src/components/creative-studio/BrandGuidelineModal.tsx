@@ -148,7 +148,7 @@ export default function BrandGuidelineModal({
                   className="px-4 py-2 text-white rounded-lg font-medium hover:opacity-90 transition-colors"
                   style={{ backgroundColor: colors.primary, color: colors.primaryForeground }}
                 >
-                  Done
+                  Save
                 </button>
               </div>
             </>

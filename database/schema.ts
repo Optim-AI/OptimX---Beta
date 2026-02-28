@@ -399,3 +399,125 @@ export const creativeStudioSessions = pgTable("creative_studio_sessions", {
 	index("idx_creative_studio_sessions_type").using("btree", table.sessionType.asc().nullsLast()),
 	index("idx_creative_studio_sessions_user_type").using("btree", table.userId.asc().nullsLast(), table.sessionType.asc().nullsLast()),
 ]);
+
+// ============================================================
+// CREATIVE INTELLIGENCE TABLES
+// ============================================================
+
+export const creativeIntelligenceRuns = pgTable("creative_intelligence_runs", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	userId: uuid("user_id").notNull(),
+	brandUrl: text("brand_url").notNull(),
+	competitorUrls: text("competitor_urls").array(),
+	industry: text(),
+	targetAudience: text("target_audience"),
+	campaignGoal: text("campaign_goal"),
+	advancedSettings: jsonb("advanced_settings"),
+	status: text().notNull().default('pending'),
+	progressStep: integer("progress_step").default(0),
+	progressMessage: text("progress_message"),
+	errorMessage: text("error_message"),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (table) => [
+	index("idx_creative_intelligence_runs_user_id").using("btree", table.userId.asc().nullsLast()),
+	index("idx_creative_intelligence_runs_created_at").using("btree", table.createdAt.desc().nullsLast()),
+]);
+
+export const creativeIntelligenceBrands = pgTable("creative_intelligence_brands", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	runId: uuid("run_id").notNull(),
+	productSummary: text("product_summary"),
+	positioningStatement: text("positioning_statement"),
+	corePainsAddressed: jsonb("core_pains_addressed"),
+	emotionalTone: text("emotional_tone"),
+	targetPersonaGuess: text("target_persona_guess"),
+	rawAnalysis: jsonb("raw_analysis"),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (table) => [
+	index("idx_creative_intelligence_brands_run_id").using("btree", table.runId.asc().nullsLast()),
+]);
+
+export const creativeIntelligenceCompetitors = pgTable("creative_intelligence_competitors", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	runId: uuid("run_id").notNull(),
+	name: text(),
+	domain: text(),
+	corePositioning: text("core_positioning"),
+	primaryHook: text("primary_hook"),
+	pricingTier: text("pricing_tier"),
+	weaknessDetected: text("weakness_detected"),
+	saturationLevel: text("saturation_level"),
+	rawData: jsonb("raw_data"),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (table) => [
+	index("idx_creative_intelligence_competitors_run_id").using("btree", table.runId.asc().nullsLast()),
+]);
+
+export const creativeIntelligenceReviews = pgTable("creative_intelligence_reviews", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	runId: uuid("run_id").notNull(),
+	clusterType: text("cluster_type").notNull(),
+	clusterLabel: text("cluster_label"),
+	frequencyPct: integer("frequency_pct"),
+	samplePhrases: jsonb("sample_phrases"),
+	rawClusters: jsonb("raw_clusters"),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (table) => [
+	index("idx_creative_intelligence_reviews_run_id").using("btree", table.runId.asc().nullsLast()),
+]);
+
+export const creativeIntelligenceHooks = pgTable("creative_intelligence_hooks", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	runId: uuid("run_id").notNull(),
+	hookStatement: text("hook_statement").notNull(),
+	hookType: text("hook_type"),
+	whyItWorks: text("why_it_works"),
+	supportingReviewPhrase: text("supporting_review_phrase"),
+	competitorOverlapLevel: text("competitor_overlap_level"),
+	confidenceScore: integer("confidence_score"),
+	rank: integer(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (table) => [
+	index("idx_creative_intelligence_hooks_run_id").using("btree", table.runId.asc().nullsLast()),
+]);
+
+export const creativeIntelligenceStrategies = pgTable("creative_intelligence_strategies", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	runId: uuid("run_id").notNull(),
+	strategyType: text("strategy_type"),
+	content: jsonb().notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (table) => [
+	index("idx_creative_intelligence_strategies_run_id").using("btree", table.runId.asc().nullsLast()),
+]);
+
+export const creativeIntelligenceCreatives = pgTable("creative_intelligence_creatives", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	runId: uuid("run_id").notNull(),
+	hookId: uuid("hook_id"),
+	creativeType: text("creative_type").notNull(),
+	content: jsonb().notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (table) => [
+	index("idx_creative_intelligence_creatives_run_id").using("btree", table.runId.asc().nullsLast()),
+	index("idx_creative_intelligence_creatives_hook_id").using("btree", table.hookId.asc().nullsLast()),
+]);
+
+export const creativeIntelligenceMetaAds = pgTable("creative_intelligence_meta_ads", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	runId: uuid("run_id").notNull(),
+	searchKeyword: text("search_keyword").notNull(),
+	pageName: text("page_name"),
+	pageId: text("page_id"),
+	bodyText: text("body_text"),
+	ctaText: text("cta_text"),
+	ctaType: text("cta_type"),
+	displayFormat: text("display_format"),
+	platforms: text("platforms").array(),
+	imageUrl: text("image_url"),
+	rawData: jsonb("raw_data"),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (table) => [
+	index("idx_creative_intelligence_meta_ads_run_id").using("btree", table.runId.asc().nullsLast()),
+]);
