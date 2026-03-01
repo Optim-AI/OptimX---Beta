@@ -24,10 +24,37 @@ export default function BrandGuidelineModal({
   const [editMode, setEditMode] = useState<'website' | 'manual'>('manual');
   const [websiteUrl, setWebsiteUrl] = useState('');
   const [formData, setFormData] = useState<BrandSnapshot>(brand);
+  const [websiteUrl, setWebsiteUrl] = useState('');
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   function handleSave() {
     onUpdate(formData);
     setEditing(false);
+    setEditMode('choice');
+  }
+
+  function handleCancelEdit() {
+    setEditing(false);
+    setEditMode('choice');
+    setFormData(brand);
+    setWebsiteUrl('');
+  }
+
+  async function handleWebsiteSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!websiteUrl.trim() || !onWebsiteAnalyze) return;
+    setIsAnalyzing(true);
+    try {
+      const result = await onWebsiteAnalyze(websiteUrl.trim());
+      if (result) {
+        onUpdate(result);
+        setEditing(false);
+        setEditMode('choice');
+        setWebsiteUrl('');
+      }
+    } finally {
+      setIsAnalyzing(false);
+    }
   }
 
   return (
@@ -100,22 +127,6 @@ export default function BrandGuidelineModal({
                     style={{ color: colors.foreground }}>Offering</label>
                 <p style={{ color: colors.foreground }}>{brand.offering}</p>
               </div>
-              {brand.tone && (
-                <div>
-                  <label className="block text-sm font-medium mb-1"
-                    style={{ color: colors.foreground }}>Tone</label>
-                  <p className="capitalize"
-                    style={{ color: colors.foreground }}>{brand.tone}</p>
-                </div>
-              )}
-              {brand.personality && (
-                <div>
-                  <label className="block text-sm font-medium mb-1"
-                    style={{ color: colors.foreground }}>Personality</label>
-                  <p className="capitalize"
-                    style={{ color: colors.foreground }}>{brand.personality}</p>
-                </div>
-              )}
               {brand.tagline && (
                 <div>
                   <label className="block text-sm font-medium mb-1"
@@ -123,127 +134,119 @@ export default function BrandGuidelineModal({
                   <p style={{ color: colors.foreground }}>{brand.tagline}</p>
                 </div>
               )}
-              {/* Primary Colors */}
-              {brand.primaryColors && brand.primaryColors.length > 0 && (
-                <div>
-                  <label className="block text-sm font-medium mb-2"
-                    style={{ color: colors.foreground }}>Primary Colors</label>
-                  <div className="flex gap-3 flex-wrap">
-                    {brand.primaryColors.map((color, idx) => (
-                      <div key={idx} className="flex items-center gap-2">
-                        <div
-                          className="w-8 h-8 rounded border"
-                          style={{ borderColor: colors.border, backgroundColor: color }}
-                        />
-                        <span className="text-sm"
-                    style={{ color: colors.mutedForeground }}>{color}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Legacy Colors */}
-              {brand.colors && !brand.primaryColors && (
-                <div>
-                  <label className="block text-sm font-medium mb-2"
-                    style={{ color: colors.foreground }}>Brand Colors</label>
-                  <div className="flex gap-3">
-                    {brand.colors.primary && (
-                      <div className="flex items-center gap-2">
-                        <div
-                          className="w-8 h-8 rounded border"
-                          style={{ borderColor: colors.border, backgroundColor: brand.colors.primary }}
-                        />
-                        <span className="text-sm"
-                    style={{ color: colors.mutedForeground }}>Primary</span>
-                      </div>
-                    )}
-                    {brand.colors.secondary && (
-                      <div className="flex items-center gap-2">
-                        <div
-                          className="w-8 h-8 rounded border"
-                          style={{ borderColor: colors.border, backgroundColor: brand.colors.secondary }}
-                        />
-                        <span className="text-sm"
-                    style={{ color: colors.mutedForeground }}>Secondary</span>
-                      </div>
-                    )}
-                    {brand.colors.accent && (
-                      <div className="flex items-center gap-2">
-                        <div
-                          className="w-8 h-8 rounded border"
-                          style={{ borderColor: colors.border, backgroundColor: brand.colors.accent }}
-                        />
-                        <span className="text-sm"
-                    style={{ color: colors.mutedForeground }}>Accent</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {brand.fontStyles && (
-                <div>
-                  <label className="block text-sm font-medium mb-1"
-                    style={{ color: colors.foreground }}>Font Style</label>
-                  <p className="capitalize"
-                    style={{ color: colors.foreground }}>{brand.fontStyles}</p>
-                </div>
-              )}
-
-              {brand.brandVoice && (
-                <div>
-                  <label className="block text-sm font-medium mb-1"
-                    style={{ color: colors.foreground }}>Brand Voice</label>
-                  <p style={{ color: colors.foreground }}>{brand.brandVoice}</p>
-                </div>
-              )}
-
-              {brand.coreValueProp && (
-                <div>
-                  <label className="block text-sm font-medium mb-1"
-                    style={{ color: colors.foreground }}>Core Value Proposition</label>
-                  <p style={{ color: colors.foreground }}>{brand.coreValueProp}</p>
-                </div>
-              )}
-
-              {brand.ctaPatterns && brand.ctaPatterns.length > 0 && (
-                <div>
-                  <label className="block text-sm font-medium mb-1"
-                    style={{ color: colors.foreground }}>Preferred CTAs</label>
-                  <p className="text-sm"
-                    style={{ color: colors.foreground }}>{brand.ctaPatterns.join(", ")}</p>
-                </div>
-              )}
-
-              {brand.productCategory && (
-                <div>
-                  <label className="block text-sm font-medium mb-1"
-                    style={{ color: colors.foreground }}>Product Category</label>
-                  <p className="text-sm"
-                    style={{ color: colors.foreground }}>{brand.productCategory}</p>
-                </div>
-              )}
-
-              {brand.pricePositioning && (
-                <div>
-                  <label className="block text-sm font-medium mb-1"
-                    style={{ color: colors.foreground }}>Price Positioning</label>
-                  <p className="text-sm capitalize"
-                    style={{ color: colors.foreground }}>{brand.pricePositioning}</p>
-                </div>
-              )}
-
-              <div className="flex justify-end pt-4 border-t" style={{ borderColor: colors.border }}>
+              <div className="flex justify-end gap-3 pt-4 border-t" style={{ borderColor: colors.border }}>
                 <button
-                  onClick={() => setEditing(true)}
+                  onClick={() => {
+                    setEditing(true);
+                    setEditMode('choice');
+                  }}
                   className="px-4 py-2 text-white rounded-lg font-medium hover:opacity-90 transition-colors"
                   style={{ backgroundColor: colors.primary, color: colors.primaryForeground }}
                 >
                   Edit
                 </button>
+                <button
+                  onClick={onClose}
+                  className="px-4 py-2 text-white rounded-lg font-medium hover:opacity-90 transition-colors"
+                  style={{ backgroundColor: colors.primary, color: colors.primaryForeground }}
+                >
+                  Done
+                </button>
               </div>
+            </>
+          ) : editMode === 'choice' ? (
+            <>
+              <p className="text-sm mb-4" style={{ color: colors.mutedForeground }}>
+                How would you like to update your brand guideline?
+              </p>
+              <div className="flex gap-4">
+                {onWebsiteAnalyze && (
+                  <button
+                    onClick={() => setEditMode('website')}
+                    className="flex-1 px-6 py-4 rounded-lg border-2 text-left transition-colors"
+                    style={{ borderColor: colors.border, backgroundColor: colors.background, color: colors.foreground }}
+                  >
+                    <span className="block font-semibold mb-1" style={{ color: colors.foreground }}>Website set up</span>
+                    <span className="text-sm" style={{ color: colors.mutedForeground }}>
+                      Analyze your website to extract brand information automatically.
+                    </span>
+                  </button>
+                )}
+                <button
+                  onClick={() => setEditMode('manual')}
+                  className="flex-1 px-6 py-4 rounded-lg border-2 text-left transition-colors"
+                  style={{ borderColor: colors.border, backgroundColor: colors.background, color: colors.foreground }}
+                >
+                  <span className="block font-semibold mb-1" style={{ color: colors.foreground }}>Manual set up</span>
+                  <span className="text-sm" style={{ color: colors.mutedForeground }}>
+                    Enter your brand details directly.
+                  </span>
+                </button>
+              </div>
+              <div className="flex justify-end pt-4 border-t" style={{ borderColor: colors.border }}>
+                <button
+                  onClick={handleCancelEdit}
+                  className="px-4 py-2 transition-colors"
+                  style={{ color: colors.mutedForeground }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </>
+          ) : editMode === 'website' ? (
+            <>
+              <div className="flex items-center gap-2 mb-4">
+                <button
+                  onClick={() => setEditMode('choice')}
+                  className="text-sm"
+                  style={{ color: colors.primary }}
+                >
+                  ← Back
+                </button>
+              </div>
+              <form onSubmit={handleWebsiteSubmit} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2" style={{ color: colors.foreground }}>
+                    Website URL
+                  </label>
+                  <input
+                    type="url"
+                    value={websiteUrl}
+                    onChange={(e) => setWebsiteUrl(e.target.value)}
+                    placeholder="https://yourwebsite.com"
+                    className="w-full px-4 py-2 rounded-lg focus:outline-none focus:ring-2"
+                    style={{ border: `1px solid ${colors.border}`, backgroundColor: colors.background, color: colors.foreground }}
+                    disabled={isAnalyzing}
+                  />
+                  <p className="text-xs mt-1" style={{ color: colors.mutedForeground }}>
+                    We&apos;ll analyze your website to extract brand information automatically.
+                  </p>
+                </div>
+                {isAnalyzing && (
+                  <div className="flex items-center gap-3 p-4 rounded-lg" style={{ backgroundColor: 'hsl(213 100% 55% / 0.15)', border: `1px solid hsl(213 100% 55% / 0.3)` }}>
+                    <div className="animate-spin rounded-full h-5 w-5 border-2 border-t-transparent" style={{ borderColor: colors.primary }} />
+                    <span className="text-sm font-medium" style={{ color: colors.foreground }}>Analyzing your website... This may take a moment.</span>
+                  </div>
+                )}
+                <div className="flex gap-3 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => setEditMode('choice')}
+                    className="px-4 py-2 transition-colors"
+                    style={{ color: colors.mutedForeground }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={!websiteUrl.trim() || isAnalyzing}
+                    className="px-4 py-2 text-white rounded-lg font-medium hover:opacity-90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    style={{ backgroundColor: colors.primary, color: colors.primaryForeground }}
+                  >
+                    {isAnalyzing ? 'Analyzing...' : 'Analyze & Update'}
+                  </button>
+                </div>
+              </form>
             </>
           ) : (
             <>
@@ -411,17 +414,6 @@ export default function BrandGuidelineModal({
               </div>
               <div>
                 <label className="block text-sm font-medium mb-2"
-                    style={{ color: colors.foreground }}>Tone</label>
-                <input
-                  type="text"
-                  value={formData.tone}
-                  onChange={(e) => setFormData({ ...formData, tone: e.target.value })}
-                  className="w-full px-4 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-[hsl(213_100%_55%)]"
-                    style={{ border: `1px solid ${colors.border}`, backgroundColor: colors.background, color: colors.foreground }}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-2"
                     style={{ color: colors.foreground }}>Tagline</label>
                 <input
                   type="text"
@@ -430,152 +422,6 @@ export default function BrandGuidelineModal({
                   className="w-full px-4 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-[hsl(213_100%_55%)]"
                     style={{ border: `1px solid ${colors.border}`, backgroundColor: colors.background, color: colors.foreground }}
                 />
-              </div>
-
-              {/* Brand Profile Section */}
-              <div className="pt-4 border-t" style={{ borderColor: colors.border }}>
-                <h3 className="text-lg font-semibold mb-4"
-                style={{ color: colors.foreground }}>Brand Profile</h3>
-
-                <div className="mb-4">
-                  <label className="block text-sm font-medium mb-2"
-                    style={{ color: colors.foreground }}>
-                    Primary Colors (hex codes, comma-separated)
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.primaryColors?.join(", ") || ""}
-                    onChange={(e) => setFormData({
-                      ...formData,
-                      primaryColors: e.target.value.split(",").map(s => s.trim()).filter(Boolean)
-                    })}
-                    placeholder="e.g., #FF0000, #00FF00, #0000FF"
-                    className="w-full px-4 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-[hsl(213_100%_55%)]"
-                    style={{ border: `1px solid ${colors.border}`, backgroundColor: colors.background, color: colors.foreground }}
-                  />
-                  {formData.primaryColors && formData.primaryColors.length > 0 && (
-                    <div className="flex gap-2 mt-2 flex-wrap">
-                      {formData.primaryColors.map((color, idx) => (
-                        <div key={idx} className="flex items-center gap-2">
-                          <div
-                            className="w-6 h-6 rounded"
-                            style={{ backgroundColor: color }}
-                          />
-                          <span className="text-xs"
-                          style={{ color: colors.mutedForeground }}>{color}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <div className="mb-4">
-                  <label className="block text-sm font-medium mb-2"
-                    style={{ color: colors.foreground }}>Font Style</label>
-                  <select
-                    value={formData.fontStyles || "sans-serif"}
-                    onChange={(e) => setFormData({ ...formData, fontStyles: e.target.value })}
-                    className="w-full px-4 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-[hsl(213_100%_55%)]"
-                    style={{ border: `1px solid ${colors.border}`, backgroundColor: colors.background, color: colors.foreground }}
-                  >
-                    <option value="sans-serif">Sans-serif</option>
-                    <option value="serif">Serif</option>
-                    <option value="monospace">Monospace</option>
-                    <option value="cursive">Cursive</option>
-                    <option value="fantasy">Fantasy</option>
-                  </select>
-                </div>
-
-                <div className="mb-4">
-                  <label className="block text-sm font-medium mb-2"
-                    style={{ color: colors.foreground }}>Brand Voice</label>
-                  <select
-                    value={formData.brandVoice || ""}
-                    onChange={(e) => setFormData({
-                      ...formData,
-                      brandVoice: e.target.value as "Professional" | "Playful" | "Minimalist" | "Bold" | undefined
-                    })}
-                    className="w-full px-4 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-[hsl(213_100%_55%)]"
-                    style={{ border: `1px solid ${colors.border}`, backgroundColor: colors.background, color: colors.foreground }}
-                  >
-                    <option value="">Select brand voice...</option>
-                    <option value="Professional">Professional</option>
-                    <option value="Playful">Playful</option>
-                    <option value="Minimalist">Minimalist</option>
-                    <option value="Bold">Bold</option>
-                  </select>
-                </div>
-
-                <div className="mb-4">
-                  <label className="block text-sm font-medium mb-2"
-                    style={{ color: colors.foreground }}>
-                    Core Value Proposition (The "Hook")
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.coreValueProp || ""}
-                    onChange={(e) => setFormData({ ...formData, coreValueProp: e.target.value || undefined })}
-                    placeholder="e.g., Quality First, Always"
-                    maxLength={100}
-                    className="w-full px-4 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-[hsl(213_100%_55%)]"
-                    style={{ border: `1px solid ${colors.border}`, backgroundColor: colors.background, color: colors.foreground }}
-                  />
-                </div>
-              </div>
-
-              {/* Brand Intelligence Section */}
-              <div className="pt-4 border-t" style={{ borderColor: colors.border }}>
-                <h3 className="text-lg font-semibold mb-4"
-                style={{ color: colors.foreground }}>Brand Intelligence</h3>
-
-                <div className="mb-4">
-                  <label className="block text-sm font-medium mb-2"
-                    style={{ color: colors.foreground }}>Preferred CTAs (comma-separated)</label>
-                  <input
-                    type="text"
-                    value={formData.ctaPatterns?.join(", ") || ""}
-                    onChange={(e) => setFormData({
-                      ...formData,
-                      ctaPatterns: e.target.value.split(",").map(s => s.trim()).filter(Boolean)
-                    })}
-                    placeholder="e.g., Shop Now, Buy Today, Explore More"
-                    className="w-full px-4 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-[hsl(213_100%_55%)]"
-                    style={{ border: `1px solid ${colors.border}`, backgroundColor: colors.background, color: colors.foreground }}
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4 mb-4">
-                  <div>
-                    <label className="block text-sm font-medium mb-2"
-                    style={{ color: colors.foreground }}>Product Category</label>
-                    <input
-                      type="text"
-                      value={formData.productCategory || ""}
-                      onChange={(e) => setFormData({ ...formData, productCategory: e.target.value || undefined })}
-                      placeholder="e.g., earbuds, headphones"
-                      className="w-full px-4 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-[hsl(213_100%_55%)]"
-                    style={{ border: `1px solid ${colors.border}`, backgroundColor: colors.background, color: colors.foreground }}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-2"
-                    style={{ color: colors.foreground }}>Price Positioning</label>
-                    <select
-                      value={formData.pricePositioning || ""}
-                      onChange={(e) => setFormData({
-                        ...formData,
-                        pricePositioning: e.target.value as "budget" | "mid-range" | "premium" | undefined
-                      })}
-                      className="w-full px-4 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-[hsl(213_100%_55%)]"
-                    style={{ border: `1px solid ${colors.border}`, backgroundColor: colors.background, color: colors.foreground }}
-                    >
-                      <option value="">Not set</option>
-                      <option value="budget">Budget</option>
-                      <option value="mid-range">Mid-range</option>
-                      <option value="premium">Premium</option>
-                    </select>
-                  </div>
-                </div>
               </div>
 
               <div className="flex justify-end gap-3 pt-4 border-t"

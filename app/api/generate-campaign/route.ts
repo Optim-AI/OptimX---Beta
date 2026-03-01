@@ -1,8 +1,39 @@
 // app/api/generate-campaign/route.ts
 import axios from "axios";
+import sharp from "sharp";
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from '@/auth/supabase/client'; // adjust path if necessary
 import { CreditsDAO } from '@/database/models/Credits.dao';
+
+/* Gemini supports: image/jpeg, image/png, image/gif, image/webp. NOT image/svg+xml. */
+const GEMINI_UNSUPPORTED_MIMES = ["image/svg+xml", "image/vnd.microsoft.icon", "image/x-icon", "image/ico"];
+
+function isUnsupportedMime(mimeType: string): boolean {
+  const normalized = mimeType.toLowerCase().trim();
+  return GEMINI_UNSUPPORTED_MIMES.some((t) => normalized.includes(t));
+}
+
+async function normalizeImageForGemini(dataUrl: string): Promise<{ mimeType: string; base64Data: string } | null> {
+  const m = dataUrl.match(/^data:(.+?);base64,(.+)$/);
+  if (!m) return null;
+  const mimeType = m[1].toLowerCase().split(";")[0].trim();
+  const base64Data = m[2];
+
+  if (!isUnsupportedMime(mimeType)) {
+    return { mimeType, base64Data };
+  }
+
+  try {
+    const buffer = Buffer.from(base64Data, "base64");
+    // SVG: use density for proper rasterization; Sharp may fail on complex SVGs (external refs, bad XML)
+    const sharpInput = mimeType.includes("svg") ? { density: 144 } : undefined;
+    const converted = await sharp(buffer, sharpInput).png().toBuffer();
+    return { mimeType: "image/png", base64Data: converted.toString("base64") };
+  } catch (e) {
+    console.warn("Failed to convert unsupported image for Gemini (SVG/ICO etc.):", e);
+    return null;
+  }
+}
 
 const NANO_API_KEY = process.env.NANO_API_KEY;
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash-image";
@@ -57,6 +88,22 @@ async function fetchUrlToBuffer(url: string) {
   if (!resp.ok) throw new Error(`Failed to fetch ${url}: ${resp.status}`);
   const arr = await resp.arrayBuffer();
   return Buffer.from(arr);
+}
+
+async function fetchUrlToDataUrl(url: string): Promise<string | null> {
+  try {
+    const resp = await fetch(url, {
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; SkalX AI/1.0)", Accept: "image/*" },
+    });
+    if (!resp.ok) return null;
+    const contentType = resp.headers.get("content-type") || "image/png";
+    if (!contentType.startsWith("image/")) return null;
+    const arr = await resp.arrayBuffer();
+    const base64 = Buffer.from(arr).toString("base64");
+    return `data:${contentType.split(";")[0]};base64,${base64}`;
+  } catch {
+    return null;
+  }
 }
 
 async function uploadBufferToSupabase(
@@ -202,24 +249,25 @@ function buildPromptFromInputs(body: any) {
     );
   }
 
-  // Logo guidance
+  // Logo guidance (only when a logo image has been provided)
   const placement: LogoPlacement | undefined = body.logoPlacement as LogoPlacement | undefined;
+  if (body.logoProvided) {
+    parts.push(
+      "Use the uploaded image only as the brand logo. First extract the logo cleanly by removing any background, borders, or surrounding design.",
+      "Do not place the entire uploaded picture inside the creative. Use only the isolated logo graphic.",
+      "Resize and position the logo the way a professional designer would — balanced, tasteful, and context-aware. Do not stretch or distort it.",
+      "Place the logo in a location that complements the layout. If the creative includes a product in the scene, apply the logo naturally to the product surface when it makes visual sense. Make it look printed or embedded, not floating.",
+      "Match lighting, shadows, and perspective so the logo feels realistically part of the scene.",
+      "If the layout does not include a product surface for application, place the logo neatly within the composition, maintaining premium brand aesthetics.",
+      "Never generate or modify the logo. Do not create a new version. Do not add filters or effects to it.",
+      "Never add any watermarks, symbols, brand marks, or signatures.",
+      "The logo placement should always support the focal point of the creative. It should be visible but never dominate."
+    );
 
-  parts.push(
-    "Use the uploaded image only as the brand logo. First extract the logo cleanly by removing any background, borders, or surrounding design.",
-    "Do not place the entire uploaded picture inside the creative. Use only the isolated logo graphic.",
-    "Resize and position the logo the way a professional designer would — balanced, tasteful, and context-aware. Do not stretch or distort it.",
-    "Place the logo in a location that complements the layout. If the creative includes a product in the scene, apply the logo naturally to the product surface when it makes visual sense. Make it look printed or embedded, not floating.",
-    "Match lighting, shadows, and perspective so the logo feels realistically part of the scene.",
-    "If the layout does not include a product surface for application, place the logo neatly within the composition, maintaining premium brand aesthetics.",
-    "Never generate or modify the logo. Do not create a new version. Do not add filters or effects to it.",
-    "Never add any watermarks, symbols, brand marks, or signatures.",
-    "The logo placement should always support the focal point of the creative. It should be visible but never dominate."
-  );
-
-  if (placement) {
-    const placementInstruction = placementToPrompt(placement);
-    if (placementInstruction) parts.push(placementInstruction);
+    if (placement) {
+      const placementInstruction = placementToPrompt(placement);
+      if (placementInstruction) parts.push(placementInstruction);
+    }
   }
 
   // Size / Aspect
@@ -454,15 +502,35 @@ export async function POST(request: Request) {
     const targetW = Number(target?.width || 1080);
     const targetH = Number(target?.height || 1080);
 
+    // Resolve logo: prefer logoDataUrl (data: or http), fallback to brandSnapshot logo/logoUrl
+    let resolvedLogoDataUrl: string | null = null;
+    const logoSource =
+      logoDataUrl && typeof logoDataUrl === "string"
+        ? logoDataUrl
+        : (body.brandSnapshot?.logo ?? body.brandSnapshot?.logoUrl);
+
+    if (logoSource) {
+      if (logoSource.startsWith("data:")) {
+        resolvedLogoDataUrl = logoSource;
+      } else if (logoSource.startsWith("http")) {
+        // Fetch logo from URL (e.g. when poster fetch failed or brand has URL only)
+        const dataUrl = await fetchUrlToDataUrl(logoSource);
+        if (dataUrl) resolvedLogoDataUrl = dataUrl;
+        else console.warn("Failed to fetch logo from URL:", logoSource);
+      }
+    }
+
     // Upload logo/ref inline images to Supabase to have public URLs as needed
     let logoPublicUrl: string | null = null;
-    let logoProvided = false;
-    if (logoDataUrl && typeof logoDataUrl === "string" && logoDataUrl.startsWith("data:")) {
+    let logoProvided = !!(resolvedLogoDataUrl && resolvedLogoDataUrl.startsWith("data:"));
+    if (resolvedLogoDataUrl && resolvedLogoDataUrl.startsWith("data:")) {
       try {
-        const buf = dataUrlToBuffer(logoDataUrl);
-        const safe = `temp/${Date.now()}_logo.png`;
-        logoPublicUrl = await uploadBufferToSupabase(buf, safe, "image/png");
-        logoProvided = !!logoPublicUrl;
+        const normalized = await normalizeImageForGemini(resolvedLogoDataUrl);
+        if (normalized) {
+          const buf = Buffer.from(normalized.base64Data, "base64");
+          const safe = `temp/${Date.now()}_logo.png`;
+          logoPublicUrl = await uploadBufferToSupabase(buf, safe, "image/png");
+        }
       } catch (e) {
         console.warn("logo upload failed", e);
       }
@@ -480,10 +548,13 @@ export async function POST(request: Request) {
         const d = refDataUrls[i];
         try {
           if (typeof d === "string" && d.startsWith("data:")) {
-            const buf = dataUrlToBuffer(d);
-            const safe = `temp/${Date.now()}_ref_${i}.png`;
-            const p = await uploadBufferToSupabase(buf, safe, "image/png");
-            if (p) refPublicUrls.push(p);
+            const normalized = await normalizeImageForGemini(d);
+            if (normalized) {
+              const buf = Buffer.from(normalized.base64Data, "base64");
+              const safe = `temp/${Date.now()}_ref_${i}.png`;
+              const p = await uploadBufferToSupabase(buf, safe, "image/png");
+              if (p) refPublicUrls.push(p);
+            }
           } else if (typeof d === "string") {
             refPublicUrls.push(d);
           }
@@ -536,14 +607,12 @@ export async function POST(request: Request) {
     
     // Add main product image FIRST (most important reference)
     if (productDataUrl && typeof productDataUrl === "string" && productDataUrl.startsWith("data:")) {
-      const m = productDataUrl.match(/^data:(.+);base64,(.+)$/);
-      if (m) {
-        const mimeType = m[1];
-        const base64Data = m[2];
+      const normalized = await normalizeImageForGemini(productDataUrl);
+      if (normalized && !isUnsupportedMime(normalized.mimeType)) {
         parts.push({
           inline_data: {
-            mimeType,
-            data: base64Data,
+            mimeType: normalized.mimeType,
+            data: normalized.base64Data,
           },
         });
         parts.push({ text: "The image above is the MAIN PRODUCT IMAGE. This is the primary subject. Use this exact product in the poster design. Do NOT alter, regenerate, or replace this product image." });
@@ -556,14 +625,12 @@ export async function POST(request: Request) {
       for (const d of refDataUrls) {
         if (typeof d !== "string") continue;
         if (!d.startsWith("data:")) continue;
-        const m = d.match(/^data:(.+);base64,(.+)$/);
-        if (!m) continue;
-        const mimeType = m[1];
-        const base64Data = m[2];
+        const normalized = await normalizeImageForGemini(d);
+        if (!normalized || isUnsupportedMime(normalized.mimeType)) continue;
         parts.push({
           inline_data: {
-            mimeType,
-            data: base64Data,
+            mimeType: normalized.mimeType,
+            data: normalized.base64Data,
           },
         });
         parts.push({ text: "The image above is an additional reference image for style/context." });
@@ -572,19 +639,22 @@ export async function POST(request: Request) {
       }
     }
 
-    // Add brand logo
-    if (logoDataUrl && typeof logoDataUrl === "string" && logoDataUrl.startsWith("data:")) {
-      const m = logoDataUrl.match(/^data:(.+);base64,(.+)$/);
-      if (m) {
-        const mimeType = m[1];
-        const base64Data = m[2];
+    // Add brand logo (use resolved logo from data URL or fetched URL)
+    if (resolvedLogoDataUrl && resolvedLogoDataUrl.startsWith("data:")) {
+      const normalized = await normalizeImageForGemini(resolvedLogoDataUrl);
+      if (normalized && !isUnsupportedMime(normalized.mimeType)) {
         parts.push({
           inline_data: {
-            mimeType,
-            data: base64Data,
+            mimeType: normalized.mimeType,
+            data: normalized.base64Data,
           },
         });
-        parts.push({ text: "The image above is the BRAND LOGO from the brand guideline. You MUST include this logo in the poster design in a visible, professional location (e.g. corner or bottom). Do not redesign or replace the logo; use it exactly as provided. Every poster must feature this brand logo." });
+        const placementHint = logoPlacement
+          ? ` Place it in the ${logoPlacement.replace(/-/g, " ")} position.`
+          : "";
+        parts.push({
+          text: `The image above is the BRAND LOGO from the brand guideline. You MUST include this logo in the poster design in a visible, professional location (e.g. corner or bottom). Do not redesign or replace the logo; use it exactly as provided. Every poster must feature this brand logo.${placementHint}`,
+        });
       }
     }
 

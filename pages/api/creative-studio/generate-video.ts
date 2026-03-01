@@ -1,11 +1,33 @@
 // pages/api/creative-studio/generate-video.ts
 // Reference: https://ai.google.dev/gemini-api/docs/video
+// Sora fallback: https://developers.openai.com/api/docs/guides/video-generation
 import type { NextApiRequest, NextApiResponse } from "next";
 import { GoogleGenAI } from "@google/genai";
 import sharp from "sharp";
 import { getUserIdFromRequest } from '@/auth/request';
 import { CreditsDAO } from '@/database/models/Credits.dao';
 import { supabaseAdmin } from '@/auth/supabase/client';
+
+// Sora 2 size mapping (width x height). sora-2 supports 1280x720, 720x1280 only.
+const SORA_SIZE_MAP: Record<string, string> = {
+  "9:16": "720x1280",
+  "16:9": "1280x720",
+  "4:5": "720x1280", // Sora doesn't support 4:5; use portrait as closest
+};
+
+function isVeoFallbackableError(error: unknown): boolean {
+  const msg = String((error as any)?.message ?? error).toLowerCase();
+  const status = (error as any)?.status;
+  return (
+    msg.includes("quota") ||
+    msg.includes("rate") ||
+    msg.includes("resource_exhausted") ||
+    msg.includes("timed out") ||
+    status === 429 ||
+    status === 408 ||
+    (typeof status === "number" && status >= 500)
+  );
+}
 
 export const config = {
   api: {
@@ -149,6 +171,74 @@ async function videoToBuffer(video: VeoVideo, apiKey: string): Promise<Buffer> {
   throw new Error("No video data in response");
 }
 
+// Sora 2 fallback: generate video via OpenAI API (direct fetch when SDK lacks videos)
+async function generateWithSora(
+  prompt: string,
+  size: string,
+  heroImageSource: string | null
+): Promise<Buffer> {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) throw new Error("OPENAI_API_KEY not configured");
+
+  const formData = new FormData();
+  formData.append("prompt", prompt);
+  formData.append("model", "sora-2");
+  formData.append("size", size);
+  formData.append("seconds", "8");
+
+  if (heroImageSource) {
+    const imageData = await getImageData(heroImageSource);
+    if (imageData) {
+      const buf = Buffer.from(imageData.imageBytes, "base64");
+      const [w, h] = size.split("x").map(Number);
+      const resized = await sharp(buf)
+        .resize(w, h, { fit: "cover" })
+        .jpeg({ quality: 90 })
+        .toBuffer();
+      formData.append("input_reference", new Blob([new Uint8Array(resized)], { type: "image/jpeg" }), "reference.jpg");
+    }
+  }
+
+  const createRes = await fetch("https://api.openai.com/v1/videos", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}` },
+    body: formData,
+  });
+
+  if (!createRes.ok) {
+    const errBody = await createRes.text();
+    const err = new Error(`Sora API error: ${createRes.status} - ${errBody}`) as any;
+    err.status = createRes.status;
+    throw err;
+  }
+
+  const { id } = await createRes.json();
+  if (!id) throw new Error("Failed to get Sora video ID");
+
+  // Poll until completed
+  const maxAttempts = 60;
+  const intervalMs = 10000;
+  for (let i = 0; i < maxAttempts; i++) {
+    await new Promise((r) => setTimeout(r, intervalMs));
+    const statusRes = await fetch(`https://api.openai.com/v1/videos/${id}`, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
+    if (!statusRes.ok) throw new Error(`Sora status check failed: ${statusRes.status}`);
+    const { status } = await statusRes.json();
+
+    if (status === "completed") {
+      const contentRes = await fetch(`https://api.openai.com/v1/videos/${id}/content`, {
+        headers: { Authorization: `Bearer ${apiKey}` },
+      });
+      if (!contentRes.ok) throw new Error(`Sora download failed: ${contentRes.status}`);
+      return Buffer.from(await contentRes.arrayBuffer());
+    }
+    if (status === "failed") throw new Error("Sora video generation failed");
+  }
+
+  throw new Error("Sora video generation timed out");
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") {
     return res.status(405).json({ ok: false, error: "Method not allowed" });
@@ -265,15 +355,42 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       "2D Animation": { prefix: "A polished 2D animated", details: "Flat, illustrated 2D animation with clean lines and expressive character." },
       "Motion Graphics": { prefix: "A sleek motion graphics", details: "Professional motion graphics with clean transitions and dynamic typography." },
       "Bold & Energetic": { prefix: "A bold, high-energy", details: "Dynamic, fast-paced visuals with punchy edits and vibrant colors." },
-      "Whimsical": { prefix: "A whimsical, playful", details: "Playful, fantasy-inspired visuals with soft colors and charming, imaginative style." },
+      "Hook": { prefix: "A performance-first scroll-stopping", details: "Fast cuts, high motion energy, tight framing, strong contrast lighting, immediate visual impact." },
       "Retro": { prefix: "A retro, vintage", details: "Vintage aesthetic with nostalgic 70s/80s influences, grain, and period-appropriate color grading." },
       "Minimalist": { prefix: "A clean, minimalist", details: "Minimal design with simple compositions, ample negative space, and restrained visuals." },
       "Neon": { prefix: "A neon-lit", details: "Neon and glowing visuals with bold colors, cyberpunk or nightlife atmosphere, and high contrast." },
     };
 
-     
-    
-    if (final_video_prompt) {
+    const isHookMode = style === "Hook";
+
+    if (final_video_prompt && isHookMode) {
+      // HOOK MODE: Performance-first, attention warfare. Strict 4-part structure.
+      videoPrompt = `HOOK MODE — Performance-first 8-second ad. This is attention warfare, NOT cinematic storytelling.
+
+MANDATORY 4-PART STRUCTURE (follow exactly):
+- 0–2s: PATTERN INTERRUPT — Stop scrolling immediately. Bold visual hook. No slow build-ups, no landscape establishing shots, no calm mood builds, no brand logo fade-in first.
+- 2–4s: EMOTIONAL TRIGGER — Amplify one of: Pain (problem), Desire (aspiration), Urgency (limited time), or Curiosity (unexpected setup). High emotional tension.
+- 4–6s: PRODUCT REVEAL — Product must appear clearly by mid-video. No mysterious slow storytelling. Fast, clear product visibility.
+- 6–8s: STRONG CALL-TO-ACTION — Clear visual CTA moment. Drive action.
+
+PACING (Hook dominates tempo):
+- Fast cuts, high motion energy, tight framing, strong contrast lighting
+- No slow intros, no ambient product spins, no overly abstract visuals
+- 100% visual storytelling — NO on-screen text, captions, headlines, subtitles, overlays, or typography
+- If voiceover exists, it carries the message; visuals must be self-explanatory
+
+Product: ${product_name || 'the product'}
+Brand: ${brand_name || 'the brand'}
+
+${final_video_prompt}
+
+Aspect ratio: ${videoAspectRatio}
+${voiceover_script ? `Voiceover: "${voiceover_script}"` : "No voiceover - use music/sound effects."}
+
+CRITICAL — NO ON-SCREEN TEXT: Zero captions, headlines, subtitles, overlays, or typography. Video must be 100% visual.
+
+${reference_images.length > 0 ? `CRITICAL — USE REFERENCE IMAGES PRECISELY: The attached reference images are the source of truth. You MUST use them exactly as provided. The product/hero image(s) must appear in the video with the SAME appearance, design, colors, and packaging. The brand logo must appear EXACTLY as shown. Product must be clearly visible by 4–6 seconds.` : "Create visuals based on the description above. Product must be clearly visible by 4–6 seconds."}`;
+    } else if (final_video_prompt) {
       const styleConfig = styleDescriptions[style] || { prefix: "A professional", details: "" };
       
       videoPrompt = `${styleConfig.prefix} ${initialDurationSeconds}-second commercial video ad for ${brand_name || 'the brand'} featuring ${product_name || 'the product'}.
@@ -291,13 +408,26 @@ ${reference_images.length > 0 ? `CRITICAL — USE REFERENCE IMAGES PRECISELY: Th
 - The brand logo (from brand guidelines) must appear in the video EXACTLY as shown in the reference — same logo asset, no redraw or stylization.
 Generate a video ad that features this exact product and brand logo as depicted in the reference images.` : "Create visuals based on the description above."}`;
     } else if (prompt) {
-      videoPrompt = `Create a ${initialDurationSeconds}-second video ad (${videoAspectRatio} aspect ratio).
+      if (isHookMode) {
+        videoPrompt = `HOOK MODE — Performance-first 8-second ad. Attention warfare.
+
+MANDATORY 4-PART STRUCTURE: 0–2s Pattern Interrupt → 2–4s Emotional Trigger → 4–6s Product Reveal → 6–8s Strong CTA.
+Fast cuts, high motion, tight framing, strong contrast. NO on-screen text. Product must appear clearly by 4–6s.
+
+${prompt}
+
+CRITICAL — NO ON-SCREEN TEXT: Zero captions, headlines, subtitles, overlays. 100% visual only.
+
+${reference_images.length > 0 ? `CRITICAL — USE REFERENCE IMAGES PRECISELY: Depict the product and brand logo exactly as in the attached reference images. Product must appear by mid-video.` : ''}`;
+      } else {
+        videoPrompt = `Create a ${initialDurationSeconds}-second video ad (${videoAspectRatio} aspect ratio).
 
 ${prompt}
 
 CRITICAL — NO ON-SCREEN TEXT: Do NOT add any text, captions, titles, subtitles, headlines, or text overlays to the video. The video must be purely visual with zero written text displayed.
 
 ${reference_images.length > 0 ? `CRITICAL — USE REFERENCE IMAGES PRECISELY: Depict the product and brand logo exactly as in the attached reference images. Same look, design, and branding. Do not redesign or alter. The brand logo must appear exactly as provided.` : ''}`;
+      }
     } else {
       return res.status(400).json({ ok: false, error: "Either 'prompt' or 'final_video_prompt' is required" });
     }
@@ -305,43 +435,61 @@ ${reference_images.length > 0 ? `CRITICAL — USE REFERENCE IMAGES PRECISELY: De
     console.log('📝 Video prompt length:', videoPrompt.length);
     console.log('🚀 Starting Veo 3.1 video generation...', { aspectRatio: videoAspectRatio, durationSeconds: initialDurationSeconds });
 
-    // Config: user's aspect ratio (4:5, 16:9, 9:16), duration per selection, resolution 720p
-    const generateConfig: any = {
-      aspectRatio: videoAspectRatio,
-      resolution: "720p",
-      numberOfVideos: 1,
-      durationSeconds: initialDurationSeconds,
-    };
-    if (reference_images.length > 0) {
-      generateConfig.referenceImages = reference_images;
-      console.log(`📷 Using ${reference_images.length} reference image(s) — product must appear exactly as in references`);
-    }
-
-    // generateVideos: model, prompt, config (reference_images passed as referenceImages in config)
-    const generateParams: any = {
-      model: "veo-3.1-fast-generate-preview",
-      prompt: videoPrompt,
-      config: generateConfig,
-    };
-
-    let operation = await ai.models.generateVideos(generateParams);
-
-    console.log('⏳ Video generation started, polling for completion...');
-    let videoResult = await pollVideoOperation(ai, operation);
-    if (!videoResult) {
-      console.error('❌ Video generation timed out');
-      return res.status(408).json({ ok: false, error: "Video generation timed out. Please try again." });
-    }
-
-    const finalVideo = videoResult;
-    console.log('✅ Video generated successfully!');
-
+    const SORA_FALLBACK_ENABLED = process.env.VIDEO_SORA_FALLBACK !== "false";
     let videoBuffer: Buffer;
+    let usedModel = "veo-3.1-fast-generate-preview";
+
     try {
-      videoBuffer = await videoToBuffer(finalVideo, apiKey);
-    } catch (e) {
-      console.error('Failed to resolve video:', e);
-      return res.status(500).json({ ok: false, error: "No video data available in response" });
+      // Config: user's aspect ratio (4:5, 16:9, 9:16), duration per selection, resolution 720p
+      const generateConfig: any = {
+        aspectRatio: videoAspectRatio,
+        resolution: "720p",
+        numberOfVideos: 1,
+        durationSeconds: initialDurationSeconds,
+      };
+      if (reference_images.length > 0) {
+        generateConfig.referenceImages = reference_images;
+        console.log(`📷 Using ${reference_images.length} reference image(s) — product must appear exactly as in references`);
+      }
+
+      const generateParams: any = {
+        model: "veo-3.1-fast-generate-preview",
+        prompt: videoPrompt,
+        config: generateConfig,
+      };
+
+      const operation = await ai.models.generateVideos(generateParams);
+      console.log('⏳ Video generation started, polling for completion...');
+
+      const videoResult = await pollVideoOperation(ai, operation);
+      if (!videoResult) {
+        throw Object.assign(new Error("Video generation timed out"), { status: 408 });
+      }
+
+      videoBuffer = await videoToBuffer(videoResult, apiKey);
+      console.log('✅ Video generated successfully with Veo 3.1!');
+    } catch (veoError: unknown) {
+      const canFallback =
+        SORA_FALLBACK_ENABLED &&
+        process.env.OPENAI_API_KEY &&
+        isVeoFallbackableError(veoError);
+
+      if (!canFallback) {
+        throw veoError;
+      }
+
+      console.warn("⚠️ Veo failed, falling back to Sora 2:", (veoError as Error)?.message);
+
+      try {
+        const size = SORA_SIZE_MAP[videoAspectRatio] ?? "720x1280";
+        const heroForSora = hero_image ?? product_images?.[0] ?? null;
+        videoBuffer = await generateWithSora(videoPrompt, size, heroForSora);
+        usedModel = "sora-2";
+        console.log('✅ Video generated successfully with Sora 2 (fallback)!');
+      } catch (soraError) {
+        console.error("❌ Sora fallback also failed:", soraError);
+        throw veoError; // Re-throw original Veo error for user-facing message
+      }
     }
 
     // Upload video to Supabase storage
@@ -393,7 +541,7 @@ ${reference_images.length > 0 ? `CRITICAL — USE REFERENCE IMAGES PRECISELY: De
       duration: initialDurationSeconds,
       aspectRatio: videoAspectRatio,
       referenceImagesUsed: reference_images.length,
-      model: "veo-3.1-fast-generate-preview",
+      model: usedModel,
       creditsRemaining: updatedVideoTotal,
     });
   } catch (error: any) {

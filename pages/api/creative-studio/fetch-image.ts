@@ -88,7 +88,7 @@ export default async function handler(
     return res.status(405).json({ ok: false, error: "Method not allowed" });
   }
 
-  const { url } = req.body ?? {};
+  const { url, directFetch } = req.body ?? {};
   if (!url || typeof url !== "string") {
     return res.status(400).json({ ok: false, error: "Missing or invalid URL" });
   }
@@ -108,8 +108,9 @@ export default async function handler(
 
     let imageUrl = url;
 
-    // If it's not a direct image URL, scrape the page to find product images
-    if (!isDirectImageUrl(url)) {
+    // For logos (directFetch=true), always fetch URL directly - many logo CDNs return images without extensions
+    // If it's not a direct image URL and not a logo fetch, scrape the page to find product images
+    if (!directFetch && !isDirectImageUrl(url)) {
       console.log("Scraping page to find product image:", url);
       const scrapedImageUrl = await scrapeProductImage(url);
       

@@ -479,8 +479,6 @@ export default function SettingsPage(): JSX.Element {
               margin-bottom: 24px;
             }
             .credit-chip {
-              background: ${colors.background};
-              border: 1px solid ${colors.border};
               border-radius: 10px;
               padding: 20px 28px;
               min-width: 140px;
@@ -488,19 +486,55 @@ export default function SettingsPage(): JSX.Element {
               transition: border-color 0.2s, transform 0.2s;
             }
             .credit-chip:hover {
-              border-color: ${colors.primary};
               transform: translateY(-1px);
             }
-            .credit-chip .value {
+            .credit-chip-image {
+              background: hsl(213 100% 55% / 0.15);
+              border: 1px solid hsl(213 100% 55% / 0.35);
+            }
+            .credit-chip-image:hover {
+              border-color: hsl(213 100% 55% / 0.5);
+            }
+            .credit-chip-image .value,
+            .credit-chip-image .label {
+              color: hsl(213 100% 65%);
+            }
+            .credit-chip-video {
+              background: hsl(270 80% 55% / 0.15);
+              border: 1px solid hsl(270 80% 55% / 0.3);
+            }
+            .credit-chip-video:hover {
+              border-color: hsl(270 80% 55% / 0.5);
+            }
+            .credit-chip-video .value,
+            .credit-chip-video .label {
+              color: hsl(270 80% 70%);
+            }
+            .credit-chip-loading {
+              background: ${colors.background};
+              border: 1px solid ${colors.border};
+            }
+            .credit-chip-loading .value {
               font-size: 28px;
               font-weight: 700;
               color: ${colors.foreground};
               display: block;
               margin-bottom: 4px;
             }
-            .credit-chip .label {
+            .credit-chip-loading .label {
               font-size: 12px;
               color: ${colors.mutedForeground};
+              text-transform: uppercase;
+              letter-spacing: 0.04em;
+            }
+            .credit-chip .value {
+              font-size: 28px;
+              font-weight: 700;
+              display: block;
+              margin-bottom: 4px;
+            }
+            .credit-chip .label {
+              font-size: 12px;
               text-transform: uppercase;
               letter-spacing: 0.04em;
             }
@@ -788,17 +822,17 @@ export default function SettingsPage(): JSX.Element {
                       <div className="credit-chips">
                         {creditBalance ? (
                           <>
-                            <div className="credit-chip">
+                            <div className="credit-chip credit-chip-image">
                               <span className="value">{creditBalance.imageCredits?.total ?? 0}</span>
                               <span className="label">Image Credits</span>
                             </div>
-                            <div className="credit-chip">
+                            <div className="credit-chip credit-chip-video">
                               <span className="value">{creditBalance.videoCredits?.total ?? 0}s</span>
                               <span className="label">Video Credits</span>
                             </div>
                           </>
                         ) : (
-                          <div className="credit-chip">
+                          <div className="credit-chip credit-chip-loading">
                             <span className="value">--</span>
                             <span className="label">Loading</span>
                           </div>

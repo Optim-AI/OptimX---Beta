@@ -68,7 +68,7 @@ export type AdSetup = {
     | "3D Animation"
     | "2D Animation"
     | "Motion Graphics"
-    | "Whimsical"
+    | "Hook"
     | "Retro"
     | "Neon";
   duration: 8;
