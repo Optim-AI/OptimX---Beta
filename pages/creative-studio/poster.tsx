@@ -705,7 +705,7 @@ export default function PosterSessionPage() {
     setShowBrandGuidelineModal(false);
   }
 
-  async function handleWebsiteReanalyze(website: string) {
+  async function handleWebsiteReanalyze(website: string): Promise<BrandSnapshot | null> {
     setIsAnalyzingBrand(true);
     try {
       const response = await authFetch('/api/brand/fullAnalyze', {
@@ -744,12 +744,15 @@ export default function PosterSessionPage() {
         setShowBrandGuidelineModal(false);
         setPhase('brand-review');
         addMessage('system', `I've re-analyzed your website and updated your brand information.`);
+        return brandSnapshot;
       } else {
         addMessage('system', `I had trouble analyzing that website: ${data.error || 'Unknown error'}. Please try a different URL or edit manually.`);
+        return null;
       }
     } catch (err: any) {
       console.error('Brand re-analyze error:', err);
       addMessage('system', `There was an error analyzing your website: ${err?.message || 'Unknown error'}. Please try again or edit manually.`);
+      return null;
     } finally {
       setIsAnalyzingBrand(false);
     }
@@ -1772,8 +1775,7 @@ export default function PosterSessionPage() {
             brand={brand}
             onUpdate={updateBrandGuideline}
             onClose={() => setShowBrandGuidelineModal(false)}
-            onWebsiteReanalyze={handleWebsiteReanalyze}
-            isAnalyzingBrand={isAnalyzingBrand}
+            onWebsiteAnalyze={handleWebsiteReanalyze}
           />
         )}
 

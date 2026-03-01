@@ -369,7 +369,7 @@ export default function CreativeStudioLanding() {
     setShowBrandGuidelineModal(false);
   }
 
-  async function handleWebsiteReanalyze(website: string) {
+  async function handleWebsiteReanalyze(website: string): Promise<BrandSnapshot | null> {
     setIsAnalyzingBrand(true);
     try {
       const response = await authFetch('/api/brand/fullAnalyze', {
@@ -409,13 +409,15 @@ export default function CreativeStudioLanding() {
         };
         setBrand(brandSnapshot);
         localStorage.setItem('brand:snapshot', JSON.stringify(brandSnapshot));
-        setShowBrandGuidelineModal(false);
+        return brandSnapshot;
       } else {
         showError(data.error || 'Could not analyze website. Please try again.');
+        return null;
       }
     } catch (err: any) {
       console.error('Brand re-analyze error:', err);
       showError(`Error analyzing website: ${err?.message || 'Unknown error'}. Please try again.`);
+      return null;
     } finally {
       setIsAnalyzingBrand(false);
     }
@@ -679,8 +681,7 @@ export default function CreativeStudioLanding() {
               localStorage.setItem('brand:guideline_seen', 'true');
               setShowBrandGuidelineModal(false);
             }}
-            onWebsiteReanalyze={handleWebsiteReanalyze}
-            isAnalyzingBrand={isAnalyzingBrand}
+            onWebsiteAnalyze={handleWebsiteReanalyze}
           />
         )}
 

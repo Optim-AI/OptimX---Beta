@@ -9,20 +9,18 @@ type BrandGuidelineModalProps = {
   brand: BrandSnapshot;
   onUpdate: (updated: BrandSnapshot) => void;
   onClose: () => void;
-  onWebsiteReanalyze?: (website: string) => Promise<void>;
-  isAnalyzingBrand?: boolean;
+  /** Optional: when provided, shows "Website set up" option in edit flow */
+  onWebsiteAnalyze?: (website: string) => Promise<BrandSnapshot | null>;
 };
 
 export default function BrandGuidelineModal({
   brand,
   onUpdate,
   onClose,
-  onWebsiteReanalyze,
-  isAnalyzingBrand = false,
+  onWebsiteAnalyze,
 }: BrandGuidelineModalProps) {
   const [editing, setEditing] = useState(false);
-  const [editMode, setEditMode] = useState<'website' | 'manual'>('manual');
-  const [websiteUrl, setWebsiteUrl] = useState('');
+  const [editMode, setEditMode] = useState<'choice' | 'website' | 'manual'>('choice');
   const [formData, setFormData] = useState<BrandSnapshot>(brand);
   const [websiteUrl, setWebsiteUrl] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -250,93 +248,15 @@ export default function BrandGuidelineModal({
             </>
           ) : (
             <>
-              {/* Edit mode toggle: From Website | Manual Setup (only when re-analyze is supported) */}
-              {onWebsiteReanalyze && (
-              <div className="flex gap-2 rounded-lg p-1 mb-6" style={{ backgroundColor: colors.muted }}>
+              <div className="flex items-center gap-2 mb-4">
                 <button
-                  type="button"
-                  onClick={() => setEditMode('website')}
-                  className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                    editMode === 'website' ? 'shadow-sm' : 'hover:opacity-90'
-                  }`}
-                  style={{
-                    backgroundColor: editMode === 'website' ? colors.secondary : 'transparent',
-                    color: editMode === 'website' ? colors.foreground : colors.mutedForeground,
-                  }}
+                  onClick={() => setEditMode('choice')}
+                  className="text-sm"
+                  style={{ color: colors.primary }}
                 >
-                  From Website
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setEditMode('manual')}
-                  className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                    editMode === 'manual' ? 'shadow-sm' : 'hover:opacity-90'
-                  }`}
-                  style={{
-                    backgroundColor: editMode === 'manual' ? colors.secondary : 'transparent',
-                    color: editMode === 'manual' ? colors.foreground : colors.mutedForeground,
-                  }}
-                >
-                  Manual Setup
+                  ← Back
                 </button>
               </div>
-              )}
-
-              {editMode === 'website' && onWebsiteReanalyze ? (
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    if (websiteUrl.trim()) onWebsiteReanalyze(websiteUrl.trim());
-                  }}
-                  className="space-y-4"
-                >
-                  <div>
-                    <label className="block text-sm font-medium mb-2" style={{ color: colors.foreground }}>
-                      Website URL
-                    </label>
-                    <input
-                      type="url"
-                      value={websiteUrl}
-                      onChange={(e) => setWebsiteUrl(e.target.value)}
-                      placeholder="https://yourwebsite.com"
-                      disabled={isAnalyzingBrand}
-                      className="w-full px-4 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-[hsl(213_100%_55%)] disabled:opacity-50"
-                      style={{ border: `1px solid ${colors.border}`, backgroundColor: colors.background, color: colors.foreground }}
-                    />
-                    <p className="text-xs mt-1" style={{ color: colors.mutedForeground }}>
-                      I'll analyze your website to extract brand information automatically.
-                    </p>
-                  </div>
-                  {isAnalyzingBrand && (
-                    <div className="flex items-center gap-3 p-4 rounded-lg" style={{ backgroundColor: 'hsl(213 100% 55% / 0.15)', border: `1px solid hsl(213 100% 55% / 0.3)` }}>
-                      <svg className="animate-spin h-5 w-5" style={{ color: colors.primary }} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                      </svg>
-                      <span className="text-sm font-medium" style={{ color: colors.foreground }}>Analyzing your website... This may take a moment.</span>
-                    </div>
-                  )}
-                  <div className="flex gap-3 pt-4">
-                    <button
-                      type="button"
-                      onClick={() => { setEditing(false); setEditMode('manual'); setWebsiteUrl(''); }}
-                      className="px-4 py-2 transition-colors"
-                      style={{ color: colors.mutedForeground }}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={!websiteUrl.trim() || isAnalyzingBrand}
-                      className="px-4 py-2 text-white rounded-lg font-medium hover:opacity-90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      style={{ backgroundColor: colors.primary, color: colors.primaryForeground }}
-                    >
-                      {isAnalyzingBrand ? 'Analyzing...' : 'Analyze & Save'}
-                    </button>
-                  </div>
-                </form>
-              ) : editMode === 'manual' || !onWebsiteReanalyze ? (
-                <>
               <div>
                 <label className="block text-sm font-medium mb-2"
                     style={{ color: colors.foreground }}>Logo URL (Optional)</label>
@@ -427,12 +347,7 @@ export default function BrandGuidelineModal({
               <div className="flex justify-end gap-3 pt-4 border-t"
               style={{ borderColor: colors.border }}>
                 <button
-                  onClick={() => {
-                    setEditing(false);
-                    setEditMode('manual');
-                    setWebsiteUrl('');
-                    setFormData(brand);
-                  }}
+                  onClick={handleCancelEdit}
                   className="px-4 py-2 transition-colors"
                   style={{ color: colors.mutedForeground }}
                 >
@@ -447,8 +362,6 @@ export default function BrandGuidelineModal({
                 </button>
               </div>
             </>
-          ) : null}
-          </>
           )}
         </div>
       </div>

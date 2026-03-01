@@ -53,7 +53,6 @@ const AD_STYLE_DESCRIPTIONS: Record<string, string> = {
   'Motion Graphics': 'Design-forward animated composition. Typography-free visual transitions, graphic elements, and smooth animated visual flow.',
   'Retro': 'Vintage-inspired aesthetic. Film grain, nostalgic color tones, old-school styling with classic visual energy.',
 };
-import { authFetch } from '@/lib/utils';
 import { supabase } from '@/auth/supabase/client';
 import { Check, ChevronLeft, ChevronRight } from 'lucide-react';
 
@@ -580,7 +579,7 @@ export default function VideoSessionPage() {
     setShowBrandGuidelineModal(false);
   }
 
-  async function handleWebsiteReanalyze(website: string) {
+  async function handleWebsiteReanalyze(website: string): Promise<BrandSnapshot | null> {
     setIsAnalyzingBrand(true);
     try {
       const response = await authFetch('/api/brand/fullAnalyze', {
@@ -617,12 +616,15 @@ export default function VideoSessionPage() {
         setBrand(brandSnapshot);
         saveBrandSnapshot(brandSnapshot);
         setShowBrandGuidelineModal(false);
+        return brandSnapshot;
       } else {
         showError(data.error || 'Could not analyze website. Please try again.');
+        return null;
       }
     } catch (err: any) {
       console.error('Brand re-analyze error:', err);
       showError(`Error analyzing website: ${err?.message || 'Unknown error'}. Please try again.`);
+      return null;
     } finally {
       setIsAnalyzingBrand(false);
     }
@@ -744,7 +746,7 @@ export default function VideoSessionPage() {
       const result = await safeResponseJson<{ ok: boolean; error?: string; script?: unknown }>(response);
       if (!result.ok) throw new Error(result.error);
 
-      const scriptData = result.script;
+      const scriptData = result.script as Record<string, any>;
 
       setAdBuilderData({
         ...adBuilderData,
@@ -819,7 +821,7 @@ export default function VideoSessionPage() {
       const videoId = `video_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       const newVideo = {
         id: videoId,
-        url: result.videoUrl,
+        url: result.videoUrl || '',
         prompt: finalPrompt,
         timestamp: Date.now(),
       };
@@ -2182,8 +2184,7 @@ export default function VideoSessionPage() {
             brand={brand}
             onUpdate={updateBrandGuideline}
             onClose={() => setShowBrandGuidelineModal(false)}
-            onWebsiteReanalyze={handleWebsiteReanalyze}
-            isAnalyzingBrand={isAnalyzingBrand}
+            onWebsiteAnalyze={handleWebsiteReanalyze}
           />
         )}
 
