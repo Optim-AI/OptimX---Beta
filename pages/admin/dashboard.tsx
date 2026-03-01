@@ -553,8 +553,8 @@ export default function AdminDashboard() {
     }
   }
 
-  function handleIssueVoucherFromReport(report: ReportData) {
-    if (usersData.length === 0) fetchUsers();
+  async function handleIssueVoucherFromReport(report: ReportData) {
+    if (usersData.length === 0) await fetchUsers();
     const noteText = `Issued for ${report.type} report: "${report.message.slice(0, 80)}${report.message.length > 80 ? '...' : ''}"`;
     setCreateVoucherForm({
       userId: report.userId,
@@ -2003,10 +2003,20 @@ export default function AdminDashboard() {
                     <option value="">Select a user...</option>
                     {usersData.map((user) => (
                       <option key={user.id} value={user.id}>
-                        {user.fullName || user.email || user.id.slice(0, 8)} — {user.email || 'no email'}
+                        {user.fullName || user.email || user.id.slice(0, 8)} — {user.email || 'no email'}{user.businessName ? ` — ${user.businessName}` : ''}
                       </option>
                     ))}
                   </select>
+                  {createVoucherForm.userId && (() => {
+                    const selectedUser = usersData.find((u) => u.id === createVoucherForm.userId);
+                    return selectedUser ? (
+                      <div style={{ marginTop: '8px', padding: '10px 12px', background: '#f1f5f9', borderRadius: '8px', fontSize: '13px', color: '#334155', lineHeight: 1.6 }}>
+                        <strong>{selectedUser.fullName || '—'}</strong>
+                        {selectedUser.email && <span> · {selectedUser.email}</span>}
+                        {selectedUser.businessName && <span> · {selectedUser.businessName}</span>}
+                      </div>
+                    ) : null;
+                  })()}
                 </div>
 
                 <div className="form-group">
