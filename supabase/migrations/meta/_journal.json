@@ -8,6 +8,13 @@
       "when": 1771416877622,
       "tag": "0000_tranquil_wrecking_crew",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1772312137617,
+      "tag": "0001_tired_whistler",
+      "breakpoints": true
     }
   ]
 }

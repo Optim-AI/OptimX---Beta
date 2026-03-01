@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '@/auth/supabase/client';
-import { Image, Video, ArrowLeft, Plus, Minus, Check, Shield, CheckCircle, Mail, X } from 'lucide-react';
+import { Image, Video, ArrowLeft, Plus, Minus, Check, Shield, CheckCircle, Mail, X, Ticket } from 'lucide-react';
 import colors from '@/lib/ui/colors';
 import { authFetch } from '@/lib/utils';
 import Sidebar from '@/app/web/src/components/Sidebar';
@@ -22,6 +22,14 @@ interface CreditBalance {
   videoCredits: { subscription: number; addon: number; total: number };
 }
 
+interface VoucherItem {
+  id: string;
+  creditType: string;
+  credits: number;
+  expiresAt: string | null;
+  note: string | null;
+}
+
 export default function BuyCreditsPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
@@ -34,11 +42,29 @@ export default function BuyCreditsPage() {
   const [purchasing, setPurchasing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showSuccess, setShowSuccess] = useState(false);
-  const [purchaseInfo, setPurchaseInfo] = useState<{ quantity: number; type: string } | null>(null);
+  const [purchaseInfo, setPurchaseInfo] = useState<{ quantity: number; type: string; voucherCredits?: number } | null>(null);
   const [billingEmail, setBillingEmail] = useState('');
+  const [availableVouchers, setAvailableVouchers] = useState<VoucherItem[]>([]);
+  const [selectedVoucherId, setSelectedVoucherId] = useState<string | null>(null);
+  const [vouchersLoading, setVouchersLoading] = useState(false);
+  const [livePricing, setLivePricing] = useState<{ imageCreditPriceInr: number; videoSecondPriceInr: number } | null>(null);
 
   useEffect(() => {
     checkAuth();
+    // Fetch live pricing (public endpoint, no auth needed)
+    fetch('/api/billing/pricing')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.imageCreditPriceInr && data.videoSecondPriceInr) {
+          setLivePricing({
+            imageCreditPriceInr: data.imageCreditPriceInr,
+            videoSecondPriceInr: data.videoSecondPriceInr,
+          });
+        }
+      })
+      .catch(() => {
+        // Fall back to hardcoded defaults — livePricing stays null
+      });
   }, []);
 
   useEffect(() => {
@@ -55,7 +81,30 @@ export default function BuyCreditsPage() {
     setQuantity(def);
     setInputValue(String(def));
     setQuantityError(null);
+    setSelectedVoucherId(null);
   }, [creditType]);
+
+  // Fetch available vouchers when credit type changes
+  useEffect(() => {
+    if (!authenticated) return;
+    async function fetchVouchers() {
+      setVouchersLoading(true);
+      try {
+        const response = await authFetch(`/api/vouchers/my-vouchers?creditType=${creditType}`);
+        const data = await response.json();
+        if (data.success) {
+          setAvailableVouchers(data.vouchers);
+        } else {
+          setAvailableVouchers([]);
+        }
+      } catch {
+        setAvailableVouchers([]);
+      } finally {
+        setVouchersLoading(false);
+      }
+    }
+    fetchVouchers();
+  }, [creditType, authenticated]);
 
   async function checkAuth() {
     const { data } = await supabase.auth.getUser();
@@ -85,7 +134,10 @@ export default function BuyCreditsPage() {
     }
   }
 
-  const totals = calculateTotalsInr({ creditType, credits: quantity });
+  const unitPrice = livePricing
+    ? (creditType === 'image' ? livePricing.imageCreditPriceInr : livePricing.videoSecondPriceInr)
+    : undefined;
+  const totals = calculateTotalsInr({ creditType, credits: quantity, overrides: unitPrice ? { unitPriceInr: unitPrice } : undefined });
 
   function adjustQuantity(delta: number) {
     const step = getQuantityStep(creditType);
@@ -181,6 +233,7 @@ export default function BuyCreditsPage() {
           creditType,
           credits: quantity,
           billingEmail,
+          ...(selectedVoucherId ? { voucherId: selectedVoucherId } : {}),
         }),
       });
       const orderData = await orderResponse.json();
@@ -215,8 +268,18 @@ export default function BuyCreditsPage() {
           if (verifyData.success) {
             // Refresh balance
             await fetchBalance();
-            setPurchaseInfo({ quantity, type: creditType === 'image' ? 'image credits' : 'video seconds' });
+            const voucherBonus = orderData.voucherCredits || 0;
+            setPurchaseInfo({
+              quantity,
+              type: creditType === 'image' ? 'image credits' : 'video seconds',
+              ...(voucherBonus > 0 ? { voucherCredits: voucherBonus } : {}),
+            });
             setShowSuccess(true);
+            // Remove used voucher from available list
+            if (selectedVoucherId) {
+              setAvailableVouchers((prev) => prev.filter((v) => v.id !== selectedVoucherId));
+              setSelectedVoucherId(null);
+            }
           } else {
             setError('Payment verification failed');
           }
@@ -421,6 +484,34 @@ export default function BuyCreditsPage() {
                 </div>
               </div>
 
+              {/* Voucher Selection */}
+              {availableVouchers.length > 0 && (
+                <div className="voucher-section">
+                  <label>
+                    <Ticket size={16} />
+                    Apply a voucher (optional)
+                  </label>
+                  <div className="voucher-chips">
+                    {availableVouchers.map((voucher) => (
+                      <button
+                        key={voucher.id}
+                        className={`voucher-chip ${selectedVoucherId === voucher.id ? 'selected' : ''}`}
+                        onClick={() => setSelectedVoucherId(selectedVoucherId === voucher.id ? null : voucher.id)}
+                      >
+                        <Ticket size={14} />
+                        <span>+{voucher.credits} {voucher.creditType === 'image' ? 'credits' : 'seconds'}</span>
+                        {voucher.expiresAt && (
+                          <span className="voucher-expiry">
+                            expires {new Date(voucher.expiresAt).toLocaleDateString()}
+                          </span>
+                        )}
+                        {selectedVoucherId === voucher.id && <Check size={14} />}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className="trust-section">
                 <div className="trust-row">
                   <div className="trust-item">
@@ -467,6 +558,20 @@ export default function BuyCreditsPage() {
                     <span className="price-label">GST ({Math.round(totals.gstRate * 100)}%)</span>
                     <span className="price-value">₹{totals.gstAmountInr}</span>
                   </div>
+                  {selectedVoucherId && (() => {
+                    const v = availableVouchers.find((v) => v.id === selectedVoucherId);
+                    return v ? (
+                      <div className="price-row" style={{ color: '#16a34a' }}>
+                        <span className="price-label" style={{ color: '#16a34a' }}>
+                          <Ticket size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} />
+                          Voucher Bonus
+                        </span>
+                        <span className="price-value" style={{ color: '#16a34a' }}>
+                          +{v.credits} {v.creditType === 'image' ? 'credits' : 'seconds'}
+                        </span>
+                      </div>
+                    ) : null;
+                  })()}
                   <div className="price-divider" />
                   <div className="price-row total">
                     <span className="price-label">Total</span>
@@ -500,6 +605,14 @@ export default function BuyCreditsPage() {
             <h2 className="modal-title">Payment Successful!</h2>
             <p className="modal-subtitle">
               You have purchased <strong>{purchaseInfo.quantity} {purchaseInfo.type}</strong>.
+              {purchaseInfo.voucherCredits && purchaseInfo.voucherCredits > 0 && (
+                <>
+                  <br />
+                  <span style={{ color: '#16a34a', fontWeight: 600 }}>
+                    Plus {purchaseInfo.voucherCredits} bonus {purchaseInfo.type} from your voucher!
+                  </span>
+                </>
+              )}
             </p>
 
             <div className="invoice-section">
@@ -768,6 +881,54 @@ export default function BuyCreditsPage() {
           gap: 16px;
           padding-top: 20px;
           border-top: 1px solid ${colors.border};
+        }
+        .voucher-section {
+          margin-bottom: 28px;
+          padding-top: 20px;
+          border-top: 1px solid ${colors.border};
+        }
+        .voucher-section label {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 14px;
+          font-weight: 600;
+          color: ${colors.foreground};
+          margin-bottom: 12px;
+        }
+        .voucher-chips {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+        .voucher-chip {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 12px 16px;
+          border-radius: 10px;
+          border: 1px solid ${colors.border};
+          background: transparent;
+          color: ${colors.foreground};
+          cursor: pointer;
+          font-weight: 500;
+          font-size: 14px;
+          transition: all 0.2s ease;
+          text-align: left;
+        }
+        .voucher-chip:hover {
+          border-color: hsl(142 70% 45% / 0.5);
+          background: hsl(142 70% 45% / 0.06);
+        }
+        .voucher-chip.selected {
+          background: hsl(142 70% 45% / 0.12);
+          border-color: hsl(142 70% 45% / 0.6);
+          color: hsl(142 70% 30%);
+        }
+        .voucher-expiry {
+          font-size: 12px;
+          color: ${colors.mutedForeground};
+          margin-left: auto;
         }
         .trust-row {
           display: flex;

@@ -4,6 +4,7 @@
 import { razorpay, RAZORPAY_KEY_ID } from './client';
 import { PaymentsDAO } from '@/database/models/Payments.dao';
 import { CreditsDAO } from '@/database/models/Credits.dao';
+import { VoucherDAO } from '@/database/models/Voucher.dao';
 
 interface CreateOrderParams {
   userId: string;
@@ -122,6 +123,19 @@ export class PaymentService {
         await CreditsDAO.addImageCreditsAddon(payment.userId, metadata.credits);
       } else if (metadata?.creditType === 'video') {
         await CreditsDAO.addVideoCreditsAddon(payment.userId, metadata.credits);
+      }
+
+      // Redeem voucher if attached to this payment
+      if (metadata?.voucherId) {
+        const redeemed = await VoucherDAO.markRedeemed(metadata.voucherId, payment.id);
+        if (redeemed) {
+          // Add voucher bonus credits
+          if (metadata.creditType === 'image') {
+            await CreditsDAO.addImageCreditsAddon(payment.userId, metadata.voucherCredits);
+          } else if (metadata.creditType === 'video') {
+            await CreditsDAO.addVideoCreditsAddon(payment.userId, metadata.voucherCredits);
+          }
+        }
       }
 
       return { success: true };

@@ -298,6 +298,26 @@ export const creditHistory = pgTable("credit_history", {
 	index("idx_credit_history_created").using("btree", table.createdAt.asc().nullsLast()),
 ]);
 
+// vouchers table
+export const vouchers = pgTable("vouchers", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	userId: uuid("user_id").notNull(),
+	creditType: text("credit_type").notNull(), // 'image' | 'video'
+	credits: integer().notNull(),
+	status: text().notNull().default('active'), // 'active' | 'redeemed' | 'expired' | 'revoked'
+	expiresAt: timestamp("expires_at", { withTimezone: true, mode: 'string' }),
+	redeemedAt: timestamp("redeemed_at", { withTimezone: true, mode: 'string' }),
+	redeemedPaymentId: uuid("redeemed_payment_id"),
+	issuedBy: text("issued_by").notNull(),
+	reportId: uuid("report_id"),
+	note: text(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (table) => [
+	index("idx_vouchers_user_id").using("btree", table.userId.asc().nullsLast()),
+	index("idx_vouchers_status").using("btree", table.status.asc().nullsLast()),
+]);
+
 // user_generated_image table
 export const userGeneratedImage = pgTable("user_generated_image", {
 	id: uuid().primaryKey().notNull().defaultRandom(),
