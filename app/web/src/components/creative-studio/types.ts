@@ -70,7 +70,9 @@ export type AdSetup = {
     | "Motion Graphics"
     | "Hook"
     | "Retro"
-    | "Neon";
+    | "Neon"
+    | "Commercial"
+    | "UGC Style";
   duration: 8;
   platform: "Instagram Reels / TikTok" | "YouTube Shorts" | "Instagram Feed" | "YouTube Ad";
   aspect_ratio: "9:16" | "1:1" | "16:9" | "4:5";

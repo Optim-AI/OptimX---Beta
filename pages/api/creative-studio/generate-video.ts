@@ -45,11 +45,17 @@ function getGeminiVeoApiKey(): string | undefined {
 }
 
 // Parse data URL to get image bytes and mime type
+// Avoid regex on large base64 payloads — causes "Maximum call stack size exceeded"
 function parseDataUrl(dataUrl: string): { imageBytes: string; mimeType: string } | null {
   if (!dataUrl || typeof dataUrl !== "string") return null;
-  const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
-  if (!match) return null;
-  return { mimeType: match[1], imageBytes: match[2] };
+  if (!dataUrl.startsWith("data:")) return null;
+  const commaIdx = dataUrl.indexOf(",");
+  if (commaIdx === -1) return null;
+  const header = dataUrl.substring(0, commaIdx);
+  const base64Data = dataUrl.substring(commaIdx + 1);
+  const mimeMatch = header.match(/^data:([^;]+)/);
+  if (!mimeMatch) return null;
+  return { mimeType: mimeMatch[1], imageBytes: base64Data };
 }
 
 // Convert any image buffer to JPEG (for consistent API input)
@@ -356,14 +362,66 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       "Motion Graphics": { prefix: "A sleek motion graphics", details: "Professional motion graphics with clean transitions and dynamic typography." },
       "Bold & Energetic": { prefix: "A bold, high-energy", details: "Dynamic, fast-paced visuals with punchy edits and vibrant colors." },
       "Hook": { prefix: "A performance-first scroll-stopping", details: "Fast cuts, high motion energy, tight framing, strong contrast lighting, immediate visual impact." },
+      "Commercial": { prefix: "A paid brand commercial", details: "High-production value, emotion + aspiration driven, product as hero. Controlled lighting, smooth camera, shallow DOF. Premium brand feel. NO on-screen text." },
+      "UGC Style": { prefix: "A UGC-style", details: "Real person filmed on phone. Handheld, casual, natural light. Authentic, conversational. Trust over perfection." },
       "Retro": { prefix: "A retro, vintage", details: "Vintage aesthetic with nostalgic 70s/80s influences, grain, and period-appropriate color grading." },
       "Minimalist": { prefix: "A clean, minimalist", details: "Minimal design with simple compositions, ample negative space, and restrained visuals." },
       "Neon": { prefix: "A neon-lit", details: "Neon and glowing visuals with bold colors, cyberpunk or nightlife atmosphere, and high contrast." },
     };
 
     const isHookMode = style === "Hook";
+    const isCommercialMode = style === "Commercial";
+    const isUGCMode = style === "UGC Style";
 
-    if (final_video_prompt && isHookMode) {
+    if (final_video_prompt && isCommercialMode) {
+      // COMMERCIAL THEME: Paid brand commercial, 8 seconds, no text overlays
+      videoPrompt = `COMMERCIAL THEME — Paid brand commercial. High-production value. Emotion + aspiration driven. Product as hero. Fast, punchy, visually premium. 8 seconds. NO on-screen text. Script-driven via voiceover only.
+
+MANDATORY 8-SECOND STRUCTURE:
+- 0–2s: PATTERN INTERRUPT — Strong hook visual, movement, contrast, emotion. Product tease.
+- 2–5s: PRODUCT AS HERO — Clean product shots, close-up details, use-case in action. Premium lighting. Smooth camera (push-in, slider, cinematic pans). Shallow depth of field.
+- 5–7s: EMOTIONAL PAYOFF — Outcome transformation, reaction shot, satisfying resolution.
+- 7–8s: BRAND LOCK-IN — Product hero frame, clean background, logo via environment (not text overlay).
+
+VISUAL: Controlled lighting, soft highlights, high contrast. Studio or lifestyle premium look. NO handheld shaky shots, NO casual iPhone vlog style.
+Product must appear in 60%+ of frames. Show product clearly within first 3 seconds.
+
+Product: ${product_name || 'the product'}
+Brand: ${brand_name || 'the brand'}
+
+${final_video_prompt}
+
+Aspect ratio: ${videoAspectRatio}
+${voiceover_script ? `Voiceover: "${voiceover_script}"` : "No voiceover - use music/sound effects."}
+
+CRITICAL — NO ON-SCREEN TEXT: Zero captions, headlines, subtitles, overlays, or typography. 100% visual + voiceover. This must feel like a paid ad, not social content.
+
+${reference_images.length > 0 ? `CRITICAL — USE REFERENCE IMAGES PRECISELY: The attached reference images are the source of truth. You MUST use them exactly as provided. The product/hero image(s) must appear in the video with the SAME appearance, design, colors, and packaging. The brand logo must appear EXACTLY as shown. Product must be clearly visible within first 3 seconds and in 60%+ of frames.` : "Create visuals based on the description above. Product must be clearly visible within first 3 seconds."}`;
+    } else if (final_video_prompt && isUGCMode) {
+      // UGC THEME: Real person, phone-shot, casual, authentic
+      videoPrompt = `UGC THEME — Real person filmed this. Shot on phone. Casual, imperfect, believable. Native to Reels/Shorts/TikTok. Trust over perfection.
+
+MANDATORY 8-SECOND STRUCTURE:
+- 0–2s: HOOK (spoken) — Direct, attention-grabbing. Feels spontaneous. e.g. "Wait, why is nobody talking about this?" "Okay, this actually surprised me."
+- 2–6s: EXPERIENCE / REACTION — Demonstration, personal comment, showing product casually. Honest tone. Quick before-after.
+- 6–8s: SOFT CTA — "You should try this." "I'm not going back." No hard sales pitch.
+
+VISUAL: Handheld, slight natural shake, eye-level selfie angle, casual framing. Natural light, room light. Real-world setting (bedroom, kitchen, office, car, cafe). NO studio backdrop, NO perfect product turntable shots.
+Product must appear within first 3 seconds OR be referenced clearly. Person holding/using/reacting to it. UGC is about the person, not product glamour.
+Editing: jump cuts, natural pauses, reaction zoom, fast pacing. NO smooth cinematic transitions, NO dramatic slow motion.
+
+Product: ${product_name || 'the product'}
+Brand: ${brand_name || 'the brand'}
+
+${final_video_prompt}
+
+Aspect ratio: ${videoAspectRatio}
+${voiceover_script ? `Voiceover: "${voiceover_script}"` : "No voiceover - use music/sound effects."}
+
+CRITICAL — UGC AUTHENTICITY: Must feel like a real person discovered something. If it feels too polished, it's wrong. NO cinematic camera moves, NO studio lighting, NO product-only frames.
+
+${reference_images.length > 0 ? `CRITICAL — USE REFERENCE IMAGES PRECISELY: Depict the product exactly as in the attached reference images. Product must appear within first 3 seconds. Person should be holding/using it.` : "Create visuals based on the description above. Product must appear within first 3 seconds."}`;
+    } else if (final_video_prompt && isHookMode) {
       // HOOK MODE: Performance-first, attention warfare. Strict 4-part structure.
       videoPrompt = `HOOK MODE — Performance-first 8-second ad. This is attention warfare, NOT cinematic storytelling.
 
@@ -419,6 +477,26 @@ ${prompt}
 CRITICAL — NO ON-SCREEN TEXT: Zero captions, headlines, subtitles, overlays. 100% visual only.
 
 ${reference_images.length > 0 ? `CRITICAL — USE REFERENCE IMAGES PRECISELY: Depict the product and brand logo exactly as in the attached reference images. Product must appear by mid-video.` : ''}`;
+      } else if (isCommercialMode) {
+        videoPrompt = `COMMERCIAL THEME — Paid brand commercial. 8 seconds. High-production value. Product as hero. Smooth camera, premium lighting. NO on-screen text.
+
+Structure: 0–2s Pattern Interrupt → 2–5s Product as Hero → 5–7s Emotional Payoff → 7–8s Brand Lock-In.
+
+${prompt}
+
+CRITICAL — NO ON-SCREEN TEXT: Zero captions, headlines, overlays. 100% visual + voiceover.
+
+${reference_images.length > 0 ? `CRITICAL — USE REFERENCE IMAGES PRECISELY: Depict the product and brand logo exactly as in the attached reference images. Product in 60%+ of frames.` : ''}`;
+      } else if (isUGCMode) {
+        videoPrompt = `UGC THEME — Real person filmed on phone. 8 seconds. Handheld, casual, natural light. Authentic, conversational.
+
+Structure: 0–2s Hook (spoken) → 2–6s Experience/Reaction → 6–8s Soft CTA.
+
+${prompt}
+
+CRITICAL — UGC AUTHENTICITY: Must feel like a real person. NO cinematic moves, NO studio lighting.
+
+${reference_images.length > 0 ? `CRITICAL — USE REFERENCE IMAGES PRECISELY: Depict the product exactly as in the attached reference images. Person holding/using it.` : ''}`;
       } else {
         videoPrompt = `Create a ${initialDurationSeconds}-second video ad (${videoAspectRatio} aspect ratio).
 

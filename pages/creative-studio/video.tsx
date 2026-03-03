@@ -41,7 +41,9 @@ const ASPECT_RATIO_OPTIONS: { ratio: '9:16' | '16:9'; orientation: string }[] = 
 
 // Ad style descriptions shown when a style is selected
 const AD_STYLE_DESCRIPTIONS: Record<string, string> = {
-  'Hook': 'Conversion-focused, scroll-stopping format. Rapid cuts, emotional trigger, early product clarity, and strong visuals..',
+  'Hook': 'Conversion-focused, scroll-stopping format. Rapid cuts, emotional trigger, early product clarity, and strong visuals.',
+  'Commercial': 'Paid brand commercial feel. High-production value, emotion + aspiration driven, product as hero. Fast, punchy, visually premium. No text overlays — script-driven via voiceover only.',
+  'UGC Style': 'Real person filmed on phone. Casual, imperfect, believable. Native to Reels/Shorts/TikTok. Conversational, slightly messy but authentic. Trust over perfection.',
   'Product Close-up': 'Detail-driven product showcase. Macro angles, tight framing, shallow depth of field, maximum product clarity and texture emphasis.',
   'Lifestyle': 'Real-world usage in relatable scenarios. Natural lighting, human context, and emotional connection around everyday moments.',
   'Cinematic': 'High-production, film-style visuals. Dramatic lighting, smooth camera movement, polished color grading, storytelling energy.',

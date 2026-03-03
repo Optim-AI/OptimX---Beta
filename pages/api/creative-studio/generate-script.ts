@@ -121,10 +121,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const durationSecondsClamped = Math.max(5, Math.min(120, durationSeconds));
 
     const isHookMode = style === "Hook";
+    const isCommercialMode = style === "Commercial";
+    const isUGCMode = style === "UGC Style";
 
     // System prompt: Creative Ad Film Director — interprets user vision, duration, and needs to write the best script
-    const systemPrompt = isHookMode
-      ? `You are a performance-first ad creative director specializing in scroll-stopping, conversion-focused video ads. This is attention warfare, NOT cinematic storytelling.
+    let systemPrompt: string;
+    if (isHookMode) {
+      systemPrompt = `You are a performance-first ad creative director specializing in scroll-stopping, conversion-focused video ads. This is attention warfare, NOT cinematic storytelling.
 
 Your mindset for HOOK MODE:
 - Stop scrolling in the first 2 seconds. Trigger emotion immediately. Deliver fast product clarity. Drive action.
@@ -134,9 +137,35 @@ Your mindset for HOOK MODE:
 - Product must appear clearly by mid-video (4–6s). No mysterious slow storytelling. This is ad logic, not art school.
 - NO on-screen text: no captions, headlines, subtitles, overlays, or typography. 100% visual storytelling. If voiceover exists, it carries the message.
 - Pacing: fast cuts, high motion energy, tight framing, strong contrast lighting. Hook always dominates tempo.
-- Avoid: symbolic metaphors, overly artistic ambiguity, conceptual scenes without product clarity.`
+- Avoid: symbolic metaphors, overly artistic ambiguity, conceptual scenes without product clarity.`;
+    } else if (isCommercialMode) {
+      systemPrompt = `You are a premium brand commercial director. The output must feel like a PAID BRAND COMMERCIAL — high-production value, emotion + aspiration driven, product as hero. Fast, punchy, visually premium. A direct-response brand commercial compressed into 8 seconds.
 
-      : `You are an award-winning creative ad film director. You think and write like one: story, emotion, rhythm, and every second on screen is intentional.
+COMMERCIAL THEME — This is NOT: UGC, meme content, cinematic storytelling short film, aesthetic montage without product focus.
+This IS: A paid brand commercial. Script-driven via voiceover only. NO text overlays on video frames.
+
+Your mindset:
+- Product as hero: show product clearly within first 3 seconds. Product must appear in at least 60% of total frames.
+- 8-second formula: 0–2s Pattern Interrupt (strong hook visual, movement, contrast) → 2–5s Product as Hero (clean product shots, close-ups, premium lighting) → 5–7s Emotional Payoff (outcome, transformation) → 7–8s Brand Lock-In (product hero frame, logo via environment, strong closing VO).
+- Voiceover: confident, clear, short sentences. Max 18–25 spoken words. Hook → Value → Outcome → Brand line. No filler, no overexplaining.
+- Visual: controlled lighting, soft highlights, high contrast, studio or lifestyle premium look. Smooth camera (push-in, slider, cinematic pans). Shallow depth of field. NO handheld shaky shots, NO casual iPhone vlog style.
+- Emotional angles: Confidence, Status, Relief, Energy, Control, Simplicity, Transformation. Never default to humor unless user explicitly requests.
+- NO on-screen text, captions, subtitles, lower thirds, UI mockups, or typography. All messaging via voiceover and visual storytelling.`;
+    } else if (isUGCMode) {
+      systemPrompt = `You are a UGC-style ad creative director. The output must feel like a REAL PERSON filmed this — shot on phone, casual, imperfect, believable. Native to Reels/Shorts/TikTok. Trust over perfection.
+
+UGC THEME — This is NOT: studio commercial, perfect lighting, cinematic camera moves, dramatic product hero shots, polished ad energy.
+This IS: A real person sharing an honest recommendation. Conversational, slightly messy but authentic.
+
+Your mindset:
+- 8-second formula: 0–2s Hook (spoken, direct, attention-grabbing, feels spontaneous — e.g. "Wait, why is nobody talking about this?") → 2–6s Experience/Reaction (demonstration, personal comment, showing product casually, honest tone) → 6–8s Soft CTA ("You should try this." "Link's right there." No hard sales pitch).
+- Voiceover: casual, real, slightly imperfect. Max 20–30 words. First person: "I tried this", "This saved me". Everyday language. No marketing buzzwords. No scripted feel.
+- Visual: handheld, slight natural shake, eye-level selfie angle, casual framing. Natural light, room light. Real-world setting (bedroom, kitchen, office, car, cafe). NO studio backdrop, NO perfect product turntable shots.
+- Product: must appear within first 3 seconds OR be referenced clearly. Person holding/using/reacting to it. UGC is about the person, not product glamour.
+- Emotional bias: Surprise, Relatability, Relief, Curiosity, Honest recommendation. NOT prestige, status, or brand dominance.
+- Editing: jump cuts, natural pauses, reaction zoom, fast pacing. NO smooth cinematic transitions, NO dramatic slow motion.`;
+    } else {
+      systemPrompt = `You are an award-winning creative ad film director. You think and write like one: story, emotion, rhythm, and every second on screen is intentional.
 
 Your mindset:
 - When the user describes their "Video Ad Vision," you interpret it like a creative brief. What do they really want? (e.g. trust, desire, urgency, aspiration, humor, premium feel.) Infer the emotional goal, the audience vibe, and the single idea the ad must land.
@@ -156,9 +185,12 @@ Rules:
 - Shot lengths and storyboard durations must sum to ${durationSecondsClamped}s. E.g. for ${durationSecondsClamped}s use ~${Math.max(2, Math.floor(durationSecondsClamped / 3))}–${Math.max(4, Math.ceil(durationSecondsClamped / 2))} shots.
 - Voiceover script must be readable in ${durationSecondsClamped} seconds (about ${Math.floor(durationSecondsClamped * 2.2)}–${Math.floor(durationSecondsClamped * 2.5)} words max).
 - Avoid generic or templated lines. Reflect the user's vision and the product's story. The script should feel written for this brand, this product, and this specific vision.`;
+    }
 
-    // User message: Ad vision drives the script; director interprets needs, duration, and description for the best creative
-    const hookModeRequirements = isHookMode ? `
+    // Style-specific requirements appended to user prompt
+    let styleRequirements = '';
+    if (isHookMode) {
+      styleRequirements = `
 
 HOOK MODE — MANDATORY 4-PART STRUCTURE (8 seconds exactly):
 - Scene 1 (0–2s): PATTERN INTERRUPT — Bold visual hook. Stop scrolling. Fast cut, high impact. No slow intro.
@@ -168,7 +200,31 @@ HOOK MODE — MANDATORY 4-PART STRUCTURE (8 seconds exactly):
 
 Storyboard MUST have exactly 4 scenes with time_range: "0-2s", "2-4s", "4-6s", "6-8s".
 visual_style_guide.motion_style must emphasize: fast cuts, high motion energy, tight framing, strong contrast.
-NO on-screen text. Purely visual.` : '';
+NO on-screen text. Purely visual.`;
+    } else if (isCommercialMode) {
+      styleRequirements = `
+
+COMMERCIAL THEME — MANDATORY 8-SECOND STRUCTURE:
+- Scene 1 (0–2s): PATTERN INTERRUPT — Strong hook visual, movement, contrast, emotion. Product tease or problem tease.
+- Scene 2 (2–5s): PRODUCT AS HERO — Clean product shots, close-up details, use-case in action. Premium lighting. Slow motion or dynamic camera movement.
+- Scene 3 (5–7s): EMOTIONAL PAYOFF — Outcome transformation, reaction shot, satisfying resolution.
+- Scene 4 (7–8s): BRAND LOCK-IN — Product hero frame, clean background, logo reveal via environment (not text overlay). Strong closing VO line.
+
+Storyboard MUST follow this structure. visual_style_guide: controlled lighting, soft highlights, high contrast, smooth camera (push-in, slider, cinematic pans), shallow depth of field.
+Voiceover: max 18–25 words. Confident, clear. Hook → Value → Outcome → Brand line.
+NO on-screen text, captions, or typography. Purely visual + voiceover.`;
+    } else if (isUGCMode) {
+      styleRequirements = `
+
+UGC THEME — MANDATORY 8-SECOND STRUCTURE:
+- Scene 1 (0–2s): HOOK (spoken) — Direct, attention-grabbing. Feels spontaneous. e.g. "Wait, why is nobody talking about this?" "Okay, this actually surprised me."
+- Scene 2 (2–6s): EXPERIENCE / REACTION — Demonstration, personal comment, showing product casually, quick before-after. Honest tone.
+- Scene 3 (6–8s): SOFT CTA — "You should try this." "I'm not going back." No hard sales pitch, no corporate language.
+
+Storyboard MUST follow this structure. visual_style_guide: handheld, slight natural shake, eye-level selfie angle, natural light, real-world setting (bedroom, kitchen, office).
+Voiceover: max 20–30 words. Casual, conversational, first person. No marketing buzzwords.
+Character description: include age, vibe, setting for UGC creator.`;
+    }
 
     const userPrompt = `As a creative ad film director, write a complete commercial script that truly serves the user's vision and the chosen duration. The ad must be exactly ${durationSecondsClamped} seconds long — all shots and voiceover must fit this duration.
 
@@ -197,7 +253,7 @@ DIRECTOR REQUIREMENTS:
 - Specify camera (angle, movement), lighting, and composition for each shot.
 - Voiceover (if enabled): write a script in ${language === "tamil" ? "Tamil" : language === "hindi" ? "Hindi" : "English"} that can be read in ${durationSecondsClamped} seconds (~${Math.floor(durationSecondsClamped * 2.2)}–${Math.floor(durationSecondsClamped * 2.5)} words). ${key_message ? `Weave in: "${key_message}".` : ""} ${cta ? `End with CTA: "${cta}".` : ""}
 - final_video_prompt: 300–800 tokens, director-grade, describing the full ${durationSecondsClamped}-second film (cinematic lighting, movement, pacing, color, premium brand quality), aligned with the user's described vision.
-${hookModeRequirements}
+${styleRequirements}
 
 Return your response as a JSON object with this exact structure (use real timings that sum to ${durationSecondsClamped}s):
 {

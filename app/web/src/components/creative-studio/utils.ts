@@ -596,12 +596,14 @@ export const ASPECT_RATIOS = [
 export const VIDEO_STYLES = [
   "Product Close-up",
   "Hook",
+  "Commercial",
+  "UGC Style",
   "Lifestyle",
   "Cinematic",
   "Luxury",
   "Minimalist",
   "Bold & Energetic",
-  "2D Animation", 
+  "2D Animation",
   "Motion Graphics",
   "Retro",
 ] as const;

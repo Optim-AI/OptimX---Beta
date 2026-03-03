@@ -448,6 +448,9 @@ export const creativeIntelligenceCompetitors = pgTable("creative_intelligence_co
 	pricingTier: text("pricing_tier"),
 	weaknessDetected: text("weakness_detected"),
 	saturationLevel: text("saturation_level"),
+	relevanceScore: integer("relevance_score"),
+	industryMatchConfidence: text("industry_match_confidence"),
+	keywordOverlapScore: integer("keyword_overlap_score"),
 	rawData: jsonb("raw_data"),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 }, (table) => [
@@ -520,4 +523,42 @@ export const creativeIntelligenceMetaAds = pgTable("creative_intelligence_meta_a
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 }, (table) => [
 	index("idx_creative_intelligence_meta_ads_run_id").using("btree", table.runId.asc().nullsLast()),
+]);
+
+export const creativeIntelligenceFacebookPages = pgTable("creative_intelligence_facebook_pages", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	runId: uuid("run_id").notNull(),
+	source: text("source").notNull(),
+	entityName: text("entity_name"),
+	pageId: text("page_id"),
+	pageName: text("page_name"),
+	pageLink: text("page_link"),
+	followersCount: integer("followers_count"),
+	followingCount: integer("following_count"),
+	category: text("category"),
+	address: text("address"),
+	phone: text("phone"),
+	website: text("website"),
+	ratings: text("ratings"),
+	rating: integer("rating"),
+	reviewsCount: integer("reviews_count"),
+	priceRange: text("price_range"),
+	profilePhotoUrl: text("profile_photo_url"),
+	rawData: jsonb("raw_data"),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (table) => [
+	index("idx_creative_intelligence_facebook_pages_run_id").using("btree", table.runId.asc().nullsLast()),
+]);
+
+export const creativeIntelligenceGoogleRanks = pgTable("creative_intelligence_google_ranks", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	runId: uuid("run_id").notNull(),
+	searchQuery: text("search_query").notNull(),
+	brandDomain: text("brand_domain"),
+	brandPosition: integer("brand_position"),
+	competitorRanks: jsonb("competitor_ranks"),
+	organicResults: jsonb("organic_results"),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (table) => [
+	index("idx_creative_intelligence_google_ranks_run_id").using("btree", table.runId.asc().nullsLast()),
 ]);
