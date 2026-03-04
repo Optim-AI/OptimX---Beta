@@ -1,5 +1,5 @@
 // pages/creative-intelligence.tsx
-// Creative Intelligence: AI-powered Creative Strategy + Competitive Intelligence + Ads Studio
+// Creative Intelligence: AI-powered Creative Strategy + Competitive Intelligence
 
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/router";
@@ -19,19 +19,43 @@ import {
   Send,
   Loader2,
   Megaphone,
-  ImageIcon,
   Sparkles,
   Facebook,
   TrendingUp,
   Users,
   Clock,
   GitCompare,
+  Video,
 } from "lucide-react";
 import { Progress } from "@/app/web/src/components/ui/progress";
 import { Button } from "@/app/web/src/components/ui/button";
 import { Input } from "@/app/web/src/components/ui/input";
 import { Label } from "@/app/web/src/components/ui/label";
-import { buildPosterPrompt } from "@/app/web/src/components/creative-studio";
+
+type InsightCard = {
+  title: string;
+  description: string;
+  opportunity: string;
+  ad_angle: string;
+};
+
+type CompareInsights = {
+  tldr?: {
+    biggest_opportunity: string;
+    biggest_strength: string;
+    biggest_weakness: string;
+    recommended_ad_strategy: string;
+  };
+  comparison?: {
+    brand_strengths: string[];
+    competitor_strengths: string[];
+    key_market_gap: string;
+    strategic_opportunity: string;
+  };
+  working_well?: InsightCard[];
+  gaps?: InsightCard[];
+  recommended_strategy?: Array<{ title: string; description: string }>;
+};
 
 const ASPECT_OPTIONS = [
   { value: "1:1", label: "1:1", w: 1080, h: 1080 },
@@ -127,13 +151,6 @@ type RunData = {
   }>;
 };
 
-type GeneratedPoster = {
-  url: string;
-  hookId: string;
-  hookStatement: string;
-  prompt: string;
-};
-
 type AnalysisMode = "brand" | "competitors";
 
 export default function CreativeIntelligencePage() {
@@ -146,8 +163,9 @@ export default function CreativeIntelligencePage() {
   const [competitorAnalysisResults, setCompetitorAnalysisResults] = useState<RunData[]>([]);
   const [isAnalyzingCompetitors, setIsAnalyzingCompetitors] = useState(false);
   const [expandedCompetitorId, setExpandedCompetitorId] = useState<string | null>(null);
-  const [comparisonSummary, setComparisonSummary] = useState<string | null>(null);
+  const [comparisonInsights, setComparisonInsights] = useState<CompareInsights | null>(null);
   const [isLoadingComparisonSummary, setIsLoadingComparisonSummary] = useState(false);
+  const [comparisonError, setComparisonError] = useState<string | null>(null);
 
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [historyRuns, setHistoryRuns] = useState<Array<{ id: string; brandUrl: string; createdAt: string }>>([]);
@@ -157,12 +175,6 @@ export default function CreativeIntelligencePage() {
   const [runId, setRunId] = useState<string | null>(null);
   const [runData, setRunData] = useState<RunData | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
-
-  // Ads Studio state
-  const [adsStudioPosters, setAdsStudioPosters] = useState<GeneratedPoster[]>([]);
-  const [generatingHookId, setGeneratingHookId] = useState<string | null>(null);
-  const [posterAspect, setPosterAspect] = useState<"1:1" | "4:5" | "9:16">("1:1");
-  const [posterTheme, setPosterTheme] = useState("commercial");
 
   const addCompetitorAnalysisUrl = () => setCompetitorAnalysisUrls((p) => [...p, ""]);
   const removeCompetitorAnalysisUrl = (i: number) =>
@@ -255,7 +267,6 @@ export default function CreativeIntelligencePage() {
     setIsAnalyzing(true);
     setProgressStep(0);
     setRunData(null);
-    setAdsStudioPosters([]);
     try {
       const res = await authFetch("/api/creative-intelligence/analyze", {
         method: "POST",
@@ -327,13 +338,20 @@ export default function CreativeIntelligencePage() {
     if (runData?.run?.id) fetchHistory();
   }, [runData?.run?.id]);
 
+  useEffect(() => {
+    if (runData && competitorAnalysisResults.length > 0 && !comparisonInsights && !isLoadingComparisonSummary) {
+      fetchComparisonSummary();
+    }
+  }, [runData?.run?.id, competitorAnalysisResults.length]);
+
   const scrollToHistory = () => historyRef.current?.scrollIntoView({ behavior: "smooth" });
   const scrollToComparison = () => comparisonRef.current?.scrollIntoView({ behavior: "smooth" });
 
   async function fetchComparisonSummary() {
     if (!runData || competitorAnalysisResults.length === 0) return;
     setIsLoadingComparisonSummary(true);
-    setComparisonSummary(null);
+    setComparisonError(null);
+    setComparisonInsights(null);
     try {
       const res = await authFetch("/api/creative-intelligence/compare-summary", {
         method: "POST",
@@ -343,12 +361,38 @@ export default function CreativeIntelligencePage() {
         }),
       });
       const data = await res.json();
-      if (data.ok && data.summary) setComparisonSummary(data.summary);
-      else showError(data.error || "Failed to generate comparison summary");
+      if (data.ok) {
+        setComparisonInsights({
+          tldr: data.tldr,
+          comparison: data.comparison,
+          working_well: data.working_well || [],
+          gaps: data.gaps || [],
+          recommended_strategy: data.recommended_strategy || [],
+        });
+      } else {
+        const msg = data.error || "Failed to generate insights";
+        setComparisonError(msg);
+        showError(msg);
+      }
     } catch (err: any) {
-      showError(err?.message || "Failed to generate comparison summary");
+      const msg = err?.message || "Failed to generate insights";
+      setComparisonError(msg);
+      showError(msg);
     } finally {
       setIsLoadingComparisonSummary(false);
+    }
+  }
+
+  function handleGenerateAdFromInsight(insight: string, type: "ugc" | "commercial") {
+    const prompt = type === "ugc"
+      ? `Create a UGC-style (user-generated content) ad. ${insight}`
+      : `Create a professional commercial ad. ${insight}`;
+    try {
+      sessionStorage.setItem("creative-intelligence:ad-prompt", prompt);
+      sessionStorage.setItem("creative-intelligence:ad-type", type);
+      router.push("/creative-studio");
+    } catch {
+      router.push("/creative-studio");
     }
   }
 
@@ -357,109 +401,6 @@ export default function CreativeIntelligencePage() {
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2000);
   };
-
-  async function handleGenerateCampaign(hook: RunData["hooks"][0]) {
-    if (!runData?.run?.id) return;
-    setGeneratingHookId(hook.id);
-    try {
-      // 1. Get creatives (ad concepts, headlines, visual direction)
-      const creativesRes = await authFetch("/api/creative-intelligence/generate-creatives", {
-        method: "POST",
-        body: JSON.stringify({
-          runId: runData.run.id,
-          hookId: hook.id,
-        }),
-      });
-      const creativesData = await creativesRes.json();
-      if (!creativesData.ok) throw new Error(creativesData.error || "Failed to generate creatives");
-
-      const creatives = creativesData.creatives || {};
-      const poster = creatives.posters?.[0];
-      const primaryTexts = poster?.primary_text_options || creatives.ad_concepts || creatives.headlines || [];
-      const visualDir = poster?.visual_direction || creatives.visual_direction || {};
-      const vdParts = [
-        visualDir.lighting_style && `Lighting: ${visualDir.lighting_style}`,
-        visualDir.composition_style && `Composition: ${visualDir.composition_style}`,
-        visualDir.color_dominance && `Colors: ${visualDir.color_dominance}`,
-        visualDir.emotional_mood && `Mood: ${visualDir.emotional_mood}`,
-        visualDir.focal_hierarchy && `Focal: ${visualDir.focal_hierarchy}`,
-        visualDir.background_style && `Background: ${visualDir.background_style}`,
-      ].filter(Boolean);
-
-      const userRequest = [
-        `Hook: ${hook.hookStatement}`,
-        hook.whyItWorks && `Why it works: ${hook.whyItWorks}`,
-        primaryTexts.length > 0 && `Primary copy options: ${primaryTexts.slice(0, 3).join("; ")}`,
-        vdParts.length > 0 && `Visual direction: ${vdParts.join(". ")}`,
-      ].filter(Boolean).join("\n\n");
-
-      const brandSnapshot = runData.brand ? {
-        name: runData.brand.productSummary?.split(" ").slice(0, 3).join(" ") || "Brand",
-        description: runData.brand.productSummary || "",
-        audience: runData.brand.targetPersonaGuess || "",
-        offering: runData.brand.productSummary || "",
-        tone: runData.brand.emotionalTone || "Professional",
-        coreValueProp: hook.hookStatement,
-      } : null;
-
-      const aspectConfig = ASPECT_OPTIONS.find((a) => a.value === posterAspect) || ASPECT_OPTIONS[0];
-      const posterPrompt = buildPosterPrompt({
-        userRequest,
-        theme: posterTheme || "commercial",
-        aspectRatio: posterAspect,
-        brand: brandSnapshot as any,
-        hasProductImage: false,
-        variant: 1,
-      });
-
-      const res = await authFetch("/api/generate-campaign", {
-        method: "POST",
-        body: JSON.stringify({
-          mode: "generate",
-          prompt: posterPrompt,
-          description: posterPrompt,
-          theme: posterTheme || "commercial",
-          target: { width: aspectConfig.w, height: aspectConfig.h },
-          aspectLabel: posterAspect,
-          brandName: brandSnapshot?.name || "",
-          brandSnapshot: brandSnapshot,
-          productDataUrl: undefined,
-          productProvided: false,
-          refDataUrls: [],
-          logoDataUrl: undefined,
-          logoProvided: false,
-        }),
-      });
-
-      const data = await res.json();
-      if (!data.ok) {
-        if (data.error?.toLowerCase().includes("credit")) {
-          showError("No image credits available. Please purchase more credits.");
-        } else {
-          throw new Error(data.error || "Poster generation failed");
-        }
-        return;
-      }
-
-      const imageUrl = data.image || (Array.isArray(data.images) && data.images[0]) || null;
-      if (imageUrl) {
-        setAdsStudioPosters((prev) => [
-          ...prev,
-          {
-            url: imageUrl,
-            hookId: hook.id,
-            hookStatement: hook.hookStatement,
-            prompt: posterPrompt,
-          },
-        ]);
-        showSuccess("Poster generated! Check Ads Studio below.");
-      }
-    } catch (err: any) {
-      showError(err?.message || "Failed to generate poster");
-    } finally {
-      setGeneratingHookId(null);
-    }
-  }
 
   const painPoints = runData?.reviews?.filter((r) => r.clusterType === "pain_points") || [];
   const desiredOutcomes =
@@ -1233,173 +1174,20 @@ export default function CreativeIntelligencePage() {
                               <Progress value={hook.confidenceScore} className="h-1.5 rounded-full" />
                             </div>
                           )}
-                          <Button
-                            size="sm"
-                            onClick={() => handleGenerateCampaign(hook)}
-                            disabled={generatingHookId !== null}
-                            style={{
-                              backgroundColor: colors.primary,
-                              color: colors.primaryForeground,
-                            }}
+                          <button
+                            type="button"
+                            onClick={() => copyToClipboard(hook.hookStatement + (hook.whyItWorks ? `\n\nWhy it works: ${hook.whyItWorks}` : ""), `hook-${hook.id}`)}
+                            className="p-2 rounded-lg hover:opacity-80 transition-opacity"
+                            style={{ backgroundColor: colors.muted, color: colors.foreground }}
+                            title="Copy hook"
                           >
-                            {generatingHookId === hook.id ? (
-                              <>
-                                <Loader2 size={14} className="mr-2 animate-spin" />
-                                Generating poster…
-                              </>
-                            ) : (
-                              <>
-                                <ImageIcon size={14} className="mr-2" />
-                                Generate Poster for This Hook
-                              </>
-                            )}
-                          </Button>
+                            {copiedId === `hook-${hook.id}` ? <Check size={16} /> : <Copy size={16} />}
+                          </button>
                         </div>
                       ))}
                     </div>
                   </SectionCard>
                 )}
-
-                {/* Ads Studio - Poster Generation */}
-                <div
-                  className="rounded-2xl p-6 mt-8"
-                  style={{
-                    background: colors.gradientCard,
-                    border: `2px solid ${colors.primary + "40"}`,
-                    boxShadow: colors.shadowMedium,
-                  }}
-                >
-                  <div className="flex items-center gap-3 mb-6">
-                    <div
-                      className="w-12 h-12 rounded-xl flex items-center justify-center"
-                      style={{ backgroundColor: colors.primary + "25" }}
-                    >
-                      <ImageIcon size={24} style={{ color: colors.primary }} />
-                    </div>
-                    <div>
-                      <h3 className="text-xl font-bold" style={{ color: colors.foreground }}>
-                        Ads Studio
-                      </h3>
-                      <p className="text-sm mt-0.5" style={{ color: colors.mutedForeground }}>
-                        Generated posters from your hooks. Uses the same AI as Creative Studio.
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Poster settings (when runData exists) */}
-                  {runData && runData.hooks?.length > 0 && (
-                    <div className="flex flex-wrap gap-4 mb-6 p-4 rounded-xl" style={{ backgroundColor: colors.background, border: `1px solid ${colors.border}` }}>
-                      <div>
-                        <Label className="text-xs" style={{ color: colors.mutedForeground }}>Aspect ratio</Label>
-                        <div className="flex gap-2 mt-1">
-                          {ASPECT_OPTIONS.map((a) => (
-                            <button
-                              key={a.value}
-                              onClick={() => setPosterAspect(a.value as any)}
-                              className="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
-                              style={{
-                                backgroundColor: posterAspect === a.value ? colors.primary : colors.muted,
-                                color: posterAspect === a.value ? colors.primaryForeground : colors.foreground,
-                                border: `1px solid ${colors.border}`,
-                              }}
-                            >
-                              {a.label}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                      <div>
-                        <Label className="text-xs" style={{ color: colors.mutedForeground }}>Theme</Label>
-                        <select
-                          value={posterTheme}
-                          onChange={(e) => setPosterTheme(e.target.value)}
-                          className="mt-1 px-3 py-2 rounded-lg border text-sm"
-                          style={{
-                            backgroundColor: colors.muted,
-                            borderColor: colors.border,
-                            color: colors.foreground,
-                          }}
-                        >
-                          <option value="commercial">Commercial</option>
-                          <option value="professional">Professional</option>
-                          <option value="minimal">Minimal</option>
-                          <option value="premium">Premium</option>
-                          <option value="bold">Bold</option>
-                          <option value="playful">Playful</option>
-                        </select>
-                      </div>
-                    </div>
-                  )}
-
-                  {adsStudioPosters.length > 0 ? (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                      {adsStudioPosters.map((p, i) => (
-                        <div
-                          key={`${p.hookId}-${i}`}
-                          className="rounded-xl overflow-hidden group"
-                          style={{
-                            backgroundColor: colors.background,
-                            border: `1px solid ${colors.border}`,
-                            boxShadow: colors.shadowSoft,
-                          }}
-                        >
-                          <div className="aspect-square bg-muted overflow-hidden">
-                            <img
-                              src={p.url}
-                              alt={`Poster ${i + 1}`}
-                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                            />
-                          </div>
-                          <div className="p-4">
-                            <p className="text-sm font-medium mb-2 line-clamp-2" style={{ color: colors.foreground }}>
-                              {p.hookStatement}
-                            </p>
-                            <div className="flex gap-2">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => window.open(p.url, "_blank")}
-                                style={{ borderColor: colors.border, color: colors.foreground }}
-                              >
-                                Open
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => {
-                                  const a = document.createElement("a");
-                                  a.href = p.url;
-                                  a.download = `poster-${i + 1}.png`;
-                                  a.click();
-                                }}
-                                style={{ borderColor: colors.border, color: colors.foreground }}
-                              >
-                                <Download size={14} className="mr-1" />
-                                Download
-                              </Button>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div
-                      className="rounded-xl p-12 text-center"
-                      style={{
-                        backgroundColor: colors.background,
-                        border: `2px dashed ${colors.border}`,
-                      }}
-                    >
-                      <ImageIcon size={48} className="mx-auto mb-4 opacity-40" style={{ color: colors.mutedForeground }} />
-                      <p className="text-base font-medium mb-2" style={{ color: colors.foreground }}>
-                        No posters yet
-                      </p>
-                      <p className="text-sm max-w-md mx-auto" style={{ color: colors.mutedForeground }}>
-                        Click &quot;Generate Poster for This Hook&quot; on any hook above. Posters will appear here. Uses the same /api/generate-campaign logic as Creative Studio.
-                      </p>
-                    </div>
-                  )}
-                </div>
 
                 {/* Export */}
                 <div
@@ -1438,86 +1226,9 @@ export default function CreativeIntelligencePage() {
                   </h3>
                 </div>
 
+                {/* 1. AI Summary - TL;DR (first, scannable) */}
                 <div
-                  className="rounded-2xl p-6 mb-8"
-                  style={{
-                    backgroundColor: colors.background,
-                    border: `1px solid ${colors.border}`,
-                    boxShadow: colors.shadowSoft,
-                  }}
-                >
-                  <h4 className="text-base font-semibold mb-4" style={{ color: colors.foreground }}>
-                    Brand vs Competitor
-                  </h4>
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    {/* Your Brand - detailed */}
-                    <div className="rounded-xl p-5" style={{ backgroundColor: colors.card, border: `1px solid ${colors.border}` }}>
-                      <h5 className="font-semibold mb-3 flex items-center gap-2" style={{ color: colors.primary }}>
-                        <Target size={18} />
-                        Your Brand
-                      </h5>
-                      <p className="text-xs mb-3" style={{ color: colors.mutedForeground }}>{runData.run?.brandUrl}</p>
-                      <InsightBlock label="Product" value={(runData.brand as any)?.rawAnalysis?.product_name || runData.brand?.productSummary} />
-                      <InsightBlock label="Positioning" value={runData.brand?.positioningStatement} />
-                      <InsightBlock label="Target" value={(runData.brand as any)?.rawAnalysis?.primary_target_audience} />
-                      <InsightBlock label="Brand tone" value={(runData.brand as any)?.rawAnalysis?.brand_tone || runData.brand?.emotionalTone} />
-                      {runData.hooks?.length > 0 && (
-                        <div className="mt-3">
-                          <p className="text-xs font-medium mb-1" style={{ color: colors.mutedForeground }}>Top Hooks</p>
-                          {runData.hooks.slice(0, 5).map((h) => (
-                            <p key={h.id} className="text-sm mb-1" style={{ color: colors.foreground }}>• {h.hookStatement}</p>
-                          ))}
-                        </div>
-                      )}
-                      {(runData.reviews?.filter((r) => r.clusterType === "pain_points")?.length ?? 0) > 0 && (
-                        <div className="mt-3">
-                          <p className="text-xs font-medium mb-1" style={{ color: colors.mutedForeground }}>Pain points from reviews</p>
-                          <ul className="text-xs space-y-0.5" style={{ color: colors.mutedForeground }}>
-                            {(runData.reviews?.filter((r) => r.clusterType === "pain_points") || []).flatMap((r) => r.samplePhrases || []).slice(0, 3).map((p, i) => (
-                              <li key={i}>• {p}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                      {(runData.strategies?.market_gap_analysis?.length ?? 0) > 0 && (
-                        <div className="mt-3">
-                          <p className="text-xs font-medium mb-1" style={{ color: colors.mutedForeground }}>Market gaps</p>
-                          {runData.strategies?.market_gap_analysis?.slice(0, 2).map((g, i) => (
-                            <p key={i} className="text-xs mb-1" style={{ color: colors.foreground }}>• {g.opportunity_statement}</p>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Competitors - detailed */}
-                    <div className="space-y-4">
-                      {competitorAnalysisResults.map((r, idx) => (
-                        <div key={r.run?.id || idx} className="rounded-xl p-5" style={{ backgroundColor: colors.card, border: `1px solid ${colors.border}` }}>
-                          <h5 className="font-semibold mb-3 flex items-center gap-2" style={{ color: colors.foreground }}>
-                            <Users size={18} />
-                            Competitor {idx + 1}
-                          </h5>
-                          <p className="text-xs mb-2" style={{ color: colors.mutedForeground }}>{r.run?.brandUrl}</p>
-                          <InsightBlock label="Product" value={(r.brand as any)?.rawAnalysis?.product_name || r.brand?.productSummary} />
-                          <InsightBlock label="Positioning" value={r.brand?.positioningStatement} />
-                          <InsightBlock label="Target" value={(r.brand as any)?.rawAnalysis?.primary_target_audience} />
-                          {r.hooks?.length > 0 && (
-                            <div className="mt-3">
-                              <p className="text-xs font-medium mb-1" style={{ color: colors.mutedForeground }}>Top Hooks</p>
-                              {r.hooks.slice(0, 5).map((h) => (
-                                <p key={h.id} className="text-sm mb-1" style={{ color: colors.foreground }}>• {h.hookStatement}</p>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                {/* AI Summary */}
-                <div
-                  className="rounded-2xl p-6"
+                  className="rounded-2xl p-6 mb-6"
                   style={{
                     backgroundColor: colors.card,
                     border: `2px solid ${colors.primary + "40"}`,
@@ -1527,65 +1238,161 @@ export default function CreativeIntelligencePage() {
                   <div className="flex items-center justify-between mb-4">
                     <h4 className="text-base font-semibold flex items-center gap-2" style={{ color: colors.foreground }}>
                       <Sparkles size={18} style={{ color: colors.primary }} />
-                      AI Summary & Recommendations
+                      AI Summary
                     </h4>
-                    {!comparisonSummary && !isLoadingComparisonSummary && (
-                      <Button
-                        size="sm"
-                        onClick={fetchComparisonSummary}
-                        style={{
-                          backgroundColor: colors.primary,
-                          color: colors.primaryForeground,
-                        }}
-                      >
+                    {!comparisonInsights && !isLoadingComparisonSummary && (
+                      <Button size="sm" onClick={fetchComparisonSummary} style={{ backgroundColor: colors.primary, color: colors.primaryForeground }}>
                         <Sparkles size={14} className="mr-2" />
-                        Generate AI Insights
+                        {comparisonError ? "Retry" : "Generate Insights"}
                       </Button>
                     )}
                   </div>
                   {isLoadingComparisonSummary && (
                     <div className="flex items-center gap-3 py-8" style={{ color: colors.mutedForeground }}>
                       <Loader2 size={24} className="animate-spin" />
-                      <span>Generating AI-powered insights…</span>
+                      <span>Generating insights…</span>
                     </div>
                   )}
-                  {comparisonSummary && !isLoadingComparisonSummary && (
-                    <div
-                      className="prose prose-sm max-w-none whitespace-pre-wrap"
-                      style={{
-                        color: colors.foreground,
-                        lineHeight: 1.7,
-                      }}
-                    >
-                      {comparisonSummary.split("\n").map((line, i) => {
-                        if (line.startsWith("## ")) {
-                          return (
-                            <h5 key={i} className="font-semibold mt-4 mb-2" style={{ color: colors.primary }}>
-                              {line.replace(/^##\s*/, "")}
-                            </h5>
-                          );
-                        }
-                        if (line.startsWith("- ") || line.startsWith("• ")) {
-                          return (
-                            <p key={i} className="ml-4 mb-1" style={{ color: colors.foreground }}>
-                              {line}
-                            </p>
-                          );
-                        }
-                        return (
-                          <p key={i} className="mb-1" style={{ color: colors.foreground }}>
-                            {line}
-                          </p>
-                        );
-                      })}
+                  {comparisonInsights?.tldr && !isLoadingComparisonSummary && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="p-3 rounded-lg" style={{ backgroundColor: colors.primary + "15", border: `1px solid ${colors.primary + "40"}` }}>
+                        <p className="text-xs font-medium mb-1" style={{ color: colors.primary }}>🔥 Biggest Opportunity</p>
+                        <p className="text-sm" style={{ color: colors.foreground }}>{comparisonInsights.tldr.biggest_opportunity}</p>
+                      </div>
+                      <div className="p-3 rounded-lg" style={{ backgroundColor: colors.background, border: `1px solid ${colors.border}` }}>
+                        <p className="text-xs font-medium mb-1" style={{ color: colors.mutedForeground }}>💪 Biggest Strength</p>
+                        <p className="text-sm" style={{ color: colors.foreground }}>{comparisonInsights.tldr.biggest_strength}</p>
+                      </div>
+                      <div className="p-3 rounded-lg" style={{ backgroundColor: "hsl(0 84% 55% / 0.1)", border: `1px solid hsl(0 84% 55% / 0.3)` }}>
+                        <p className="text-xs font-medium mb-1" style={{ color: "hsl(0 84% 55%)" }}>🚨 Biggest Weakness</p>
+                        <p className="text-sm" style={{ color: colors.foreground }}>{comparisonInsights.tldr.biggest_weakness}</p>
+                      </div>
+                      <div className="p-3 rounded-lg" style={{ backgroundColor: colors.background, border: `1px solid ${colors.border}` }}>
+                        <p className="text-xs font-medium mb-1" style={{ color: colors.mutedForeground }}>🎯 Best Ad Strategy</p>
+                        <p className="text-sm" style={{ color: colors.foreground }}>{comparisonInsights.tldr.recommended_ad_strategy}</p>
+                      </div>
                     </div>
                   )}
-                  {!comparisonSummary && !isLoadingComparisonSummary && (
-                    <p className="text-sm py-4" style={{ color: colors.mutedForeground }}>
-                      Compare your brand analysis with competitor insights and get AI-powered recommendations on what&apos;s working, what&apos;s going wrong, and what to do next.
-                    </p>
+                  {!comparisonInsights && !isLoadingComparisonSummary && (
+                    <div className="py-6 px-4 rounded-xl text-center" style={{ backgroundColor: colors.muted + "40", border: `1px dashed ${colors.border}` }}>
+                      <p className="text-sm mb-3" style={{ color: colors.foreground }}>Get scannable insights in under 5 seconds.</p>
+                      {comparisonError && <p className="text-xs mb-2" style={{ color: "hsl(0 84% 55%)" }}>{comparisonError}</p>}
+                      <Button size="sm" onClick={fetchComparisonSummary} style={{ backgroundColor: colors.primary, color: colors.primaryForeground }}>
+                        <Sparkles size={14} className="mr-2" />
+                        Generate Insights
+                      </Button>
+                    </div>
                   )}
                 </div>
+
+                {/* 2. Brand Comparison - structured two-column */}
+                <div
+                  className="rounded-2xl p-6 mb-6"
+                  style={{ backgroundColor: colors.background, border: `1px solid ${colors.border}`, boxShadow: colors.shadowSoft }}
+                >
+                  <h4 className="text-base font-semibold mb-4" style={{ color: colors.foreground }}>Brand Comparison</h4>
+                  {comparisonInsights?.comparison ? (
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                      <div className="rounded-xl p-4" style={{ backgroundColor: colors.card, border: `1px solid ${colors.border}` }}>
+                        <p className="text-xs font-medium mb-2" style={{ color: colors.primary }}>Your Brand Strengths</p>
+                        <ul className="text-sm space-y-1" style={{ color: colors.foreground }}>
+                          {(comparisonInsights.comparison.brand_strengths || []).map((s, i) => (
+                            <li key={i}>• {s}</li>
+                          ))}
+                        </ul>
+                      </div>
+                      <div className="rounded-xl p-4" style={{ backgroundColor: colors.card, border: `1px solid ${colors.border}` }}>
+                        <p className="text-xs font-medium mb-2" style={{ color: colors.mutedForeground }}>Competitor Strengths</p>
+                        <ul className="text-sm space-y-1" style={{ color: colors.foreground }}>
+                          {(comparisonInsights.comparison.competitor_strengths || []).map((s, i) => (
+                            <li key={i}>• {s}</li>
+                          ))}
+                        </ul>
+                      </div>
+                      <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="p-3 rounded-lg" style={{ backgroundColor: "hsl(0 84% 55% / 0.1)", border: `1px solid hsl(0 84% 55% / 0.3)` }}>
+                          <p className="text-xs font-medium mb-1" style={{ color: "hsl(0 84% 55%)" }}>🚨 Key Market Gap</p>
+                          <p className="text-sm" style={{ color: colors.foreground }}>{comparisonInsights.comparison.key_market_gap}</p>
+                        </div>
+                        <div className="p-3 rounded-lg" style={{ backgroundColor: colors.primary + "15", border: `1px solid ${colors.primary + "40"}` }}>
+                          <p className="text-xs font-medium mb-1" style={{ color: colors.primary }}>🔥 Strategic Opportunity</p>
+                          <p className="text-sm" style={{ color: colors.foreground }}>{comparisonInsights.comparison.strategic_opportunity}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                      <div className="rounded-xl p-4" style={{ backgroundColor: colors.card, border: `1px solid ${colors.border}` }}>
+                        <p className="text-xs font-medium mb-2" style={{ color: colors.primary }}><Target size={14} className="inline mr-1" /> Your Brand</p>
+                        <p className="text-xs mb-2 truncate" style={{ color: colors.mutedForeground }}>{runData.run?.brandUrl}</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {runData.hooks?.slice(0, 3).map((h) => (
+                            <span key={h.id} className="text-xs px-2 py-0.5 rounded" style={{ backgroundColor: colors.primary + "20", color: colors.foreground }}>{h.hookStatement.slice(0, 45)}{h.hookStatement.length > 45 ? "…" : ""}</span>
+                          ))}
+                        </div>
+                      </div>
+                      {competitorAnalysisResults.map((r, idx) => (
+                        <div key={r.run?.id || idx} className="rounded-xl p-4" style={{ backgroundColor: colors.card, border: `1px solid ${colors.border}` }}>
+                          <p className="text-xs font-medium mb-2" style={{ color: colors.mutedForeground }}><Users size={14} className="inline mr-1" /> Competitor {idx + 1}</p>
+                          <p className="text-xs mb-2 truncate" style={{ color: colors.mutedForeground }}>{r.run?.brandUrl}</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {r.hooks?.slice(0, 3).map((h) => (
+                              <span key={h.id} className="text-xs px-2 py-0.5 rounded" style={{ backgroundColor: colors.muted, color: colors.foreground }}>{h.hookStatement.slice(0, 45)}{h.hookStatement.length > 45 ? "…" : ""}</span>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* 3. What's Working Well - Insight Cards */}
+                {comparisonInsights?.working_well && comparisonInsights.working_well.length > 0 && (
+                  <div className="mb-6">
+                    <h4 className="text-base font-semibold mb-3 flex items-center gap-2" style={{ color: colors.foreground }}>
+                      <span>🔥</span> What&apos;s Working Well
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {comparisonInsights.working_well.map((card, i) => (
+                        <InsightCardBlock key={i} card={card} type="strength" onGenerateAd={handleGenerateAdFromInsight} />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* 4. What's Going Wrong / Gaps - Insight Cards */}
+                {comparisonInsights?.gaps && comparisonInsights.gaps.length > 0 && (
+                  <div className="mb-6">
+                    <h4 className="text-base font-semibold mb-3 flex items-center gap-2" style={{ color: colors.foreground }}>
+                      <span>🚨</span> What&apos;s Going Wrong / Gaps
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {comparisonInsights.gaps.map((card, i) => (
+                        <InsightCardBlock key={i} card={card} type="gap" onGenerateAd={handleGenerateAdFromInsight} />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* 5. Recommended Strategy */}
+                {comparisonInsights?.recommended_strategy && comparisonInsights.recommended_strategy.length > 0 && (
+                  <div
+                    className="rounded-2xl p-6"
+                    style={{ backgroundColor: colors.background, border: `1px solid ${colors.border}` }}
+                  >
+                    <h4 className="text-base font-semibold mb-3 flex items-center gap-2" style={{ color: colors.foreground }}>
+                      <span>🎯</span> Recommended Strategy
+                    </h4>
+                    <div className="space-y-2">
+                      {comparisonInsights.recommended_strategy.map((s, i) => (
+                        <div key={i} className="p-3 rounded-lg flex items-start gap-2" style={{ backgroundColor: colors.card, border: `1px solid ${colors.border}` }}>
+                          <span className="text-xs font-medium shrink-0" style={{ color: colors.primary }}>{s.title}</span>
+                          <p className="text-sm" style={{ color: colors.foreground }}>{s.description}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -1635,6 +1442,66 @@ export default function CreativeIntelligencePage() {
             </div>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function InsightCardBlock({
+  card,
+  type,
+  onGenerateAd,
+}: {
+  card: InsightCard;
+  type: "strength" | "gap";
+  onGenerateAd: (insight: string, adType: "ugc" | "commercial") => void;
+}) {
+  const insightText = [card.title, card.description, card.opportunity, card.ad_angle].filter(Boolean).join(". ");
+  const borderColor = type === "gap" ? "hsl(0 84% 55% / 0.3)" : colors.primary + "40";
+  const bgColor = type === "gap" ? "hsl(0 84% 55% / 0.08)" : colors.primary + "10";
+
+  return (
+    <div
+      className="rounded-xl p-4"
+      style={{
+        backgroundColor: colors.card,
+        border: `1px solid ${borderColor}`,
+        boxShadow: colors.shadowSoft,
+      }}
+    >
+      <h5 className="font-semibold text-sm mb-1" style={{ color: colors.foreground }}>{card.title}</h5>
+      <p className="text-xs mb-2" style={{ color: colors.mutedForeground }}>{card.description}</p>
+      <div className="space-y-1.5 mb-3">
+        <p className="text-xs">
+          <span style={{ color: colors.primary }}>🔥 Opportunity:</span>{" "}
+          <span style={{ color: colors.foreground }}>{card.opportunity}</span>
+        </p>
+        <p className="text-xs">
+          <span style={{ color: colors.primary }}>🎯 Ad Angle:</span>{" "}
+          <span style={{ color: colors.foreground }}>{card.ad_angle}</span>
+        </p>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <Button
+          size="sm"
+          variant="outline"
+          className="text-xs"
+          onClick={() => onGenerateAd(insightText, "ugc")}
+          style={{ borderColor: colors.border }}
+        >
+          <Video size={12} className="mr-1" />
+          Generate UGC Ad
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          className="text-xs"
+          onClick={() => onGenerateAd(insightText, "commercial")}
+          style={{ borderColor: colors.border }}
+        >
+          <Video size={12} className="mr-1" />
+          Generate Commercial Ad
+        </Button>
       </div>
     </div>
   );

@@ -1,5 +1,5 @@
 // pages/api/creative-intelligence/compare-summary.ts
-// AI-powered comparison summary: what's working, what's wrong, what to do
+// AI-powered comparison: TL;DR, insight cards, structured comparison
 
 import type { NextApiRequest, NextApiResponse } from "next";
 import { getUserIdFromRequest } from "@/auth/request";
@@ -27,7 +27,12 @@ type CondensedBrand = {
   underservedAngles?: string[];
 };
 
-async function callGemini(prompt: string, systemInstruction?: string, maxTokens = 4096): Promise<string> {
+async function callGemini(
+  prompt: string,
+  systemInstruction?: string,
+  maxTokens = 4096,
+  jsonMode = false
+): Promise<string> {
   if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY not configured");
   const res = await fetch(
     `${GEMINI_BASE}/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
@@ -42,6 +47,7 @@ async function callGemini(prompt: string, systemInstruction?: string, maxTokens 
         generationConfig: {
           temperature: 0.3,
           maxOutputTokens: maxTokens,
+          ...(jsonMode && { responseMimeType: "application/json" }),
         },
       }),
     }
@@ -86,6 +92,53 @@ function condenseBrand(data: any): CondensedBrand {
   };
 }
 
+type InsightCard = {
+  title: string;
+  description: string;
+  opportunity: string;
+  ad_angle: string;
+};
+
+type CompareResponse = {
+  tldr: {
+    biggest_opportunity: string;
+    biggest_strength: string;
+    biggest_weakness: string;
+    recommended_ad_strategy: string;
+  };
+  comparison: {
+    brand_strengths: string[];
+    competitor_strengths: string[];
+    key_market_gap: string;
+    strategic_opportunity: string;
+  };
+  working_well: InsightCard[];
+  gaps: InsightCard[];
+  recommended_strategy: Array<{ title: string; description: string }>;
+};
+
+function parseJson(raw: string): CompareResponse {
+  const cleaned = raw.replace(/```json?\s*/g, "").replace(/```\s*$/g, "").trim();
+  const parsed = JSON.parse(cleaned);
+  return {
+    tldr: parsed.tldr || {
+      biggest_opportunity: "",
+      biggest_strength: "",
+      biggest_weakness: "",
+      recommended_ad_strategy: "",
+    },
+    comparison: parsed.comparison || {
+      brand_strengths: [],
+      competitor_strengths: [],
+      key_market_gap: "",
+      strategic_opportunity: "",
+    },
+    working_well: Array.isArray(parsed.working_well) ? parsed.working_well : [],
+    gaps: Array.isArray(parsed.gaps) ? parsed.gaps : [],
+    recommended_strategy: Array.isArray(parsed.recommended_strategy) ? parsed.recommended_strategy : [],
+  };
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") {
     return res.status(405).json({ ok: false, error: "Method not allowed" });
@@ -108,59 +161,79 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       ...condenseBrand(c),
     }));
 
-    const prompt = `You are a marketing strategist. Analyze the following brand vs competitor data and provide actionable insights.
+    const brandName = brandData.product?.split(" ")[0] || "Your Brand";
+    const compName = competitorData[0]?.product?.split(" ")[0] || "Competitor";
 
-## YOUR BRAND
-- URL: ${brandData.url || "—"}
-- Product: ${brandData.product || "—"}
-- Positioning: ${brandData.positioning || "—"}
-- Target audience: ${brandData.target || "—"}
-- Brand tone: ${brandData.tone || "—"}
-- Top hooks: ${(brandData.topHooks || []).join(" | ")}
-- Pain points from reviews: ${(brandData.painPoints || []).join("; ")}
-- Desired outcomes: ${(brandData.desiredOutcomes || []).join("; ")}
-- Market gap opportunities: ${(brandData.marketGaps || []).join("; ")}
-- White space: ${(brandData.whiteSpace || []).join("; ")}
-- Underserved angles: ${(brandData.underservedAngles || []).join("; ")}
+    const prompt = `Analyze this brand vs competitor data. Return ONLY valid JSON with this exact structure (no markdown):
 
-## COMPETITORS
+{
+  "tldr": {
+    "biggest_opportunity": "One line - the #1 opportunity to capture",
+    "biggest_strength": "One line - your brand's strongest asset",
+    "biggest_weakness": "One line - your brand's main gap",
+    "recommended_ad_strategy": "One line - best ad approach to beat competitor"
+  },
+  "comparison": {
+    "brand_strengths": ["short strength 1", "short strength 2", "short strength 3"],
+    "competitor_strengths": ["short strength 1", "short strength 2"],
+    "key_market_gap": "One line - gap between brands",
+    "strategic_opportunity": "One line - how to win"
+  },
+  "working_well": [
+    {
+      "title": "Short title",
+      "description": "1-2 lines max",
+      "opportunity": "What this means for marketing",
+      "ad_angle": "Example creative direction"
+    }
+  ],
+  "gaps": [
+    {
+      "title": "Short title",
+      "description": "1-2 lines max",
+      "opportunity": "What to fix",
+      "ad_angle": "Ad angle to address this"
+    }
+  ],
+  "recommended_strategy": [
+    {
+      "title": "Strategy name",
+      "description": "1-2 lines"
+    }
+  ]
+}
+
+RULES:
+- tldr: Each field = ONE short line (under 80 chars). No paragraphs.
+- comparison: brand_strengths and competitor_strengths = 2-3 short bullets each.
+- working_well: 2-3 cards. Each description, opportunity, ad_angle = max 2 lines.
+- gaps: 2-3 cards. Same structure.
+- recommended_strategy: 2-3 items.
+
+## YOUR BRAND (${brandName})
+URL: ${brandData.url || "—"}
+Product: ${brandData.product || "—"}
+Positioning: ${brandData.positioning || "—"}
+Target: ${brandData.target || "—"}
+Top hooks: ${(brandData.topHooks || []).join(" | ")}
+Pain points: ${(brandData.painPoints || []).join("; ")}
+Market gaps: ${(brandData.marketGaps || []).join("; ")}
+
+## COMPETITOR (${compName})
 ${competitorData
   .map(
-    (c) => `
-### ${c.name} (${c.url || "—"})
-- Product: ${c.product || "—"}
-- Positioning: ${c.positioning || "—"}
-- Target: ${c.target || "—"}
-- Top hooks: ${(c.topHooks || []).join(" | ")}
-- Pain points: ${(c.painPoints || []).join("; ")}
-- Market gaps: ${(c.marketGaps || []).join("; ")}
-`
+    (c) => `${c.name}: ${c.product} | Hooks: ${(c.topHooks || []).join(" | ")} | Gaps: ${(c.marketGaps || []).join("; ")}`
   )
-  .join("\n")}
+  .join("\n")}`;
 
----
+    const systemInstruction = `You are a marketing strategist. Return ONLY valid JSON. Be specific to the data. All text must be concise: 1-2 lines max. No paragraphs.`;
 
-Provide a structured analysis in the following format. Be specific, actionable, and reference the actual data above.
-
-## What's Working Well for Your Brand
-(2-4 bullet points on strengths, differentiation, or messaging that resonates)
-
-## What's Going Wrong / Gaps
-(2-4 bullet points on weaknesses, missed opportunities, or areas where competitors outperform)
-
-## What You Need to Do
-(3-5 specific, actionable recommendations—prioritized. Be concrete: e.g. "Test hook X in ads" or "Emphasize Y in positioning")
-
-## What Will Likely Work
-(2-3 predictions on tactics or angles that should perform well based on the data)`;
-
-    const systemInstruction = `You are an expert marketing strategist. Output clear, actionable insights. Use bullet points. Be concise but specific. Reference actual hooks, positioning, or data from the input. Do not use generic advice—tie every point to the provided brand/competitor data.`;
-
-    const summary = await callGemini(prompt, systemInstruction, 4096);
+    const raw = await callGemini(prompt, systemInstruction, 4096, true);
+    const result = parseJson(raw);
 
     return res.status(200).json({
       ok: true,
-      summary: summary.trim(),
+      ...result,
     });
   } catch (err: any) {
     console.error("Compare summary error:", err);

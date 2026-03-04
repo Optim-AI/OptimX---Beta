@@ -7,7 +7,7 @@
 
 export const BUY_CREDITS_PRICING = {
   imageCreditPriceInr: 10, // ₹10 per image credit
-  videoSecondPriceInr: 26, // ₹26 per video second
+  videoSecondPriceInr: 30, // ₹30 per video second
   minQuantity: 10,
   maxQuantity: 1000,
   minVideoQuantity: 8,

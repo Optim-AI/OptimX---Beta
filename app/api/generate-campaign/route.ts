@@ -35,12 +35,12 @@ async function normalizeImageForGemini(dataUrl: string): Promise<{ mimeType: str
   }
 }
 
-const NANO_API_KEY = process.env.NANO_API_KEY;
+const NANO_API_KEY = process.env.NANO_API_KEY || process.env.GEMINI_API_KEY || process.env.GEMINI_VEO_API_KEY;
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash-image";
 const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
 
 if (!NANO_API_KEY) {
-  console.warn("NANO_API_KEY not set - Gemini calls will fail.");
+  console.warn("NANO_API_KEY / GEMINI_API_KEY not set - Gemini image generation will fail.");
 }
 
 /* ---------- Types / helpers for logo placement ---------- */
@@ -495,7 +495,7 @@ export async function POST(request: Request) {
     }
     if (!NANO_API_KEY)
       return NextResponse.json(
-        { ok: false, error: "Server missing NANO_API_KEY" },
+        { ok: false, error: "Server missing NANO_API_KEY or GEMINI_API_KEY for image generation" },
         { status: 500 }
       );
 

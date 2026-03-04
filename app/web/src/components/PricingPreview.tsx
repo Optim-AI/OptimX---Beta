@@ -19,7 +19,7 @@ const PLANS = [
     priceQuarterly: null,
     effectivePerMonth: null,
     imageCredits: '10 credits = ₹99',
-    videoCredits: '8 sec = ₹208',
+    videoCredits: '8 sec = ₹240',
     freeIncluded: '5 images, 8 sec video',
     noWatermark: true,
     crossPlatformPosting: false,

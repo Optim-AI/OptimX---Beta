@@ -21,6 +21,7 @@ import { Readability } from "@mozilla/readability";
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GEMINI_VEO_API_KEY;
 const SEARCH_API_KEY = process.env.SEARCH_API_KEY || process.env.SERPAPI_KEY;
+const META_AD_LIBRARY_TOKEN = process.env.META_AD_LIBRARY_ACCESS_TOKEN;
 const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta";
 
 export const config = {
@@ -354,8 +355,103 @@ async function domainKeywordValidation(
   return { score, relevant };
 }
 
-/* ---------- Stage 2b: Meta Ad Library (via SearchAPI) ---------- */
-async function fetchMetaAdLibraryAds(
+/* ---------- Stage 2b: Meta Ad Library ---------- */
+const META_GRAPH_VERSION = "v25.0";
+const META_ADS_ARCHIVE_FIELDS = "id,page_id,page_name,ad_creative_bodies,ad_snapshot_url,publisher_platforms";
+
+/** Fetch ads via Meta Graph API (ads_archive) - preferred when META_AD_LIBRARY_ACCESS_TOKEN is set */
+async function fetchMetaAdLibraryAdsViaGraphAPI(
+  options: {
+    pageIds?: string[];
+    contextualKeywords?: string[];
+    accessToken: string;
+    adReachedCountries?: string[];
+  }
+): Promise<any[]> {
+  const { pageIds = [], contextualKeywords = [], accessToken, adReachedCountries = ["IN", "US"] } = options;
+  const allAds: any[] = [];
+  const seenIds = new Set<string>();
+
+  const normalizeAd = (ad: any, searchKeyword: string) => {
+    const bodyText = Array.isArray(ad.ad_creative_bodies)
+      ? (ad.ad_creative_bodies[0] || "").slice(0, 2000)
+      : "";
+    const id = ad.id || `${ad.page_id}-${bodyText.slice(0, 50)}`;
+    if (seenIds.has(id)) return null;
+    seenIds.add(id);
+    return {
+      search_keyword: searchKeyword,
+      page_name: ad.page_name || null,
+      page_id: ad.page_id || null,
+      body_text: bodyText,
+      cta_text: null,
+      cta_type: null,
+      display_format: null,
+      platforms: ad.publisher_platforms || [],
+      image_url: ad.ad_snapshot_url || null,
+      raw_data: ad,
+    };
+  };
+
+  for (const pageId of pageIds.slice(0, 5)) {
+    if (!pageId?.trim()) continue;
+    try {
+      const params = new URLSearchParams({
+        search_page_ids: JSON.stringify([pageId]),
+        ad_reached_countries: JSON.stringify(adReachedCountries),
+        ad_active_status: "ACTIVE",
+        ad_type: "ALL",
+        access_token: accessToken,
+        fields: META_ADS_ARCHIVE_FIELDS,
+      });
+      const url = `https://graph.facebook.com/${META_GRAPH_VERSION}/ads_archive?${params}`;
+      const res = await fetch(url);
+      if (!res.ok) {
+        const err = await res.text();
+        console.warn("Meta Ad Library (page_id) API error:", res.status, err);
+        continue;
+      }
+      const data = await res.json();
+      for (const ad of (data.data || []).slice(0, 8)) {
+        const normalized = normalizeAd(ad, `page:${pageId}`);
+        if (normalized) allAds.push(normalized);
+      }
+    } catch (e) {
+      console.warn("Meta Ad Library (page_id) fetch error:", e);
+    }
+  }
+
+  if (allAds.length < 5 && contextualKeywords.length > 0) {
+    for (const kw of contextualKeywords.slice(0, 3)) {
+      if (!kw?.trim()) continue;
+      try {
+        const params = new URLSearchParams({
+          search_terms: kw.trim().slice(0, 100),
+          ad_reached_countries: JSON.stringify(adReachedCountries),
+          ad_active_status: "ACTIVE",
+          ad_type: "ALL",
+          access_token: accessToken,
+          fields: META_ADS_ARCHIVE_FIELDS,
+        });
+        const url = `https://graph.facebook.com/${META_GRAPH_VERSION}/ads_archive?${params}`;
+        const res = await fetch(url);
+        if (!res.ok) continue;
+        const data = await res.json();
+        for (const ad of (data.data || []).slice(0, 8)) {
+          const normalized = normalizeAd(ad, kw.trim());
+          if (normalized) allAds.push(normalized);
+        }
+      } catch (e) {
+        console.warn("Meta Ad Library (keyword) fetch error:", e);
+      }
+    }
+  }
+
+  return allAds.slice(0, 25);
+}
+
+/** Fetch ads via SearchAPI (fallback when Meta token not set or fails) */
+async function fetchMetaAdLibraryAdsViaSearchAPI(
   options: {
     pageIds?: string[];
     contextualKeywords?: string[];
@@ -420,6 +516,36 @@ async function fetchMetaAdLibraryAds(
   }
 
   return allAds.slice(0, 25);
+}
+
+/** Unified Meta Ad Library fetch: prefers Graph API when token set, falls back to SearchAPI */
+async function fetchMetaAdLibraryAds(
+  options: {
+    pageIds?: string[];
+    contextualKeywords?: string[];
+    searchApiKey: string | undefined;
+  }
+): Promise<any[]> {
+  const { pageIds = [], contextualKeywords = [], searchApiKey } = options;
+
+  if (META_AD_LIBRARY_TOKEN) {
+    try {
+      const ads = await fetchMetaAdLibraryAdsViaGraphAPI({
+        pageIds,
+        contextualKeywords,
+        accessToken: META_AD_LIBRARY_TOKEN,
+      });
+      if (ads.length > 0) return ads;
+    } catch (e) {
+      console.warn("Meta Ad Library (Graph API) failed, falling back to SearchAPI:", e);
+    }
+  }
+
+  return fetchMetaAdLibraryAdsViaSearchAPI({
+    pageIds,
+    contextualKeywords,
+    searchApiKey,
+  });
 }
 
 /* ---------- Stage 2c: Facebook Business Page (via SearchAPI) ---------- */
