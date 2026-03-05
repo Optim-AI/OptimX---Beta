@@ -15,6 +15,7 @@ import {
   BrandOnboarding,
   BrandGuidelineModal,
   formatTimestamp,
+  mapFullAnalyzeToBrandSnapshot,
 } from '@/app/web/src/components/creative-studio';
 import { authFetch } from '@/lib/utils';
 
@@ -224,31 +225,7 @@ export default function BrandStudioLanding() {
         showError(data.error || 'Could not analyze website. Please try manual setup.');
         return null;
       }
-      const result = data.result;
-      return {
-        name: result.facts?.company_name || 'Unknown Brand',
-        description: result.positioning?.primary_value_proposition || '',
-        audience: Array.isArray(result.facts?.who_it_is_for)
-          ? result.facts.who_it_is_for.join(', ')
-          : (result.facts?.who_it_is_for as string) || '',
-        offering: Array.isArray(result.facts?.what_they_sell)
-          ? result.facts.what_they_sell.join(', ')
-          : (result.facts?.what_they_sell as string) || '',
-        tone: result.brandVoice || result.personality || 'professional',
-        logo: result.logo,
-        logoUrl: result.logoUrl,
-        primaryColors: result.primaryColors,
-        fontStyles: result.fontStyles,
-        brandVoice: result.brandVoice,
-        coreValueProp: result.coreValueProp,
-        ctaPatterns: result.ctaPatterns,
-        productCategory: result.productCategory,
-        pricePositioning: result.pricePositioning,
-        personality: result.personality,
-        colors: result.colors
-          ? { primary: result.colors.primary ?? undefined, secondary: result.colors.secondary ?? undefined, accent: result.colors.accent ?? undefined }
-          : undefined,
-      };
+      return mapFullAnalyzeToBrandSnapshot(data.result);
     } catch (err: any) {
       showError(`Error analyzing website: ${err?.message || 'Unknown error'}. Please try manual setup.`);
       return null;
@@ -269,36 +246,7 @@ export default function BrandStudioLanding() {
 
       // API returns { result: {...} } on success, { error: string } on failure
       if (data.result) {
-        const result = data.result;
-        const brandSnapshot: BrandSnapshot = {
-          name: result.facts?.company_name || 'Unknown Brand',
-          description: result.positioning?.primary_value_proposition || '',
-          audience: Array.isArray(result.facts?.who_it_is_for)
-            ? result.facts.who_it_is_for.join(', ')
-            : (result.facts?.who_it_is_for as string) || '',
-          offering: Array.isArray(result.facts?.what_they_sell)
-            ? result.facts.what_they_sell.join(', ')
-            : (result.facts?.what_they_sell as string) || '',
-          tone: result.brandVoice || result.personality || 'professional',
-          logo: result.logo,
-          logoUrl: result.logoUrl,
-          primaryColors: result.primaryColors,
-          fontStyles: result.fontStyles,
-          brandVoice: result.brandVoice,
-          coreValueProp: result.coreValueProp,
-          ctaPatterns: result.ctaPatterns,
-          productCategory: result.productCategory,
-          pricePositioning: result.pricePositioning,
-          personality: result.personality,
-          colors: result.colors
-            ? {
-                primary: result.colors.primary ?? undefined,
-                secondary: result.colors.secondary ?? undefined,
-                accent: result.colors.accent ?? undefined,
-              }
-            : undefined,
-        };
-
+        const brandSnapshot = mapFullAnalyzeToBrandSnapshot(data.result);
         setBrand(brandSnapshot);
         localStorage.setItem('brand:snapshot', JSON.stringify(brandSnapshot));
         setShowBrandOnboarding(false);

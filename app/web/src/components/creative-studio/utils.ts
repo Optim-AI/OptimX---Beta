@@ -3,6 +3,56 @@
 
 import type { BrandSnapshot, PosterConfig } from './types';
 
+/** Map fullAnalyze API result to BrandSnapshot (Brand Kit format) */
+export function mapFullAnalyzeToBrandSnapshot(result: any): BrandSnapshot {
+  const primaryColors = result.primaryColors || [];
+  const colorsObj = result.colors
+    ? {
+        primary: result.colors.primary ?? primaryColors[0],
+        secondary: result.colors.secondary ?? primaryColors[1],
+        accent: result.colors.accent ?? primaryColors[2],
+        neutral: primaryColors[3] || result.colors.neutral,
+      }
+    : primaryColors.length
+      ? {
+          primary: primaryColors[0],
+          secondary: primaryColors[1],
+          accent: primaryColors[2],
+          neutral: primaryColors[3],
+        }
+      : undefined;
+
+  return {
+    name: result.facts?.company_name || 'Unknown Brand',
+    description: result.positioning?.primary_value_proposition || '',
+    audience: Array.isArray(result.facts?.who_it_is_for)
+      ? result.facts.who_it_is_for.join(', ')
+      : (result.facts?.who_it_is_for as string) || '',
+    offering: Array.isArray(result.facts?.what_they_sell)
+      ? result.facts.what_they_sell.join(', ')
+      : (result.facts?.what_they_sell as string) || '',
+    tone: result.brandVoice || result.personality || 'professional',
+    logo: result.logo,
+    logoUrl: result.logoUrl,
+    primaryColors,
+    fontStyles: result.fontStyles,
+    primaryFont: result.primaryFont,
+    brandVoice: result.brandVoice,
+    coreValueProp: result.coreValueProp,
+    ctaPatterns: result.ctaPatterns,
+    productCategory: result.productCategory,
+    pricePositioning: result.pricePositioning,
+    personality: result.personality,
+    colors: colorsObj,
+    tagline: result.tagline,
+    brand_aesthetic: result.brand_aesthetic,
+    brand_tone: result.brand_tone,
+    brand_values: result.brand_values,
+    business_overview: result.business_overview,
+    website_url: result.website_url,
+  };
+}
+
 /**
  * Theme Configuration Map
  * Maps UI theme selections to specific marketing design rules

@@ -6,6 +6,7 @@ export * from './types';
 
 // Utilities
 export {
+  mapFullAnalyzeToBrandSnapshot,
   THEME_CONFIG,
   getCompositionRules,
   generateProductionPrompt,

@@ -12,6 +12,7 @@ export type BrandSnapshot = {
   // New BrandProfile fields
   primaryColors?: string[]; // Array of hex codes (e.g., ["#FF0000", "#00FF00"])
   fontStyles?: string; // serif, sans-serif, monospace, etc.
+  primaryFont?: string; // Font name e.g. "Source Sans Pro"
   brandVoice?: "Professional" | "Playful" | "Minimalist" | "Bold"; // Brand voice enum
   coreValueProp?: string; // The "Hook" - main value proposition
   // Legacy color support (for backward compatibility)
@@ -19,11 +20,18 @@ export type BrandSnapshot = {
     primary?: string;
     secondary?: string;
     accent?: string;
+    neutral?: string;
   };
   industry?: string;
   tagline?: string;
   personality?: string; // confident, friendly, youthful, premium, bold, playful, etc.
-  // Expanded Brand Intelligence (excluding visual style and typography - not stored)
+  // Brand Kit / Brand Intelligence (Pomeli/Canva-style)
+  brand_aesthetic?: string[]; // e.g. ["minimalist", "modern", "scientific", "elegant"]
+  brand_tone?: string[]; // e.g. ["transparent", "friendly", "educational"]
+  brand_values?: string[]; // e.g. ["100% Vegan", "Cruelty-Free"]
+  business_overview?: string; // 2-sentence summary
+  website_url?: string;
+  // Expanded Brand Intelligence
   ctaPatterns?: string[]; // Common CTAs like "Shop Now", "Buy Today", "Explore More"
   productCategory?: string; // Specific category like "earbuds", "headphones", "smartwatches"
   pricePositioning?: "budget" | "mid-range" | "premium";

@@ -11,6 +11,7 @@ import {
   type BrandSnapshot,
   BrandGuidelineModal,
   BrandOnboarding,
+  mapFullAnalyzeToBrandSnapshot,
 } from "@/app/web/src/components/creative-studio";
 import { DEFAULT_AD_BUILDER_DATA } from "@/app/web/src/components/creative-studio/utils";
 import {
@@ -560,35 +561,7 @@ export default function ContentStudioPage() {
         showError(data.error || "Could not analyze website. Please try manual setup.");
         return null;
       }
-      const result = data.result;
-      return {
-        name: result.facts?.company_name || "Unknown Brand",
-        description: result.positioning?.primary_value_proposition || "",
-        audience: Array.isArray(result.facts?.who_it_is_for)
-          ? result.facts.who_it_is_for.join(", ")
-          : (result.facts?.who_it_is_for as string) || "",
-        offering: Array.isArray(result.facts?.what_they_sell)
-          ? result.facts.what_they_sell.join(", ")
-          : (result.facts?.what_they_sell as string) || "",
-        tone: result.brandVoice || result.personality || "professional",
-        logo: result.logo,
-        logoUrl: result.logoUrl,
-        primaryColors: result.primaryColors,
-        fontStyles: result.fontStyles,
-        brandVoice: result.brandVoice,
-        coreValueProp: result.coreValueProp,
-        ctaPatterns: result.ctaPatterns,
-        productCategory: result.productCategory,
-        pricePositioning: result.pricePositioning,
-        personality: result.personality,
-        colors: result.colors
-          ? {
-              primary: result.colors.primary ?? undefined,
-              secondary: result.colors.secondary ?? undefined,
-              accent: result.colors.accent ?? undefined,
-            }
-          : undefined,
-      };
+      return mapFullAnalyzeToBrandSnapshot(data.result);
     } catch (err: any) {
       showError(`Error analyzing website: ${err?.message || "Unknown error"}. Please try manual setup.`);
       return null;
@@ -604,35 +577,7 @@ export default function ContentStudioPage() {
       });
       const data = await response.json();
       if (data.result) {
-        const result = data.result;
-        const brandSnapshot: BrandSnapshot = {
-          name: result.facts?.company_name || "Unknown Brand",
-          description: result.positioning?.primary_value_proposition || "",
-          audience: Array.isArray(result.facts?.who_it_is_for)
-            ? result.facts.who_it_is_for.join(", ")
-            : (result.facts?.who_it_is_for as string) || "",
-          offering: Array.isArray(result.facts?.what_they_sell)
-            ? result.facts.what_they_sell.join(", ")
-            : (result.facts?.what_they_sell as string) || "",
-          tone: result.brandVoice || result.personality || "professional",
-          logo: result.logo,
-          logoUrl: result.logoUrl,
-          primaryColors: result.primaryColors,
-          fontStyles: result.fontStyles,
-          brandVoice: result.brandVoice,
-          coreValueProp: result.coreValueProp,
-          ctaPatterns: result.ctaPatterns,
-          productCategory: result.productCategory,
-          pricePositioning: result.pricePositioning,
-          personality: result.personality,
-          colors: result.colors
-            ? {
-                primary: result.colors.primary ?? undefined,
-                secondary: result.colors.secondary ?? undefined,
-                accent: result.colors.accent ?? undefined,
-              }
-            : undefined,
-        };
+        const brandSnapshot = mapFullAnalyzeToBrandSnapshot(data.result);
         setBrandGuideline(brandSnapshot);
         localStorage.setItem("brand:snapshot", JSON.stringify(brandSnapshot));
         setShowBrandOnboarding(false);
@@ -698,40 +643,54 @@ export default function ContentStudioPage() {
       <main className="flex-1 overflow-auto">
         <div className="max-w-6xl mx-auto px-6 py-10">
           {step === "entry" && (
-            <div className="text-center space-y-10 py-12">
-              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium mb-4" style={{ background: "hsl(213 100% 55% / 0.15)", color: colors.primary }}>
-                <Sparkles className="w-4 h-4" />
-                AI-Powered Content Studio
+            <div className="flex flex-col items-center py-12">
+              <div className="flex flex-col items-center mb-8">
+                <div className="flex items-center justify-center w-14 h-14 rounded-full mb-4" style={{ background: "hsl(213 100% 55% / 0.15)" }}>
+                  <Sparkles className="w-7 h-7" style={{ color: colors.primary }} />
+                </div>
+                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium mb-4" style={{ background: "hsl(213 100% 55% / 0.15)", color: colors.primary }}>
+                  AI-Powered Content Studio
+                </div>
+                <h1 className="text-4xl md:text-5xl font-bold tracking-tight max-w-6xl mx-auto text-center" style={{ color: colors.foreground }}>
+                  Let's turn your website into high converting ads
+                </h1>
+                <p className="text-lg max-w-2xl mx-auto text-center mt-2" style={{ color: colors.mutedForeground }}>
+                  Paste your website URL and we&apos;ll extract products, generate ad creatives, and build campaigns all in one place.
+                </p>
               </div>
-              <h1 className="text-4xl md:text-5xl font-bold tracking-tight max-w-2xl mx-auto" style={{ color: colors.foreground }}>
-                Turn your website into high-converting ads
-              </h1>
-              <p className="text-lg max-w-2xl mx-auto" style={{ color: colors.mutedForeground }}>
-                Paste your website URL and we&apos;ll extract products, generate ad creatives, and build campaigns—all in one place.
-              </p>
-              <div className="flex flex-col sm:flex-row gap-3 max-w-3xl mx-auto w-full">
-                <Input
-                  placeholder="Paste Website URL"
-                  value={url}
-                  onChange={(e) => setUrl(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleAnalyze()}
-                  className="flex-1 bg-[hsl(0_0%_12%)] border-[hsl(0_0%_22%)] text-[hsl(0_0%_95%)] placeholder:text-[hsl(0_0%_50%)] rounded-xl h-14 text-base"
-                />
-                <Button
-                  onClick={handleAnalyze}
-                  disabled={!url.trim()}
-                  className="px-8 rounded-xl h-14 text-base font-medium"
-                  style={{
-                    background: colors.primary,
-                    color: colors.primaryForeground,
-                  }}
-                >
-                  <Search className="w-5 h-5 mr-2" />
-                  Analyze Website
-                </Button>
+
+              <div
+                className="w-full max-w-4xl rounded-2xl border p-6 sm:p-8"
+                style={{
+                  background: colors.card,
+                  borderColor: colors.border,
+                }}
+              >
+                <div className="flex gap-3">
+                  <Input
+                    placeholder="Paste Website URL"
+                    value={url}
+                    onChange={(e) => setUrl(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleAnalyze()}
+                    className="flex-1 min-w-0 bg-[hsl(0_0%_12%)] text-[hsl(0_0%_95%)] placeholder:text-[hsl(0_0%_50%)] rounded-lg h-12 text-sm"
+                    style={{ border: "1px solid hsl(213 100% 55%)" }}
+                  />
+                  <Button
+                    onClick={handleAnalyze}
+                    disabled={!url.trim()}
+                    className="flex-shrink-0 px-12 rounded-lg h-12 text-sm font-medium"
+                    style={{
+                      background: colors.primary,
+                      color: colors.primaryForeground,
+                    }}
+                  >
+                    <Search className="w-5 h-5 mr-2" />
+                    Analyze Website
+                  </Button>
+                </div>
               </div>
-              <p className="text-sm" style={{ color: colors.mutedForeground }}>
-                e.g. true-elements.com, myshopify.com
+
+              <p className="text-sm mt-6 text-center" style={{ color: colors.mutedForeground }}>
               </p>
             </div>
           )}
