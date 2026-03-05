@@ -810,7 +810,7 @@ export default function ImageLibraryPage(): JSX.Element {
               <SkeletonVideoGrid count={8} />
             ) : videos.length === 0 ? (
               <div style={{ color: colors.mutedForeground }}>
-                No generated videos found. Create a video in Creative Studio and they&apos;ll appear here.
+                No generated videos found. Create a video in Brand Studio and they&apos;ll appear here.
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
@@ -888,11 +888,11 @@ export default function ImageLibraryPage(): JSX.Element {
                 </a>
 
                 <a
-                  href={`/creative-studio/video?id=${selectedVideo.sessionId}`}
+                  href={`/brand-studio/video?id=${selectedVideo.sessionId}`}
                   className="w-full px-4 py-2 rounded-md border text-center text-sm"
                   style={{ borderColor: colors.border, color: colors.foreground }}
                 >
-                  Open in Creative Studio
+                  Open in Brand Studio
                 </a>
               </div>
             </div>

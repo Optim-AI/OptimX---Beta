@@ -7,7 +7,6 @@ import { showAlert, showError } from '@/app/web/src/components/ui/AlertModal';
 import Link from 'next/link';
 import Sidebar from '@/app/web/src/components/Sidebar';
 import colors from '@/lib/ui/colors';
-import { authFetch } from '@/lib/utils';
 import {
   type BrandSnapshot,
   type SessionListItem,
@@ -16,7 +15,8 @@ import {
   BrandOnboarding,
   BrandGuidelineModal,
   formatTimestamp,
-} from '@/app/web/src/components/creative-studio';      
+} from '@/app/web/src/components/creative-studio';
+import { authFetch } from '@/lib/utils';
 
 export default function BrandStudioLanding() {
   const router = useRouter();
@@ -160,9 +160,9 @@ export default function BrandStudioLanding() {
         setShowNameModal(false);
         // Navigate to the session page
         if (newSessionType === 'poster') {
-          router.push(`/creative-studio/poster?id=${data.session.id}`);
+          router.push(`/brand-studio/poster?id=${data.session.id}`);
         } else {
-          router.push(`/creative-studio/video?id=${data.session.id}`);
+          router.push(`/brand-studio/video?id=${data.session.id}`);
         }
       } else {
         showError('Failed to create session: ' + (data.error || 'Unknown error'));
@@ -177,9 +177,9 @@ export default function BrandStudioLanding() {
 
   function handleSessionClick(session: SessionListItem) {
     if (session.sessionType === 'poster') {
-      router.push(`/creative-studio/poster?id=${session.id}`);
+      router.push(`/brand-studio/poster?id=${session.id}`);
     } else {
-      router.push(`/creative-studio/video?id=${session.id}`);
+      router.push(`/brand-studio/video?id=${session.id}`);
     }
   }
 

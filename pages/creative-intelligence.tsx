@@ -390,9 +390,9 @@ export default function CreativeIntelligencePage() {
     try {
       sessionStorage.setItem("creative-intelligence:ad-prompt", prompt);
       sessionStorage.setItem("creative-intelligence:ad-type", type);
-      router.push("/creative-studio");
+      router.push("/brand-studio");
     } catch {
-      router.push("/creative-studio");
+      router.push("/brand-studio");
     }
   }
 

@@ -1,4 +1,4 @@
-// pages/creative-studio/poster/[sessionId].tsx
+// pages/brand-studio/poster/[sessionId].tsx
 // Poster Generation Session Page
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
@@ -1373,7 +1373,7 @@ export default function PosterSessionPage() {
         await saveSession();
       }
       
-      router.push(`/creative-studio/poster?id=${selectedSessionId}`);
+      router.push(`/brand-studio/poster?id=${selectedSessionId}`);
     }
   }
 
@@ -1421,7 +1421,7 @@ export default function PosterSessionPage() {
         setPosterSessions(prev => [newSession, ...prev]);
         
         setShowNewSessionModal(false);
-        router.push(`/creative-studio/poster?id=${data.session.id}`);
+        router.push(`/brand-studio/poster?id=${data.session.id}`);
       } else {
         showError('Failed to create session: ' + (data.error || 'Unknown error'));
       }
@@ -1452,7 +1452,7 @@ export default function PosterSessionPage() {
         setPosterSessions(prev => prev.filter(s => s.id !== deleteSessionId));
         
         if (deleteSessionId === sessionId) {
-          router.push('/creative-studio');
+          router.push('/brand-studio');
         }
       } else {
         showError('Failed to delete session: ' + (data.error || 'Unknown error'));
@@ -1485,10 +1485,10 @@ export default function PosterSessionPage() {
         <div className="text-center">
           <p className="text-red-600 mb-4">{error}</p>
           <button
-            onClick={() => router.push('/creative-studio')}
+            onClick={() => router.push('/brand-studio')}
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
           >
-            Back to Creative Studio
+            Back to Brand Studio
           </button>
         </div>
       </div>

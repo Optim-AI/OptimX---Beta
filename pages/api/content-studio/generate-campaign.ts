@@ -95,7 +95,9 @@ Description: ${product.description || ""}
 Benefits: ${Array.isArray(product.key_benefits) ? product.key_benefits.join(", ") : ""}
 Target: ${product.target_audience || ""}
 Brand: ${brand?.name || ""}
-Brand tone: ${brand?.tone || ""}`;
+Brand tone: ${brand?.tone || ""}
+
+CRITICAL: Never use asterisks (*) in any text. No * between words or sentences. Plain text only.`;
 
   try {
     const raw = await callGemini(prompt);

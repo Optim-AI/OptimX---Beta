@@ -279,6 +279,8 @@ function buildPromptFromInputs(body: any) {
     `Produce a high-quality visual sized approximately ${width}×${height} (${aspectLabel}). Keep composition balanced. Avoid putting essential text in the extreme corners.`
   );
 
+  parts.push("CRITICAL: Never use asterisks (*) in any text. No * between words or sentences (e.g. no *and* or *bold*). Plain text only for headlines, body copy, and CTAs.");
+
   return parts.filter(Boolean).join("\n\n");
 }
 
@@ -620,6 +622,8 @@ export async function POST(request: Request) {
     }
 
     // Add additional reference images (lower priority)
+    // Edit mode: first ref is the poster to modify (no product image)
+    const isEditMode = (body.mode === "edit" || body.editMode === true) && !productDataUrl;
     if (Array.isArray(refDataUrls) && refDataUrls.length) {
       let added = 0;
       for (const d of refDataUrls) {
@@ -633,7 +637,10 @@ export async function POST(request: Request) {
             data: normalized.base64Data,
           },
         });
-        parts.push({ text: "The image above is an additional reference image for style/context." });
+        const refText = isEditMode && added === 0
+          ? "The image above is the CURRENT POSTER. Modify it with ONLY the exact change requested in the prompt. Keep layout, product, colors, and all other elements identical."
+          : "The image above is an additional reference image for style/context.";
+        parts.push({ text: refText });
         added++;
         if (added >= 2) break; // Limit to 2 additional refs (3 total including product)
       }

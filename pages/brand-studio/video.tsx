@@ -1,4 +1,4 @@
-// pages/creative-studio/video/[sessionId].tsx
+// pages/brand-studio/video/[sessionId].tsx
 // Video Generation Session Page
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -867,7 +867,7 @@ export default function VideoSessionPage() {
         }
       }
       
-      router.push(`/creative-studio/video?id=${selectedSessionId}`);
+      router.push(`/brand-studio/video?id=${selectedSessionId}`);
     }
   }
 
@@ -915,7 +915,7 @@ export default function VideoSessionPage() {
         setVideoSessions(prev => [newSession, ...prev]);
 
         setShowNewSessionModal(false);
-        router.push(`/creative-studio/video?id=${data.session.id}`);
+        router.push(`/brand-studio/video?id=${data.session.id}`);
       } else {
         showError('Failed to create session: ' + (data.error || 'Unknown error'));
       }
@@ -946,7 +946,7 @@ export default function VideoSessionPage() {
         setVideoSessions((prev) => prev.filter((s) => s.id !== deleteSessionId));
 
         if (deleteSessionId === sessionId) {
-          router.push('/creative-studio');
+          router.push('/brand-studio');
         }
       } else {
         showError('Failed to delete session: ' + (data.error || 'Unknown error'));
@@ -979,11 +979,11 @@ export default function VideoSessionPage() {
         <div className="text-center">
           <p className="mb-4" style={{ color: colors.destructive }}>{error}</p>
           <button
-            onClick={() => router.push('/creative-studio')}
+            onClick={() => router.push('/brand-studio')}
             className="px-4 py-2 text-white rounded-lg"
             style={{ backgroundColor: colors.primary }}
           >
-            Back to Creative Studio
+            Back to Brand Studio
           </button>
         </div>
       </div>

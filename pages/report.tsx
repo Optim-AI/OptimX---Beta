@@ -360,7 +360,7 @@ export default function ReportPage() {
                   <Input
                     id="pageUrl"
                     type="url"
-                    placeholder="e.g. https://app.example.com/creative-studio/video"
+                    placeholder="e.g. https://app.example.com/brand-studio/video"
                     value={pageUrl}
                     onChange={(e) => setPageUrl(e.target.value)}
                     style={{

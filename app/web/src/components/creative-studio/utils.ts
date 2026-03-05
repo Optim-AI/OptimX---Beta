@@ -1,4 +1,4 @@
-// Creative Studio Shared Utilities
+// Brand Studio Shared Utilities
 // Extracted from pages/creative-studio.tsx for modularity
 
 import type { BrandSnapshot, PosterConfig } from './types';
@@ -112,6 +112,56 @@ export function getCompositionRules(ratio: "1:1" | "4:5" | "9:16" | "1.91:1"): s
   };
   
   return rules[ratio] || rules["1:1"];
+}
+
+/**
+ * Map brand attributes to the most appropriate poster theme.
+ * Ensures posters complement the brand instead of defaulting to commercial.
+ */
+export function getThemeForBrand(
+  brand: BrandSnapshot | null,
+  angle?: { title?: string } | null
+): string {
+  // Ad angle override: clinical/science angles → professional
+  if (angle?.title && /clinical|proven|science|lab|performance/i.test(angle.title)) {
+    return "professional";
+  }
+
+  if (!brand) return "professional";
+
+  const voice = (brand.brandVoice || "").toLowerCase();
+  const tone = (brand.tone || brand.personality || "").toLowerCase();
+  const industry = (brand.industry || brand.offering || "").toLowerCase();
+
+  // 1. Brand voice (strongest signal)
+  if (voice === "professional") return "professional";
+  if (voice === "minimalist") return "minimal";
+  if (voice === "playful") return "playful";
+  if (voice === "bold") return "bold";
+
+  // 2. Tone/personality
+  if (/professional|corporate|trustworthy|formal|clean/i.test(tone)) return "professional";
+  if (/minimal|clean|simple|modern|understated/i.test(tone)) return "minimal";
+  if (/playful|fun|energetic|casual|friendly|youthful/i.test(tone)) return "playful";
+  if (/premium|luxury|sophisticated|refined|elegant/i.test(tone)) return "premium";
+  if (/bold|disruptive|confident|loud/i.test(tone)) return "bold";
+  if (/trendy|modern|contemporary|fresh/i.test(tone)) return "trendy";
+  if (/festive|celebratory|joyful/i.test(tone)) return "festive";
+  if (/dynamic|energetic|sport/i.test(tone)) return "dynamic";
+
+  // 3. Price positioning
+  if (brand.pricePositioning === "premium") return "premium";
+
+  // 4. Industry/offering
+  if (/luxury|fashion|jewelry|premium|cosmetics|beauty/i.test(industry)) return "premium";
+  if (/finance|b2b|corporate|saas|software|consulting/i.test(industry)) return "professional";
+  if (/tech|startup|app/i.test(industry)) return "trendy";
+  if (/sport|fitness|outdoor|active/i.test(industry)) return "dynamic";
+  if (/kids|toys|children/i.test(industry)) return "playful";
+  if (/food|beverage|fmcg|retail|consumer/i.test(industry)) return "commercial";
+
+  // 5. Default: professional (softer than commercial)
+  return "professional";
 }
 
 /**

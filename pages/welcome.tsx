@@ -92,7 +92,7 @@ export default function Welcome(): React.ReactElement {
           const profileData = await profileRes.json();
           const p = profileData.success ? profileData.data : null;
           if (p && (p.business_name || p.businessName)) {
-            router.replace('/creative-studio');
+            router.replace('/brand-studio');
             return;
           }
         } catch (profileErr) {
@@ -363,7 +363,7 @@ export default function Welcome(): React.ReactElement {
           href="#"
           onClick={(e) => {
             e.preventDefault();
-            router.push("/creative-studio?guided=1");
+            router.push("/brand-studio?guided=1");
           }}
         >
           Skip for now

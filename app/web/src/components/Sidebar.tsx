@@ -42,7 +42,7 @@ type NavItem = {
 // Map routes to feature keys for gating
 const NAV_ITEMS: NavItem[] = [
   { href: '/dashboard', label: 'Dashboard', Icon: Home, featureKey: 'dashboard' },
-  { href: '/creative-studio', label: 'Creative Studio', Icon: Palette }, // Always visible
+  { href: '/brand-studio', label: 'Brand Studio', Icon: Palette }, // Always visible
   { href: '/creative-intelligence', label: 'Creative Intelligence', Icon: Brain }, // Always visible
   { href: '/content-studio', label: 'Content Studio', Icon: LayoutGrid }, // Always visible
   { href: '/buy-credits', label: 'Buy Credits', Icon: Coins }, // Always visible (pay-as-you-go)

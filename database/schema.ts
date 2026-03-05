@@ -374,7 +374,7 @@ export const oauthSessions = pgTable("oauth_sessions", {
 	index("oauth_sessions_expires_at_idx").using("btree", table.expiresAt.asc().nullsLast()),
 ]);
 
-// creative_studio_sessions table (for Creative Studio feature)
+// creative_studio_sessions table (for Brand Studio feature)
 export const creativeStudioSessions = pgTable("creative_studio_sessions", {
 	id: uuid().primaryKey().notNull().defaultRandom(),
 	userId: uuid("user_id").notNull(),

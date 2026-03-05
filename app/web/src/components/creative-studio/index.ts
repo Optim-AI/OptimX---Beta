@@ -1,4 +1,4 @@
-// Creative Studio Components - Index
+// Brand Studio Components - Index
 // Export all components for easy importing
 
 // Types

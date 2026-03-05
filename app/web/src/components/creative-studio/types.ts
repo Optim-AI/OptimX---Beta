@@ -1,4 +1,4 @@
-// Creative Studio Shared Types
+// Brand Studio Shared Types
 // Extracted from pages/creative-studio.tsx for modularity
 
 export type BrandSnapshot = {
