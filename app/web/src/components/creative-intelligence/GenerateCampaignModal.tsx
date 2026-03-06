@@ -3,7 +3,7 @@
 
 import React, { useState } from "react";
 import colors from "@/lib/ui/colors";
-import { X, Loader2, Check } from "lucide-react";
+import { X, Loader2, Check, AlertCircle } from "lucide-react";
 import { Button } from "@/app/web/src/components/ui/button";
 
 export type HookData = {
@@ -29,12 +29,16 @@ export default function GenerateCampaignModal({
 }: GenerateCampaignModalProps) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generated, setGenerated] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function handleGenerate() {
     setIsGenerating(true);
+    setError(null);
     try {
       await onGenerate(hook.id);
       setGenerated(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Generation failed. Please try again.');
     } finally {
       setIsGenerating(false);
     }
@@ -43,7 +47,7 @@ export default function GenerateCampaignModal({
   return (
     <div
       className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
-      onClick={(e) => e.target === e.currentTarget && onClose()}
+      onClick={(e) => e.target === e.currentTarget && !isGenerating && onClose()}
     >
       <div
         className="rounded-2xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
@@ -99,6 +103,13 @@ export default function GenerateCampaignModal({
             5 headline variations, 5 CTA variations, and visual direction notes.
           </p>
 
+          {error && (
+            <div className="flex items-center gap-2 p-3 rounded-lg" style={{ backgroundColor: `${colors.destructive}15`, border: `1px solid ${colors.destructive}40` }}>
+              <AlertCircle size={16} style={{ color: colors.destructive }} />
+              <p className="text-sm" style={{ color: colors.destructive }}>{error}</p>
+            </div>
+          )}
+
           <div className="flex gap-3 pt-4">
             <Button
               variant="outline"
@@ -109,7 +120,7 @@ export default function GenerateCampaignModal({
             </Button>
             <Button
               onClick={handleGenerate}
-              disabled={isGenerating}
+              disabled={isGenerating || generated}
               style={{
                 backgroundColor: colors.primary,
                 color: colors.primaryForeground,

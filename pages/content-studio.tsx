@@ -22,10 +22,9 @@ import {
   Download,
   Sparkles,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   X,
-  Megaphone,
-  Target,
-  Zap,
   ExternalLink,
   Pencil,
 } from "lucide-react";
@@ -33,6 +32,11 @@ import PosterEditModal from "@/app/web/src/components/content-studio/PosterEditM
 import { Button } from "@/app/web/src/components/ui/button";
 import { Input } from "@/app/web/src/components/ui/input";
 import { Progress } from "@/app/web/src/components/ui/progress";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/app/web/src/components/ui/collapsible";
 
 type BrandSummary = {
   name: string;
@@ -67,11 +71,13 @@ type CampaignAd = {
   cta: string;
 };
 
+const CONTENT_STUDIO_STORAGE_KEY = "content-studio:lastScan";
+
 const SCAN_MESSAGES = [
-  "Scanning your website...",
-  "Identifying product pages...",
-  "Extracting product data...",
-  "Understanding brand identity...",
+  { text: "Crawling your website...", detail: "Discovering pages and structure" },
+  { text: "Identifying product pages...", detail: "Finding shop, collections & product URLs" },
+  { text: "Extracting product data...", detail: "Pulling images, prices & descriptions" },
+  { text: "Understanding brand identity...", detail: "Analyzing tone, audience & value proposition" },
 ];
 
 /**
@@ -140,6 +146,7 @@ export default function ContentStudioPage() {
   const [url, setUrl] = useState("");
   const [step, setStep] = useState<"entry" | "scanning" | "results">("entry");
   const [scanMessageIndex, setScanMessageIndex] = useState(0);
+  const [scanProgress, setScanProgress] = useState(0);
   const [brand, setBrand] = useState<BrandSummary | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
@@ -159,6 +166,7 @@ export default function ContentStudioPage() {
   const [editingPosterIndex, setEditingPosterIndex] = useState<number | null>(null);
   const [creatingVideoSession, setCreatingVideoSession] = useState(false);
   const [editingPosterUrl, setEditingPosterUrl] = useState<string | null>(null);
+  const [productsCollapsed, setProductsCollapsed] = useState(false);
 
   useEffect(() => {
     const stored = localStorage.getItem("brand:snapshot");
@@ -171,6 +179,28 @@ export default function ContentStudioPage() {
       }
     } else {
       setShowBrandOnboarding(true);
+    }
+  }, []);
+
+  // Restore fetched products when user returns to the page
+  useEffect(() => {
+    const stored = localStorage.getItem(CONTENT_STUDIO_STORAGE_KEY);
+    if (stored) {
+      try {
+        const data = JSON.parse(stored) as {
+          url: string;
+          brand: BrandSummary | null;
+          products: Product[];
+        };
+        if (data.products?.length > 0 || data.brand) {
+          setUrl(data.url || "");
+          setBrand(data.brand || null);
+          setProducts(data.products || []);
+          setStep("results");
+        }
+      } catch {
+        /* ignore invalid stored data */
+      }
     }
   }, []);
 
@@ -191,10 +221,14 @@ export default function ContentStudioPage() {
     setError(null);
     setStep("scanning");
     setScanMessageIndex(0);
+    setScanProgress(0);
 
-    const interval = setInterval(() => {
+    const msgInterval = setInterval(() => {
       setScanMessageIndex((i) => (i + 1) % SCAN_MESSAGES.length);
     }, 2000);
+    const progressInterval = setInterval(() => {
+      setScanProgress((p) => Math.min(p + 6, 92));
+    }, 10000);
 
     try {
       const res = await authFetch("/api/content-studio/scan", {
@@ -203,7 +237,9 @@ export default function ContentStudioPage() {
       });
       const data = await res.json();
 
-      clearInterval(interval);
+      clearInterval(msgInterval);
+      clearInterval(progressInterval);
+      setScanProgress(100);
 
       if (!data.ok) {
         throw new Error(data.error || "Scan failed");
@@ -215,6 +251,16 @@ export default function ContentStudioPage() {
       setSelectedProduct(null);
       setAdAngles([]);
       setCampaign(null);
+
+      // Persist for when user navigates away and returns
+      localStorage.setItem(
+        CONTENT_STUDIO_STORAGE_KEY,
+        JSON.stringify({
+          url: normalized,
+          brand: data.brand,
+          products: data.products || [],
+        })
+      );
 
       const scanBrand = data.brand;
       if (scanBrand) {
@@ -240,7 +286,8 @@ export default function ContentStudioPage() {
         localStorage.setItem("brand:snapshot", JSON.stringify(merged));
       }
     } catch (err: any) {
-      clearInterval(interval);
+      clearInterval(msgInterval);
+      clearInterval(progressInterval);
       setError(err.message || "Failed to scan website");
       setStep("entry");
       showError(err.message || "Failed to scan website");
@@ -403,7 +450,7 @@ export default function ContentStudioPage() {
     try {
       const res = await authFetch("/api/content-studio/generate-campaign", {
         method: "POST",
-        body: JSON.stringify({ product: selectedProduct, brand }),
+        body: JSON.stringify({ product: p, brand }),
       });
       const data = await res.json();
       if (data.ok && data.campaign) {
@@ -529,7 +576,6 @@ export default function ContentStudioPage() {
         setGeneratedPosters((prev) =>
           prev.map((url, i) => (i === posterIndex ? data.image : url))
         );
-        setEditingPosterIndex(null);
       } else {
         showError(data.error || "Failed to regenerate poster");
       }
@@ -548,6 +594,7 @@ export default function ContentStudioPage() {
     setGeneratedPosters([]);
     setCampaign(null);
     setError(null);
+    localStorage.removeItem(CONTENT_STUDIO_STORAGE_KEY);
   };
 
   async function handleWebsiteAnalyzeForEdit(website: string): Promise<BrandSnapshot | null> {
@@ -637,12 +684,14 @@ export default function ContentStudioPage() {
     setShowBrandGuidelineModal(false);
   }
 
+  const hasFetchedProducts = products.length > 0 || brand !== null;
+
   return (
     <div className="flex min-h-screen" style={{ background: colors.background }}>
       <Sidebar />
       <main className="flex-1 overflow-auto">
         <div className="max-w-6xl mx-auto px-6 py-10">
-          {step === "entry" && (
+          {(step === "entry" || step === "results") && (
             <div className="flex flex-col items-center py-12">
               <div className="flex flex-col items-center mb-8">
                 <div className="flex items-center justify-center w-14 h-14 rounded-full mb-4" style={{ background: "hsl(213 100% 55% / 0.15)" }}>
@@ -652,7 +701,7 @@ export default function ContentStudioPage() {
                   AI-Powered Content Studio
                 </div>
                 <h1 className="text-4xl md:text-5xl font-bold tracking-tight max-w-6xl mx-auto text-center" style={{ color: colors.foreground }}>
-                  Let's turn your website into high converting ads
+                  Let&apos;s turn your website into high converting ads
                 </h1>
                 <p className="text-lg max-w-2xl mx-auto text-center mt-2" style={{ color: colors.mutedForeground }}>
                   Paste your website URL and we&apos;ll extract products, generate ad creatives, and build campaigns all in one place.
@@ -690,46 +739,50 @@ export default function ContentStudioPage() {
                 </div>
               </div>
 
-              <p className="text-sm mt-6 text-center" style={{ color: colors.mutedForeground }}>
-              </p>
-            </div>
-          )}
+              {hasFetchedProducts && (
+                <div className="w-full max-w-6xl mt-8">
+                  <Collapsible
+                    open={!productsCollapsed}
+                    onOpenChange={(open) => setProductsCollapsed(!open)}
+                    className="rounded-2xl border overflow-hidden"
+                    style={{ borderColor: colors.border, background: colors.card }}
+                  >
+                    <CollapsibleTrigger
+                      className="flex items-center justify-between w-full px-6 py-4 text-left hover:opacity-90 transition-opacity"
+                      style={{
+                        background: colors.card,
+                        borderBottom: `1px solid ${colors.border}`,
+                      }}
+                    >
+                      <span className="font-semibold truncate mr-2" style={{ color: colors.foreground }}>
+                        Fetched products from {url ? url.replace(/^https?:\/\//, "").split("/")[0] : "website"}
+                        {brand?.name && ` • ${brand.name}`}
+                        {products.length > 0 && ` • ${products.length} products`}
+                      </span>
+                      {productsCollapsed ? (
+                        <ChevronDown className="w-5 h-5 shrink-0" style={{ color: colors.mutedForeground }} />
+                      ) : (
+                        <ChevronUp className="w-5 h-5 shrink-0" style={{ color: colors.mutedForeground }} />
+                      )}
+                    </CollapsibleTrigger>
+                    <CollapsibleContent style={{ background: colors.background }}>
+                      <div className="p-6 space-y-10">
+                        <div className="flex items-center justify-between">
+                          <h2 className="text-lg font-semibold" style={{ color: colors.foreground }}>
+                            {brand?.name && `${brand.name} • `}
+                            {products.length} products detected
+                          </h2>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleStartOver}
+                            style={{ borderColor: colors.border, color: colors.mutedForeground }}
+                          >
+                            Start over
+                          </Button>
+                        </div>
 
-          {step === "scanning" && (
-            <div className="text-center py-24 space-y-10">
-              <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl" style={{ background: "hsl(213 100% 55% / 0.2)" }}>
-                <Loader2 className="w-10 h-10 animate-spin" style={{ color: colors.primary }} />
-              </div>
-              <h2 className="text-xl font-semibold" style={{ color: colors.foreground }}>
-                {SCAN_MESSAGES[scanMessageIndex]}
-              </h2>
-              <Progress value={33} className="max-w-md mx-auto h-2 rounded-full" />
-            </div>
-          )}
-
-          {step === "results" && (
-            <div className="space-y-10">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h1 className="text-2xl font-bold" style={{ color: colors.foreground }}>
-                    Content Studio
-                  </h1>
-                  <p className="text-sm mt-1" style={{ color: colors.mutedForeground }}>
-                    {brand?.name && `${brand.name} • `}
-                    {products.length} products detected
-                  </p>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleStartOver}
-                  style={{ borderColor: colors.border, color: colors.mutedForeground }}
-                >
-                  Start over
-                </Button>
-              </div>
-
-              {brand && (
+                        {brand && (
                 <section
                   className="rounded-2xl p-6 border shadow-sm"
                   style={{
@@ -1160,6 +1213,43 @@ export default function ContentStudioPage() {
                   </div>
                 </section>
               )}
+                      </div>
+                    </CollapsibleContent>
+                  </Collapsible>
+                </div>
+              )}
+            </div>
+          )}
+
+          {step === "scanning" && (
+            <div className="text-center py-24 space-y-8 max-w-lg mx-auto">
+              <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl" style={{ background: "hsl(213 100% 55% / 0.2)" }}>
+                <Loader2 className="w-10 h-10 animate-spin" style={{ color: colors.primary }} />
+              </div>
+              <div className="space-y-1">
+                <h2 className="text-xl font-semibold" style={{ color: colors.foreground }}>
+                  {SCAN_MESSAGES[scanMessageIndex].text}
+                </h2>
+                <p className="text-sm" style={{ color: colors.mutedForeground }}>
+                  {SCAN_MESSAGES[scanMessageIndex].detail}
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Progress value={scanProgress} className="max-w-md mx-auto h-2.5 rounded-full" />
+                <p className="text-xs" style={{ color: colors.mutedForeground }}>
+                  Estimated time: 3–6 minutes
+                </p>
+              </div>
+              <div
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm animate-pulse"
+                style={{
+                  background: "hsl(213 100% 55% / 0.08)",
+                  color: colors.mutedForeground,
+                }}
+              >
+                <span className="text-lg" role="img" aria-hidden>☕</span>
+                <span>Grab a coffee and relax in the meantime</span>
+              </div>
             </div>
           )}
         </div>

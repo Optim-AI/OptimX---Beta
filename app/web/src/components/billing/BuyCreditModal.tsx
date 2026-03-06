@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter } from 'next/router';
 import { X, Zap } from 'lucide-react';
 import colors from '@/lib/ui/colors';
 

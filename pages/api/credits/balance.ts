@@ -46,8 +46,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     console.error('Full error stack:', error.stack);
     return res.status(500).json({
       error: 'Failed to get credits balance',
-      message: error.message,
-      dbError: dbErr,
     });
   }
 }

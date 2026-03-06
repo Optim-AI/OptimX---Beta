@@ -16,7 +16,6 @@ import {
   Lightbulb,
   Zap,
   Download,
-  Send,
   Loader2,
   Megaphone,
   Sparkles,
@@ -56,12 +55,6 @@ type CompareInsights = {
   gaps?: InsightCard[];
   recommended_strategy?: Array<{ title: string; description: string }>;
 };
-
-const ASPECT_OPTIONS = [
-  { value: "1:1", label: "1:1", w: 1080, h: 1080 },
-  { value: "4:5", label: "4:5", w: 1080, h: 1350 },
-  { value: "9:16", label: "9:16", w: 1080, h: 1920 },
-];
 
 type RunData = {
   run: { id: string; status: string; brandUrl: string; industry: string | null; createdAt: string };

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useCallback, useState } from 'react';
+import React, { useEffect, useCallback, useState, useRef } from 'react';
 import colors from '@/lib/ui/colors';
 
 // ── Types ──────────────────────────────────────────────
@@ -156,15 +156,18 @@ export default function AlertModal() {
     };
   }, []);
 
+  const stateRef = useRef(state);
+  stateRef.current = state;
+
   const close = useCallback(() => {
-    state.onCancel?.();
+    stateRef.current.onCancel?.();
     setState(INITIAL);
-  }, [state]);
+  }, []);
 
   const confirm = useCallback(() => {
-    state.onConfirm?.();
+    stateRef.current.onConfirm?.();
     setState(INITIAL);
-  }, [state]);
+  }, []);
 
   // Close on Escape
   useEffect(() => {

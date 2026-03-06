@@ -2,7 +2,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { createPortal } from "react-dom";
-import { useRouter } from "next/navigation";
+import { useRouter } from "next/router";
 import Sidebar from "../app/web/src/components/Sidebar";
 import NavBar from "../app/web/src/components/navBar";
 import { Button } from "../app/web/src/components/ui/button";

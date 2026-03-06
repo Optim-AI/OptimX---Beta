@@ -109,7 +109,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     console.error('Create order error:', error);
     return res.status(500).json({
       error: 'Failed to create order',
-      message: error.message,
     });
   }
 }

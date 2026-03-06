@@ -19,16 +19,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const { name, status, data } = req.body;
+    const { name, data } = req.body;
 
     if (!name) {
       return res.status(400).json({ error: 'Campaign name is required' });
     }
 
+    const safeData = data ? {
+      campaignType: data.campaignType,
+      brandVoice: data.brandVoice,
+      contentTypes: data.contentTypes,
+      vision: data.vision,
+      output: data.output,
+      imageUrl: data.imageUrl,
+      imagePath: data.imagePath,
+    } : {};
+
     const campaign = await CampaignDAO.create({
       userId,
       name,
-      ...data
+      ...safeData,
     });
 
     return res.status(201).json({
@@ -39,7 +49,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     console.error('Campaign create error:', error);
     return res.status(500).json({
       error: 'Failed to create campaign',
-      message: error.message
     });
   }
 }

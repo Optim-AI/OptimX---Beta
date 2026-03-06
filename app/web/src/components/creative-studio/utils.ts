@@ -547,6 +547,9 @@ export function fileToDataUrl(file: File): Promise<string> {
  */
 export function dataUrlToFile(dataUrl: string, filename: string): File {
   const arr = dataUrl.split(',');
+  if (arr.length < 2 || !arr[1]) {
+    throw new Error('Invalid data URL: expected "data:<mime>;base64,<data>" format');
+  }
   const mime = arr[0].match(/:(.*?);/)?.[1] || 'image/jpeg';
   const bstr = atob(arr[1]);
   let n = bstr.length;
@@ -561,7 +564,7 @@ export function dataUrlToFile(dataUrl: string, filename: string): File {
  * Generate a unique ID for messages/sessions
  */
 export function generateId(): string {
-  return `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  return `${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
 }
 
 /**

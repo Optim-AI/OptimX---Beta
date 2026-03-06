@@ -233,6 +233,7 @@ export class PlanChangeService {
     now: Date
   ): number {
     const totalDays = (periodEnd.getTime() - periodStart.getTime()) / (1000 * 60 * 60 * 24);
+    if (totalDays <= 0) return 0;
     const remainingDays = Math.max(0, (periodEnd.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
     const remainingRatio = remainingDays / totalDays;
 

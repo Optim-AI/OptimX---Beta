@@ -18,7 +18,7 @@ const MAX_PRODUCTS = 300;
 const MAX_PRODUCT_PAGES_TO_SCRAPE = 150;
 const PAGE_LOAD_TIMEOUT = 15000;
 const SCROLL_PAUSE = 1500;
-const SCROLL_ATTEMPTS = 12;
+const SCROLL_ATTEMPTS = 20; // Extended to discover more products on infinite-scroll pages
 
 function delay(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
@@ -36,6 +36,22 @@ function normalizeUrl(url: string): string {
   try {
     const u = new URL(url);
     u.hash = "";
+    u.searchParams.sort();
+    return u.toString();
+  } catch {
+    return url;
+  }
+}
+
+/** Strip variant/color/size params for deduplication - keeps base product URL only */
+function normalizeProductUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    u.hash = "";
+    const variantParams = ["variant", "color", "size", "sku", "option"];
+    for (const p of variantParams) {
+      u.searchParams.delete(p);
+    }
     u.searchParams.sort();
     return u.toString();
   } catch {
@@ -82,6 +98,7 @@ async function callGemini(prompt: string, systemInstruction?: string): Promise<s
 }
 
 const CATEGORY_PATH_PATTERNS = [
+  // Existing patterns (do not remove)
   /\/shop/i,
   /\/products?/i,
   /\/collections?/i,
@@ -97,6 +114,50 @@ const CATEGORY_PATH_PATTERNS = [
   /\/fragrance/i,
   /\/skincare/i,
   /\/bath/i,
+  // Additional category path patterns
+  /\/categories/i,
+  /\/shop-all/i,
+  /\/shop-all-products/i,
+  /\/all\b/i,
+  /\/browse/i,
+  /\/items/i,
+  /\/collection\b/i,
+  /\/our-products/i,
+  /\/product-range/i,
+  /\/new\b/i,
+  /\/new-arrivals/i,
+  /\/new-launch/i,
+  /\/new-launches/i,
+  /\/featured/i,
+  /\/featured-products/i,
+  /\/bestsellers/i,
+  /\/best-sellers/i,
+  /\/top-products/i,
+  /\/trending/i,
+  /\/sale\b/i,
+  /\/offers/i,
+  // Clothing and apparel
+  /\/men\b/i,
+  /\/women/i,
+  /\/kids\b/i,
+  /\/apparel/i,
+  /\/clothing/i,
+  /\/shoes/i,
+  /\/accessories/i,
+  // Food and beverage
+  /\/snacks/i,
+  /\/protein-bars/i,
+  /\/muesli/i,
+  /\/granola/i,
+  /\/beverages/i,
+  // Beauty and skincare (additional)
+  /\/haircare/i,
+  /\/bodycare/i,
+  // Fitness and gym
+  /\/equipment/i,
+  /\/gym-accessories/i,
+  /\/workout-gear/i,
+  /\/fitness\b/i,
 ];
 
 const PRODUCT_PATH_PATTERNS = [
@@ -110,6 +171,16 @@ const PRODUCT_PATH_PATTERNS = [
   /-p-\d+/i,
   // Hyphenated slugs: /british-rose-shower-gel, /tea-tree-facial-wash (Body Shop, many Shopify stores)
   /\/[a-z0-9]+(-[a-z0-9]+)+(\/|$)/i,
+];
+
+/** Product-related CSS class substrings for link discovery */
+const PRODUCT_CLASS_PATTERNS = [
+  "product-card",
+  "product-item",
+  "product-grid",
+  "product-tile",
+  "product-wrapper",
+  "product-list",
 ];
 
 const NON_PRODUCT_PATH_SEGMENTS = new Set([
@@ -196,7 +267,7 @@ async function crawlWithPlaywright(
         const path = linkUrl.pathname;
         const pathForSearch = path + linkUrl.search;
         if (isProductPage(path)) {
-          productUrls.add(normalizeUrl(link));
+          productUrls.add(normalizeProductUrl(normalizeUrl(link)));
         } else if (isCategoryPage(pathForSearch)) {
           categoryUrls.add(normalizeUrl(link));
         } else if (isShallowTopLevelPath(path)) {
@@ -218,40 +289,100 @@ async function crawlWithPlaywright(
 
         let prevCount = productUrls.size;
         let scrollAttempts = 0;
+        let totalNavigations = 0;
+        let consecutiveEmptyPages = 0;
+        let lastIterationWasNavigation = false;
+        const MAX_TOTAL_NAVIGATIONS = 30;
+        const MAX_CONSECUTIVE_EMPTY_PAGES = 2;
 
-        while (scrollAttempts < SCROLL_ATTEMPTS) {
-          const found = await page.evaluate((origin) => {
-            const anchors = document.querySelectorAll("a[href]");
-            const links: string[] = [];
-            for (const a of anchors) {
-              const href = (a as HTMLAnchorElement).href;
-              if (!href || !href.startsWith(origin) || href.includes("#")) continue;
-              try {
-                const u = new URL(href);
-                const path = u.pathname;
-                const segments = path.split("/").filter(Boolean);
-                if (segments.length < 2) continue;
-                const lastSegment = segments[segments.length - 1] || "";
-                if (lastSegment.includes("-")) {
-                  u.hash = "";
-                  links.push(u.toString());
+        while (
+          scrollAttempts < SCROLL_ATTEMPTS &&
+          totalNavigations < MAX_TOTAL_NAVIGATIONS &&
+          consecutiveEmptyPages < MAX_CONSECUTIVE_EMPTY_PAGES
+        ) {
+          const found = await page.evaluate(
+            ({ origin, productClassPatterns }: { origin: string; productClassPatterns: string[] }) => {
+              const links = new Set<string>();
+              const anchors = document.querySelectorAll("a[href]");
+
+              const hasProductClass = (el: Element) => {
+                const cls = (el.className && String(el.className)) || "";
+                return productClassPatterns.some((p) => cls.toLowerCase().includes(p));
+              };
+              const insideProductContainer = (el: Element) => {
+                let parent: Element | null = el.parentElement;
+                while (parent) {
+                  if (hasProductClass(parent)) return true;
+                  parent = parent.parentElement;
                 }
-              } catch {
-                /* skip */
+                return false;
+              };
+
+              for (const a of anchors) {
+                const href = (a as HTMLAnchorElement).href;
+                if (!href || !href.startsWith(origin) || href.includes("#")) continue;
+                try {
+                  const u = new URL(href);
+                  const path = u.pathname;
+                  const segments = path.split("/").filter(Boolean);
+                  u.hash = "";
+
+                  // Existing: hyphenated product slug
+                  if (segments.length >= 2) {
+                    const lastSegment = segments[segments.length - 1] || "";
+                    if (lastSegment.includes("-")) {
+                      links.add(u.toString());
+                      continue;
+                    }
+                  }
+
+                  // Additional: inside product-related class container
+                  if (hasProductClass(a) || insideProductContainer(a)) {
+                    links.add(u.toString());
+                    continue;
+                  }
+                  // Additional: inside schema.org Product
+                  if (a.closest('[itemtype*="Product"]')) {
+                    links.add(u.toString());
+                    continue;
+                  }
+                  // Additional: data-product attributes on link or ancestor
+                  if (
+                    a.hasAttribute("data-product-id") ||
+                    a.hasAttribute("data-product-handle") ||
+                    a.hasAttribute("data-product") ||
+                    a.closest("[data-product-id], [data-product-handle], [data-product]")
+                  ) {
+                    links.add(u.toString());
+                  }
+                } catch {
+                  /* skip */
+                }
               }
-            }
-            return [...new Set(links)];
-          }, baseOrigin);
+              return [...links];
+            },
+            { origin: baseOrigin, productClassPatterns: PRODUCT_CLASS_PATTERNS }
+          );
 
           for (const link of found) {
             const path = new URL(link).pathname;
-            if (isProductPage(path)) productUrls.add(normalizeUrl(link));
+            if (isProductPage(path)) productUrls.add(normalizeProductUrl(normalizeUrl(link)));
           }
+
+          const newCount = productUrls.size;
+          if (lastIterationWasNavigation && newCount === prevCount) {
+            consecutiveEmptyPages++;
+          } else if (newCount > prevCount) {
+            consecutiveEmptyPages = 0;
+          }
+          lastIterationWasNavigation = false;
 
           const nextBtn = await page.$(
             'a[href*="page="], a[rel="next"], [aria-label*="next" i], .pagination a, .next-page, [class*="next"]'
           );
           if (nextBtn) {
+            totalNavigations++;
+            lastIterationWasNavigation = true;
             await nextBtn.click().catch(() => {});
             await delay(SCROLL_PAUSE);
             scrollAttempts = 0;
@@ -259,10 +390,12 @@ async function crawlWithPlaywright(
           }
 
           const currentPageUrl = page.url();
-          const nextPageLink = await page.$('a[href*="page="]');
+          const nextPageLink = await page.$('a[href*="page="], a[rel="next"], [aria-label*="next" i]');
           if (nextPageLink) {
             const href = await nextPageLink.getAttribute("href");
             if (href) {
+              totalNavigations++;
+              lastIterationWasNavigation = true;
               const nextUrl = toAbsolute(currentPageUrl, href);
               await page.goto(nextUrl, { waitUntil: "domcontentloaded" }).catch(() => {});
               await delay(SCROLL_PAUSE);
@@ -275,50 +408,133 @@ async function crawlWithPlaywright(
           const pageNum = parseInt(urlObj.searchParams.get("page") || "1", 10);
           urlObj.searchParams.set("page", String(pageNum + 1));
           const nextPageUrl = urlObj.toString();
-          if (pageNum <= 3) {
-            const beforeCount = productUrls.size;
+          if (pageNum <= 5) {
+            totalNavigations++;
+            lastIterationWasNavigation = true;
             await page.goto(nextPageUrl, { waitUntil: "domcontentloaded" }).catch(() => {});
             await delay(SCROLL_PAUSE);
-            const found = await page.evaluate((origin) => {
-              const anchors = document.querySelectorAll("a[href]");
-              const links: string[] = [];
-              for (const a of anchors) {
-                const href = (a as HTMLAnchorElement).href;
-                if (!href || !href.startsWith(origin) || href.includes("#")) continue;
-                try {
-                  const u = new URL(href);
-                  const path = u.pathname;
-                  const segments = path.split("/").filter(Boolean);
-                  if (segments.length < 2) continue;
-                  const lastSegment = segments[segments.length - 1] || "";
-                  if (lastSegment.includes("-")) {
-                    u.hash = "";
-                    links.push(u.toString());
+            const found = await page.evaluate(
+              ({ origin, productClassPatterns }: { origin: string; productClassPatterns: string[] }) => {
+                const links = new Set<string>();
+                const anchors = document.querySelectorAll("a[href]");
+                const hasProductClass = (el: Element) => {
+                  const cls = (el.className && String(el.className)) || "";
+                  return productClassPatterns.some((p) => cls.toLowerCase().includes(p));
+                };
+                const insideProductContainer = (el: Element) => {
+                  let parent: Element | null = el.parentElement;
+                  while (parent) {
+                    if (hasProductClass(parent)) return true;
+                    parent = parent.parentElement;
                   }
-                } catch {
-                  /* skip */
+                  return false;
+                };
+                for (const a of anchors) {
+                  const href = (a as HTMLAnchorElement).href;
+                  if (!href || !href.startsWith(origin) || href.includes("#")) continue;
+                  try {
+                    const u = new URL(href);
+                    const path = u.pathname;
+                    const segments = path.split("/").filter(Boolean);
+                    u.hash = "";
+                    if (segments.length >= 2) {
+                      const lastSegment = segments[segments.length - 1] || "";
+                      if (lastSegment.includes("-")) links.add(u.toString());
+                    }
+                    if (hasProductClass(a) || insideProductContainer(a)) links.add(u.toString());
+                    if (a.closest('[itemtype*="Product"]')) links.add(u.toString());
+                    if (
+                      a.hasAttribute("data-product-id") ||
+                      a.hasAttribute("data-product-handle") ||
+                      a.hasAttribute("data-product") ||
+                      a.closest("[data-product-id], [data-product-handle], [data-product]")
+                    )
+                      links.add(u.toString());
+                  } catch {
+                    /* skip */
+                  }
                 }
-              }
-              return [...new Set(links)];
-            }, baseOrigin);
+                return [...links];
+              },
+              { origin: baseOrigin, productClassPatterns: PRODUCT_CLASS_PATTERNS }
+            );
             for (const link of found) {
               const path = new URL(link).pathname;
-              if (isProductPage(path)) productUrls.add(normalizeUrl(link));
+              if (isProductPage(path)) productUrls.add(normalizeProductUrl(normalizeUrl(link)));
             }
-            if (productUrls.size > beforeCount) scrollAttempts = 0;
+            if (productUrls.size > prevCount) scrollAttempts = 0;
+            prevCount = productUrls.size;
             continue;
           }
 
           await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
           await delay(SCROLL_PAUSE);
 
-          const newCount = productUrls.size;
-          if (newCount === prevCount) scrollAttempts++;
+          const countAfterScroll = productUrls.size;
+          if (countAfterScroll === prevCount) scrollAttempts++;
           else scrollAttempts = 0;
-          prevCount = newCount;
+          prevCount = countAfterScroll;
         }
       } catch (e) {
         console.warn("[Content Studio] Category page failed:", catUrl, e);
+      }
+    }
+
+    // Fail-safe: when no category pages detected or no products found, scan all internal links
+    if (categoryUrls.size === 0 || productUrls.size === 0) {
+      await page.goto(baseUrl, { waitUntil: "domcontentloaded" }).catch(() => {});
+      const failSafeLinks = await page.evaluate(
+        ({ origin, productClassPatterns }: { origin: string; productClassPatterns: string[] }) => {
+          const links = new Set<string>();
+          const anchors = document.querySelectorAll("a[href]");
+          const hasProductClass = (el: Element) => {
+            const cls = (el.className && String(el.className)) || "";
+            return productClassPatterns.some((p) => cls.toLowerCase().includes(p));
+          };
+          const insideProductContainer = (el: Element) => {
+            let parent: Element | null = el.parentElement;
+            while (parent) {
+              if (hasProductClass(parent)) return true;
+              parent = parent.parentElement;
+            }
+            return false;
+          };
+          for (const a of anchors) {
+            const href = (a as HTMLAnchorElement).href;
+            if (!href || !href.startsWith(origin) || href.includes("#")) continue;
+            try {
+              const u = new URL(href);
+              u.hash = "";
+              const path = u.pathname;
+              const segments = path.split("/").filter(Boolean);
+              if (segments.length >= 2) {
+                const lastSegment = segments[segments.length - 1] || "";
+                if (lastSegment.includes("-")) links.add(u.toString());
+              }
+              if (hasProductClass(a) || insideProductContainer(a)) links.add(u.toString());
+              if (a.closest('[itemtype*="Product"]')) links.add(u.toString());
+              if (
+                a.hasAttribute("data-product-id") ||
+                a.hasAttribute("data-product-handle") ||
+                a.hasAttribute("data-product") ||
+                a.closest("[data-product-id], [data-product-handle], [data-product]")
+              )
+                links.add(u.toString());
+            } catch {
+              /* skip */
+            }
+          }
+          return [...links];
+        },
+        { origin: baseOrigin, productClassPatterns: PRODUCT_CLASS_PATTERNS }
+      );
+      for (const link of failSafeLinks) {
+        try {
+          const path = new URL(link).pathname;
+          if (isProductPage(path)) productUrls.add(normalizeProductUrl(normalizeUrl(link)));
+        } catch {
+          /* skip */
+        }
       }
     }
 
@@ -326,7 +542,7 @@ async function crawlWithPlaywright(
       for (const link of allLinks) {
         try {
           const path = new URL(link).pathname;
-          if (isProductPage(path)) productUrls.add(normalizeUrl(link));
+          if (isProductPage(path)) productUrls.add(normalizeProductUrl(normalizeUrl(link)));
         } catch {
           /* skip */
         }
@@ -481,6 +697,15 @@ async function tryWooCommerceProducts(baseOrigin: string): Promise<{
   return { products: [], success: false };
 }
 
+/** Detect Shopify store from HTML/JS content */
+function isShopifyStore(html: string): boolean {
+  return (
+    html.includes("cdn.shopify.com") ||
+    html.includes("Shopify.theme") ||
+    html.includes("shopify")
+  );
+}
+
 /**
  * Try to fetch Shopify /products.json - returns entire catalog instantly.
  * Much better than scraping when the site is Shopify.
@@ -538,6 +763,19 @@ function findProductLinksFallback(html: string, baseUrl: string): string[] {
   const seen = new Set<string>();
   const links: string[] = [];
 
+  const hasProductClass = (el: Element) => {
+    const cls = (el.className && String(el.className)) || "";
+    return PRODUCT_CLASS_PATTERNS.some((p) => cls.toLowerCase().includes(p));
+  };
+  const insideProductContainer = (el: Element) => {
+    let parent: Element | null = el.parentElement;
+    while (parent) {
+      if (hasProductClass(parent)) return true;
+      parent = parent.parentElement;
+    }
+    return false;
+  };
+
   for (const a of doc.querySelectorAll("a[href]")) {
     const href = a.getAttribute("href");
     if (!href || href.startsWith("#") || href.startsWith("javascript:")) continue;
@@ -545,11 +783,25 @@ function findProductLinksFallback(html: string, baseUrl: string): string[] {
       const fullUrl = toAbsolute(baseUrl, href);
       const linkUrl = new URL(fullUrl);
       if (linkUrl.hostname !== base.hostname) continue;
-      if (seen.has(fullUrl)) continue;
+      const normalized = normalizeProductUrl(normalizeUrl(fullUrl));
+      if (seen.has(normalized)) continue;
       const path = linkUrl.pathname;
-      if (isProductPage(path)) {
-        seen.add(fullUrl);
-        links.push(fullUrl);
+
+      let isProduct = isProductPage(path);
+      if (!isProduct && (hasProductClass(a) || insideProductContainer(a))) isProduct = true;
+      if (!isProduct && a.closest('[itemtype*="Product"]')) isProduct = true;
+      if (
+        !isProduct &&
+        (a.hasAttribute("data-product-id") ||
+          a.hasAttribute("data-product-handle") ||
+          a.hasAttribute("data-product") ||
+          a.closest("[data-product-id], [data-product-handle], [data-product]"))
+      )
+        isProduct = true;
+
+      if (isProduct) {
+        seen.add(normalized);
+        links.push(normalized);
       }
     } catch {
       /* skip */
@@ -608,11 +860,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }> = [];
 
   try {
-    // Smart trick: Try platform APIs first - instant full catalog
-    const shopifyResult = await tryShopifyProductsJson(baseOrigin);
-    if (shopifyResult.success && shopifyResult.products.length > 0) {
-      rawProducts = shopifyResult.products;
-      homepageHtml = await fetchPageHtml(url).catch(() => "");
+    // Platform API detection: fetch homepage first to detect Shopify
+    homepageHtml = await fetchPageHtml(url).catch(() => "");
+    if (isShopifyStore(homepageHtml)) {
+      const shopifyResult = await tryShopifyProductsJson(baseOrigin);
+      if (shopifyResult.success && shopifyResult.products.length > 0) {
+        rawProducts = shopifyResult.products;
+      }
     }
     if (rawProducts.length === 0) {
       const wooResult = await tryWooCommerceProducts(baseOrigin);
@@ -638,7 +892,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
       }
 
-      const uniqueProductUrls = [...new Set(productUrls)].slice(0, MAX_PRODUCT_PAGES_TO_SCRAPE);
+      const uniqueProductUrls = [...new Set(productUrls)]
+        .map((u) => normalizeProductUrl(normalizeUrl(u)))
+        .filter((u, i, arr) => arr.indexOf(u) === i)
+        .slice(0, MAX_PRODUCT_PAGES_TO_SCRAPE);
 
       for (const productUrl of uniqueProductUrls) {
         if (rawProducts.length >= MAX_PRODUCTS) break;

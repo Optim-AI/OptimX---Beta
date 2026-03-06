@@ -18,10 +18,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // In production, refuse to process webhooks if secret is not set (avoid accepting unsigned)
-  if (process.env.NODE_ENV === 'production' && (!RAZORPAY_WEBHOOK_SECRET || !RAZORPAY_WEBHOOK_SECRET.trim())) {
-    console.error('Razorpay webhook: RAZORPAY_WEBHOOK_SECRET not set in production');
-    return res.status(503).json({ error: 'Webhook not configured' });
+  const hasSecret = RAZORPAY_WEBHOOK_SECRET && RAZORPAY_WEBHOOK_SECRET.trim();
+  if (!hasSecret) {
+    if (process.env.NODE_ENV === 'development') {
+      console.warn('Razorpay webhook: running without signature verification (development only)');
+    } else {
+      console.error('Razorpay webhook: RAZORPAY_WEBHOOK_SECRET not set');
+      return res.status(503).json({ error: 'Webhook not configured' });
+    }
   }
 
   try {
@@ -65,7 +69,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(200).json({ received: true });
   } catch (error: any) {
     console.error('Webhook error:', error);
-    // Return 200 to prevent Razorpay from retrying on parse errors
-    return res.status(200).json({ received: true, error: error.message });
+    if (error instanceof SyntaxError) {
+      return res.status(400).json({ error: 'Invalid JSON payload' });
+    }
+    return res.status(200).json({ received: true });
   }
 }

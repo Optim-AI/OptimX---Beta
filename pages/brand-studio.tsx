@@ -293,7 +293,6 @@ export default function BrandStudioLanding() {
   }
 
   function handleSkipBrandSetup() {
-    setShowBrandOnboarding(false);
     const minimalBrand: BrandSnapshot = {
       name: 'My Brand',
       description: '',
@@ -304,7 +303,6 @@ export default function BrandStudioLanding() {
     setBrand(minimalBrand);
     localStorage.setItem('brand:snapshot', JSON.stringify(minimalBrand));
     setShowBrandOnboarding(false);
-    // Show brand guideline so user can fill in details later
     setShowBrandGuidelineModal(true);
   }
 
@@ -316,9 +314,6 @@ export default function BrandStudioLanding() {
   }
 
   // ============== Separate sessions by type ==============
-
-  const posterSessions = sessions.filter((s) => s.sessionType === 'poster');
-  const videoSessions = sessions.filter((s) => s.sessionType === 'video');
 
   // ============== Render ==============
 

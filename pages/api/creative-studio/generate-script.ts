@@ -23,6 +23,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ ok: false, error: "Method not allowed" });
   }
 
+  const { getUserIdFromRequest } = await import("@/auth/request");
+  const userId = await getUserIdFromRequest(req);
+  if (!userId) return res.status(401).json({ ok: false, error: "Authentication required" });
+
   try {
     // Check if body exists and is valid
     if (!req.body || typeof req.body !== 'object') {
@@ -124,8 +128,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const isCommercialMode = style === "Commercial";
     const isUGCMode = style === "UGC Style";
 
+    // Calculate recommended scene count based on duration
+    const recommendedScenes = durationSecondsClamped <= 6 ? 3 : durationSecondsClamped <= 8 ? 4 : durationSecondsClamped <= 12 ? 5 : Math.min(8, Math.ceil(durationSecondsClamped / 2.5));
+    const minScenes = Math.max(3, recommendedScenes - 1);
+
     // System prompt: Creative Ad Film Director — interprets user vision, duration, and needs to write the best script
     let systemPrompt: string;
+
+    const multiSceneEnforcement = `
+
+CRITICAL — MULTI-SCENE STORYBOARD REQUIREMENT:
+- You MUST generate AT LEAST ${minScenes} separate scenes in the storyboard array, ideally ${recommendedScenes} scenes.
+- NEVER create a single scene covering the full duration. A storyboard with 1 scene is INVALID.
+- Each scene should be 1–3 seconds long. Break the ${durationSecondsClamped}-second video into distinct visual beats.
+- Each scene MUST have a unique visual_description — no two scenes should describe the same thing.
+- Each scene MUST have a specific time_range like "0-2s", "2-4s", "4-6s" etc. Time ranges must be consecutive and non-overlapping.
+- The storyboard array is the MOST IMPORTANT part of the output. Put maximum creative effort into each scene's visual_description, emotion, and motion_style.`;
+
     if (isHookMode) {
       systemPrompt = `You are a performance-first ad creative director specializing in scroll-stopping, conversion-focused video ads. This is attention warfare, NOT cinematic storytelling.
 
@@ -137,20 +156,20 @@ Your mindset for HOOK MODE:
 - Product must appear clearly by mid-video (4–6s). No mysterious slow storytelling. This is ad logic, not art school.
 - NO on-screen text: no captions, headlines, subtitles, overlays, or typography. 100% visual storytelling. If voiceover exists, it carries the message.
 - Pacing: fast cuts, high motion energy, tight framing, strong contrast lighting. Hook always dominates tempo.
-- Avoid: symbolic metaphors, overly artistic ambiguity, conceptual scenes without product clarity.`;
+- Avoid: symbolic metaphors, overly artistic ambiguity, conceptual scenes without product clarity.${multiSceneEnforcement}`;
     } else if (isCommercialMode) {
-      systemPrompt = `You are a premium brand commercial director. The output must feel like a PAID BRAND COMMERCIAL — high-production value, emotion + aspiration driven, product as hero. Fast, punchy, visually premium. A direct-response brand commercial compressed into 8 seconds.
+      systemPrompt = `You are a premium brand commercial director. The output must feel like a PAID BRAND COMMERCIAL — high-production value, emotion + aspiration driven, product as hero. Fast, punchy, visually premium. A direct-response brand commercial compressed into ${durationSecondsClamped} seconds.
 
 COMMERCIAL THEME — This is NOT: UGC, meme content, cinematic storytelling short film, aesthetic montage without product focus.
 This IS: A paid brand commercial. Script-driven via voiceover only. NO text overlays on video frames.
 
 Your mindset:
 - Product as hero: show product clearly within first 3 seconds. Product must appear in at least 60% of total frames.
-- 8-second formula: 0–2s Pattern Interrupt (strong hook visual, movement, contrast) → 2–5s Product as Hero (clean product shots, close-ups, premium lighting) → 5–7s Emotional Payoff (outcome, transformation) → 7–8s Brand Lock-In (product hero frame, logo via environment, strong closing VO).
+- ${durationSecondsClamped}-second formula: 0–2s Pattern Interrupt (strong hook visual, movement, contrast) → 2–${Math.floor(durationSecondsClamped * 0.6)}s Product as Hero (clean product shots, close-ups, premium lighting) → ${Math.floor(durationSecondsClamped * 0.6)}–${durationSecondsClamped - 1}s Emotional Payoff (outcome, transformation) → ${durationSecondsClamped - 1}–${durationSecondsClamped}s Brand Lock-In (product hero frame, logo via environment, strong closing VO).
 - Voiceover: confident, clear, short sentences. Max 18–25 spoken words. Hook → Value → Outcome → Brand line. No filler, no overexplaining.
 - Visual: controlled lighting, soft highlights, high contrast, studio or lifestyle premium look. Smooth camera (push-in, slider, cinematic pans). Shallow depth of field. NO handheld shaky shots, NO casual iPhone vlog style.
 - Emotional angles: Confidence, Status, Relief, Energy, Control, Simplicity, Transformation. Never default to humor unless user explicitly requests.
-- NO on-screen text, captions, subtitles, lower thirds, UI mockups, or typography. All messaging via voiceover and visual storytelling.`;
+- NO on-screen text, captions, subtitles, lower thirds, UI mockups, or typography. All messaging via voiceover and visual storytelling.${multiSceneEnforcement}`;
     } else if (isUGCMode) {
       systemPrompt = `You are a UGC-style ad creative director. The output must feel like a REAL PERSON filmed this — shot on phone, casual, imperfect, believable. Native to Reels/Shorts/TikTok. Trust over perfection.
 
@@ -158,12 +177,12 @@ UGC THEME — This is NOT: studio commercial, perfect lighting, cinematic camera
 This IS: A real person sharing an honest recommendation. Conversational, slightly messy but authentic.
 
 Your mindset:
-- 8-second formula: 0–2s Hook (spoken, direct, attention-grabbing, feels spontaneous — e.g. "Wait, why is nobody talking about this?") → 2–6s Experience/Reaction (demonstration, personal comment, showing product casually, honest tone) → 6–8s Soft CTA ("You should try this." "Link's right there." No hard sales pitch).
+- ${durationSecondsClamped}-second formula: 0–2s Hook (spoken, direct, attention-grabbing, feels spontaneous — e.g. "Wait, why is nobody talking about this?") → 2–${durationSecondsClamped - 2}s Experience/Reaction (demonstration, personal comment, showing product casually, honest tone) → ${durationSecondsClamped - 2}–${durationSecondsClamped}s Soft CTA ("You should try this." "Link's right there." No hard sales pitch).
 - Voiceover: casual, real, slightly imperfect. Max 20–30 words. First person: "I tried this", "This saved me". Everyday language. No marketing buzzwords. No scripted feel.
 - Visual: handheld, slight natural shake, eye-level selfie angle, casual framing. Natural light, room light. Real-world setting (bedroom, kitchen, office, car, cafe). NO studio backdrop, NO perfect product turntable shots.
 - Product: must appear within first 3 seconds OR be referenced clearly. Person holding/using/reacting to it. UGC is about the person, not product glamour.
 - Emotional bias: Surprise, Relatability, Relief, Curiosity, Honest recommendation. NOT prestige, status, or brand dominance.
-- Editing: jump cuts, natural pauses, reaction zoom, fast pacing. NO smooth cinematic transitions, NO dramatic slow motion.`;
+- Editing: jump cuts, natural pauses, reaction zoom, fast pacing. NO smooth cinematic transitions, NO dramatic slow motion.${multiSceneEnforcement}`;
     } else {
       systemPrompt = `You are an award-winning creative ad film director. You think and write like one: story, emotion, rhythm, and every second on screen is intentional.
 
@@ -184,7 +203,7 @@ Rules:
 - Total duration is exactly ${durationSecondsClamped} seconds. All shots and voiceover must fit this.
 - Shot lengths and storyboard durations must sum to ${durationSecondsClamped}s. E.g. for ${durationSecondsClamped}s use ~${Math.max(2, Math.floor(durationSecondsClamped / 3))}–${Math.max(4, Math.ceil(durationSecondsClamped / 2))} shots.
 - Voiceover script must be readable in ${durationSecondsClamped} seconds (about ${Math.floor(durationSecondsClamped * 2.2)}–${Math.floor(durationSecondsClamped * 2.5)} words max).
-- Avoid generic or templated lines. Reflect the user's vision and the product's story. The script should feel written for this brand, this product, and this specific vision.`;
+- Avoid generic or templated lines. Reflect the user's vision and the product's story. The script should feel written for this brand, this product, and this specific vision.${multiSceneEnforcement}`;
     }
 
     // Style-specific requirements appended to user prompt
@@ -192,36 +211,42 @@ Rules:
     if (isHookMode) {
       styleRequirements = `
 
-HOOK MODE — MANDATORY 4-PART STRUCTURE (8 seconds exactly):
+HOOK MODE — MANDATORY ${recommendedScenes}-SCENE STRUCTURE (${durationSecondsClamped} seconds exactly):
 - Scene 1 (0–2s): PATTERN INTERRUPT — Bold visual hook. Stop scrolling. Fast cut, high impact. No slow intro.
 - Scene 2 (2–4s): EMOTIONAL TRIGGER — Pain, Desire, Urgency, or Curiosity. High emotional tension.
 - Scene 3 (4–6s): PRODUCT REVEAL — Product must appear clearly. Fast, direct. No mystery.
-- Scene 4 (6–8s): STRONG CTA — Clear visual call-to-action moment.
+- Scene 4 (6–${durationSecondsClamped}s): STRONG CTA — Clear visual call-to-action moment.
 
-Storyboard MUST have exactly 4 scenes with time_range: "0-2s", "2-4s", "4-6s", "6-8s".
+Storyboard MUST have exactly ${recommendedScenes} scenes with consecutive non-overlapping time_range values.
+Each scene MUST have a UNIQUE, SPECIFIC visual_description — describe the exact shot, camera angle, lighting, subject.
 visual_style_guide.motion_style must emphasize: fast cuts, high motion energy, tight framing, strong contrast.
 NO on-screen text. Purely visual.`;
     } else if (isCommercialMode) {
       styleRequirements = `
 
-COMMERCIAL THEME — MANDATORY 8-SECOND STRUCTURE:
+COMMERCIAL THEME — MANDATORY ${recommendedScenes}-SCENE STRUCTURE (${durationSecondsClamped} seconds):
 - Scene 1 (0–2s): PATTERN INTERRUPT — Strong hook visual, movement, contrast, emotion. Product tease or problem tease.
-- Scene 2 (2–5s): PRODUCT AS HERO — Clean product shots, close-up details, use-case in action. Premium lighting. Slow motion or dynamic camera movement.
-- Scene 3 (5–7s): EMOTIONAL PAYOFF — Outcome transformation, reaction shot, satisfying resolution.
-- Scene 4 (7–8s): BRAND LOCK-IN — Product hero frame, clean background, logo reveal via environment (not text overlay). Strong closing VO line.
+- Scene 2 (2–4s): PRODUCT AS HERO — Clean product shots, close-up details, use-case in action. Premium lighting.
+- Scene 3 (4–6s): PRODUCT IN ACTION — Dynamic camera movement, product demonstration, lifestyle context.
+- Scene 4 (6–${durationSecondsClamped}s): EMOTIONAL PAYOFF + BRAND LOCK-IN — Outcome transformation, product hero frame.
 
-Storyboard MUST follow this structure. visual_style_guide: controlled lighting, soft highlights, high contrast, smooth camera (push-in, slider, cinematic pans), shallow depth of field.
+Storyboard MUST have exactly ${recommendedScenes} scenes with consecutive non-overlapping time_range values.
+Each scene MUST have a UNIQUE, SPECIFIC visual_description — describe the exact shot, camera angle, lighting, subject.
+visual_style_guide: controlled lighting, soft highlights, high contrast, smooth camera (push-in, slider, cinematic pans), shallow depth of field.
 Voiceover: max 18–25 words. Confident, clear. Hook → Value → Outcome → Brand line.
 NO on-screen text, captions, or typography. Purely visual + voiceover.`;
     } else if (isUGCMode) {
       styleRequirements = `
 
-UGC THEME — MANDATORY 8-SECOND STRUCTURE:
-- Scene 1 (0–2s): HOOK (spoken) — Direct, attention-grabbing. Feels spontaneous. e.g. "Wait, why is nobody talking about this?" "Okay, this actually surprised me."
-- Scene 2 (2–6s): EXPERIENCE / REACTION — Demonstration, personal comment, showing product casually, quick before-after. Honest tone.
-- Scene 3 (6–8s): SOFT CTA — "You should try this." "I'm not going back." No hard sales pitch, no corporate language.
+UGC THEME — MANDATORY ${recommendedScenes}-SCENE STRUCTURE (${durationSecondsClamped} seconds):
+- Scene 1 (0–2s): HOOK (spoken) — Direct, attention-grabbing. Feels spontaneous. e.g. "Wait, why is nobody talking about this?"
+- Scene 2 (2–4s): FIRST IMPRESSION — Unboxing, first look, initial reaction. Genuine surprise or curiosity.
+- Scene 3 (4–6s): EXPERIENCE / DEMO — Showing product in use, personal commentary. Honest, relatable.
+- Scene 4 (6–${durationSecondsClamped}s): SOFT CTA — "You should try this." "I'm not going back." No hard sales pitch.
 
-Storyboard MUST follow this structure. visual_style_guide: handheld, slight natural shake, eye-level selfie angle, natural light, real-world setting (bedroom, kitchen, office).
+Storyboard MUST have exactly ${recommendedScenes} scenes with consecutive non-overlapping time_range values.
+Each scene MUST have a UNIQUE, SPECIFIC visual_description — describe what the person is doing, their expression, the setting.
+visual_style_guide: handheld, slight natural shake, eye-level selfie angle, natural light, real-world setting (bedroom, kitchen, office).
 Voiceover: max 20–30 words. Casual, conversational, first person. No marketing buzzwords.
 Character description: include age, vibe, setting for UGC creator.`;
     }
@@ -248,30 +273,63 @@ ${cta ? `- CTA: ${cta}` : ""}
 - On-Screen Text: DISABLED (CRITICAL: The video must NOT contain any on-screen text, captions, titles, headlines, or text overlays. Purely visual only.)
 
 DIRECTOR REQUIREMENTS:
-- Create a shot-by-shot plan where the sum of all shot durations equals ${durationSecondsClamped} seconds. Use time ranges like "0-3s", "3-7s", etc., ending at ${durationSecondsClamped}s.
-- Each shot: 1–4 seconds typically; adjust number of shots so the total is ${durationSecondsClamped}s and the pacing serves the user's vision.
+- Create a shot-by-shot plan with EXACTLY ${recommendedScenes} shots (minimum ${minScenes}). NEVER use a single shot for the entire duration.
+- Each shot: 1–3 seconds. Time ranges must be consecutive like "0-2s", "2-4s", "4-6s", "6-8s". They must sum to ${durationSecondsClamped}s.
+- Each shot MUST have a unique, specific visual description — not generic. Describe exact camera angle, subject position, lighting setup, and composition.
 - Specify camera (angle, movement), lighting, and composition for each shot.
 - Voiceover (if enabled): write a script in ${language === "tamil" ? "Tamil" : language === "hindi" ? "Hindi" : "English"} that can be read in ${durationSecondsClamped} seconds (~${Math.floor(durationSecondsClamped * 2.2)}–${Math.floor(durationSecondsClamped * 2.5)} words). ${key_message ? `Weave in: "${key_message}".` : ""} ${cta ? `End with CTA: "${cta}".` : ""}
 - final_video_prompt: 300–800 tokens, director-grade, describing the full ${durationSecondsClamped}-second film (cinematic lighting, movement, pacing, color, premium brand quality), aligned with the user's described vision.
 ${styleRequirements}
 
-Return your response as a JSON object with this exact structure (use real timings that sum to ${durationSecondsClamped}s):
+Return your response as a JSON object with this exact structure. The storyboard MUST have ${recommendedScenes} scenes (minimum ${minScenes}):
 {
   "ad_angle": "The creative angle and hook, inspired by the user's vision and product (1-2 lines)",
   "shot_plan": [
-    { "time": "0-Xs", "description": "Shot description with camera, lighting, composition" },
-    { "time": "X-Ys", "description": "..." }
+    { "time": "0-2s", "description": "Shot 1 description with camera, lighting, composition" },
+    { "time": "2-4s", "description": "Shot 2 description — MUST be different from shot 1" },
+    { "time": "4-6s", "description": "Shot 3 description — MUST be different from shots 1-2" },
+    { "time": "6-${durationSecondsClamped}s", "description": "Shot 4 description — MUST be different from shots 1-3" }
   ],
   "storyboard": [
     {
       "scene": 1,
-      "duration": "Xs",
-      "time_range": "0-Xs",
-      "visual_description": "Director-grade visual description",
+      "duration": "2s",
+      "time_range": "0-2s",
+      "visual_description": "SPECIFIC director-grade visual: camera angle, subject, lighting, composition. NOT generic.",
       "on_screen_text": "",
-      "emotion": "Emotion to evoke",
-      "motion_style": "Camera and motion style",
-      "voiceover_line": "Voiceover for this scene (if enabled)"
+      "emotion": "Specific emotion (e.g., Curiosity, Excitement, Trust)",
+      "motion_style": "Specific camera move (e.g., Slow push-in, Rack focus, Static wide)",
+      "voiceover_line": "Voiceover for this 2-second scene only"
+    },
+    {
+      "scene": 2,
+      "duration": "2s",
+      "time_range": "2-4s",
+      "visual_description": "DIFFERENT visual from scene 1. New angle, new subject focus, new composition.",
+      "on_screen_text": "",
+      "emotion": "Different emotion from scene 1",
+      "motion_style": "Different camera move from scene 1",
+      "voiceover_line": "Voiceover for this scene"
+    },
+    {
+      "scene": 3,
+      "duration": "2s",
+      "time_range": "4-6s",
+      "visual_description": "DIFFERENT visual from scenes 1-2. Progress the story.",
+      "on_screen_text": "",
+      "emotion": "Emotion for this beat",
+      "motion_style": "Camera style for this scene",
+      "voiceover_line": "Voiceover for this scene"
+    },
+    {
+      "scene": 4,
+      "duration": "2s",
+      "time_range": "6-${durationSecondsClamped}s",
+      "visual_description": "Final beat. Product hero / CTA moment. Distinct from all prior scenes.",
+      "on_screen_text": "",
+      "emotion": "Closing emotion",
+      "motion_style": "Closing camera style",
+      "voiceover_line": "Closing voiceover line"
     }
   ],
   "visual_style_guide": {
@@ -282,14 +340,20 @@ Return your response as a JSON object with this exact structure (use real timing
     "brand_polish": "Brand polish (e.g. Apple/Stripe quality)"
   },
   "voiceover_script": "${voiceover ? `Full voiceover script in ${language === "tamil" ? "Tamil" : language === "hindi" ? "Hindi" : "English"}, readable in exactly ${durationSecondsClamped} seconds, ${tone || "Energetic"} tone.` : "N/A - Voiceover disabled"}",
-  "headline": "N/A",
-  "subtext": "N/A",
+  "headline": "",
+  "subtext": "",
   "final_video_prompt": "Single cinematic prompt (300-800 tokens) for the full ${durationSecondsClamped}-second video: camera, lighting, composition, pacing, color grading, shot transitions, premium quality. CRITICAL: Do NOT describe or include any on-screen text, captions, titles, headlines, or text overlays. The video is purely visual with no written text."
 }
 
-IMPORTANT: shot_plan and storyboard durations must cover 0 to ${durationSecondsClamped} seconds total. final_video_prompt must describe the entire ${durationSecondsClamped}-second film with rich cinematic language. Return ONLY valid JSON; no markdown or extra text.
+IMPORTANT — STORYBOARD VALIDATION:
+- The storyboard array MUST contain ${recommendedScenes} scene objects (minimum ${minScenes}). A storyboard with only 1 scene is REJECTED.
+- Each scene's time_range must be consecutive: "0-2s", "2-4s", "4-6s", "6-8s" etc.
+- Each scene's visual_description must be UNIQUE and SPECIFIC — not a copy of the final_video_prompt or a generic summary.
+- shot_plan and storyboard durations must cover 0 to ${durationSecondsClamped} seconds total.
+- final_video_prompt must describe the entire ${durationSecondsClamped}-second film with rich cinematic language.
+- Return ONLY valid JSON; no markdown, no code fences, no extra text.
 
-CRITICAL — NO ON-SCREEN TEXT: Set headline, subtext, and every storyboard on_screen_text to empty string or "N/A". The video must NEVER display any text, captions, titles, or overlays. Purely visual only.`;
+CRITICAL — NO ON-SCREEN TEXT: Set headline, subtext, and every storyboard on_screen_text to empty string. The video must NEVER display any text, captions, titles, or overlays. Purely visual only.`;
 
     // Call Gemini API as Creative Director Brain
     // Using gemini-2.5-flash with v1beta REST API
@@ -315,6 +379,7 @@ CRITICAL — NO ON-SCREEN TEXT: Set headline, subtext, and every storyboard on_s
         top_k: 40,
         top_p: 0.95,
         max_output_tokens: 4000,
+        response_mime_type: "application/json",
       },
     };
 
@@ -415,35 +480,85 @@ CRITICAL — NO ON-SCREEN TEXT: Set headline, subtext, and every storyboard on_s
       scriptData = JSON.parse(cleanedText);
       console.log("Successfully parsed JSON with keys:", Object.keys(scriptData));
       
+      // Helper: build a multi-scene fallback storyboard from the duration
+      const buildFallbackStoryboard = (videoPrompt: string, voScript: string) => {
+        const sceneCount = recommendedScenes;
+        const sceneDuration = Math.round((durationSecondsClamped / sceneCount) * 10) / 10;
+        const scenes: Array<{ scene: number; duration: string; time_range: string; visual_description: string; on_screen_text: string; emotion: string; motion_style: string; voiceover_line: string }> = [];
+        const fallbackDescriptions = [
+          `Dramatic opening shot — close-up of ${product_name || 'the product'} with cinematic lighting, shallow depth of field, subtle camera push-in`,
+          `Dynamic angle shift — medium shot showing ${product_name || 'the product'} in context, smooth dolly movement, warm highlights`,
+          `Detail reveal — extreme close-up of product texture/features, rack focus, premium studio lighting with soft reflections`,
+          `Lifestyle moment — product in use, aspirational setting, natural light mixed with controlled fill, gentle camera pan`,
+          `Hero shot — product centered with brand-defining composition, dramatic backlight, slow pull-out to reveal full frame`,
+          `Emotional payoff — transformation moment showing the outcome, warm golden tones, satisfying camera settle`,
+        ];
+        const fallbackEmotions = ['Curiosity', 'Interest', 'Desire', 'Aspiration', 'Trust', 'Satisfaction'];
+        const fallbackMotions = ['Slow push-in', 'Smooth dolly right', 'Rack focus pull', 'Gentle pan left', 'Static hero frame', 'Slow pull-out'];
+
+        const voWords = voScript ? voScript.split(/\s+/) : [];
+        const wordsPerScene = voWords.length > 0 ? Math.ceil(voWords.length / sceneCount) : 0;
+
+        for (let i = 0; i < sceneCount; i++) {
+          const startTime = Math.round(i * sceneDuration * 10) / 10;
+          const endTime = i === sceneCount - 1 ? durationSecondsClamped : Math.round((i + 1) * sceneDuration * 10) / 10;
+          const sceneVo = voWords.length > 0
+            ? voWords.slice(i * wordsPerScene, (i + 1) * wordsPerScene).join(' ')
+            : '';
+
+          scenes.push({
+            scene: i + 1,
+            duration: `${endTime - startTime}s`,
+            time_range: `${startTime}-${endTime}s`,
+            visual_description: fallbackDescriptions[i % fallbackDescriptions.length],
+            on_screen_text: '',
+            emotion: fallbackEmotions[i % fallbackEmotions.length],
+            motion_style: fallbackMotions[i % fallbackMotions.length],
+            voiceover_line: sceneVo,
+          });
+        }
+        return scenes;
+      };
+
       // Validate required fields exist
       if (!scriptData.storyboard || !Array.isArray(scriptData.storyboard)) {
         console.warn("Missing or invalid storyboard array, using shot_plan if available");
-        // Try to use shot_plan if storyboard is missing
-        if (scriptData.shot_plan && Array.isArray(scriptData.shot_plan)) {
+        if (scriptData.shot_plan && Array.isArray(scriptData.shot_plan) && scriptData.shot_plan.length >= minScenes) {
           scriptData.storyboard = scriptData.shot_plan.map((shot: any, idx: number) => ({
             scene: idx + 1,
-            duration: shot.time?.replace(/[^\d-]/g, '') + 's' || "2-3s",
+            duration: shot.time?.replace(/[^\d-]/g, '') + 's' || "2s",
             time_range: shot.time || `${idx * 2}-${(idx + 1) * 2}s`,
             visual_description: shot.description || "",
             on_screen_text: "",
-            emotion: "",
-            motion_style: "",
-            voiceover_line: "",
+            emotion: shot.emotion || "",
+            motion_style: shot.motion_style || "",
+            voiceover_line: shot.voiceover_line || "",
           }));
         } else {
-          // Create a default storyboard
-          scriptData.storyboard = [
-            {
-              scene: 1,
-              duration: `${durationSecondsClamped}s`,
-              time_range: `0-${durationSecondsClamped}s`,
-              visual_description: scriptData.final_video_prompt?.substring(0, 200) || "Product showcase",
-              on_screen_text: scriptData.headline || "",
-              emotion: "Desire",
-              motion_style: "Smooth, cinematic",
-              voiceover_line: scriptData.voiceover_script || "",
-            },
-          ];
+          scriptData.storyboard = buildFallbackStoryboard(
+            scriptData.final_video_prompt || '',
+            scriptData.voiceover_script || ''
+          );
+        }
+      } else if (scriptData.storyboard.length === 1) {
+        // Single-scene storyboard is too generic — split into multiple scenes
+        console.warn("Single-scene storyboard detected, splitting into multiple scenes");
+        if (scriptData.shot_plan && Array.isArray(scriptData.shot_plan) && scriptData.shot_plan.length >= minScenes) {
+          scriptData.storyboard = scriptData.shot_plan.map((shot: any, idx: number) => ({
+            scene: idx + 1,
+            duration: shot.time?.replace(/[^\d-]/g, '') + 's' || "2s",
+            time_range: shot.time || `${idx * 2}-${(idx + 1) * 2}s`,
+            visual_description: shot.description || "",
+            on_screen_text: "",
+            emotion: shot.emotion || "",
+            motion_style: shot.motion_style || "",
+            voiceover_line: shot.voiceover_line || "",
+          }));
+        } else {
+          scriptData.storyboard = buildFallbackStoryboard(
+            scriptData.final_video_prompt || '',
+            scriptData.voiceover_script || ''
+          );
         }
       } else {
         // Ensure each storyboard scene has time_range
@@ -451,7 +566,6 @@ CRITICAL — NO ON-SCREEN TEXT: Set headline, subtext, and every storyboard on_s
           if (!scene.time_range && scriptData.shot_plan?.[idx]?.time) {
             scene.time_range = scriptData.shot_plan[idx].time;
           } else if (!scene.time_range) {
-            // Calculate approximate time range based on duration
             const durationNum = parseInt(scene.duration) || 2;
             const startTime = scriptData.storyboard.slice(0, idx).reduce((acc: number, s: any) => acc + (parseInt(s.duration) || 2), 0);
             scene.time_range = `${startTime}-${startTime + durationNum}s`;
@@ -478,21 +592,45 @@ CRITICAL — NO ON-SCREEN TEXT: Set headline, subtext, and every storyboard on_s
       const voiceoverText = extractField(generatedText, "voiceover_script") || "";
       const finalPrompt = extractField(generatedText, "final_video_prompt") || "";
       
-      // Fallback: create a structured response
+      // Fallback: create a structured multi-scene response
+      const fallbackVo = voiceoverText || (voiceover ? "Discover the premium quality that sets us apart." : "");
+      const fallbackPrompt = finalPrompt || `Create a ${durationSecondsClamped}-second professional product video showcasing ${product_name || "the product"} by ${brand_name || "the brand"} with cinematic quality and engaging visuals.`;
+
+      const sceneCount = recommendedScenes;
+      const sceneDur = Math.round((durationSecondsClamped / sceneCount) * 10) / 10;
+      const fallbackDescs = [
+        `Dramatic opening — close-up of ${product_name || 'the product'} with cinematic lighting, shallow depth of field, camera push-in revealing texture and form`,
+        `Dynamic angle shift — medium shot of ${product_name || 'the product'} in lifestyle context, smooth dolly movement, warm highlights and soft shadows`,
+        `Detail reveal — extreme close-up capturing product features, rack focus transition, premium studio lighting with soft reflections`,
+        `Hero shot — ${product_name || 'the product'} centered in frame with brand-defining composition, dramatic rim light, slow pull-out`,
+        `Emotional payoff — product in use showing transformation/outcome, golden tones, satisfying camera settle on final frame`,
+        `Brand moment — wide establishing shot transitioning to product hero, cinematic depth, aspirational atmosphere`,
+      ];
+      const fallbackEmotions2 = ['Curiosity', 'Interest', 'Desire', 'Aspiration', 'Trust', 'Satisfaction'];
+      const fallbackMotions2 = ['Slow push-in', 'Smooth dolly right', 'Rack focus pull', 'Static hero frame', 'Slow pull-out', 'Gentle pan'];
+
+      const voWords2 = fallbackVo ? fallbackVo.split(/\s+/) : [];
+      const wps2 = voWords2.length > 0 ? Math.ceil(voWords2.length / sceneCount) : 0;
+
+      const fallbackScenes: Array<{ scene: number; duration: string; time_range: string; visual_description: string; on_screen_text: string; emotion: string; motion_style: string; voiceover_line: string }> = [];
+      for (let i = 0; i < sceneCount; i++) {
+        const st = Math.round(i * sceneDur * 10) / 10;
+        const et = i === sceneCount - 1 ? durationSecondsClamped : Math.round((i + 1) * sceneDur * 10) / 10;
+        fallbackScenes.push({
+          scene: i + 1,
+          duration: `${et - st}s`,
+          time_range: `${st}-${et}s`,
+          visual_description: fallbackDescs[i % fallbackDescs.length],
+          on_screen_text: '',
+          emotion: fallbackEmotions2[i % fallbackEmotions2.length],
+          motion_style: fallbackMotions2[i % fallbackMotions2.length],
+          voiceover_line: voWords2.length > 0 ? voWords2.slice(i * wps2, (i + 1) * wps2).join(' ') : '',
+        });
+      }
+
       scriptData = {
         ad_angle: adAngle,
-        storyboard: [
-          {
-            scene: 1,
-            duration: `${durationSecondsClamped}s`,
-            time_range: `0-${durationSecondsClamped}s`,
-            visual_description: finalPrompt || "Product-focused cinematic sequence showcasing the product",
-            on_screen_text: headline,
-            emotion: "Desire",
-            motion_style: "Smooth, cinematic",
-            voiceover_line: voiceoverText || "",
-          },
-        ],
+        storyboard: fallbackScenes,
         visual_style_guide: {
           color_palette: "Modern, premium",
           lighting_mood: "Cinematic",
@@ -500,10 +638,10 @@ CRITICAL — NO ON-SCREEN TEXT: Set headline, subtext, and every storyboard on_s
           motion_style: "Smooth, minimal",
           brand_polish: "Apple/Stripe quality",
         },
-        voiceover_script: voiceoverText || (voiceover ? "Discover the premium quality that sets us apart." : ""),
-        headline: headline,
-        subtext: subtext,
-        final_video_prompt: finalPrompt || `Create a ${durationSecondsClamped}-second professional product video showcasing ${product_name || "the product"} by ${brand_name || "the brand"} with cinematic quality and engaging visuals.`,
+        voiceover_script: fallbackVo,
+        headline: "",
+        subtext: "",
+        final_video_prompt: fallbackPrompt,
       };
       
       console.log("Using fallback scriptData with extracted fields");

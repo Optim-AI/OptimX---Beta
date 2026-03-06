@@ -27,7 +27,11 @@ export class WebhookService {
         .createHmac('sha256', RAZORPAY_WEBHOOK_SECRET)
         .update(body)
         .digest('hex');
-      return expectedSignature === signature;
+      if (expectedSignature.length !== signature.length) return false;
+      return crypto.timingSafeEqual(
+        Buffer.from(expectedSignature, 'hex'),
+        Buffer.from(signature, 'hex')
+      );
     } catch (error) {
       console.error('Error verifying webhook signature:', error);
       return false;

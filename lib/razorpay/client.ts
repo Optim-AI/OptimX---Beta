@@ -42,9 +42,7 @@ function createRazorpayClient(): Razorpay {
 function getRazorpayClient(): Razorpay {
   if (globalForRazorpay.razorpay) return globalForRazorpay.razorpay;
   const client = createRazorpayClient();
-  if (process.env.NODE_ENV !== 'production') {
-    globalForRazorpay.razorpay = client;
-  }
+  globalForRazorpay.razorpay = client;
   return client;
 }
 

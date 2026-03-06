@@ -17,22 +17,18 @@ export default function MyApp({ Component, pageProps }: AppProps) {
 
   React.useEffect(() => {
     let initialTimer: number | undefined;
+    let completeTimer: number | undefined;
 
-    // hide initial loader after a short delay if no navigation happens
     initialTimer = window.setTimeout(() => setLoading(false), 700);
 
     const handleStart = () => {
-      // show loader on route change start
       setLoading(true);
-      if (initialTimer) {
-        clearTimeout(initialTimer);
-        initialTimer = undefined;
-      }
+      if (initialTimer) { clearTimeout(initialTimer); initialTimer = undefined; }
+      if (completeTimer) { clearTimeout(completeTimer); completeTimer = undefined; }
     };
     const handleComplete = () => {
-      // hide loader on route change complete
-      // small delay to avoid flash on very fast navigations
-      window.setTimeout(() => setLoading(false), 180);
+      if (completeTimer) clearTimeout(completeTimer);
+      completeTimer = window.setTimeout(() => setLoading(false), 180);
     };
 
     Router.events.on("routeChangeStart", handleStart);
@@ -41,6 +37,7 @@ export default function MyApp({ Component, pageProps }: AppProps) {
 
     return () => {
       if (initialTimer) clearTimeout(initialTimer);
+      if (completeTimer) clearTimeout(completeTimer);
       Router.events.off("routeChangeStart", handleStart);
       Router.events.off("routeChangeComplete", handleComplete);
       Router.events.off("routeChangeError", handleComplete);

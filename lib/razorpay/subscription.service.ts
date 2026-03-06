@@ -96,7 +96,7 @@ export class SubscriptionService {
       subscription = await SubscriptionsDAO.create({
         userId,
         planId,
-        status: 'active', // Will be confirmed via webhook
+        status: 'pending',
         currentPeriodStart: now.toISOString(),
         currentPeriodEnd: periodEnd.toISOString(),
         nextResetDate: nextReset.toISOString(),

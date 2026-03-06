@@ -108,21 +108,16 @@ export class PaymentService {
         .update(`${razorpayOrderId}|${razorpayPaymentId}`)
         .digest('hex');
 
-      if (generatedSignature !== razorpaySignature) {
+      if (
+        generatedSignature.length !== razorpaySignature.length ||
+        !crypto.timingSafeEqual(Buffer.from(generatedSignature), Buffer.from(razorpaySignature))
+      ) {
         await PaymentsDAO.updateStatus(payment.id, 'failed');
         return { success: false, error: 'Invalid payment signature' };
       }
 
-      // Update payment status
+      // Update payment status — credits are granted by the webhook handler to avoid double-granting
       await PaymentsDAO.updateStatus(payment.id, 'captured', razorpayPaymentId, razorpaySignature);
-
-      // Add credits to user
-      const metadata = payment.metadata as any;
-      if (metadata?.creditType === 'image') {
-        await CreditsDAO.addImageCreditsAddon(payment.userId, metadata.credits);
-      } else if (metadata?.creditType === 'video') {
-        await CreditsDAO.addVideoCreditsAddon(payment.userId, metadata.credits);
-      }
 
       return { success: true };
     } catch (error: any) {

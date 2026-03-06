@@ -417,11 +417,8 @@ async function getUserFromRequest(request: Request, bodyToken?: string) {
           (e as any)?.message ?? e
         );
       }
-      const dec = decodeSupabaseJWT(token);
-      if (dec) {
-        const userId = dec.sub || dec.user_id || dec.id || dec.uid || null;
-        if (userId) return { user: { id: String(userId) } as any, token };
-      }
+      // JWT decode fallback removed: unsigned JWT payloads are forgeable.
+      // If supabaseAdmin.auth.getUser fails, reject the request.
     }
     return { user: null, token: null };
   } catch (e) {
@@ -796,10 +793,9 @@ export async function POST(request: Request) {
     let updatedBalance: number | null = null;
     try {
       console.log('[Credits] Deducting 1 image credit for user:', user.id);
-      const success = await CreditsDAO.deductImageCredits(user.id, 1);
+      const result = await CreditsDAO.deductImageCredits(user.id, 1);
 
-      if (success) {
-        // Get updated balance
+      if (result && result.success) {
         const balance = await CreditsDAO.getFullBalance(user.id);
         if (balance) {
           updatedBalance = balance.imageCredits.total;

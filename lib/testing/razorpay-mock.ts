@@ -4,15 +4,17 @@
 
 import crypto from 'crypto';
 
-// Only allow in development
-if (process.env.NODE_ENV === 'production') {
-  throw new Error('Razorpay mock utilities cannot be used in production');
+function assertNotProduction() {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('Razorpay mock utilities cannot be used in production');
+  }
 }
 
 /**
  * Generate a mock Razorpay signature for webhook testing
  */
 export function generateMockSignature(payload: string, secret: string = 'test_webhook_secret'): string {
+  assertNotProduction();
   return crypto
     .createHmac('sha256', secret)
     .update(payload)

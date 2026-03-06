@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { useRouter } from 'next/router';
 import { Button } from './ui/button';
 import { Menu, X } from 'lucide-react';
 import colors from '@/lib/ui/colors';
@@ -11,8 +11,8 @@ import { supabase } from '@/auth/supabase/client';
 const Header: React.FC = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isSignedIn, setIsSignedIn] = useState<boolean | null>(null);
-  const pathname = usePathname();
   const router = useRouter();
+  const pathname = router.pathname;
 
   useEffect(() => {
     const checkAuth = async () => {

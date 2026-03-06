@@ -1,5 +1,4 @@
 // pages/publish.tsx
-import Link from "next/link";
 import Sidebar from "../app/web/src/components/Sidebar";
 
 export default function Publish() {

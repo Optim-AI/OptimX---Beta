@@ -153,7 +153,7 @@ export default function VideoSessionPage() {
     const checkSession = async () => {
       await new Promise(resolve => setTimeout(resolve, 100));
       const { data } = await supabase.auth.getSession();
-      if (mounted) {
+      if (mounted && data?.session) {
         setIsAuthReady(true);
       }
     };
@@ -176,7 +176,7 @@ export default function VideoSessionPage() {
     if (!selectedVideoId || !ids.has(selectedVideoId)) {
       setSelectedVideoId(generatedVideos[generatedVideos.length - 1].id);
     }
-  }, [generatedVideos]);
+  }, [generatedVideos, selectedVideoId]);
 
   // Animate video generation steps (0–5) while generating
   useEffect(() => {

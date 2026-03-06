@@ -12,7 +12,7 @@ import { authFetch } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle } from "../app/web/src/components/ui/card";
 import { Button } from "../app/web/src/components/ui/button";
 
-import { BarChart3, Share2 } from "lucide-react";
+import { BarChart3 } from "lucide-react";
 import colors from '@/lib/ui/colors';
 import { SkeletonPageLoader, SkeletonMetricGrid, SkeletonCard, SkeletonRecommendationCard } from '@/app/web/src/components/ui/skeletons';
 
@@ -188,8 +188,7 @@ export default function Analytics(): JSX.Element {
 
     checkFeature();
     fetchCampaigns();
-    fetchStatuses();
-    fetchMetrics({ range: selectedRange });
+    fetchStatuses().then(() => fetchMetrics({ range: selectedRange }));
 
     function onStorage(e: StorageEvent) {
       if (e.key === LS_KEY) {
@@ -1300,18 +1299,3 @@ export default function Analytics(): JSX.Element {
   );
 }
 
-/* -------------------- small helpers outside component -------------------- */
-function fmtMoney(n: number | null | undefined) {
-  if (n == null) return "—";
-  try {
-    return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", minimumFractionDigits: 0 }).format(Number(n));
-  } catch {
-    return `₹${Number(n).toFixed(0)}`;
-  }
-}
-// function pctDisplay(n: number | null | undefined) {
-//   if (n == null) return "—";
-//   const r = Math.round((n as number) * 10) / 10;
-//   const sign = r > 0 ? "+" : "";
-//   return `${sign}${r}%`;
-// }

@@ -174,7 +174,7 @@ export default function PosterSessionPage() {
     const checkSession = async () => {
       await new Promise(resolve => setTimeout(resolve, 100));
       const { data } = await supabase.auth.getSession();
-      if (mounted) {
+      if (mounted && data?.session) {
         setIsAuthReady(true);
       }
     };

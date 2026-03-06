@@ -279,15 +279,20 @@ export default function ImageLibraryPage(): JSX.Element {
     }
   };
 
-  // DOWNLOAD
-  const handleDownload = () => {
+  const handleDownload = async () => {
     if (!selectedImage) return;
-    const link = document.createElement("a");
-    link.href = selectedImage.imageUrl;
-    link.download = "poster.png";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    try {
+      const response = await fetch(selectedImage.imageUrl, { mode: 'cors' });
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = "poster.png";
+      link.click();
+      URL.revokeObjectURL(blobUrl);
+    } catch {
+      window.open(selectedImage.imageUrl, '_blank');
+    }
   };
 
   // POST — open publish panel (pre-fill some fields)

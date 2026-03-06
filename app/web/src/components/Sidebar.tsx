@@ -2,13 +2,11 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useRouter, usePathname } from 'next/navigation';
+import { useRouter } from 'next/router';
 import {
   Home,
   PlusCircle,
-  Cpu,
   BarChart3,
-  BookOpen,
   UploadCloud,
   Link2,
   Settings,
@@ -94,7 +92,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   onBrandGuideline,
 }) => {
   const router = useRouter();
-  const pathname = usePathname();
+  const pathname = router.pathname;
   const [collapsed, setCollapsed] = useState(false);
   const [featureAccess, setFeatureAccess] = useState<Record<string, any>>({});
   const [featuresLoading, setFeaturesLoading] = useState(true);
