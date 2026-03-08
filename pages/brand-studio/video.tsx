@@ -1,4 +1,4 @@
-// pages/creative-studio/video/[sessionId].tsx
+// pages/brand-studio/video/[sessionId].tsx
 // Video Generation Session Page
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -22,6 +22,7 @@ import {
   DEFAULT_AD_BUILDER_DATA,
   VIDEO_STYLES,
   VIDEO_DURATIONS,
+  mapFullAnalyzeToBrandSnapshot,
 } from '@/app/web/src/components/creative-studio';
 import { authFetch, safeResponseJson } from '@/lib/utils';
 
@@ -42,7 +43,9 @@ const ASPECT_RATIO_OPTIONS: { ratio: '9:16' | '16:9'; orientation: string }[] = 
 
 // Ad style descriptions shown when a style is selected
 const AD_STYLE_DESCRIPTIONS: Record<string, string> = {
-  'Hook': 'Conversion-focused, scroll-stopping format. Rapid cuts, emotional trigger, early product clarity, and strong visuals..',
+  'Hook': 'Conversion-focused, scroll-stopping format. Rapid cuts, emotional trigger, early product clarity, and strong visuals.',
+  'Commercial': 'Paid brand commercial feel. High-production value, emotion + aspiration driven, product as hero. Fast, punchy, visually premium. No text overlays — script-driven via voiceover only.',
+  'UGC Style': 'Real person filmed on phone. Casual, imperfect, believable. Native to Reels/Shorts/TikTok. Conversational, slightly messy but authentic. Trust over perfection.',
   'Product Close-up': 'Detail-driven product showcase. Macro angles, tight framing, shallow depth of field, maximum product clarity and texture emphasis.',
   'Lifestyle': 'Real-world usage in relatable scenarios. Natural lighting, human context, and emotional connection around everyday moments.',
   'Cinematic': 'High-production, film-style visuals. Dramatic lighting, smooth camera movement, polished color grading, storytelling energy.',
@@ -150,7 +153,7 @@ export default function VideoSessionPage() {
     const checkSession = async () => {
       await new Promise(resolve => setTimeout(resolve, 100));
       const { data } = await supabase.auth.getSession();
-      if (mounted) {
+      if (mounted && data?.session) {
         setIsAuthReady(true);
       }
     };
@@ -173,7 +176,7 @@ export default function VideoSessionPage() {
     if (!selectedVideoId || !ids.has(selectedVideoId)) {
       setSelectedVideoId(generatedVideos[generatedVideos.length - 1].id);
     }
-  }, [generatedVideos]);
+  }, [generatedVideos, selectedVideoId]);
 
   // Animate video generation steps (0–5) while generating
   useEffect(() => {
@@ -465,31 +468,7 @@ export default function VideoSessionPage() {
         showError(data.error || 'Could not analyze website. Please try manual setup.');
         return null;
       }
-      const result = data.result;
-      return {
-        name: result.facts?.company_name || 'Unknown Brand',
-        description: result.positioning?.primary_value_proposition || '',
-        audience: Array.isArray(result.facts?.who_it_is_for)
-          ? result.facts.who_it_is_for.join(', ')
-          : (result.facts?.who_it_is_for as string) || '',
-        offering: Array.isArray(result.facts?.what_they_sell)
-          ? result.facts.what_they_sell.join(', ')
-          : (result.facts?.what_they_sell as string) || '',
-        tone: result.brandVoice || result.personality || 'professional',
-        logo: result.logo,
-        logoUrl: result.logoUrl,
-        primaryColors: result.primaryColors,
-        fontStyles: result.fontStyles,
-        brandVoice: result.brandVoice,
-        coreValueProp: result.coreValueProp,
-        ctaPatterns: result.ctaPatterns,
-        productCategory: result.productCategory,
-        pricePositioning: result.pricePositioning,
-        personality: result.personality,
-        colors: result.colors
-          ? { primary: result.colors.primary ?? undefined, secondary: result.colors.secondary ?? undefined, accent: result.colors.accent ?? undefined }
-          : undefined,
-      };
+      return mapFullAnalyzeToBrandSnapshot(data.result);
     } catch (err: any) {
       showError(`Error analyzing website: ${err?.message || 'Unknown error'}. Please try manual setup.`);
       return null;
@@ -509,16 +488,7 @@ export default function VideoSessionPage() {
 
       // API returns { result: {...} } on success, { error: string } on failure
       if (data.result) {
-        const result = data.result as Record<string, any>;
-        const brandSnapshot: BrandSnapshot = {
-          name: result.facts?.company_name || 'Unknown Brand',
-          description: result.positioning?.primary_value_proposition || '',
-          audience: result.facts?.who_it_is_for?.join(', ') || '',
-          offering: result.facts?.what_they_sell?.join(', ') || '',
-          tone: result.brandVoice || result.personality || 'professional',
-          logo: result.logo,
-        };
-
+        const brandSnapshot = mapFullAnalyzeToBrandSnapshot(data.result);
         setBrand(brandSnapshot);
         saveBrandSnapshot(brandSnapshot);
         setShowBrandOnboarding(false);
@@ -916,7 +886,7 @@ export default function VideoSessionPage() {
         }
       }
       
-      router.push(`/creative-studio/video?id=${selectedSessionId}`);
+      router.push(`/brand-studio/video?id=${selectedSessionId}`);
     }
   }
 
@@ -964,7 +934,7 @@ export default function VideoSessionPage() {
         setVideoSessions(prev => [newSession, ...prev]);
 
         setShowNewSessionModal(false);
-        router.push(`/creative-studio/video?id=${data.session.id}`);
+        router.push(`/brand-studio/video?id=${data.session.id}`);
       } else {
         showError('Failed to create session: ' + (data.error || 'Unknown error'));
       }
@@ -995,7 +965,7 @@ export default function VideoSessionPage() {
         setVideoSessions((prev) => prev.filter((s) => s.id !== deleteSessionId));
 
         if (deleteSessionId === sessionId) {
-          router.push('/creative-studio');
+          router.push('/brand-studio');
         }
       } else {
         showError('Failed to delete session: ' + (data.error || 'Unknown error'));
@@ -1028,11 +998,11 @@ export default function VideoSessionPage() {
         <div className="text-center">
           <p className="mb-4" style={{ color: colors.destructive }}>{error}</p>
           <button
-            onClick={() => router.push('/creative-studio')}
+            onClick={() => router.push('/brand-studio')}
             className="px-4 py-2 text-white rounded-lg"
             style={{ backgroundColor: colors.primary }}
           >
-            Back to Creative Studio
+            Back to Brand Studio
           </button>
         </div>
       </div>

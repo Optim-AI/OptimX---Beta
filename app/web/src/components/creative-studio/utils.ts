@@ -1,7 +1,57 @@
-// Creative Studio Shared Utilities
+// Brand Studio Shared Utilities
 // Extracted from pages/creative-studio.tsx for modularity
 
 import type { BrandSnapshot, PosterConfig } from './types';
+
+/** Map fullAnalyze API result to BrandSnapshot (Brand Kit format) */
+export function mapFullAnalyzeToBrandSnapshot(result: any): BrandSnapshot {
+  const primaryColors = result.primaryColors || [];
+  const colorsObj = result.colors
+    ? {
+        primary: result.colors.primary ?? primaryColors[0],
+        secondary: result.colors.secondary ?? primaryColors[1],
+        accent: result.colors.accent ?? primaryColors[2],
+        neutral: primaryColors[3] || result.colors.neutral,
+      }
+    : primaryColors.length
+      ? {
+          primary: primaryColors[0],
+          secondary: primaryColors[1],
+          accent: primaryColors[2],
+          neutral: primaryColors[3],
+        }
+      : undefined;
+
+  return {
+    name: result.facts?.company_name || 'Unknown Brand',
+    description: result.positioning?.primary_value_proposition || '',
+    audience: Array.isArray(result.facts?.who_it_is_for)
+      ? result.facts.who_it_is_for.join(', ')
+      : (result.facts?.who_it_is_for as string) || '',
+    offering: Array.isArray(result.facts?.what_they_sell)
+      ? result.facts.what_they_sell.join(', ')
+      : (result.facts?.what_they_sell as string) || '',
+    tone: result.brandVoice || result.personality || 'professional',
+    logo: result.logo,
+    logoUrl: result.logoUrl,
+    primaryColors,
+    fontStyles: result.fontStyles,
+    primaryFont: result.primaryFont,
+    brandVoice: result.brandVoice,
+    coreValueProp: result.coreValueProp,
+    ctaPatterns: result.ctaPatterns,
+    productCategory: result.productCategory,
+    pricePositioning: result.pricePositioning,
+    personality: result.personality,
+    colors: colorsObj,
+    tagline: result.tagline,
+    brand_aesthetic: result.brand_aesthetic,
+    brand_tone: result.brand_tone,
+    brand_values: result.brand_values,
+    business_overview: result.business_overview,
+    website_url: result.website_url,
+  };
+}
 
 /**
  * Theme Configuration Map
@@ -112,6 +162,56 @@ export function getCompositionRules(ratio: "1:1" | "4:5" | "9:16" | "1.91:1"): s
   };
   
   return rules[ratio] || rules["1:1"];
+}
+
+/**
+ * Map brand attributes to the most appropriate poster theme.
+ * Ensures posters complement the brand instead of defaulting to commercial.
+ */
+export function getThemeForBrand(
+  brand: BrandSnapshot | null,
+  angle?: { title?: string } | null
+): string {
+  // Ad angle override: clinical/science angles → professional
+  if (angle?.title && /clinical|proven|science|lab|performance/i.test(angle.title)) {
+    return "professional";
+  }
+
+  if (!brand) return "professional";
+
+  const voice = (brand.brandVoice || "").toLowerCase();
+  const tone = (brand.tone || brand.personality || "").toLowerCase();
+  const industry = (brand.industry || brand.offering || "").toLowerCase();
+
+  // 1. Brand voice (strongest signal)
+  if (voice === "professional") return "professional";
+  if (voice === "minimalist") return "minimal";
+  if (voice === "playful") return "playful";
+  if (voice === "bold") return "bold";
+
+  // 2. Tone/personality
+  if (/professional|corporate|trustworthy|formal|clean/i.test(tone)) return "professional";
+  if (/minimal|clean|simple|modern|understated/i.test(tone)) return "minimal";
+  if (/playful|fun|energetic|casual|friendly|youthful/i.test(tone)) return "playful";
+  if (/premium|luxury|sophisticated|refined|elegant/i.test(tone)) return "premium";
+  if (/bold|disruptive|confident|loud/i.test(tone)) return "bold";
+  if (/trendy|modern|contemporary|fresh/i.test(tone)) return "trendy";
+  if (/festive|celebratory|joyful/i.test(tone)) return "festive";
+  if (/dynamic|energetic|sport/i.test(tone)) return "dynamic";
+
+  // 3. Price positioning
+  if (brand.pricePositioning === "premium") return "premium";
+
+  // 4. Industry/offering
+  if (/luxury|fashion|jewelry|premium|cosmetics|beauty/i.test(industry)) return "premium";
+  if (/finance|b2b|corporate|saas|software|consulting/i.test(industry)) return "professional";
+  if (/tech|startup|app/i.test(industry)) return "trendy";
+  if (/sport|fitness|outdoor|active/i.test(industry)) return "dynamic";
+  if (/kids|toys|children/i.test(industry)) return "playful";
+  if (/food|beverage|fmcg|retail|consumer/i.test(industry)) return "commercial";
+
+  // 5. Default: professional (softer than commercial)
+  return "professional";
 }
 
 /**
@@ -447,6 +547,9 @@ export function fileToDataUrl(file: File): Promise<string> {
  */
 export function dataUrlToFile(dataUrl: string, filename: string): File {
   const arr = dataUrl.split(',');
+  if (arr.length < 2 || !arr[1]) {
+    throw new Error('Invalid data URL: expected "data:<mime>;base64,<data>" format');
+  }
   const mime = arr[0].match(/:(.*?);/)?.[1] || 'image/jpeg';
   const bstr = atob(arr[1]);
   let n = bstr.length;
@@ -461,7 +564,7 @@ export function dataUrlToFile(dataUrl: string, filename: string): File {
  * Generate a unique ID for messages/sessions
  */
 export function generateId(): string {
-  return `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  return `${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
 }
 
 /**
@@ -596,12 +699,14 @@ export const ASPECT_RATIOS = [
 export const VIDEO_STYLES = [
   "Product Close-up",
   "Hook",
+  "Commercial",
+  "UGC Style",
   "Lifestyle",
   "Cinematic",
   "Luxury",
   "Minimalist",
   "Bold & Energetic",
-  "2D Animation", 
+  "2D Animation",
   "Motion Graphics",
   "Retro",
 ] as const;

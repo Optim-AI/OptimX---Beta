@@ -562,12 +562,45 @@ Facts: ${JSON.stringify(facts)}
 Positioning: ${JSON.stringify(positioning)}
 `;
 
+const brandKitPrompt = (data: any, facts: any, positioning: any) => `
+Analyze the brand content and extract structured brand kit data for a Brand Guideline UI (like Pomeli or Canva Brand Kit).
+
+Return JSON with these exact keys:
+{
+  "brand_aesthetic": ["minimalist", "modern", "scientific", "elegant"],
+  "brand_tone": ["transparent", "friendly", "educational"],
+  "brand_values": ["100% Vegan", "Cruelty-Free", "Sustainability"],
+  "business_overview": "2-sentence summary: what the company does, industry, unique value proposition, product categories.",
+  "tagline": "brand tagline or slogan if found, else empty string"
+}
+
+Rules:
+- brand_aesthetic: 4-6 descriptors (e.g. scientific, minimalist, sophisticated, modern, elegant, luxury, playful)
+- brand_tone: 3-5 tone descriptors (e.g. transparent, friendly, educational, delightful, professional)
+- brand_values: key differentiators, certifications, commitments (e.g. "100% Vegan", "PETA certified")
+- business_overview: exactly 2 sentences, max 200 chars total
+- tagline: exact tagline from site or empty ""
+
+PAGE TITLE: ${data.title || 'Unknown'}
+META DESCRIPTION: ${data.metaDesc || 'None'}
+URL: ${data.url || 'Unknown'}
+ABOUT/CONTENT: ${data.aboutUsText?.substring(0, 1500) || 'No content'}
+
+Facts: ${JSON.stringify(facts)}
+Positioning: ${JSON.stringify(positioning)}
+`;
+
 /* ---------------------- MAIN HANDLER ---------------------- */
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
-  if (req.method !== "POST") return res.status(405).end();
+  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
+
+  const { getUserIdFromRequest } = await import("@/auth/request");
+  const userId = await getUserIdFromRequest(req);
+  if (!userId) return res.status(401).json({ error: "Authentication required" });
+
   const { url } = req.body;
   if (!url) return res.status(400).json({ error: "Missing url" });
 
@@ -606,6 +639,7 @@ export default async function handler(
     let brandVoiceData: any = {};
     let teardown: any = {};
     let brandIntelligence: any = {};
+    let brandKit: any = {};
 
     try {
       const factsJson = await callOpenAI(factsPrompt(data));
@@ -656,6 +690,14 @@ export default async function handler(
     } catch (e) {
       console.error("Failed to parse brand intelligence:", e);
       // Continue with empty brand intelligence
+    }
+
+    // Extract brand kit (aesthetic, tone, values, business overview)
+    try {
+      const brandKitJson = await callOpenAI(brandKitPrompt(data, facts, positioning));
+      brandKit = JSON.parse(brandKitJson || "{}");
+    } catch (e) {
+      console.error("Failed to parse brand kit:", e);
     }
 
     // Analyze brand voice and core value prop from About Us section
@@ -766,6 +808,13 @@ export default async function handler(
         ctaPatterns: data.ctaPatterns || [],
         productCategory: brandIntelligence.product_category || null,
         pricePositioning: brandIntelligence.price_positioning || null,
+        // Brand Kit (Pomeli/Canva-style)
+        brand_aesthetic: Array.isArray(brandKit.brand_aesthetic) ? brandKit.brand_aesthetic : [],
+        brand_tone: Array.isArray(brandKit.brand_tone) ? brandKit.brand_tone : [],
+        brand_values: Array.isArray(brandKit.brand_values) ? brandKit.brand_values : [],
+        business_overview: brandKit.business_overview || null,
+        tagline: brandKit.tagline || null,
+        website_url: data.url || null,
       }
     });
   } catch (e: any) {

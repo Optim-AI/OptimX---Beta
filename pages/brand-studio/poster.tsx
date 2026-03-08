@@ -1,4 +1,4 @@
-// pages/creative-studio/poster/[sessionId].tsx
+// pages/brand-studio/poster/[sessionId].tsx
 // Poster Generation Session Page
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
@@ -31,6 +31,7 @@ import {
   DEFAULT_POSTER_CONFIG,
   POSTER_THEMES,
   ASPECT_RATIOS,
+  mapFullAnalyzeToBrandSnapshot,
 } from '@/app/web/src/components/creative-studio';
 import { authFetch, safeResponseJson } from '@/lib/utils';
 
@@ -173,7 +174,7 @@ export default function PosterSessionPage() {
     const checkSession = async () => {
       await new Promise(resolve => setTimeout(resolve, 100));
       const { data } = await supabase.auth.getSession();
-      if (mounted) {
+      if (mounted && data?.session) {
         setIsAuthReady(true);
       }
     };
@@ -549,31 +550,7 @@ export default function PosterSessionPage() {
         showError(data.error || 'Could not analyze website. Please try manual setup.');
         return null;
       }
-      const result = data.result;
-      return {
-        name: result.facts?.company_name || 'Unknown Brand',
-        description: result.positioning?.primary_value_proposition || '',
-        audience: Array.isArray(result.facts?.who_it_is_for)
-          ? result.facts.who_it_is_for.join(', ')
-          : (result.facts?.who_it_is_for as string) || '',
-        offering: Array.isArray(result.facts?.what_they_sell)
-          ? result.facts.what_they_sell.join(', ')
-          : (result.facts?.what_they_sell as string) || '',
-        tone: result.brandVoice || result.personality || 'professional',
-        logo: result.logo,
-        logoUrl: result.logoUrl,
-        primaryColors: result.primaryColors,
-        fontStyles: result.fontStyles,
-        brandVoice: result.brandVoice,
-        coreValueProp: result.coreValueProp,
-        ctaPatterns: result.ctaPatterns,
-        productCategory: result.productCategory,
-        pricePositioning: result.pricePositioning,
-        personality: result.personality,
-        colors: result.colors
-          ? { primary: result.colors.primary ?? undefined, secondary: result.colors.secondary ?? undefined, accent: result.colors.accent ?? undefined }
-          : undefined,
-      };
+      return mapFullAnalyzeToBrandSnapshot(data.result);
     } catch (err: any) {
       showError(`Error analyzing website: ${err?.message || 'Unknown error'}. Please try manual setup.`);
       return null;
@@ -593,21 +570,7 @@ export default function PosterSessionPage() {
       
       // API returns { result: {...} } on success, { error: string } on failure
       if (data.result) {
-        const result = data.result as Record<string, any>;
-        const brandSnapshot: BrandSnapshot = {
-          name: result.facts?.company_name || 'Unknown Brand',
-          description: result.positioning?.primary_value_proposition || '',
-          audience: result.facts?.who_it_is_for?.join(', ') || '',
-          offering: result.facts?.what_they_sell?.join(', ') || '',
-          tone: result.brandVoice || result.personality || 'professional',
-          logo: result.logo,
-          logoUrl: result.logoUrl,
-          primaryColors: result.primaryColors,
-          fontStyles: result.fontStyles,
-          brandVoice: result.brandVoice,
-          coreValueProp: result.coreValueProp,
-        };
-        
+        const brandSnapshot = mapFullAnalyzeToBrandSnapshot(data.result);
         setBrand(brandSnapshot);
         saveBrandSnapshot(brandSnapshot);
         setShowBrandOnboarding(false);
@@ -1426,7 +1389,7 @@ export default function PosterSessionPage() {
         await saveSession();
       }
       
-      router.push(`/creative-studio/poster?id=${selectedSessionId}`);
+      router.push(`/brand-studio/poster?id=${selectedSessionId}`);
     }
   }
 
@@ -1474,7 +1437,7 @@ export default function PosterSessionPage() {
         setPosterSessions(prev => [newSession, ...prev]);
         
         setShowNewSessionModal(false);
-        router.push(`/creative-studio/poster?id=${data.session.id}`);
+        router.push(`/brand-studio/poster?id=${data.session.id}`);
       } else {
         showError('Failed to create session: ' + (data.error || 'Unknown error'));
       }
@@ -1505,7 +1468,7 @@ export default function PosterSessionPage() {
         setPosterSessions(prev => prev.filter(s => s.id !== deleteSessionId));
         
         if (deleteSessionId === sessionId) {
-          router.push('/creative-studio');
+          router.push('/brand-studio');
         }
       } else {
         showError('Failed to delete session: ' + (data.error || 'Unknown error'));
@@ -1538,10 +1501,10 @@ export default function PosterSessionPage() {
         <div className="text-center">
           <p className="text-red-600 mb-4">{error}</p>
           <button
-            onClick={() => router.push('/creative-studio')}
+            onClick={() => router.push('/brand-studio')}
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
           >
-            Back to Creative Studio
+            Back to Brand Studio
           </button>
         </div>
       </div>

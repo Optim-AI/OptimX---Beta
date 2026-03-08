@@ -46,12 +46,12 @@ const Home: React.FC = () => {
             const profileData = await profileRes.json();
             const p = profileData.success ? profileData.data : null;
             if (p && (p.business_name || p.businessName)) {
-              router.replace("/creative-studio");
+              router.replace("/brand-studio");
             } else {
               router.replace("/welcome");
             }
           } catch {
-            router.replace("/creative-studio");
+            router.replace("/brand-studio");
           }
           return;
         }

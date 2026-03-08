@@ -919,18 +919,3 @@ export default function DashboardPage(): JSX.Element {
   );
 }
 
-/* -------------------- small helpers outside component -------------------- */
-function fmtMoney(n: number | null | undefined) {
-  if (n == null) return "—";
-  try {
-    return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", minimumFractionDigits: 0 }).format(Number(n));
-  } catch {
-    return `₹${Number(n).toFixed(0)}`;
-  }
-}
-function pctDisplay(n: number | null | undefined) {
-  if (n == null) return "—";
-  const r = Math.round((n as number) * 10) / 10;
-  const sign = r > 0 ? "+" : "";
-  return `${sign}${r}%`;
-}

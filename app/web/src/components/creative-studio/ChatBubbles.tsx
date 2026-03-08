@@ -1,7 +1,7 @@
 // ChatBubbles.tsx
 // System and User chat bubble components
 
-import React from 'react';
+import React, { useMemo, useEffect } from 'react';
 import type { Message } from './types';
 import colors from '@/lib/ui/colors';
 
@@ -19,7 +19,15 @@ type SystemBubbleProps = {
 export function SystemBubble({ children, images, imageUrls, expiredImageCount, imageThumbnail, onImageClick, onUseAsReference, onDownload }: SystemBubbleProps) {
   const hasImages = (images && images.length > 0) || (imageUrls && imageUrls.length > 0);
   const hasExpired = expiredImageCount && expiredImageCount > 0;
-  
+
+  const fileObjectUrls = useMemo(
+    () => (images || []).map((img) => URL.createObjectURL(img)),
+    [images]
+  );
+  useEffect(() => {
+    return () => fileObjectUrls.forEach((u) => URL.revokeObjectURL(u));
+  }, [fileObjectUrls]);
+
   const handleDownload = (url: string, idx: number) => {
     if (onDownload) {
       onDownload(url);
@@ -79,10 +87,10 @@ export function SystemBubble({ children, images, imageUrls, expiredImageCount, i
         {hasImages && (
           <div className="flex flex-wrap gap-4 mt-2">
             {/* File images */}
-            {images && images.map((img, idx) => (
+            {fileObjectUrls.map((objUrl, idx) => (
               <img
                 key={`file-${idx}`}
-                src={URL.createObjectURL(img)}
+                src={objUrl}
                 alt={`Image ${idx + 1}`}
                 className="w-32 h-32 object-cover rounded-lg shadow-sm"
                 style={{ border: `1px solid ${colors.border}` }}
@@ -170,15 +178,23 @@ export function UserBubble({ message }: UserBubbleProps) {
   const hasFileImages = message.images && message.images.length > 0;
   const hasUrlImages = !hasFileImages && message.imageUrls && message.imageUrls.length > 0;
 
+  const fileObjectUrls = useMemo(
+    () => (message.images || []).map((img) => URL.createObjectURL(img)),
+    [message.images]
+  );
+  useEffect(() => {
+    return () => fileObjectUrls.forEach((u) => URL.revokeObjectURL(u));
+  }, [fileObjectUrls]);
+
   return (
     <div className="flex gap-4 max-w-4xl ml-auto overflow-hidden">
       <div className="flex-1 flex flex-col items-end gap-2 min-w-0">
         {hasFileImages && (
           <div className="flex flex-wrap gap-2 mb-2">
-            {message.images!.map((img, idx) => (
+            {fileObjectUrls.map((objUrl, idx) => (
               <img
                 key={idx}
-                src={URL.createObjectURL(img)}
+                src={objUrl}
                 alt={`Upload ${idx + 1}`}
                 className="w-24 h-24 object-cover rounded-lg"
                 style={{ border: `1px solid ${colors.border}` }}

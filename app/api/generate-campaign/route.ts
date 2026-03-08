@@ -35,12 +35,12 @@ async function normalizeImageForGemini(dataUrl: string): Promise<{ mimeType: str
   }
 }
 
-const NANO_API_KEY = process.env.NANO_API_KEY;
+const NANO_API_KEY = process.env.NANO_API_KEY || process.env.GEMINI_API_KEY || process.env.GEMINI_VEO_API_KEY;
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash-image";
 const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
 
 if (!NANO_API_KEY) {
-  console.warn("NANO_API_KEY not set - Gemini calls will fail.");
+  console.warn("NANO_API_KEY / GEMINI_API_KEY not set - Gemini image generation will fail.");
 }
 
 /* ---------- Types / helpers for logo placement ---------- */
@@ -279,6 +279,8 @@ function buildPromptFromInputs(body: any) {
     `Produce a high-quality visual sized approximately ${width}×${height} (${aspectLabel}). Keep composition balanced. Avoid putting essential text in the extreme corners.`
   );
 
+  parts.push("CRITICAL: Never use asterisks (*) in any text. No * between words or sentences (e.g. no *and* or *bold*). Plain text only for headlines, body copy, and CTAs.");
+
   return parts.filter(Boolean).join("\n\n");
 }
 
@@ -415,11 +417,8 @@ async function getUserFromRequest(request: Request, bodyToken?: string) {
           (e as any)?.message ?? e
         );
       }
-      const dec = decodeSupabaseJWT(token);
-      if (dec) {
-        const userId = dec.sub || dec.user_id || dec.id || dec.uid || null;
-        if (userId) return { user: { id: String(userId) } as any, token };
-      }
+      // JWT decode fallback removed: unsigned JWT payloads are forgeable.
+      // If supabaseAdmin.auth.getUser fails, reject the request.
     }
     return { user: null, token: null };
   } catch (e) {
@@ -495,7 +494,7 @@ export async function POST(request: Request) {
     }
     if (!NANO_API_KEY)
       return NextResponse.json(
-        { ok: false, error: "Server missing NANO_API_KEY" },
+        { ok: false, error: "Server missing NANO_API_KEY or GEMINI_API_KEY for image generation" },
         { status: 500 }
       );
 
@@ -620,6 +619,8 @@ export async function POST(request: Request) {
     }
 
     // Add additional reference images (lower priority)
+    // Edit mode: first ref is the poster to modify (no product image)
+    const isEditMode = (body.mode === "edit" || body.editMode === true) && !productDataUrl;
     if (Array.isArray(refDataUrls) && refDataUrls.length) {
       let added = 0;
       for (const d of refDataUrls) {
@@ -633,7 +634,10 @@ export async function POST(request: Request) {
             data: normalized.base64Data,
           },
         });
-        parts.push({ text: "The image above is an additional reference image for style/context." });
+        const refText = isEditMode && added === 0
+          ? "The image above is the CURRENT POSTER. Modify it with ONLY the exact change requested in the prompt. Keep layout, product, colors, and all other elements identical."
+          : "The image above is an additional reference image for style/context.";
+        parts.push({ text: refText });
         added++;
         if (added >= 2) break; // Limit to 2 additional refs (3 total including product)
       }
@@ -789,10 +793,9 @@ export async function POST(request: Request) {
     let updatedBalance: number | null = null;
     try {
       console.log('[Credits] Deducting 1 image credit for user:', user.id);
-      const success = await CreditsDAO.deductImageCredits(user.id, 1);
+      const result = await CreditsDAO.deductImageCredits(user.id, 1);
 
-      if (success) {
-        // Get updated balance
+      if (result && result.success) {
         const balance = await CreditsDAO.getFullBalance(user.id);
         if (balance) {
           updatedBalance = balance.imageCredits.total;

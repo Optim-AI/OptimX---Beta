@@ -35,6 +35,8 @@ function withAlpha(token: string, alpha: number) {
   return token;
 }
 
+type CarouselMediaItem = { type: "image"; src: string } | { type: "video"; src: string };
+
 const AD_CREATIVE_IMAGES = [
   "/images/partners/download__5_-2d306f55-d9c8-4c5b-acbd-5b6812d25c56.png",
   "/images/partners/jimmys-cocktails-green-apple-martini.png",
@@ -50,6 +52,32 @@ const AD_CREATIVE_IMAGES = [
   "/images/partners/bombay-shaving-legend-365.png",
   "/images/partners/boat-stone-350-deadpool.png",
 ];
+
+// Videos from "videos ads" folder (copied to public/videos/)
+const AD_CREATIVE_VIDEOS: string[] = [
+  "/videos/1772472492670_video.mp4",
+  "/videos/1772472655830_video.mp4",
+  "/videos/1772472814538_video.mp4",
+  "/videos/1772472925195_video.mp4",
+  "/videos/Bike%20ad%20test.mp4",
+  "/videos/download%20(4).mp4",
+  "/videos/video-video_1770977065725_f0zb0n7nw.mp4",
+  "/videos/video-video_1771484100449_crs2lp30d.mp4",
+  "/videos/1772519732573_video%20(1).mp4",
+];
+
+// Interleave poster, video, poster, video...
+function interleaveMedia(images: string[], videos: string[]): CarouselMediaItem[] {
+  const result: CarouselMediaItem[] = [];
+  const maxLen = Math.max(images.length, videos.length);
+  for (let i = 0; i < maxLen; i++) {
+    if (i < images.length) result.push({ type: "image", src: images[i] });
+    if (i < videos.length) result.push({ type: "video", src: videos[i] });
+  }
+  return result;
+}
+
+const AD_CREATIVE_MEDIA: CarouselMediaItem[] = interleaveMedia(AD_CREATIVE_IMAGES, AD_CREATIVE_VIDEOS);
 
 const PROGRESS_STEPS = [
   "Analyzing website...",
@@ -503,7 +531,7 @@ const Hero: React.FC = () => {
           </p>
           <div className="relative overflow-hidden -mx-4 sm:mx-0">
             <div className="hero-ad-carousel-track flex gap-4 w-max" style={{ width: "max-content" }}>
-              {[...AD_CREATIVE_IMAGES, ...AD_CREATIVE_IMAGES].map((src, index) => (
+              {[...AD_CREATIVE_MEDIA, ...AD_CREATIVE_MEDIA].map((item, index) => (
                 <div
                   key={index}
                   className="flex-shrink-0 w-[220px] sm:w-[260px] md:w-[280px] rounded-[16px] overflow-hidden"
@@ -513,13 +541,25 @@ const Hero: React.FC = () => {
                   }}
                 >
                   <div className="relative aspect-[3/4] w-full">
-                    <Image
-                      src={src}
-                      alt={`Ad creative ${(index % AD_CREATIVE_IMAGES.length) + 1}`}
-                      fill
-                      className="object-cover"
-                      sizes="(max-width: 640px) 200px, (max-width: 768px) 240px, 260px"
-                    />
+                    {item.type === "image" ? (
+                      <Image
+                        src={item.src}
+                        alt={`Ad creative ${(index % AD_CREATIVE_MEDIA.length) + 1}`}
+                        fill
+                        className="object-cover"
+                        sizes="(max-width: 640px) 200px, (max-width: 768px) 240px, 260px"
+                      />
+                    ) : (
+                      <video
+                        src={item.src}
+                        muted
+                        loop
+                        playsInline
+                        autoPlay
+                        className="absolute inset-0 w-full h-full object-cover"
+                        aria-label={`Ad creative video ${(index % AD_CREATIVE_MEDIA.length) + 1}`}
+                      />
+                    )}
                   </div>
                 </div>
               ))}

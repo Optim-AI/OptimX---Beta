@@ -11,8 +11,8 @@ type BackButtonProps = {
 };
 
 export default function BackButton({
-  href = '/creative-studio',
-  label = 'Back to Creative Studio',
+  href = '/brand-studio',
+  label = 'Back to Brand Studio',
   onClick,
 }: BackButtonProps) {
   const router = useRouter();

@@ -4,17 +4,12 @@ import type { AppProps } from "next/app";
 import * as React from "react";
 import dynamic from "next/dynamic";
 import Router from "next/router";
-import { Poppins } from "next/font/google";
 import AlertModal from "@/app/web/src/components/ui/AlertModal";
 
 const LiquidGlassAnimator = dynamic(() => import("../app/web/src/components/LiquidGlassAnimator").then((m) => m.default), { ssr: false });
 
-const poppins = Poppins({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-  variable: "--font-poppins",
-  display: "swap",
-});
+// System font stack - no network fetch during build (avoids Google Fonts failure in restricted environments)
+const fontFamily = "ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif";
 
 export default function MyApp({ Component, pageProps }: AppProps) {
   // loading state: true during initial paint + during route changes
@@ -22,22 +17,18 @@ export default function MyApp({ Component, pageProps }: AppProps) {
 
   React.useEffect(() => {
     let initialTimer: number | undefined;
+    let completeTimer: number | undefined;
 
-    // hide initial loader after a short delay if no navigation happens
     initialTimer = window.setTimeout(() => setLoading(false), 700);
 
     const handleStart = () => {
-      // show loader on route change start
       setLoading(true);
-      if (initialTimer) {
-        clearTimeout(initialTimer);
-        initialTimer = undefined;
-      }
+      if (initialTimer) { clearTimeout(initialTimer); initialTimer = undefined; }
+      if (completeTimer) { clearTimeout(completeTimer); completeTimer = undefined; }
     };
     const handleComplete = () => {
-      // hide loader on route change complete
-      // small delay to avoid flash on very fast navigations
-      window.setTimeout(() => setLoading(false), 180);
+      if (completeTimer) clearTimeout(completeTimer);
+      completeTimer = window.setTimeout(() => setLoading(false), 180);
     };
 
     Router.events.on("routeChangeStart", handleStart);
@@ -46,6 +37,7 @@ export default function MyApp({ Component, pageProps }: AppProps) {
 
     return () => {
       if (initialTimer) clearTimeout(initialTimer);
+      if (completeTimer) clearTimeout(completeTimer);
       Router.events.off("routeChangeStart", handleStart);
       Router.events.off("routeChangeComplete", handleComplete);
       Router.events.off("routeChangeError", handleComplete);
@@ -76,10 +68,8 @@ export default function MyApp({ Component, pageProps }: AppProps) {
 
       {/* Inline global styles: font-family + loader CSS */}
       <style jsx global>{`
-        /* Apply Poppins globally */
         html {
-          font-family: ${poppins.style.fontFamily}, system-ui, -apple-system,
-            "Segoe UI", Roboto, "Helvetica Neue", Arial;
+          font-family: ${fontFamily};
         }
 
         /* Full-page loader container */
@@ -143,7 +133,7 @@ export default function MyApp({ Component, pageProps }: AppProps) {
       )}
 
       {/* App content */}
-      <main className={poppins.className}>
+      <main style={{ fontFamily }}>
         <Component {...pageProps} />
       </main>
 

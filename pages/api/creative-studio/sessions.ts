@@ -424,7 +424,7 @@ async function handleUpdateSession(
     const payload: any = {};
 
     // Common fields
-    if (name !== undefined) payload.name = name.trim();
+    if (name !== undefined && typeof name === 'string') payload.name = name.trim();
     if (brandSnapshot !== undefined) payload.brandSnapshot = brandSnapshot;
 
     // Poster-specific fields

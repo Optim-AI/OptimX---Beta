@@ -25,12 +25,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const { type = 'image', amount = 1 } = req.body;
 
-    // Deduct credits based on type
+    if (type !== 'image' && type !== 'video') {
+      return res.status(400).json({ error: 'Type must be "image" or "video"' });
+    }
+
+    const amountNum = Number(amount);
+    if (!Number.isFinite(amountNum) || !Number.isInteger(amountNum) || amountNum < 1) {
+      return res.status(400).json({ error: 'Amount must be a positive integer' });
+    }
+
     let result;
     if (type === 'video') {
-      result = await CreditsDAO.deductVideoCredits(userId, amount);
+      result = await CreditsDAO.deductVideoCredits(userId, amountNum);
     } else {
-      result = await CreditsDAO.deductImageCredits(userId, amount);
+      result = await CreditsDAO.deductImageCredits(userId, amountNum);
     }
 
     if (!result.success) {

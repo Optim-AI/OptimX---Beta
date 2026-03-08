@@ -6,6 +6,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ ok: false, error: "Method not allowed" });
   }
 
+  const { getUserIdFromRequest } = await import("@/auth/request");
+  const userId = await getUserIdFromRequest(req);
+  if (!userId) return res.status(401).json({ ok: false, error: "Authentication required" });
+
   try {
     const { url } = req.body;
 

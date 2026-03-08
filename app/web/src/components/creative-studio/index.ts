@@ -1,4 +1,4 @@
-// Creative Studio Components - Index
+// Brand Studio Components - Index
 // Export all components for easy importing
 
 // Types
@@ -6,6 +6,7 @@ export * from './types';
 
 // Utilities
 export {
+  mapFullAnalyzeToBrandSnapshot,
   THEME_CONFIG,
   getCompositionRules,
   generateProductionPrompt,

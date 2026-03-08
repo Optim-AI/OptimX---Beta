@@ -2,13 +2,11 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useRouter, usePathname } from 'next/navigation';
+import { useRouter } from 'next/router';
 import {
   Home,
   PlusCircle,
-  Cpu,
   BarChart3,
-  BookOpen,
   UploadCloud,
   Link2,
   Settings,
@@ -24,6 +22,8 @@ import {
   Zap,
   Coins,
   Flag,
+  Brain,
+  LayoutGrid,
 } from 'lucide-react';
 import colors from '@/lib/ui/colors';
 import { authFetch } from '@/lib/utils';
@@ -40,7 +40,9 @@ type NavItem = {
 // Map routes to feature keys for gating
 const NAV_ITEMS: NavItem[] = [
   { href: '/dashboard', label: 'Dashboard', Icon: Home, featureKey: 'dashboard' },
-  { href: '/creative-studio', label: 'Creative Studio', Icon: Palette }, // Always visible
+  { href: '/brand-studio', label: 'Brand Studio', Icon: Palette }, // Always visible
+  { href: '/creative-intelligence', label: 'Creative Intelligence', Icon: Brain }, // Always visible
+  { href: '/content-studio', label: 'Content Studio', Icon: LayoutGrid }, // Always visible
   { href: '/buy-credits', label: 'Buy Credits', Icon: Coins }, // Always visible (pay-as-you-go)
   { href: '/create-campaign', label: 'Create Campaign', Icon: PlusCircle, featureKey: 'create_campaigns' },
   { href: '/analytics', label: 'Analytics', Icon: BarChart3, featureKey: 'basic_analytics' },
@@ -90,7 +92,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   onBrandGuideline,
 }) => {
   const router = useRouter();
-  const pathname = usePathname();
+  const pathname = router.pathname;
   const [collapsed, setCollapsed] = useState(false);
   const [featureAccess, setFeatureAccess] = useState<Record<string, any>>({});
   const [featuresLoading, setFeaturesLoading] = useState(true);

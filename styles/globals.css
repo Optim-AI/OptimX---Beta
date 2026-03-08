@@ -3,7 +3,7 @@
 /* --- Dark theme base (#121212) --- */
 @layer base {
   :root {
-    --font-sans: 'Poppins', ui-sans-serif, system-ui, sans-serif;
+    --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
     --background: #121212;
     --foreground: hsl(0 0% 95%);
     --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);

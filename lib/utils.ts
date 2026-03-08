@@ -65,12 +65,19 @@ export async function safeResponseJson<T = unknown>(response: Response): Promise
  */
 export async function authFetch(url: string, options: RequestInit = {}): Promise<Response> {
   const token = await getAuthToken();
-  const headers: HeadersInit = {
+  const existingHeaders: Record<string, string> = {};
+  if (options.headers) {
+    const h = options.headers instanceof Headers
+      ? options.headers
+      : new Headers(options.headers as Record<string, string>);
+    h.forEach((value, key) => { existingHeaders[key] = value; });
+  }
+  const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    ...(options.headers || {}),
+    ...existingHeaders,
   };
   if (token) {
-    (headers as Record<string, string>)['Authorization'] = `Bearer ${token}`;
+    headers['Authorization'] = `Bearer ${token}`;
   }
   return fetch(url, {
     ...options,

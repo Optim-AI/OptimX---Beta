@@ -3,6 +3,7 @@ import React, { useEffect, useState } from "react";
 import { BarChart3, Clock, TrendingUp, Zap } from "lucide-react";
 import Sidebar from '../app/web/src/components/Sidebar';
 import { SkeletonMetricGrid, SkeletonRecommendationCard } from '@/app/web/src/components/ui/skeletons';
+import { authFetch } from "@/lib/utils";
 
 type MetaMetrics = {
   total_spend: number;
@@ -60,7 +61,7 @@ export default function Insights() {
     setLoadingMeta(true);
     setError(null);
     try {
-      const res = await fetch("/api/auth/facebook/summaryMetrics");
+      const res = await authFetch("/api/auth/facebook/summaryMetrics");
       const text = await res.text();
       try {
         const json = JSON.parse(text);
@@ -124,10 +125,9 @@ export default function Insights() {
         note: "Provide prioritized, actionable recommendations (title, impact High/Medium/Low, reason, actions[], estimate). Respond in strict JSON: { recommendations: [ ... ] }",
       };
 
-      const r = await fetch("/api/recommendations", {
+      const r = await authFetch("/api/recommendations", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ payload }),
+        body: JSON.stringify({ metrics: payload, range: "7d" }),
       });
       const j = await r.json();
       setAiRaw(j);

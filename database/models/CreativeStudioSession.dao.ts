@@ -8,7 +8,7 @@ export type CreativeStudioSession = typeof creativeStudioSessions.$inferSelect;
 export type NewCreativeStudioSession = typeof creativeStudioSessions.$inferInsert;
 
 /**
- * Data Access Object for Creative Studio Sessions operations
+ * Data Access Object for Brand Studio Sessions operations
  */
 export class CreativeStudioSessionDAO {
   /**

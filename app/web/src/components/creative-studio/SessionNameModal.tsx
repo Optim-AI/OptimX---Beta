@@ -1,5 +1,5 @@
 // SessionNameModal.tsx
-// Modal for naming new creative studio sessions
+// Modal for naming new Brand Studio sessions
 
 import React, { useState, useRef, useEffect } from 'react';
 import type { SessionType } from './types';

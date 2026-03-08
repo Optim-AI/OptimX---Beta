@@ -205,7 +205,7 @@ export class FeatureService {
   static async getVisibleNavigation(userId: string): Promise<string[]> {
     const access = await this.getUserFeatureAccess(userId);
     
-    const visibleItems: string[] = ['creative-studio']; // Always visible
+    const visibleItems: string[] = ['brand-studio']; // Always visible
 
     // Analytics is always visible (but may be gated with coming soon)
     visibleItems.push('analytics');

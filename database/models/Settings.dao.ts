@@ -22,7 +22,7 @@ export class SettingsDAO {
       .where(eq(appSettings.key, key))
       .limit(1);
 
-    return result[0]?.value || null;
+    return result[0]?.value ?? null;
   }
 
   /**

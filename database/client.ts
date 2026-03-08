@@ -37,8 +37,7 @@ function getPool(): Pool {
   pool.on('error', (err) => {
     console.error('[DB] Pool error:', err.message, '| code:', (err as any).code);
     if (/auth|password|FATAL/i.test(err.message)) {
-
-      console.error('[DB] AUTH FAILURE — DATABASE_URL =', connectionString);
+      console.error('[DB] AUTH FAILURE — check DATABASE_URL credentials');
     }
   });
   pool.on('connect', () => {
@@ -94,6 +93,6 @@ export function extractDbError(error: any): {
     pgTable: cause?.table,
     pgConstraint: cause?.constraint,
     cause: cause !== error ? cause?.message : undefined,
-    databaseUrl: isAuthError ? process.env.DATABASE_URL : undefined,
+    isAuthError,
   };
 }

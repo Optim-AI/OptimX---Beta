@@ -9,7 +9,7 @@ import { Check, X } from 'lucide-react';
 
 type BillingMode = 'monthly' | '3months';
 
-// Pay As You Go + Growth Lite + Growth Pro
+// Pay As You Go + Growth Lite + Growth Pro + Gold + Enterprise
 const PLANS = [
   {
     key: 'payg',
@@ -19,7 +19,7 @@ const PLANS = [
     priceQuarterly: null,
     effectivePerMonth: null,
     imageCredits: '10 credits = ₹99',
-    videoCredits: '8 sec = ₹208',
+    videoCredits: '8 sec = ₹240',
     freeIncluded: '5 images, 8 sec video',
     noWatermark: true,
     crossPlatformPosting: false,
@@ -29,6 +29,8 @@ const PLANS = [
     competitorAnalysis: false,
     yourBrand: false,
     priorityProcessing: false,
+    ugcAdVideos: false,
+    adStudio: false,
     monthlyReset: 'No',
     cta: 'Start Free Trial',
     ctaHref: '/auth/signup',
@@ -53,6 +55,8 @@ const PLANS = [
     competitorAnalysis: false,
     yourBrand: false,
     priorityProcessing: false,
+    ugcAdVideos: false,
+    adStudio: false,
     monthlyReset: 'Yes',
     cta: 'Coming Soon',
     ctaHref: '#',
@@ -74,14 +78,68 @@ const PLANS = [
     automation: true,
     analytics: true,
     scheduling: true,
-    competitorAnalysis: true,
-    yourBrand: true,
-    priorityProcessing: true,
+    competitorAnalysis: false,
+    yourBrand: false,
+    priorityProcessing: false,
+    ugcAdVideos: false,
+    adStudio: false,
     monthlyReset: 'Yes',
     cta: 'Coming Soon',
     ctaHref: '#',
     popular: false,
     comingSoon: true,
+  },
+  {
+    key: 'gold',
+    name: 'Gold',
+    type: 'subscription' as const,
+    priceMonthly: 9999,
+    priceQuarterly: 27999,
+    effectivePerMonth: 8333,
+    imageCredits: '100/mo',
+    videoCredits: '80/ mo',
+    freeIncluded: '5 images, 8 sec video',
+    noWatermark: true,
+    crossPlatformPosting: true,
+    automation: true,
+    analytics: true,
+    scheduling: true,
+    competitorAnalysis: true,
+    yourBrand: true,
+    priorityProcessing: true,
+    ugcAdVideos: true,
+    adStudio: true,
+    monthlyReset: 'Yes',
+    cta: 'Coming Soon',
+    ctaHref: '#',
+    popular: false,
+    comingSoon: false,
+  },
+  {
+    key: 'enterprise',
+    name: 'Enterprise',
+    type: 'contact' as const,
+    priceMonthly: null,
+    priceQuarterly: null,
+    effectivePerMonth: null,
+    imageCredits: 'Custom',
+    videoCredits: 'Custom',
+    freeIncluded: '5 images, 8 sec video',
+    noWatermark: true,
+    crossPlatformPosting: true,
+    automation: true,
+    analytics: true,
+    scheduling: true,
+    competitorAnalysis: true,
+    yourBrand: true,
+    priorityProcessing: true,
+    ugcAdVideos: true,
+    adStudio: true,
+    monthlyReset: 'Yes',
+    cta: 'Contact for Pricing',
+    ctaHref: '/contact',
+    popular: false,
+    comingSoon: false,
   },
 ] as const;
 
@@ -105,7 +163,7 @@ const PricingPreview: React.FC = () => {
             Simple Pricing for Lean Marketing Teams
           </h2>
           <p className="text-lg font-extralight" style={{ color: colors.mutedForeground }}>
-            Pay as you go for images & video, or subscribe to Growth Lite or Growth Pro.
+            Pay as you go for images & video, or subscribe to Growth Lite, Growth Pro, Gold, or Enterprise.
           </p>
         </div>
 
@@ -143,34 +201,37 @@ const PricingPreview: React.FC = () => {
           </div>
         </div>
 
-        {/* Comparison Table: Pay As You Go | Growth Lite | Growth Pro */}
+        {/* Comparison Table: Pay As You Go | Growth Lite | Growth Pro | Gold | Enterprise */}
         <div
-          className="max-w-5xl mx-auto mb-8 transition-all duration-500 overflow-x-auto"
+          className="max-w-6xl mx-auto mb-8 transition-all duration-500 overflow-x-auto"
           style={{ opacity: contentVisible ? 1 : 0 }}
         >
           <div
             className="rounded-2xl overflow-hidden"
             style={{ background: 'hsl(0 0% 14% / 0.7)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,0.06)' }}
           >
-            <div className="grid grid-cols-4 gap-0 min-w-[720px]">
+            <div className="grid grid-cols-6 gap-0 min-w-[960px]">
               {/* Header row */}
               <div className="p-4 border-b border-r" style={{ borderColor: 'rgba(255,255,255,0.06)' }} />
               {PLANS.map((p) => (
                 <div
                   key={p.key}
-                  className="p-4 md:p-5 border-b border-r text-center last:border-r-0"
+                  className="p-4 md:p-5 border-b border-r text-center last:border-r-0 relative"
                   style={{
-                    borderColor: 'rgba(255,255,255,0.06)',
-                    background: p.popular ? 'hsl(213 100% 55% / 0.08)' : undefined,
+                    borderColor: p.key === 'gold' ? 'rgba(212,175,55,0.4)' : 'rgba(255,255,255,0.06)',
+                    background: p.key === 'gold' ? 'linear-gradient(135deg, rgba(212,175,55,0.15) 0%, rgba(255,215,0,0.06) 100%)' : p.popular ? 'hsl(213 100% 55% / 0.08)' : undefined,
+                    boxShadow: p.key === 'gold' ? 'inset 0 0 24px rgba(212,175,55,0.12), 0 0 20px rgba(212,175,55,0.08)' : undefined,
                   }}
                 >
-                  <span className="font-bold text-base md:text-lg" style={{ color: colors.foreground }}>{p.name}</span>
+                  <span className="font-bold text-base md:text-lg" style={{ color: p.key === 'gold' ? '#d4af37' : colors.foreground, textShadow: p.key === 'gold' ? '0 0 12px rgba(212,175,55,0.5)' : undefined }}>{p.name}</span>
                   {p.popular && (
                     <span className="inline-block text-xs font-semibold px-2 py-0.5 rounded-full mt-2" style={{ background: colors.primary, color: colors.primaryForeground }}>Most Popular</span>
                   )}
                   <div className="font-bold text-lg md:text-xl mt-2" style={{ color: colors.foreground }}>
                     {p.type === 'payg' ? (
                       <span className="text-sm font-normal" style={{ color: colors.mutedForeground }}>No subscription</span>
+                    ) : p.type === 'contact' ? (
+                      <span className="text-sm font-semibold" style={{ color: colors.foreground }}>Contact for pricing</span>
                     ) : billingMode === 'monthly' ? (
                       <>
                         ₹{p.priceMonthly!.toLocaleString()}<span className="text-sm font-normal" style={{ color: colors.mutedForeground }}>/mo</span>
@@ -200,17 +261,19 @@ const PricingPreview: React.FC = () => {
                 { label: 'Competitor Analysis', values: PLANS.map((p) => p.competitorAnalysis) },
                 { label: 'Your Brand', values: PLANS.map((p) => p.yourBrand) },
                 { label: 'Priority Processing', values: PLANS.map((p) => p.priorityProcessing) },
+                { label: 'UGC ad videos', values: PLANS.map((p) => p.ugcAdVideos) },
+                { label: 'Ad Studio', values: PLANS.map((p) => p.adStudio) },
                 { label: 'Monthly Reset', values: PLANS.map((p) => p.monthlyReset) },
               ].map((row, i) => (
-                <div key={i} className="grid grid-cols-4 gap-0 col-span-4" style={row.label === 'Limited Free Trial' ? { background: 'rgba(34,197,94,0.12)' } : undefined}>
+                <div key={i} className="grid grid-cols-6 gap-0 col-span-6" style={row.label === 'Limited Free Trial' ? { background: 'rgba(34,197,94,0.12)' } : undefined}>
                   <div className="p-3 md:p-4 border-b border-r text-sm" style={{ borderColor: 'rgba(255,255,255,0.06)', color: row.label === 'Limited Free Trial' ? colors.foreground : colors.mutedForeground, fontWeight: row.label === 'Limited Free Trial' ? 600 : undefined }}>{row.label}</div>
                   {row.values.map((val, cellIdx) => (
                     <div
                       key={cellIdx}
-                      className={`p-3 md:p-4 border-b border-r flex items-center justify-center ${cellIdx === PLANS.length - 1 ? 'last:border-r-0' : ''}`}
+                      className={`p-3 md:p-4 border-b border-r flex items-center justify-center ${cellIdx === row.values.length - 1 ? 'last:border-r-0' : ''}`}
                       style={{
-                        borderColor: 'rgba(255,255,255,0.06)',
-                        background: row.label === 'Limited Free Trial' ? 'rgba(34,197,94,0.16)' : PLANS[cellIdx].popular ? 'hsl(213 100% 55% / 0.04)' : undefined,
+                        borderColor: PLANS[cellIdx]?.key === 'gold' ? 'rgba(212,175,55,0.25)' : 'rgba(255,255,255,0.06)',
+                        background: row.label === 'Limited Free Trial' ? (PLANS[cellIdx]?.key === 'gold' ? 'rgba(212,175,55,0.2)' : 'rgba(34,197,94,0.16)') : PLANS[cellIdx]?.key === 'gold' ? 'rgba(212,175,55,0.06)' : PLANS[cellIdx]?.popular ? 'hsl(213 100% 55% / 0.04)' : undefined,
                       }}
                     >
                       {typeof val === 'boolean' ? (
@@ -224,10 +287,10 @@ const PricingPreview: React.FC = () => {
               ))}
 
               {/* CTA row */}
-              <div className="col-span-4 grid grid-cols-4 gap-0">
+              <div className="col-span-6 grid grid-cols-6 gap-0">
                 <div className="p-4 border-r" style={{ borderColor: 'rgba(255,255,255,0.06)' }} />
                 {PLANS.map((p) => (
-                  <div key={p.key} className="p-4 border-r last:border-r-0 flex flex-col items-center" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+                  <div key={p.key} className="p-4 border-r last:border-r-0 flex flex-col items-center" style={{ borderColor: p.key === 'gold' ? 'rgba(212,175,55,0.25)' : 'rgba(255,255,255,0.06)', background: p.key === 'gold' ? 'rgba(212,175,55,0.04)' : undefined }}>
                     {p.comingSoon ? (
                       <Button
                         variant="outline"

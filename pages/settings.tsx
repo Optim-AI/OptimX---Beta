@@ -584,7 +584,7 @@ export default function SettingsPage(): JSX.Element {
 
           <h2 className="text-2xl font-bold mb-6" style={{ color: colors.foreground }}>Settings</h2>
 
-          <Tabs defaultValue={tab} onValueChange={(v) => setTab(v as any)}>
+          <Tabs value={tab} onValueChange={(v) => setTab(v as any)}>
             <TabsList className="settings-tabs flex gap-1 mb-6 p-1 rounded-lg overflow-x-auto" style={{ backgroundColor: colors.muted, border: `1px solid ${colors.border}` }}>
               {([
                 { value: "profile", label: "Profile" },
