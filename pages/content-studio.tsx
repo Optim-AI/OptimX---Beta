@@ -1,5 +1,5 @@
 // pages/content-studio.tsx
-// Content Studio: Turn your website into high-converting ads
+// Ad Studio: Turn your website into high-converting ads
 
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/router";
@@ -698,7 +698,7 @@ export default function ContentStudioPage() {
                   <Sparkles className="w-7 h-7" style={{ color: colors.primary }} />
                 </div>
                 <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium mb-4" style={{ background: "hsl(213 100% 55% / 0.15)", color: colors.primary }}>
-                  AI-Powered Content Studio
+                  AI-Powered Ad Studio
                 </div>
                 <h1 className="text-4xl md:text-5xl font-bold tracking-tight max-w-6xl mx-auto text-center" style={{ color: colors.foreground }}>
                   Let&apos;s turn your website into high converting ads
