@@ -13,7 +13,6 @@ import {
   Check,
   BarChart3,
   Target,
-  Lightbulb,
   Zap,
   Download,
   Loader2,
@@ -25,7 +24,27 @@ import {
   Clock,
   GitCompare,
   Video,
+  Image,
+  LayoutGrid,
+  MessageSquare,
+  MapPin,
+  Grid3X3,
 } from "lucide-react";
+import {
+  ResponsiveContainer,
+  RadarChart,
+  PolarGrid,
+  PolarAngleAxis,
+  PolarRadiusAxis,
+  Radar,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+} from "recharts";
+import type { BrandSnapshot } from "@/app/web/src/components/creative-studio";
+import { DEFAULT_AD_BUILDER_DATA } from "@/app/web/src/components/creative-studio/utils";
 import { Progress } from "@/app/web/src/components/ui/progress";
 import { Button } from "@/app/web/src/components/ui/button";
 import { Input } from "@/app/web/src/components/ui/input";
@@ -92,6 +111,13 @@ type RunData = {
     rank: number | null;
   }>;
   strategies: {
+    strategy_snapshot?: {
+      market_gap?: string;
+      winning_angle?: string;
+      best_creative_direction?: string;
+      recommended_ad_format?: string;
+    } | null;
+    ad_format_recommendations?: Array<{ format: string; score: number; reasoning?: string }>;
     underserved_angles?: string[];
     white_space_opportunities?: string[];
     differentiation_map?: Record<string, string>;
@@ -146,6 +172,35 @@ type RunData = {
 
 type AnalysisMode = "brand" | "competitors";
 
+function mapCreativeIntelligenceBrandToSnapshot(
+  brand: RunData["brand"],
+  brandUrl: string
+): BrandSnapshot {
+  const raw = (brand as any)?.rawAnalysis || {};
+  let domain = "Brand";
+  try {
+    domain = new URL(brandUrl).hostname.replace("www.", "").split(".")[0];
+    domain = domain.charAt(0).toUpperCase() + domain.slice(1);
+  } catch {
+    // ignore
+  }
+  const name = raw.product_name || domain;
+  return {
+    name,
+    description: brand?.productSummary || raw.current_positioning_statement || "",
+    audience: raw.primary_target_audience || brand?.targetPersonaGuess || "",
+    offering: brand?.productSummary || raw.product_category || "",
+    tone: raw.brand_tone || brand?.emotionalTone || "professional",
+    logo: raw.logo,
+    logoUrl: raw.logoUrl,
+    primaryColors: raw.primaryColors || [],
+    fontStyles: raw.fontStyles,
+    coreValueProp: raw.core_value_prop,
+    productCategory: raw.product_category,
+    pricePositioning: raw.price_positioning,
+  };
+}
+
 export default function CreativeIntelligencePage() {
   const router = useRouter();
   const [mode, setMode] = useState<AnalysisMode>("brand");
@@ -168,6 +223,25 @@ export default function CreativeIntelligencePage() {
   const [runId, setRunId] = useState<string | null>(null);
   const [runData, setRunData] = useState<RunData | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const [imageCredits, setImageCredits] = useState<number | null>(null);
+  const [videoCredits, setVideoCredits] = useState<number | null>(null);
+
+  useEffect(() => {
+    async function loadCredits() {
+      try {
+        const response = await authFetch('/api/credits/balance');
+        const data = await response.json();
+        if (data.success) {
+          setImageCredits(data.imageCredits?.total ?? 0);
+          setVideoCredits(data.videoCredits?.total ?? 0);
+        }
+      } catch (err) {
+        console.error('Error loading credits:', err);
+      }
+    }
+    loadCredits();
+  }, []);
 
   const addCompetitorAnalysisUrl = () => setCompetitorAnalysisUrls((p) => [...p, ""]);
   const removeCompetitorAnalysisUrl = (i: number) =>
@@ -395,9 +469,66 @@ export default function CreativeIntelligencePage() {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
+  async function handleGenerateFromHook(hook: RunData["hooks"][0], type: "poster" | "video") {
+    if (!runData?.brand || !runData?.run?.brandUrl) return;
+    const brandSnapshot = mapCreativeIntelligenceBrandToSnapshot(
+      runData.brand,
+      runData.run.brandUrl
+    );
+    const sessionName = `Hook: ${hook.hookStatement.slice(0, 40)}${hook.hookStatement.length > 40 ? "…" : ""}`;
+
+    try {
+      const payload: any = {
+        name: sessionName,
+        sessionType: type,
+        brandSnapshot,
+      };
+
+      if (type === "poster") {
+        payload.phase = "product-input";
+        payload.posterPrompt = hook.hookStatement;
+      } else {
+        const raw = (runData.brand as any)?.rawAnalysis || {};
+        payload.adBuilderData = {
+          ...DEFAULT_AD_BUILDER_DATA,
+          product: {
+            product_name: raw.product_name || brandSnapshot.name,
+            brand_name: brandSnapshot.name,
+            product_images: [],
+            hero_image: null,
+            brand_logo: brandSnapshot.logo || brandSnapshot.logoUrl || null,
+            category: raw.product_category || "general",
+          },
+          voiceover: {
+            ...DEFAULT_AD_BUILDER_DATA.voiceover,
+            key_message: hook.hookStatement,
+          },
+        };
+      }
+
+      const res = await authFetch("/api/creative-studio/sessions", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || "Failed to create session");
+      router.push(`/brand-studio/${type}?id=${data.session.id}`);
+    } catch (err: any) {
+      showError(err?.message || "Failed to create session");
+    }
+  }
+
   const painPoints = runData?.reviews?.filter((r) => r.clusterType === "pain_points") || [];
   const desiredOutcomes =
     runData?.reviews?.filter((r) => r.clusterType === "desired_outcomes") || [];
+
+  const creativeAngleCards = (runData?.strategies?.campaign_blueprints?.length ?? 0) > 0
+    ? (runData?.strategies?.campaign_blueprints ?? []).slice(0, 6)
+    : (runData?.hooks ?? []).slice(0, 6).map((h) => ({
+        emotional_tone_direction: h.hookType || "Engagement",
+        messaging_focus: h.hookStatement,
+        ad_format: "Short video / Poster",
+      }));
 
   return (
     <div className="min-h-screen flex overflow-hidden app-page">
@@ -412,43 +543,54 @@ export default function CreativeIntelligencePage() {
           borderLeft: `1px solid ${colors.border}`,
         }}
       >
-        {/* Header */}
+        {/* Sticky Header */}
         <div
           className="border-b flex-shrink-0"
           style={{
             borderColor: colors.border,
-            background: colors.gradientMesh,
             backgroundColor: colors.card,
           }}
         >
-          <div className="max-w-6xl mx-auto px-6 py-6">
+          <div className="max-w-6xl mx-auto px-6 py-4">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div
-                  className="w-10 h-10 rounded-xl flex items-center justify-center"
-                  style={{ backgroundColor: colors.primary + "20" }}
-                >
-                  <Sparkles size={22} style={{ color: colors.primary }} />
-                </div>
-                <div>
-                  <h1 className="text-2xl font-bold tracking-tight" style={{ color: colors.foreground }}>
-                    Creative Intelligence
-                  </h1>
-                  <p className="text-sm mt-0.5" style={{ color: colors.mutedForeground }}>
-                    Research → Strategize → Create. AI-powered competitive intelligence & ad generation.
-                  </p>
-                </div>
+              <div>
+                <h1 className="text-2xl font-semibold" style={{ color: colors.foreground }}>
+                  Creative Intelligence
+                </h1>
+                <p className="text-sm mt-1" style={{ color: colors.mutedForeground }}>
+                  AI-powered competitive intelligence &amp; ad generation
+                </p>
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => historyRef.current?.scrollIntoView({ behavior: "smooth" })}
-                className="flex items-center gap-2"
-                style={{ color: colors.mutedForeground }}
-              >
-                <Clock size={18} />
-                <span className="text-sm">History</span>
-              </Button>
+              <div className="flex items-center gap-3">
+                {imageCredits !== null && (
+                  <div className="flex items-center gap-2 px-4 py-2 rounded-lg" style={{ background: 'hsl(213 100% 55% / 0.15)', border: '1px solid hsl(213 100% 55% / 0.35)' }}>
+                    <svg className="w-5 h-5" style={{ color: colors.primary }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    <span className="font-semibold" style={{ color: colors.primary }}>{imageCredits}</span>
+                    <span className="text-sm" style={{ color: colors.primary }}>images</span>
+                  </div>
+                )}
+                {videoCredits !== null && (
+                  <div className="flex items-center gap-2 px-4 py-2 rounded-lg" style={{ background: 'hsl(270 80% 55% / 0.15)', border: '1px solid hsl(270 80% 55% / 0.3)' }}>
+                    <svg className="w-5 h-5" style={{ color: 'hsl(270 80% 65%)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                    <span className="font-semibold" style={{ color: 'hsl(270 80% 70%)' }}>{videoCredits}s</span>
+                    <span className="text-sm" style={{ color: 'hsl(270 80% 65%)' }}>video</span>
+                  </div>
+                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => historyRef.current?.scrollIntoView({ behavior: "smooth" })}
+                  className="flex items-center gap-2"
+                  style={{ color: colors.mutedForeground }}
+                >
+                  <Clock size={18} />
+                  <span className="text-sm">History</span>
+                </Button>
+              </div>
             </div>
           </div>
         </div>
@@ -738,6 +880,41 @@ export default function CreativeIntelligencePage() {
             {/* Output Sections - Brand analysis only (not shown in Competitor Analysis mode) */}
             {mode === "brand" && runData && (
               <>
+                {/* Strategy Snapshot - AI-generated, executive clarity in 5 seconds */}
+                {runData.brand && (
+                  <SectionCard title="Strategy Snapshot" icon={<Sparkles size={20} />} onHistoryClick={scrollToHistory}>
+                    <p className="text-sm mb-4" style={{ color: colors.mutedForeground }}>
+                      AI ad analyst synthesis from brand, competitors, reviews & Meta ads.
+                    </p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="p-4 rounded-xl" style={{ backgroundColor: colors.background, border: `1px solid ${colors.border}` }}>
+                        <p className="text-xs font-medium mb-1" style={{ color: colors.mutedForeground }}>Market gap</p>
+                        <p className="text-sm font-medium" style={{ color: colors.foreground }}>
+                          {runData.strategies?.strategy_snapshot?.market_gap || runData.strategies?.market_gap_analysis?.[0]?.opportunity_statement || runData.strategies?.market_gap_analysis?.[0]?.why_it_exists || "—"}
+                        </p>
+                      </div>
+                      <div className="p-4 rounded-xl" style={{ backgroundColor: colors.background, border: `1px solid ${colors.border}` }}>
+                        <p className="text-xs font-medium mb-1" style={{ color: colors.mutedForeground }}>Winning angle</p>
+                        <p className="text-sm font-medium" style={{ color: colors.foreground }}>
+                          {runData.strategies?.strategy_snapshot?.winning_angle || runData.hooks?.[0]?.hookStatement || runData.strategies?.underserved_angles?.[0] || "—"}
+                        </p>
+                      </div>
+                      <div className="p-4 rounded-xl" style={{ backgroundColor: colors.background, border: `1px solid ${colors.border}` }}>
+                        <p className="text-xs font-medium mb-1" style={{ color: colors.mutedForeground }}>Best creative direction</p>
+                        <p className="text-sm font-medium" style={{ color: colors.foreground }}>
+                          {runData.strategies?.strategy_snapshot?.best_creative_direction || runData.strategies?.campaign_blueprints?.[0]?.messaging_focus || runData.strategies?.campaign_blueprints?.[0]?.emotional_tone_direction || runData.brand.emotionalTone || "—"}
+                        </p>
+                      </div>
+                      <div className="p-4 rounded-xl" style={{ backgroundColor: colors.background, border: `1px solid ${colors.border}` }}>
+                        <p className="text-xs font-medium mb-1" style={{ color: colors.mutedForeground }}>Recommended ad format</p>
+                        <p className="text-sm font-medium" style={{ color: colors.foreground }}>
+                          {runData.strategies?.strategy_snapshot?.recommended_ad_format || runData.strategies?.campaign_blueprints?.[0]?.ad_format || runData.strategies?.campaign_blueprints?.[0]?.recommended_platform || "Short video / UGC"}
+                        </p>
+                      </div>
+                    </div>
+                  </SectionCard>
+                )}
+
                 {/* Brand Summary */}
                 {runData.brand && (
                   <SectionCard title="Brand Summary" icon={<Target size={20} />} onHistoryClick={scrollToHistory}>
@@ -818,6 +995,53 @@ export default function CreativeIntelligencePage() {
                         </div>
                       ))}
                     </div>
+                  </SectionCard>
+                )}
+
+                {/* Market Position Map */}
+                {runData.competitors?.length > 0 && (
+                  <SectionCard title="Market Position Map" icon={<MapPin size={20} />} onHistoryClick={scrollToHistory}>
+                    <p className="text-sm mb-4" style={{ color: colors.mutedForeground }}>
+                      Market gap discovery: affordable vs premium, functional vs lifestyle.
+                    </p>
+                    <MarketPositionMap
+                      brandPoint={runData.brand ? (() => {
+                        const raw = (runData.brand as any)?.rawAnalysis || {};
+                        const t = [raw.pricing_positioning, runData.brand.emotionalTone, raw.current_positioning_statement].filter(Boolean).join(" ");
+                        const pos = inferPosition(t);
+                        return { name: raw.product_name || "Your brand", price: pos.price, lifestyle: pos.lifestyle };
+                      })() : null}
+                      competitorPoints={runData.competitors.map((c) => {
+                        const t = [c.pricingTier, c.corePositioning, c.primaryHook].filter(Boolean).join(" ");
+                        const pos = inferPosition(t);
+                        return { name: c.name || c.domain || "Competitor", price: pos.price, lifestyle: pos.lifestyle };
+                      })}
+                    />
+                  </SectionCard>
+                )}
+
+                {/* Competitor Messaging Matrix */}
+                {runData.competitors?.length > 0 && (
+                  <SectionCard title="Competitor Messaging Matrix" icon={<Grid3X3 size={20} />} onHistoryClick={scrollToHistory}>
+                    <p className="text-sm mb-4" style={{ color: colors.mutedForeground }}>
+                      See competitor messaging patterns at a glance.
+                    </p>
+                    <CompetitorMessagingMatrix
+                      rows={[
+                        ...(runData.brand ? [{
+                          brand: (runData.brand as any)?.rawAnalysis?.product_name || "Your brand",
+                          priceTier: (runData.brand as any)?.rawAnalysis?.pricing_positioning || "—",
+                          mainAngle: (runData.brand.positioningStatement || (runData.brand as any)?.rawAnalysis?.current_positioning_statement || "").slice(0, 50) || "—",
+                          emotionalHook: runData.brand.emotionalTone || (runData.brand as any)?.rawAnalysis?.brand_tone || "—",
+                        }] : []),
+                        ...runData.competitors.map((c) => ({
+                          brand: c.name || c.domain || "—",
+                          priceTier: c.pricingTier || "—",
+                          mainAngle: (c.corePositioning || "").slice(0, 50) || "—",
+                          emotionalHook: c.primaryHook || "—",
+                        })),
+                      ]}
+                    />
                   </SectionCard>
                 )}
 
@@ -1008,136 +1232,144 @@ export default function CreativeIntelligencePage() {
                   </SectionCard>
                 )}
 
-                {/* Customer Psychology */}
+                {/* Customer Psychology Heatmap - where messaging should focus */}
                 {(painPoints.length > 0 || desiredOutcomes.length > 0) && (
-                  <SectionCard title="Customer Psychology" icon={<BarChart3 size={20} />} onHistoryClick={scrollToHistory}>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div>
-                        <h4 className="font-medium mb-3" style={{ color: colors.foreground }}>Top Pain Points</h4>
-                        <ul className="space-y-2">
-                          {painPoints.slice(0, 5).map((r, i) => (
-                            <li key={i} className="flex items-start gap-2">
-                              <span className="text-xs px-2 py-0.5 rounded shrink-0" style={{ backgroundColor: "hsl(0 84% 55% / 0.2)", color: colors.destructive }}>
-                                {r.frequencyPct ?? "—"}%
-                              </span>
-                              <span style={{ color: colors.foreground }}>{r.clusterLabel}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                      <div>
-                        <h4 className="font-medium mb-3" style={{ color: colors.foreground }}>Top Desired Outcomes</h4>
-                        <ul className="space-y-2">
-                          {desiredOutcomes.slice(0, 5).map((r, i) => (
-                            <li key={i} className="flex items-start gap-2">
-                              <span className="text-xs px-2 py-0.5 rounded shrink-0" style={{ backgroundColor: "hsl(142 76% 36% / 0.2)", color: colors.green600 }}>
-                                {r.frequencyPct ?? "—"}%
-                              </span>
-                              <span style={{ color: colors.foreground }}>{r.clusterLabel}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    </div>
-                    <div className="mt-4">
-                      <h4 className="font-medium mb-2" style={{ color: colors.foreground }}>Common Phrases (click to copy)</h4>
-                      <div className="flex flex-wrap gap-2">
-                        {runData.reviews
-                          .flatMap((r) => r.samplePhrases || [])
-                          .slice(0, 8)
-                          .map((phrase, i) => (
-                            <button
-                              key={i}
-                              onClick={() => copyToClipboard(phrase, `phrase-${i}`)}
-                              className="text-sm px-3 py-1.5 rounded-lg transition-colors hover:opacity-90"
-                              style={{
-                                backgroundColor: colors.muted,
-                                border: `1px solid ${colors.border}`,
-                                color: colors.foreground,
-                              }}
-                            >
-                              {phrase}
-                              {copiedId === `phrase-${i}` ? <Check size={14} className="inline ml-1" /> : <Copy size={14} className="inline ml-1 opacity-60" />}
-                            </button>
-                          ))}
-                      </div>
+                  <SectionCard title="Customer Psychology Heatmap" icon={<BarChart3 size={20} />} onHistoryClick={scrollToHistory}>
+                    <p className="text-sm mb-4" style={{ color: colors.mutedForeground }}>
+                      Pain frequency, opportunity score, and impact on messaging.
+                    </p>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
+                            <th className="text-left py-2 px-3 font-medium" style={{ color: colors.mutedForeground }}>Insight</th>
+                            <th className="text-left py-2 px-3 font-medium" style={{ color: colors.mutedForeground }}>Pain frequency</th>
+                            <th className="text-left py-2 px-3 font-medium" style={{ color: colors.mutedForeground }}>Opportunity score</th>
+                            <th className="text-left py-2 px-3 font-medium" style={{ color: colors.mutedForeground }}>Impact on messaging</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {[...painPoints, ...desiredOutcomes]
+                            .sort((a, b) => (b.frequencyPct ?? 0) - (a.frequencyPct ?? 0))
+                            .slice(0, 8)
+                            .map((r, i) => {
+                              const freq = r.frequencyPct ?? 0;
+                              const oppScore = r.clusterType === "pain_points" ? Math.min(100, 100 - freq + 20) : Math.min(100, freq + 10);
+                              const impact = Math.round((freq * 0.6 + oppScore * 0.4));
+                              return (
+                                <tr key={i} style={{ borderBottom: `1px solid ${colors.border}` }}>
+                                  <td className="py-2 px-3 font-medium" style={{ color: colors.foreground }}>{r.clusterLabel || "—"}</td>
+                                  <td className="py-2 px-3">
+                                    <span className="text-xs px-2 py-0.5 rounded" style={{ backgroundColor: "hsl(0 84% 55% / 0.2)", color: colors.destructive }}>
+                                      {freq}%
+                                    </span>
+                                  </td>
+                                  <td className="py-2 px-3">
+                                    <span className="text-xs px-2 py-0.5 rounded" style={{ backgroundColor: "hsl(142 76% 36% / 0.2)", color: colors.green600 }}>
+                                      {oppScore}%
+                                    </span>
+                                  </td>
+                                  <td className="py-2 px-3">
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-16 h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: colors.muted }}>
+                                        <div className="h-full rounded-full" style={{ width: `${impact}%`, backgroundColor: colors.primary }} />
+                                      </div>
+                                      <span style={{ color: colors.mutedForeground }}>{impact}%</span>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                        </tbody>
+                      </table>
                     </div>
                   </SectionCard>
                 )}
 
-                {/* Market Opportunities */}
-                {runData.strategies && (
-                  <SectionCard title="Market Opportunities" icon={<Lightbulb size={20} />}>
-                    <div className="space-y-6">
-                      {(runData.strategies.market_gap_analysis?.length ?? 0) > 0 && (
-                        <div>
-                          <h4 className="font-medium mb-2" style={{ color: colors.foreground }}>Market Gap Analysis</h4>
-                          <div className="space-y-3">
-                            {(runData.strategies.market_gap_analysis ?? []).map((g, i) => (
-                              <div key={i} className="p-3 rounded-lg" style={{ backgroundColor: colors.background, border: `1px solid ${colors.border}` }}>
-                                <p className="font-medium text-sm mb-1" style={{ color: colors.foreground }}>{g.opportunity_statement}</p>
-                                {g.why_it_exists && <p className="text-xs mb-1" style={{ color: colors.mutedForeground }}>{g.why_it_exists}</p>}
-                                {g.supporting_review_signal && <p className="text-xs italic" style={{ color: colors.mutedForeground }}>&ldquo;{g.supporting_review_signal}&rdquo;</p>}
-                                <div className="flex gap-2 mt-2">
-                                  {g.competitor_overlap_level && <span className="text-xs px-2 py-0.5 rounded" style={{ backgroundColor: colors.muted }}>{g.competitor_overlap_level}</span>}
-                                  {g.confidence_score != null && <span className="text-xs" style={{ color: colors.primary }}>{g.confidence_score}% confidence</span>}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                      {(runData.strategies.underserved_angles?.length ?? 0) > 0 && (
-                        <div>
-                          <h4 className="font-medium mb-2" style={{ color: colors.foreground }}>Underserved Angles</h4>
-                          <ul className="list-disc list-inside space-y-1" style={{ color: colors.mutedForeground }}>
-                            {(runData.strategies.underserved_angles ?? []).map((a, i) => (
-                              <li key={i}>{a}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                      {(runData.strategies.white_space_opportunities?.length ?? 0) > 0 && (
-                        <div>
-                          <h4 className="font-medium mb-2" style={{ color: colors.foreground }}>White Space Opportunities</h4>
-                          <ul className="list-disc list-inside space-y-1" style={{ color: colors.mutedForeground }}>
-                            {(runData.strategies.white_space_opportunities ?? []).map((w, i) => (
-                              <li key={i}>{w}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                      {(runData.strategies.campaign_blueprints?.length ?? 0) > 0 && (
-                        <div>
-                          <h4 className="font-medium mb-2" style={{ color: colors.foreground }}>Campaign Blueprints (Top Hooks)</h4>
-                          <div className="space-y-3">
-                            {(runData.strategies.campaign_blueprints ?? []).map((b, i) => (
-                              <div key={i} className="p-4 rounded-xl" style={{ backgroundColor: colors.background, border: `1px solid ${colors.border}` }}>
-                                <p className="text-xs font-medium mb-2" style={{ color: colors.primary }}>Hook #{b.hook_rank ?? i + 1}</p>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
-                                  {b.recommended_platform && <p><span style={{ color: colors.mutedForeground }}>Platform:</span> {b.recommended_platform}</p>}
-                                  {b.ad_format && <p><span style={{ color: colors.mutedForeground }}>Format:</span> {b.ad_format}</p>}
-                                  {b.target_audience_segment && <p><span style={{ color: colors.mutedForeground }}>Audience:</span> {b.target_audience_segment}</p>}
-                                  {b.cta_strategy && <p><span style={{ color: colors.mutedForeground }}>CTA:</span> {b.cta_strategy}</p>}
-                                </div>
-                                {b.messaging_focus && <p className="text-sm mt-2" style={{ color: colors.foreground }}>{b.messaging_focus}</p>}
-                                {b.test_variations && b.test_variations.length > 0 && (
-                                  <p className="text-xs mt-2" style={{ color: colors.mutedForeground }}>Test: {b.test_variations.join(" • ")}</p>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
+                {/* Customer Language Cloud - real phrases from reviews */}
+                {runData.reviews?.some((r) => r.samplePhrases?.length) && (
+                  <SectionCard title="Customer Language Cloud" icon={<MessageSquare size={20} />} onHistoryClick={scrollToHistory}>
+                    <p className="text-sm mb-4" style={{ color: colors.mutedForeground }}>
+                      Real phrases from reviews — use customer language in ads.
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {runData.reviews
+                        .flatMap((r) => r.samplePhrases || [])
+                        .filter(Boolean)
+                        .slice(0, 16)
+                        .map((phrase, i) => (
+                          <button
+                            key={i}
+                            onClick={() => copyToClipboard(phrase, `phrase-${i}`)}
+                            className="text-sm px-3 py-2 rounded-lg transition-all hover:scale-105"
+                            style={{
+                              backgroundColor: colors.muted,
+                              border: `1px solid ${colors.border}`,
+                              color: colors.foreground,
+                              fontSize: ["0.75rem", "0.8rem", "0.9rem", "1rem"][i % 4],
+                            }}
+                          >
+                            &ldquo;{phrase}&rdquo;
+                            {copiedId === `phrase-${i}` ? <Check size={14} className="inline ml-1" /> : <Copy size={14} className="inline ml-1 opacity-60" />}
+                          </button>
+                        ))}
                     </div>
                   </SectionCard>
                 )}
+
+                {/* Opportunity Radar - brand strengths & weaknesses */}
+                {runData.reviews?.length > 0 && (() => {
+                  const dims = ["Taste", "Health credibility", "Price perception", "Convenience", "Brand excitement"];
+                  const keywords: Record<string, string[]> = {
+                    Taste: ["taste", "flavor", "bland", "delicious", "yummy"],
+                    "Health credibility": ["health", "protein", "natural", "organic", "clean"],
+                    "Price perception": ["price", "expensive", "cheap", "value", "worth"],
+                    Convenience: ["convenient", "easy", "quick", "portable", "on-the-go"],
+                    "Brand excitement": ["love", "great", "amazing", "recommend", "excited"],
+                  };
+                  const radarData = dims.map((d) => {
+                    const kws = keywords[d].map((k) => k.toLowerCase());
+                    const matching = runData.reviews.filter((r) => {
+                      const label = (r.clusterLabel || "").toLowerCase();
+                      const phrases = (r.samplePhrases || []).join(" ").toLowerCase();
+                      return kws.some((k) => label.includes(k) || phrases.includes(k));
+                    });
+                    const score = matching.length > 0
+                      ? Math.min(100, matching.reduce((s, m) => s + (m.frequencyPct ?? 0), 0) / matching.length + 30)
+                      : 50;
+                    return { subject: d, value: Math.round(score), fullMark: 100 };
+                  });
+                  return (
+                    <SectionCard title="Opportunity Radar" icon={<Target size={20} />} onHistoryClick={scrollToHistory}>
+                      <p className="text-sm mb-4" style={{ color: colors.mutedForeground }}>
+                        Visualize brand strengths & weaknesses across key dimensions.
+                      </p>
+                      <div className="h-64">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <RadarChart data={radarData}>
+                            <PolarGrid stroke={colors.border} />
+                            <PolarAngleAxis dataKey="subject" tick={{ fill: colors.mutedForeground, fontSize: 11 }} />
+                            <PolarRadiusAxis angle={90} domain={[0, 100]} tick={{ fill: colors.mutedForeground, fontSize: 10 }} />
+                            <Radar name="Score" dataKey="value" stroke={colors.primary} fill={colors.primary + "40"} strokeWidth={2} />
+                          </RadarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </SectionCard>
+                  );
+                })()}
 
                 {/* Ranked Hooks */}
                 {runData.hooks?.length > 0 && (
                   <SectionCard title="Ranked Hooks" icon={<Zap size={20} />} onHistoryClick={scrollToHistory}>
+                    <p className="text-sm mb-4" style={{ color: colors.mutedForeground }}>
+                      Choose the best creative hook with strength, opportunity, and evidence.
+                    </p>
                     <div className="space-y-4">
-                      {runData.hooks.map((hook) => (
+                      {runData.hooks.map((hook) => {
+                        const strength = hook.confidenceScore ?? 70;
+                        const oppScore = hook.competitorOverlapLevel === "low" || hook.competitorOverlapLevel === "low_overlap" ? 85 : hook.competitorOverlapLevel === "medium" ? 60 : 40;
+                        const saturation = hook.competitorOverlapLevel === "high" ? "High" : hook.competitorOverlapLevel === "medium" ? "Medium" : "Low";
+                        return (
                         <div
                           key={hook.id}
                           className="p-5 rounded-xl transition-colors"
@@ -1155,32 +1387,148 @@ export default function CreativeIntelligencePage() {
                             </span>
                             <SaturationBadge level={hook.competitorOverlapLevel} />
                           </div>
+                          {/* Hook strength meter */}
+                          <div className="mb-2">
+                            <div className="flex justify-between text-xs mb-1">
+                              <span style={{ color: colors.mutedForeground }}>Hook strength</span>
+                              <span style={{ color: colors.foreground }}>{strength}%</span>
+                            </div>
+                            <Progress value={strength} className="h-1.5 rounded-full" />
+                          </div>
+                          {/* Opportunity score & Market saturation */}
+                          <div className="flex flex-wrap gap-4 mb-2 text-xs">
+                            <div>
+                              <span style={{ color: colors.mutedForeground }}>Opportunity score: </span>
+                              <span className="font-medium" style={{ color: colors.foreground }}>{oppScore}%</span>
+                            </div>
+                            <div>
+                              <span style={{ color: colors.mutedForeground }}>Market saturation: </span>
+                              <span className="font-medium" style={{ color: colors.foreground }}>{saturation}</span>
+                            </div>
+                          </div>
+                          {/* Market Saturation Indicator */}
+                          <MarketSaturationIndicator
+                            label="Competitor usage of this angle"
+                            pct={(hook as any).saturation_score ?? (hook.competitorOverlapLevel === "high" ? 70 : hook.competitorOverlapLevel === "medium" ? 50 : 25)}
+                          />
+                          {/* Evidence from reviews */}
+                          {hook.supportingReviewPhrase && (
+                            <div className="mb-2 p-2 rounded-lg" style={{ backgroundColor: colors.muted + "60", borderLeft: `3px solid ${colors.primary}` }}>
+                              <p className="text-xs font-medium mb-0.5" style={{ color: colors.mutedForeground }}>Evidence from reviews</p>
+                              <p className="text-sm italic" style={{ color: colors.foreground }}>&ldquo;{hook.supportingReviewPhrase}&rdquo;</p>
+                            </div>
+                          )}
                           {hook.whyItWorks && (
                             <p className="text-sm mb-2" style={{ color: colors.mutedForeground }}>{hook.whyItWorks}</p>
                           )}
-                          {hook.confidenceScore != null && (
-                            <div className="mb-3">
-                              <div className="flex justify-between text-xs mb-1">
-                                <span style={{ color: colors.mutedForeground }}>Confidence</span>
-                                <span style={{ color: colors.foreground }}>{hook.confidenceScore}%</span>
-                              </div>
-                              <Progress value={hook.confidenceScore} className="h-1.5 rounded-full" />
-                            </div>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => copyToClipboard(hook.hookStatement + (hook.whyItWorks ? `\n\nWhy it works: ${hook.whyItWorks}` : ""), `hook-${hook.id}`)}
-                            className="p-2 rounded-lg hover:opacity-80 transition-opacity"
-                            style={{ backgroundColor: colors.muted, color: colors.foreground }}
-                            title="Copy hook"
-                          >
-                            {copiedId === `hook-${hook.id}` ? <Check size={16} /> : <Copy size={16} />}
-                          </button>
+                          <div className="flex items-center gap-2 mt-3 flex-wrap">
+                            <Button
+                              size="sm"
+                              onClick={() => handleGenerateFromHook(hook, "poster")}
+                              style={{ backgroundColor: colors.primary, color: colors.primaryForeground }}
+                            >
+                              <Image size={14} className="mr-1.5" />
+                              Generate Poster
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleGenerateFromHook(hook, "video")}
+                              style={{ borderColor: colors.border, color: colors.foreground }}
+                            >
+                              <Video size={14} className="mr-1.5" />
+                              Generate Video
+                            </Button>
+                            <button
+                              type="button"
+                              onClick={() => copyToClipboard(hook.hookStatement + (hook.whyItWorks ? `\n\nWhy it works: ${hook.whyItWorks}` : ""), `hook-${hook.id}`)}
+                              className="p-2 rounded-lg hover:opacity-80 transition-opacity"
+                              style={{ backgroundColor: colors.muted, color: colors.foreground }}
+                              title="Copy hook"
+                            >
+                              {copiedId === `hook-${hook.id}` ? <Check size={16} /> : <Copy size={16} />}
+                            </button>
+                          </div>
+                        </div>
+                        );
+                      })}
+                    </div>
+                  </SectionCard>
+                )}
+
+                {/* Creative Angle Library */}
+                {creativeAngleCards.length > 0 && (
+                  <SectionCard title="Creative Angle Library" icon={<LayoutGrid size={20} />} onHistoryClick={scrollToHistory}>
+                    <p className="text-sm mb-4" style={{ color: colors.mutedForeground }}>
+                      Choose campaign direction with angle, emotion, and best format.
+                    </p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {creativeAngleCards.map((bp: any, i: number) => (
+                        <div
+                          key={i}
+                          className="p-4 rounded-xl"
+                          style={{
+                            backgroundColor: colors.background,
+                            border: `1px solid ${colors.border}`,
+                          }}
+                        >
+                          <p className="text-xs font-medium mb-1" style={{ color: colors.mutedForeground }}>Angle</p>
+                          <p className="font-semibold mb-2" style={{ color: colors.foreground }}>
+                            {bp.messaging_focus?.slice(0, 50) || bp.hookStatement?.slice(0, 50) || "—"}
+                            {(bp.messaging_focus?.length || bp.hookStatement?.length || 0) > 50 ? "…" : ""}
+                          </p>
+                          <p className="text-xs mb-1" style={{ color: colors.mutedForeground }}>
+                            <span className="font-medium">Emotion:</span> {bp.emotional_tone_direction || "Pleasure + Health"}
+                          </p>
+                          <p className="text-xs" style={{ color: colors.mutedForeground }}>
+                            <span className="font-medium">Best format:</span> {bp.ad_format || "Short video"}
+                          </p>
                         </div>
                       ))}
                     </div>
                   </SectionCard>
                 )}
+
+                {/* Ad Format Recommendation - AI ad analyst research */}
+                {runData.brand && (() => {
+                  const aiRecs = runData.strategies?.ad_format_recommendations || [];
+                  const hasAiData = aiRecs.length >= 4;
+                  const data = hasAiData
+                    ? aiRecs.map((r: { format: string; score: number }) => ({ name: r.format, value: Math.min(100, Math.max(0, r.score ?? 0)), reasoning: (r as any).reasoning }))
+                    : [
+                        { name: "Short Video Ads", value: 78, reasoning: "" },
+                        { name: "UGC Style Ads", value: 71, reasoning: "" },
+                        { name: "Static Posters", value: 65, reasoning: "" },
+                        { name: "Carousel Ads", value: 42, reasoning: "" },
+                      ];
+                  return (
+                    <SectionCard title="Ad Format Recommendation" icon={<Video size={20} />} onHistoryClick={scrollToHistory}>
+                      <p className="text-sm mb-4" style={{ color: colors.mutedForeground }}>
+                        {hasAiData ? "AI ad analyst research based on Meta ads, competitors & audience fit." : "Execution guidance (run a new analysis for AI-derived recommendations)."}
+                      </p>
+                      <div className="h-48">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={data} layout="vertical" margin={{ top: 0, right: 20, left: 80, bottom: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke={colors.border} />
+                            <XAxis type="number" domain={[0, 100]} tick={{ fill: colors.mutedForeground, fontSize: 11 }} />
+                            <YAxis type="category" dataKey="name" width={70} tick={{ fill: colors.mutedForeground, fontSize: 11 }} />
+                            <Bar dataKey="value" fill={colors.primary} radius={[0, 4, 4, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                      {hasAiData && data.some((d: any) => d.reasoning) && (
+                        <div className="mt-4 space-y-2">
+                          <p className="text-xs font-medium" style={{ color: colors.mutedForeground }}>AI reasoning</p>
+                          {data.filter((d: any) => d.reasoning).map((d: any, i: number) => (
+                            <div key={i} className="text-xs" style={{ color: colors.foreground }}>
+                              <span className="font-medium">{d.name}:</span> {d.reasoning}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </SectionCard>
+                  );
+                })()}
 
                 {/* Export */}
                 <div
@@ -1338,6 +1686,82 @@ export default function CreativeIntelligencePage() {
                     </div>
                   )}
                 </div>
+
+                {/* Market Position Map - Comparison view */}
+                {(runData.brand || competitorAnalysisResults.some((r) => r.brand)) && (
+                  <div className="rounded-2xl p-6 mb-6" style={{ backgroundColor: colors.background, border: `1px solid ${colors.border}` }}>
+                    <h4 className="text-base font-semibold mb-2 flex items-center gap-2" style={{ color: colors.foreground }}>
+                      <MapPin size={18} />
+                      Market Position Map
+                    </h4>
+                    <p className="text-sm mb-4" style={{ color: colors.mutedForeground }}>
+                      Market gap discovery: your brand vs competitors on affordable↔premium, functional↔lifestyle.
+                    </p>
+                    <MarketPositionMap
+                      brandPoint={runData.brand ? (() => {
+                        const raw = (runData.brand as any)?.rawAnalysis || {};
+                        const t = [raw.pricing_positioning, runData.brand.emotionalTone, raw.current_positioning_statement].filter(Boolean).join(" ");
+                        const pos = inferPosition(t);
+                        return { name: raw.product_name || "Your brand", price: pos.price, lifestyle: pos.lifestyle };
+                      })() : null}
+                      competitorPoints={[
+                        ...(runData.competitors || []).map((c) => {
+                          const t = [c.pricingTier, c.corePositioning, c.primaryHook].filter(Boolean).join(" ");
+                          const pos = inferPosition(t);
+                          return { name: c.name || c.domain || "Competitor", price: pos.price, lifestyle: pos.lifestyle };
+                        }),
+                        ...competitorAnalysisResults.filter((r) => r.brand).map((r) => {
+                          const raw = (r.brand as any)?.rawAnalysis || {};
+                          const t = [raw.pricing_positioning, r.brand!.emotionalTone, raw.current_positioning_statement].filter(Boolean).join(" ");
+                          const pos = inferPosition(t);
+                          let name = raw.product_name;
+                          if (!name && r.run?.brandUrl) try { name = new URL(r.run.brandUrl).hostname; } catch { name = "Competitor"; }
+                          return { name: name || "Competitor", price: pos.price, lifestyle: pos.lifestyle };
+                        }),
+                      ]}
+                    />
+                  </div>
+                )}
+
+                {/* Competitor Messaging Matrix - Comparison view */}
+                {(runData.brand || competitorAnalysisResults.length > 0) && (
+                  <div className="rounded-2xl p-6 mb-6" style={{ backgroundColor: colors.background, border: `1px solid ${colors.border}` }}>
+                    <h4 className="text-base font-semibold mb-2 flex items-center gap-2" style={{ color: colors.foreground }}>
+                      <Grid3X3 size={18} />
+                      Competitor Messaging Matrix
+                    </h4>
+                    <p className="text-sm mb-4" style={{ color: colors.mutedForeground }}>
+                      See competitor messaging patterns at a glance.
+                    </p>
+                    <CompetitorMessagingMatrix
+                      rows={[
+                        ...(runData.brand ? [{
+                          brand: (runData.brand as any)?.rawAnalysis?.product_name || "Your brand",
+                          priceTier: (runData.brand as any)?.rawAnalysis?.pricing_positioning || "—",
+                          mainAngle: (runData.brand.positioningStatement || (runData.brand as any)?.rawAnalysis?.current_positioning_statement || "").slice(0, 50) || "—",
+                          emotionalHook: runData.brand.emotionalTone || (runData.brand as any)?.rawAnalysis?.brand_tone || "—",
+                        }] : []),
+                        ...(runData.competitors || []).map((c) => ({
+                          brand: c.name || c.domain || "—",
+                          priceTier: c.pricingTier || "—",
+                          mainAngle: (c.corePositioning || "").slice(0, 50) || "—",
+                          emotionalHook: c.primaryHook || "—",
+                        })),
+                        ...competitorAnalysisResults.filter((r) => r.brand).map((r) => {
+                          const raw = (r.brand as any)?.rawAnalysis || {};
+                          let brandName = raw.product_name;
+                          if (!brandName && r.run?.brandUrl) try { brandName = new URL(r.run.brandUrl).hostname; } catch { brandName = "Competitor"; }
+                          return {
+                            brand: brandName || "Competitor",
+                            priceTier: raw.pricing_positioning || "—",
+                            mainAngle: (r.brand!.positioningStatement || raw.current_positioning_statement || "").slice(0, 50) || "—",
+                            emotionalHook: r.brand!.emotionalTone || raw.brand_tone || "—",
+                          };
+                        }),
+                      ]}
+                    />
+                  </div>
+                )}
 
                 {/* 3. What's Working Well - Insight Cards */}
                 {comparisonInsights?.working_well && comparisonInsights.working_well.length > 0 && (
@@ -1515,7 +1939,6 @@ function CompetitorAnalysisOutput({
 }) {
   const painPoints = (data.reviews || []).filter((r) => r.clusterType === "pain_points");
   const desiredOutcomes = (data.reviews || []).filter((r) => r.clusterType === "desired_outcomes");
-  const strategies = data.strategies || {};
 
   return (
     <div className="space-y-6 mt-4">
@@ -1575,6 +1998,53 @@ function CompetitorAnalysisOutput({
               </div>
             ))}
           </div>
+        </SectionCard>
+      )}
+
+      {/* Market Position Map - for competitor analysis */}
+      {data.competitors && data.competitors.length > 0 && (
+        <SectionCard title="Market Position Map" icon={<MapPin size={20} />} onHistoryClick={onHistoryClick}>
+          <p className="text-sm mb-4" style={{ color: colors.mutedForeground }}>
+            Market gap discovery: affordable vs premium, functional vs lifestyle.
+          </p>
+          <MarketPositionMap
+            brandPoint={data.brand ? (() => {
+              const raw = (data.brand as any)?.rawAnalysis || {};
+              const t = [raw.pricing_positioning, data.brand.emotionalTone, raw.current_positioning_statement].filter(Boolean).join(" ");
+              const pos = inferPosition(t);
+              return { name: raw.product_name || "This brand", price: pos.price, lifestyle: pos.lifestyle };
+            })() : null}
+            competitorPoints={data.competitors.map((c) => {
+              const t = [c.pricingTier, c.corePositioning, c.primaryHook].filter(Boolean).join(" ");
+              const pos = inferPosition(t);
+              return { name: c.name || c.domain || "Competitor", price: pos.price, lifestyle: pos.lifestyle };
+            })}
+          />
+        </SectionCard>
+      )}
+
+      {/* Competitor Messaging Matrix */}
+      {(data.brand || (data.competitors && data.competitors.length > 0)) && (
+        <SectionCard title="Competitor Messaging Matrix" icon={<Grid3X3 size={20} />} onHistoryClick={onHistoryClick}>
+          <p className="text-sm mb-4" style={{ color: colors.mutedForeground }}>
+            See competitor messaging patterns at a glance.
+          </p>
+          <CompetitorMessagingMatrix
+            rows={[
+              ...(data.brand ? [{
+                brand: (data.brand as any)?.rawAnalysis?.product_name || "This brand",
+                priceTier: (data.brand as any)?.rawAnalysis?.pricing_positioning || "—",
+                mainAngle: (data.brand.positioningStatement || (data.brand as any)?.rawAnalysis?.current_positioning_statement || "").slice(0, 50) || "—",
+                emotionalHook: data.brand.emotionalTone || (data.brand as any)?.rawAnalysis?.brand_tone || "—",
+              }] : []),
+              ...(data.competitors || []).map((c) => ({
+                brand: c.name || c.domain || "—",
+                priceTier: c.pricingTier || "—",
+                mainAngle: (c.corePositioning || "").slice(0, 50) || "—",
+                emotionalHook: c.primaryHook || "—",
+              })),
+            ]}
+          />
         </SectionCard>
       )}
 
@@ -1677,64 +2147,6 @@ function CompetitorAnalysisOutput({
         </SectionCard>
       )}
 
-      {strategies && (Object.keys(strategies).length > 0) && (
-        <SectionCard title="Market Opportunities" icon={<Lightbulb size={20} />} onHistoryClick={onHistoryClick}>
-          <div className="space-y-6">
-            {(strategies.market_gap_analysis?.length ?? 0) > 0 && (
-              <div>
-                <h4 className="font-medium mb-2" style={{ color: colors.foreground }}>Market Gap Analysis</h4>
-                <div className="space-y-3">
-                  {(strategies.market_gap_analysis ?? []).map((g: any, i: number) => (
-                    <div key={i} className="p-3 rounded-lg" style={{ backgroundColor: colors.background, border: `1px solid ${colors.border}` }}>
-                      <p className="font-medium text-sm mb-1" style={{ color: colors.foreground }}>{g.opportunity_statement}</p>
-                      {g.why_it_exists && <p className="text-xs mb-1" style={{ color: colors.mutedForeground }}>{g.why_it_exists}</p>}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            {(strategies.underserved_angles?.length ?? 0) > 0 && (
-              <div>
-                <h4 className="font-medium mb-2" style={{ color: colors.foreground }}>Underserved Angles</h4>
-                <ul className="list-disc list-inside space-y-1" style={{ color: colors.mutedForeground }}>
-                  {(strategies.underserved_angles ?? []).map((a: string, i: number) => (
-                    <li key={i}>{a}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {(strategies.white_space_opportunities?.length ?? 0) > 0 && (
-              <div>
-                <h4 className="font-medium mb-2" style={{ color: colors.foreground }}>White Space Opportunities</h4>
-                <ul className="list-disc list-inside space-y-1" style={{ color: colors.mutedForeground }}>
-                  {(strategies.white_space_opportunities ?? []).map((w: string, i: number) => (
-                    <li key={i}>{w}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {(strategies.campaign_blueprints?.length ?? 0) > 0 && (
-              <div>
-                <h4 className="font-medium mb-2" style={{ color: colors.foreground }}>Campaign Blueprints (Top Hooks)</h4>
-                <div className="space-y-3">
-                  {(strategies.campaign_blueprints ?? []).map((b: any, i: number) => (
-                    <div key={i} className="p-4 rounded-xl" style={{ backgroundColor: colors.background, border: `1px solid ${colors.border}` }}>
-                      <p className="text-xs font-medium mb-2" style={{ color: colors.primary }}>Hook #{b.hook_rank ?? i + 1}</p>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
-                        {b.recommended_platform && <p><span style={{ color: colors.mutedForeground }}>Platform:</span> {b.recommended_platform}</p>}
-                        {b.ad_format && <p><span style={{ color: colors.mutedForeground }}>Format:</span> {b.ad_format}</p>}
-                        {b.cta_strategy && <p><span style={{ color: colors.mutedForeground }}>CTA:</span> {b.cta_strategy}</p>}
-                      </div>
-                      {b.messaging_focus && <p className="text-sm mt-2" style={{ color: colors.foreground }}>{b.messaging_focus}</p>}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </SectionCard>
-      )}
-
       {data.hooks && data.hooks.length > 0 && (
         <SectionCard title="Ranked Hooks" icon={<Zap size={20} />} onHistoryClick={onHistoryClick}>
           <div className="space-y-4">
@@ -1745,6 +2157,10 @@ function CompetitorAnalysisOutput({
                   <span className="text-xs px-2 py-0.5 rounded" style={{ backgroundColor: colors.muted, color: colors.mutedForeground }}>{hook.hookType || "—"}</span>
                   <SaturationBadge level={hook.competitorOverlapLevel} />
                 </div>
+                <MarketSaturationIndicator
+                  label="Competitor usage of this angle"
+                  pct={(hook as any).saturation_score ?? (hook.competitorOverlapLevel === "high" ? 70 : hook.competitorOverlapLevel === "medium" ? 50 : 25)}
+                />
                 {hook.whyItWorks && <p className="text-sm mb-2" style={{ color: colors.mutedForeground }}>{hook.whyItWorks}</p>}
                 {hook.confidenceScore != null && (
                   <div className="mb-3">
@@ -1823,11 +2239,162 @@ function SaturationBadge({ level }: { level: string | null }) {
     high: { bg: "hsl(0 84% 55% / 0.2)", color: colors.destructive },
     moderate: { bg: "hsl(45 93% 47% / 0.2)", color: "#f59e0b" },
     low: { bg: "hsl(142 76% 36% / 0.2)", color: colors.green600 },
+    low_overlap: { bg: "hsl(142 76% 36% / 0.2)", color: colors.green600 },
   };
   const s = styles[level.toLowerCase()] || styles.moderate;
   return (
     <span className="text-xs px-2 py-0.5 rounded font-medium" style={{ backgroundColor: s.bg, color: s.color }}>
       {level}
     </span>
+  );
+}
+
+/** Infer price (0=Affordable, 100=Premium) and lifestyle (0=Functional, 100=Lifestyle) from text */
+function inferPosition(text: string | null | undefined): { price: number; lifestyle: number } {
+  const t = (text || "").toLowerCase();
+  let price = 50;
+  if (/\b(budget|affordable|value|cheap|low.?cost)\b/.test(t)) price = 15;
+  else if (/\b(mid|moderate|mid-range|average)\b/.test(t)) price = 50;
+  else if (/\b(premium|luxury|high-end|expensive)\b/.test(t)) price = 85;
+  let lifestyle = 50;
+  if (/\b(functional|technical|performance|specs|utility)\b/.test(t)) lifestyle = 20;
+  else if (/\b(lifestyle|aspirational|identity|status|youth|energy)\b/.test(t)) lifestyle = 80;
+  return { price, lifestyle };
+}
+
+function MarketPositionMap({
+  brandPoint,
+  competitorPoints,
+}: {
+  brandPoint: { name: string; price: number; lifestyle: number } | null;
+  competitorPoints: Array<{ name: string; price: number; lifestyle: number }>;
+}) {
+  const all = brandPoint ? [brandPoint, ...competitorPoints] : competitorPoints;
+  if (all.length === 0) return null;
+  return (
+    <div className="relative h-72 rounded-xl overflow-hidden" style={{ backgroundColor: colors.muted + "30", border: `1px solid ${colors.border}` }}>
+      {/* Axes labels */}
+      <div className="absolute left-0 right-0 top-2 text-center text-xs font-medium" style={{ color: colors.mutedForeground }}>
+        Affordable ← — — — — — — — — — → Premium
+      </div>
+      <div className="absolute left-2 top-1/2 -translate-y-1/2 -rotate-90 text-xs font-medium whitespace-nowrap" style={{ color: colors.mutedForeground }}>
+        Functional ← — — — → Lifestyle
+      </div>
+      {/* Plot area with quadrant grid */}
+      <div className="absolute inset-0 pt-8 pl-14 pr-4 pb-10">
+        <div className="relative w-full h-full" style={{ backgroundColor: colors.background + "80", borderRadius: 8 }}>
+          {/* Center crosshair for quadrants */}
+          <div className="absolute left-1/2 top-0 bottom-0 w-px" style={{ backgroundColor: colors.border + "60" }} />
+          <div className="absolute top-1/2 left-0 right-0 h-px" style={{ backgroundColor: colors.border + "60" }} />
+          {all.map((p, i) => {
+            const isBrand = i === 0 && brandPoint;
+            const left = `${p.price}%`;
+            const bottom = `${p.lifestyle}%`;
+            return (
+              <div
+                key={i}
+                className="absolute -translate-x-1/2 translate-y-1/2"
+                style={{ left, bottom }}
+              >
+                <div
+                  className="rounded-full border-2 shadow-md"
+                  style={{
+                    width: isBrand ? 14 : 10,
+                    height: isBrand ? 14 : 10,
+                    backgroundColor: isBrand ? colors.primary : colors.mutedForeground,
+                    borderColor: isBrand ? colors.primary : colors.border,
+                  }}
+                />
+                <span
+                  className="absolute left-1/2 -translate-x-1/2 mt-1 text-xs font-medium whitespace-nowrap px-2 py-0.5 rounded max-w-[120px] truncate"
+                  style={{
+                    backgroundColor: isBrand ? colors.primary + "20" : colors.muted,
+                    color: isBrand ? colors.primary : colors.foreground,
+                    border: `1px solid ${isBrand ? colors.primary + "50" : colors.border}`,
+                  }}
+                  title={p.name}
+                >
+                  {p.name}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      {/* Legend with matching colors */}
+      <div className="absolute bottom-2 left-0 right-0 flex justify-center gap-6 text-xs">
+        {brandPoint && (
+          <span className="flex items-center gap-1.5" style={{ color: colors.mutedForeground }}>
+            <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: colors.primary }} />
+            Your brand
+          </span>
+        )}
+        {competitorPoints.length > 0 && (
+          <span className="flex items-center gap-1.5" style={{ color: colors.mutedForeground }}>
+            <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: colors.mutedForeground }} />
+            Competitors
+          </span>
+        )}
+      </div>
+      {all.length === 1 && (
+        <p className="absolute bottom-8 left-0 right-0 text-center text-xs" style={{ color: colors.mutedForeground }}>
+          Add more competitors to discover positioning gaps
+        </p>
+      )}
+    </div>
+  );
+}
+
+function CompetitorMessagingMatrix({
+  rows,
+}: {
+  rows: Array<{ brand: string; priceTier: string; mainAngle: string; emotionalHook: string }>;
+}) {
+  if (rows.length === 0) return null;
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr style={{ borderBottom: `2px solid ${colors.border}` }}>
+            <th className="text-left py-2 px-3 font-medium" style={{ color: colors.mutedForeground }}>Brand</th>
+            <th className="text-left py-2 px-3 font-medium" style={{ color: colors.mutedForeground }}>Price Tier</th>
+            <th className="text-left py-2 px-3 font-medium" style={{ color: colors.mutedForeground }}>Main Angle</th>
+            <th className="text-left py-2 px-3 font-medium" style={{ color: colors.mutedForeground }}>Emotional Hook</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={i} style={{ borderBottom: `1px solid ${colors.border}` }}>
+              <td className="py-2 px-3 font-medium" style={{ color: colors.foreground }}>{r.brand}</td>
+              <td className="py-2 px-3" style={{ color: colors.foreground }}>{r.priceTier}</td>
+              <td className="py-2 px-3" style={{ color: colors.foreground }}>{r.mainAngle}</td>
+              <td className="py-2 px-3" style={{ color: colors.foreground }}>{r.emotionalHook}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function MarketSaturationIndicator({ label, pct }: { label: string; pct: number }) {
+  const blocks = 10;
+  const filledBlocks = Math.round((pct / 100) * blocks);
+  return (
+    <div className="mt-4">
+      <p className="text-xs font-medium mb-1" style={{ color: colors.mutedForeground }}>{label}</p>
+      <div className="flex items-center gap-2">
+        <div className="flex gap-0.5">
+          {Array.from({ length: blocks }).map((_, i) => (
+            <div
+              key={i}
+              className="w-2 h-3 rounded-sm"
+              style={{ backgroundColor: i < filledBlocks ? colors.primary : colors.muted }}
+            />
+          ))}
+        </div>
+        <span className="text-xs font-medium" style={{ color: colors.foreground }}>{pct}%</span>
+      </div>
+    </div>
   );
 }

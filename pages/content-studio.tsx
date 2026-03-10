@@ -27,6 +27,9 @@ import {
   X,
   ExternalLink,
   Pencil,
+  Calendar,
+  Play,
+  Check,
 } from "lucide-react";
 import PosterEditModal from "@/app/web/src/components/content-studio/PosterEditModal";
 import { Button } from "@/app/web/src/components/ui/button";
@@ -69,6 +72,21 @@ type CampaignAd = {
   description: string;
   hook: string;
   cta: string;
+};
+
+type CampaignPlanItem = {
+  day: number;
+  goal: string;
+  platform: string;
+  content_type: string;
+  hook: string;
+  description: string;
+};
+
+type CampaignStrategy = {
+  product_category: string;
+  target_audience: string;
+  content_themes: string[];
 };
 
 const CONTENT_STUDIO_STORAGE_KEY = "content-studio:lastScan";
@@ -156,6 +174,9 @@ export default function ContentStudioPage() {
   const [generatingPosters, setGeneratingPosters] = useState(false);
   const [campaign, setCampaign] = useState<{ name: string; ads: CampaignAd[] } | null>(null);
   const [loadingCampaign, setLoadingCampaign] = useState(false);
+  const [campaignPlan, setCampaignPlan] = useState<CampaignPlanItem[]>([]);
+  const [campaignStrategy, setCampaignStrategy] = useState<CampaignStrategy | null>(null);
+  const [generatingCampaignItem, setGeneratingCampaignItem] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const [brandGuideline, setBrandGuideline] = useState<BrandSnapshot | null>(null);
@@ -167,6 +188,25 @@ export default function ContentStudioPage() {
   const [creatingVideoSession, setCreatingVideoSession] = useState(false);
   const [editingPosterUrl, setEditingPosterUrl] = useState<string | null>(null);
   const [productsCollapsed, setProductsCollapsed] = useState(false);
+
+  const [imageCredits, setImageCredits] = useState<number | null>(null);
+  const [videoCredits, setVideoCredits] = useState<number | null>(null);
+
+  useEffect(() => {
+    async function loadCredits() {
+      try {
+        const response = await authFetch('/api/credits/balance');
+        const data = await response.json();
+        if (data.success) {
+          setImageCredits(data.imageCredits?.total ?? 0);
+          setVideoCredits(data.videoCredits?.total ?? 0);
+        }
+      } catch (err) {
+        console.error('Error loading credits:', err);
+      }
+    }
+    loadCredits();
+  }, []);
 
   useEffect(() => {
     const stored = localStorage.getItem("brand:snapshot");
@@ -297,6 +337,8 @@ export default function ContentStudioPage() {
   const handleProductClick = async (product: Product) => {
     setSelectedProduct(product);
     setAdAngles([]);
+    setCampaignPlan([]);
+    setCampaignStrategy(null);
     setLoadingAngles(true);
     try {
       const res = await authFetch("/api/content-studio/ad-angles", {
@@ -307,8 +349,16 @@ export default function ContentStudioPage() {
       if (data.ok && data.angles) {
         setAdAngles(data.angles);
       }
+      if (data.campaign_plan && Array.isArray(data.campaign_plan)) {
+        setCampaignPlan(data.campaign_plan);
+      }
+      if (data.campaign_strategy) {
+        setCampaignStrategy(data.campaign_strategy);
+      }
     } catch {
       setAdAngles([]);
+      setCampaignPlan([]);
+      setCampaignStrategy(null);
     } finally {
       setLoadingAngles(false);
     }
@@ -440,6 +490,25 @@ export default function ContentStudioPage() {
       showError(err.message || "Failed to generate poster");
     } finally {
       setGeneratingPosters(false);
+    }
+  };
+
+  const handleCampaignItemGenerate = async (item: CampaignPlanItem, index: number) => {
+    if (!selectedProduct) return;
+    setGeneratingCampaignItem(index);
+    try {
+      const isVideo = /video/i.test(item.content_type);
+      const angle: AdAngle = {
+        title: item.hook,
+        explanation: `${item.content_type} for ${item.platform}. Goal: ${item.goal}. ${item.description}`,
+      };
+      if (isVideo) {
+        await handleVideoAdClick(angle);
+      } else {
+        await handleGeneratePoster(angle);
+      }
+    } finally {
+      setGeneratingCampaignItem(null);
     }
   };
 
@@ -591,6 +660,8 @@ export default function ContentStudioPage() {
     setProducts([]);
     setSelectedProduct(null);
     setAdAngles([]);
+    setCampaignPlan([]);
+    setCampaignStrategy(null);
     setGeneratedPosters([]);
     setCampaign(null);
     setError(null);
@@ -687,9 +758,46 @@ export default function ContentStudioPage() {
   const hasFetchedProducts = products.length > 0 || brand !== null;
 
   return (
-    <div className="flex min-h-screen" style={{ background: colors.background }}>
-      <Sidebar />
-      <main className="flex-1 overflow-auto">
+    <div className="h-screen flex overflow-hidden app-page">
+      <div className="flex-shrink-0 h-full">
+        <Sidebar />
+      </div>
+      <div className="flex-1 flex flex-col h-full overflow-hidden" style={{ backgroundColor: colors.card, borderLeft: `1px solid ${colors.border}` }}>
+        {/* Sticky Header */}
+        <div className="border-b flex-shrink-0" style={{ borderColor: colors.border, backgroundColor: colors.card }}>
+          <div className="max-w-6xl mx-auto px-6 py-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-2xl font-semibold" style={{ color: colors.foreground }}>Content Studio</h1>
+                <p className="text-sm mt-1" style={{ color: colors.mutedForeground }}>
+                  Turn your website into high-converting ads
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                {imageCredits !== null && (
+                  <div className="flex items-center gap-2 px-4 py-2 rounded-lg" style={{ background: 'hsl(213 100% 55% / 0.15)', border: '1px solid hsl(213 100% 55% / 0.35)' }}>
+                    <svg className="w-5 h-5" style={{ color: colors.primary }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    <span className="font-semibold" style={{ color: colors.primary }}>{imageCredits}</span>
+                    <span className="text-sm" style={{ color: colors.primary }}>images</span>
+                  </div>
+                )}
+                {videoCredits !== null && (
+                  <div className="flex items-center gap-2 px-4 py-2 rounded-lg" style={{ background: 'hsl(270 80% 55% / 0.15)', border: '1px solid hsl(270 80% 55% / 0.3)' }}>
+                    <svg className="w-5 h-5" style={{ color: 'hsl(270 80% 65%)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                    <span className="font-semibold" style={{ color: 'hsl(270 80% 70%)' }}>{videoCredits}s</span>
+                    <span className="text-sm" style={{ color: 'hsl(270 80% 65%)' }}>video</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto">
         <div className="max-w-6xl mx-auto px-6 py-10">
           {(step === "entry" || step === "results") && (
             <div className="flex flex-col items-center py-12">
@@ -897,96 +1005,59 @@ export default function ContentStudioPage() {
                   Product Library
                 </h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-                  {products.map((p, i) => (
-                    <div
-                      key={i}
-                      onClick={() => handleProductClick(p)}
-                      className="rounded-xl p-4 border-2 cursor-pointer transition-all hover:border-[hsl(213_100%_55%)] hover:shadow-lg"
-                      style={{
-                        background: colors.card,
-                        borderColor:
-                          selectedProduct === p ? colors.primary : colors.border,
-                      }}
-                    >
+                  {products.map((p, i) => {
+                    const isSelected = selectedProduct === p;
+                    return (
                       <div
-                        className="aspect-square rounded-lg mb-3 overflow-hidden bg-[hsl(0_0%_18%)]"
-                        style={{ minHeight: 140 }}
+                        key={i}
+                        onClick={() => handleProductClick(p)}
+                        className="relative rounded-xl p-4 border-2 cursor-pointer transition-all hover:border-[hsl(213_100%_55%)] hover:shadow-lg"
+                        style={{
+                          background: colors.card,
+                          borderColor: isSelected ? colors.primary : colors.border,
+                        }}
                       >
-                        {p.product_images?.[0] ? (
-                          <img
-                            src={p.product_images[0]}
-                            alt={p.product_name}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
+                        {isSelected && (
                           <div
-                            className="w-full h-full flex items-center justify-center"
-                            style={{ color: colors.mutedForeground }}
+                            className="absolute top-3 right-3 z-10 flex items-center justify-center w-6 h-6 rounded-full"
+                            style={{ background: colors.primary }}
                           >
-                            <ImageIcon className="w-12 h-12" />
+                            <Check className="w-3.5 h-3.5" style={{ color: colors.primaryForeground }} />
                           </div>
                         )}
-                      </div>
-                      <h3 className="font-semibold truncate" style={{ color: colors.foreground }}>
-                        {p.product_name}
-                      </h3>
-                      {p.price && (
-                        <p className="text-sm font-medium" style={{ color: colors.primary }}>
-                          {p.price}
+                        <div
+                          className="aspect-square rounded-lg mb-3 overflow-hidden bg-[hsl(0_0%_18%)]"
+                          style={{ minHeight: 140 }}
+                        >
+                          {p.product_images?.[0] ? (
+                            <img
+                              src={p.product_images[0]}
+                              alt={p.product_name}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <div
+                              className="w-full h-full flex items-center justify-center"
+                              style={{ color: colors.mutedForeground }}
+                            >
+                              <ImageIcon className="w-12 h-12" />
+                            </div>
+                          )}
+                        </div>
+                        <h3 className="font-semibold truncate" style={{ color: colors.foreground }}>
+                          {p.product_name}
+                        </h3>
+                        {p.price && (
+                          <p className="text-sm font-medium" style={{ color: colors.primary }}>
+                            {p.price}
+                          </p>
+                        )}
+                        <p className="text-sm truncate" style={{ color: colors.mutedForeground }}>
+                          {p.short_benefit || p.description || "—"}
                         </p>
-                      )}
-                      <p className="text-sm truncate" style={{ color: colors.mutedForeground }}>
-                        {p.short_benefit || p.description || "—"}
-                      </p>
-                      <div className="flex flex-wrap gap-2 mt-3">
-                        <Button
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleProductClick(p);
-                          }}
-                          style={{
-                            background: colors.primary,
-                            color: colors.primaryForeground,
-                            fontSize: 11,
-                          }}
-                        >
-                          Generate Ads
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedProduct(p);
-                            handleCreateCampaign(p);
-                          }}
-                          style={{
-                            borderColor: colors.border,
-                            color: colors.foreground,
-                            fontSize: 11,
-                          }}
-                        >
-                          Create Campaign
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleProductClick(p);
-                          }}
-                          style={{
-                            borderColor: colors.border,
-                            color: colors.foreground,
-                            fontSize: 11,
-                          }}
-                        >
-                          View Insights
-                        </Button>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
                 {products.length === 0 && (
                   <p className="text-center py-8" style={{ color: colors.mutedForeground }}>
@@ -1083,6 +1154,186 @@ export default function ContentStudioPage() {
                       </div>
                     )}
                   </section>
+              )}
+
+              {selectedProduct && campaignPlan.length > 0 && !loadingAngles && (
+                <section
+                  className="rounded-xl p-6 border"
+                  style={{
+                    background: colors.card,
+                    borderColor: colors.border,
+                  }}
+                >
+                  <div className="flex items-center gap-3 mb-2">
+                    <div
+                      className="flex items-center justify-center w-9 h-9 rounded-lg"
+                      style={{ background: "hsl(213 100% 55% / 0.15)" }}
+                    >
+                      <Calendar className="w-5 h-5" style={{ color: colors.primary }} />
+                    </div>
+                    <div>
+                      <h2 className="text-lg font-semibold" style={{ color: colors.foreground }}>
+                        Campaign Plan
+                      </h2>
+                      <p className="text-xs" style={{ color: colors.mutedForeground }}>
+                        AI-generated strategy for {selectedProduct.product_name}
+                      </p>
+                    </div>
+                  </div>
+
+                  {campaignStrategy && (
+                    <div
+                      className="rounded-lg p-4 mb-5 mt-3"
+                      style={{
+                        background: "hsl(213 100% 55% / 0.06)",
+                        border: "1px solid hsl(213 100% 55% / 0.15)",
+                      }}
+                    >
+                      <div className="flex flex-wrap gap-x-6 gap-y-2 text-xs mb-2.5">
+                        {campaignStrategy.product_category && (
+                          <span style={{ color: colors.mutedForeground }}>
+                            Category:{" "}
+                            <span style={{ color: colors.foreground, fontWeight: 500 }}>
+                              {campaignStrategy.product_category}
+                            </span>
+                          </span>
+                        )}
+                        {campaignStrategy.target_audience && (
+                          <span style={{ color: colors.mutedForeground }}>
+                            Audience:{" "}
+                            <span style={{ color: colors.foreground, fontWeight: 500 }}>
+                              {campaignStrategy.target_audience}
+                            </span>
+                          </span>
+                        )}
+                      </div>
+                      {campaignStrategy.content_themes?.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5">
+                          {campaignStrategy.content_themes.map((theme, ti) => (
+                            <span
+                              key={ti}
+                              className="text-xs px-2.5 py-1 rounded-full"
+                              style={{
+                                background: "hsl(213 100% 55% / 0.12)",
+                                color: colors.primary,
+                              }}
+                            >
+                              {theme}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                    {campaignPlan.map((item, i) => {
+                      const isVideo = /video/i.test(item.content_type);
+                      const isPosterOrCarousel = /poster|carousel/i.test(item.content_type);
+                      const isGenerating = generatingCampaignItem === i;
+                      return (
+                        <div
+                          key={i}
+                          className="rounded-xl p-5 border transition-all hover:border-[hsl(213_100%_55%/0.5)]"
+                          style={{
+                            background: colors.secondary,
+                            borderColor: colors.border,
+                          }}
+                        >
+                          <div className="flex items-center justify-between mb-1">
+                            <span
+                              className="text-xs font-bold px-2.5 py-1 rounded-md"
+                              style={{
+                                background: "hsl(213 100% 55% / 0.15)",
+                                color: colors.primary,
+                              }}
+                            >
+                              Day {item.day}
+                            </span>
+                          </div>
+                          <p
+                            className="text-sm font-semibold mb-3"
+                            style={{ color: colors.foreground }}
+                          >
+                            Goal: {item.goal}
+                          </p>
+
+                          <div className="flex items-center gap-2 mb-3">
+                            <span
+                              className="text-xs font-medium px-2 py-0.5 rounded"
+                              style={{
+                                background: colors.muted,
+                                color: colors.foreground,
+                              }}
+                            >
+                              {item.content_type}
+                            </span>
+                            <span
+                              className="text-xs px-2 py-0.5 rounded"
+                              style={{
+                                background: colors.muted,
+                                color: colors.mutedForeground,
+                              }}
+                            >
+                              {item.platform}
+                            </span>
+                          </div>
+
+                          <div
+                            className="rounded-lg px-3 py-2.5 mb-2"
+                            style={{ background: "hsl(0 0% 12%)" }}
+                          >
+                            <p className="text-xs font-medium mb-0.5" style={{ color: colors.mutedForeground }}>
+                              Hook
+                            </p>
+                            <p
+                              className="text-sm font-medium leading-relaxed"
+                              style={{ color: colors.foreground }}
+                            >
+                              &ldquo;{item.hook}&rdquo;
+                            </p>
+                          </div>
+
+                          {item.description && (
+                            <p className="text-xs mb-4" style={{ color: colors.mutedForeground }}>
+                              {item.description}
+                            </p>
+                          )}
+
+                          <Button
+                            size="sm"
+                            onClick={() => handleCampaignItemGenerate(item, i)}
+                            disabled={isGenerating || generatingPosters || creatingVideoSession}
+                            className="w-full mt-1"
+                            style={{
+                              background: isVideo
+                                ? "hsl(213 100% 55%)"
+                                : "hsl(213 100% 55% / 0.15)",
+                              color: isVideo ? colors.primaryForeground : colors.primary,
+                              fontSize: 12,
+                              fontWeight: 600,
+                            }}
+                          >
+                            {isGenerating ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />
+                            ) : isVideo ? (
+                              <Play className="w-3.5 h-3.5 mr-1.5" />
+                            ) : (
+                              <ImageIcon className="w-3.5 h-3.5 mr-1.5" />
+                            )}
+                            {isGenerating
+                              ? "Generating..."
+                              : isVideo
+                                ? "Generate Video Ad"
+                                : isPosterOrCarousel
+                                  ? "Generate Poster"
+                                  : "Generate Creative"}
+                          </Button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
               )}
 
               {generatedPosters.length > 0 && (
@@ -1253,7 +1504,8 @@ export default function ContentStudioPage() {
             </div>
           )}
         </div>
-      </main>
+        </div>
+      </div>
 
       {/* Brand Onboarding Modal */}
       {showBrandOnboarding && (

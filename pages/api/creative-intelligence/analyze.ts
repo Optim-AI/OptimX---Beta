@@ -826,9 +826,25 @@ ${rankSummary.length > 0 ? JSON.stringify(rankSummary, null, 2) : "No rank data.
 TONE PREFERENCE: ${toneHint || "Balanced."}
 CAMPAIGN GOAL: ${userPrefs.campaignGoal || "Conversions"}
 
+CRITICAL — ACT AS AN AI AD ANALYST:
+- strategy_snapshot: Synthesize from ALL data (reviews, competitors, Meta ads, hooks). Be SPECIFIC to this brand. No generic phrases.
+- ad_format_recommendations: Score each format 0-100 based on: what competitors use in Meta Ad Library, what fits this product/audience, review sentiment, platform best practices. Scores must sum to a logical distribution (not all 70s). Include brief reasoning per format.
+
 Return JSON with STEPS 4, 5, 6:
 
 {
+  "strategy_snapshot": {
+    "market_gap": "1-2 sentences. Specific gap this brand can own. Reference real competitor/review signals.",
+    "winning_angle": "1-2 sentences. The single best hook/angle for this brand. Not generic.",
+    "best_creative_direction": "1-2 sentences. Tone, style, visual direction. Specific to product and audience.",
+    "recommended_ad_format": "Primary format: Short video|UGC|Static poster|Carousel. Plus 1 sentence why."
+  },
+  "ad_format_recommendations": [
+    {"format": "Short Video Ads", "score": 0-100, "reasoning": "Why this score for THIS brand"},
+    {"format": "UGC Style Ads", "score": 0-100, "reasoning": "Why"},
+    {"format": "Static Posters", "score": 0-100, "reasoning": "Why"},
+    {"format": "Carousel Ads", "score": 0-100, "reasoning": "Why"}
+  ],
   "market_gap_analysis": [
     {
       "opportunity_statement": "string",
@@ -886,6 +902,8 @@ Generate 11 hooks: 5 high-conversion + 3 emotional + 3 performance-driven. Inclu
   return {
     hooks,
     strategies: {
+      strategy_snapshot: parsed.strategy_snapshot || null,
+      ad_format_recommendations: parsed.ad_format_recommendations || [],
       market_gap_analysis: parsed.market_gap_analysis || [],
       underserved_angles: parsed.underserved_angles || [],
       white_space_opportunities: parsed.white_space_opportunities || [],

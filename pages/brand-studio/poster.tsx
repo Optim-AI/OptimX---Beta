@@ -34,6 +34,7 @@ import {
   mapFullAnalyzeToBrandSnapshot,
 } from '@/app/web/src/components/creative-studio';
 import { authFetch } from '@/lib/utils';
+import PosterEditModal from '@/app/web/src/components/content-studio/PosterEditModal';
 
 /** Download image to user's device - works for data URLs and remote URLs (blob-based for reliable download) */
 async function downloadImageToLocal(url: string, filename: string): Promise<void> {
@@ -129,6 +130,9 @@ export default function PosterSessionPage() {
   // Delete confirmation modal state
   const [deleteSessionId, setDeleteSessionId] = useState<string | null>(null);
   const [isDeletingSession, setIsDeletingSession] = useState(false);
+
+  // Poster edit modal state
+  const [editingPosterIndex, setEditingPosterIndex] = useState<number | null>(null);
 
   // Image preview state (for chat history images)
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
@@ -1065,6 +1069,57 @@ export default function PosterSessionPage() {
     setRegeneratePrompt(posterPrompt);
   }
 
+  async function handleRegenerateWithEdit(
+    posterUrl: string,
+    posterIndex: number,
+    editPrompt: string
+  ) {
+    let posterDataUrl = posterUrl;
+    if (posterUrl.startsWith("http")) {
+      try {
+        const res = await authFetch("/api/creative-studio/fetch-image", {
+          method: "POST",
+          body: JSON.stringify({ url: posterUrl, directFetch: true }),
+        });
+        const data = await res.json();
+        if (data.ok && data.dataUrl) posterDataUrl = data.dataUrl;
+      } catch {
+        showError("Could not load poster for editing");
+        return;
+      }
+    }
+
+    const editDescription = `EDIT MODE: The image provided below is the current marketing poster. Make ONLY this exact change: "${editPrompt}". Keep everything else identical—same layout, product, colors, branding, and all other text. Only apply the requested modification. Output the modified poster. ${config.aspectRatio || '4:5'} aspect ratio, high quality. Never use asterisks (*) in any text. Plain text only.`;
+
+    try {
+      const res = await authFetch("/api/generate-campaign", {
+        method: "POST",
+        body: JSON.stringify({
+          mode: "edit",
+          editMode: true,
+          description: editDescription,
+          prompt: editDescription,
+          refDataUrls: [posterDataUrl],
+          target: { width: 1080, height: 1350 },
+          aspectLabel: config.aspectRatio || "4:5",
+          theme: config.theme || "commercial",
+          brandName: brand?.name || "",
+          brandSnapshot: brand,
+        }),
+      });
+      const data = await res.json();
+      if (data.ok && data.image) {
+        setGeneratedPosters((prev) =>
+          prev.map((url, i) => (i === posterIndex ? data.image : url))
+        );
+      } else {
+        showError(data.error || "Failed to regenerate poster");
+      }
+    } catch (err: any) {
+      showError(err.message || "Failed to regenerate poster");
+    }
+  }
+
   function handleUseAsReferenceRequest(url: string, index: number) {
     setPendingUseAsReference({ url, index });
     setRegeneratePrompt(posterPrompt);
@@ -1625,6 +1680,7 @@ export default function PosterSessionPage() {
                   onUseAsReference={hasInsufficientCredits ? undefined : handleUseAsReference}
                   onUseAsReferenceRequest={hasInsufficientCredits ? undefined : handleUseAsReferenceRequest}
                   onUseAsReferenceConfirm={handleUseAsReferenceConfirm}
+                  onEditPoster={(idx) => setEditingPosterIndex(idx)}
                   pendingUseAsReference={pendingUseAsReference}
                   savingPoster={savingPoster}
                   creatingCampaign={creatingCampaign}
@@ -1841,6 +1897,22 @@ export default function PosterSessionPage() {
               )}
             </div>
           </div>
+        )}
+
+        {/* Poster Edit Modal */}
+        {editingPosterIndex !== null && generatedPosters[editingPosterIndex] && (
+          <PosterEditModal
+            imageUrl={generatedPosters[editingPosterIndex]}
+            posterIndex={editingPosterIndex}
+            onClose={() => setEditingPosterIndex(null)}
+            onRegenerate={(editPrompt) =>
+              handleRegenerateWithEdit(
+                generatedPosters[editingPosterIndex],
+                editingPosterIndex,
+                editPrompt
+              )
+            }
+          />
         )}
       </div>
     </div>
@@ -2314,6 +2386,7 @@ function PosterGrid({
   onUseAsReference,
   onUseAsReferenceRequest,
   onUseAsReferenceConfirm,
+  onEditPoster,
   pendingUseAsReference,
   savingPoster,
   creatingCampaign,
@@ -2334,6 +2407,7 @@ function PosterGrid({
   onUseAsReference?: (url: string, index: number) => void;
   onUseAsReferenceRequest?: (url: string, index: number) => void;
   onUseAsReferenceConfirm?: (url: string, index: number) => void;
+  onEditPoster?: (index: number) => void;
   pendingUseAsReference: { url: string; index: number } | null;
   savingPoster: number | null;
   creatingCampaign: number | null;
@@ -2748,6 +2822,21 @@ function PosterGrid({
                             </svg>
                             View Full Size
                           </button>
+                          {onEditPoster && (
+                          <button
+                            onClick={() => {
+                              onEditPoster(idx);
+                              setOpenMenuIndex(null);
+                            }}
+                            className="w-full text-left px-4 py-2.5 text-sm transition-colors flex items-center gap-2"
+                            style={{ color: colors.foreground }}
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                            Edit Poster
+                          </button>
+                          )}
                           <button
                             onClick={() => {
                               onSavePoster(poster, idx);
