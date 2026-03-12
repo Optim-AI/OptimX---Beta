@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/router";
+import Link from "next/link";
 import Sidebar from "@/app/web/src/components/Sidebar";
 import colors from "@/lib/ui/colors";
 import { authFetch } from "@/lib/utils";
@@ -554,8 +555,21 @@ export default function CreativeIntelligencePage() {
           <div className="max-w-6xl mx-auto px-6 py-4">
             <div className="flex items-center justify-between">
               <div>
-                <h1 className="text-2xl font-semibold" style={{ color: colors.foreground }}>
+                <h1 className="text-2xl font-semibold flex items-center gap-2" style={{ color: colors.foreground }}>
                   Creative Intelligence
+                  <span
+                    className="shrink-0"
+                    style={{
+                      fontSize: 10,
+                      padding: '2px 6px',
+                      borderRadius: 4,
+                      background: 'rgba(34, 197, 94, 0.2)',
+                      color: '#22c55e',
+                      fontWeight: 600,
+                    }}
+                  >
+                    Beta
+                  </span>
                 </h1>
                 <p className="text-sm mt-1" style={{ color: colors.mutedForeground }}>
                   AI-powered competitive intelligence &amp; ad generation
@@ -597,6 +611,17 @@ export default function CreativeIntelligencePage() {
 
         <div className="flex-1 overflow-y-auto">
           <div className="max-w-6xl mx-auto px-6 py-8">
+            {/* Beta feature note */}
+            <div className="mb-6 p-4 rounded-xl" style={{ backgroundColor: 'rgba(34, 197, 94, 0.12)', border: '1px solid rgba(34, 197, 94, 0.35)' }}>
+              <p className="text-sm leading-relaxed" style={{ color: '#e8f5e9' }}>
+                <strong style={{ color: '#e8f5e9' }}>Beta Feature:</strong> This feature is still in Beta, so you might notice occasional glitches or unexpected results. If you spot anything off or have ideas for improvement,{' '}
+                <Link href="/report" className="font-medium underline" style={{ color: '#4ade80' }}>
+                  send us feedback here
+                </Link>
+                . Your input directly helps us refine the experience.
+              </p>
+            </div>
+
             {/* Quick CTAs */}
             <div className="flex flex-wrap gap-3 mb-6">
               <Button

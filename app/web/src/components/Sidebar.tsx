@@ -35,14 +35,15 @@ type NavItem = {
   label: string;
   Icon: React.ComponentType<any>;
   featureKey?: string; // Optional feature key for gating
+  betaBadge?: boolean; // Show green "Beta" badge
 };
 
 // Map routes to feature keys for gating
 const NAV_ITEMS: NavItem[] = [
   { href: '/dashboard', label: 'Dashboard', Icon: Home, featureKey: 'dashboard' },
   { href: '/brand-studio', label: 'Brand Studio', Icon: Palette }, // Always visible
-  { href: '/creative-intelligence', label: 'Creative Intelligence', Icon: Brain }, // Always visible
-  { href: '/content-studio', label: 'Ad Studio', Icon: LayoutGrid }, // Always visible
+  { href: '/creative-intelligence', label: 'Creative Intelligence', Icon: Brain, betaBadge: true }, // Always visible
+  { href: '/content-studio', label: 'Ad Studio', Icon: LayoutGrid, betaBadge: true }, // Always visible
   { href: '/buy-credits', label: 'Buy Credits', Icon: Coins }, // Always visible (pay-as-you-go)
   { href: '/create-campaign', label: 'Create Campaign', Icon: PlusCircle, featureKey: 'create_campaigns' },
   { href: '/analytics', label: 'Analytics', Icon: BarChart3, featureKey: 'basic_analytics' },
@@ -212,19 +213,37 @@ const Sidebar: React.FC<SidebarProps> = ({
               }}
             >
               <item.Icon size={18} />
-              <span className={`truncate text-sm ${collapsed ? 'hidden' : 'block'}`}>
-                {item.label}
+              <span className={`text-sm flex items-center gap-2 min-w-0 ${collapsed ? 'hidden' : 'flex'}`}>
+                <span className="truncate">{item.label}</span>
+                {/* Show "Beta" badge for beta features */}
+                {item.betaBadge && (
+                  <span
+                    className="shrink-0"
+                    style={{
+                      fontSize: 10,
+                      padding: '2px 6px',
+                      borderRadius: 4,
+                      background: 'rgba(34, 197, 94, 0.2)',
+                      color: '#22c55e',
+                      fontWeight: 600,
+                    }}
+                  >
+                    Beta
+                  </span>
+                )}
                 {/* Show "Coming Soon" badge if applicable */}
                 {item.featureKey && featureAccess[item.featureKey]?.comingSoon && (
-                  <span style={{
-                    marginLeft: 8,
-                    fontSize: 10,
-                    padding: '2px 6px',
-                    borderRadius: 4,
-                    background: 'rgba(245, 158, 11, 0.2)',
-                    color: '#f59e0b',
-                    fontWeight: 600,
-                  }}>
+                  <span
+                    className="shrink-0"
+                    style={{
+                      fontSize: 10,
+                      padding: '2px 6px',
+                      borderRadius: 4,
+                      background: 'rgba(245, 158, 11, 0.2)',
+                      color: '#f59e0b',
+                      fontWeight: 600,
+                    }}
+                  >
                     Soon
                   </span>
                 )}
