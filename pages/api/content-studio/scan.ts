@@ -5,7 +5,9 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { JSDOM } from "jsdom";
 import { Readability } from "@mozilla/readability";
 import { getUserIdFromRequest } from "@/auth/request";
-import { chromium } from "playwright";
+import { ContentStudioScanDAO } from "@/database/models/ContentStudioScan.dao";
+// Playwright is dynamically imported to avoid webpack bundling issues
+// when the package isn't installed (falls back to fetch+JSDOM)
 
 const GEMINI_API_KEY =
   process.env.GEMINI_API_KEY ||
@@ -222,6 +224,8 @@ async function crawlWithPlaywright(
   const categoryUrls = new Set<string>();
   let homepageHtml = "";
 
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { chromium } = require("playwright") as { chromium: any };
   const browser = await chromium.launch({
     headless: true,
     args: ["--no-sandbox", "--disable-setuid-sandbox"],
@@ -1009,15 +1013,32 @@ ${JSON.stringify(rawProducts)}`;
     }));
   }
 
-    return res.status(200).json({
-      ok: true,
-      brand: {
+    const brandResult = {
         name: brand.brand_name || "Unknown",
         tone: brand.brand_tone || "",
         industry: brand.industry || "",
         targetAudience: brand.target_audience || "",
         primaryValueProposition: brand.primary_value_proposition || "",
-      },
+      };
+
+    // Save scan to DB
+    let scanId: string | undefined;
+    try {
+      const scan = await ContentStudioScanDAO.create({
+        userId,
+        url,
+        brandSummary: brandResult,
+        products,
+      });
+      scanId = scan.id;
+    } catch (dbErr: any) {
+      console.error("[Content Studio] DB save failed:", dbErr?.message);
+    }
+
+    return res.status(200).json({
+      ok: true,
+      scanId,
+      brand: brandResult,
       products,
     });
   } catch (err: any) {

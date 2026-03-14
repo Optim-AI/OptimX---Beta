@@ -8,6 +8,14 @@ const nextConfig = {
       { source: '/cookiepolicy', destination: '/cpolicy', permanent: true },
     ];
   },
+  serverExternalPackages: ['playwright'],
+  webpack: (config: any, { isServer }: { isServer: boolean }) => {
+    if (isServer) {
+      config.externals = config.externals || [];
+      config.externals.push('playwright');
+    }
+    return config;
+  },
   experimental: {
     // Ensures pages/api works in production when app/ also exists
     manualClientBasePath: true,

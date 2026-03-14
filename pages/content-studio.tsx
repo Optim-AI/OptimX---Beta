@@ -37,6 +37,9 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/app/web/src/components/ui/collapsible";
+import { CreditDisplay } from "@/app/web/src/components/billing/CreditDisplay";
+import { InsufficientCreditsAlert } from "@/app/web/src/components/billing/InsufficientCreditsAlert";
+import { useSubscription } from "@/app/web/src/hooks/use-subscription";
 
 type BrandSummary = {
   name: string;
@@ -70,8 +73,6 @@ type CampaignAd = {
   hook: string;
   cta: string;
 };
-
-const CONTENT_STUDIO_STORAGE_KEY = "content-studio:lastScan";
 
 const SCAN_MESSAGES = [
   { text: "Crawling your website...", detail: "Discovering pages and structure" },
@@ -150,13 +151,15 @@ export default function ContentStudioPage() {
   const [brand, setBrand] = useState<BrandSummary | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [expandedProductIndex, setExpandedProductIndex] = useState<number | null>(null);
   const [adAngles, setAdAngles] = useState<AdAngle[]>([]);
   const [loadingAngles, setLoadingAngles] = useState(false);
   const [generatedPosters, setGeneratedPosters] = useState<string[]>([]);
-  const [generatingPosters, setGeneratingPosters] = useState(false);
+  const [generatingAngleId, setGeneratingAngleId] = useState<string | null>(null);
   const [campaign, setCampaign] = useState<{ name: string; ads: CampaignAd[] } | null>(null);
   const [loadingCampaign, setLoadingCampaign] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [scanId, setScanId] = useState<string | null>(null);
 
   const [brandGuideline, setBrandGuideline] = useState<BrandSnapshot | null>(null);
   const [showBrandGuidelineModal, setShowBrandGuidelineModal] = useState(false);
@@ -164,44 +167,96 @@ export default function ContentStudioPage() {
   const [isAnalyzingBrand, setIsAnalyzingBrand] = useState(false);
   const [onboardingMode, setOnboardingMode] = useState<"website" | "manual">("website");
   const [editingPosterIndex, setEditingPosterIndex] = useState<number | null>(null);
-  const [creatingVideoSession, setCreatingVideoSession] = useState(false);
+  const [creatingVideoAngleId, setCreatingVideoAngleId] = useState<string | null>(null);
   const [editingPosterUrl, setEditingPosterUrl] = useState<string | null>(null);
   const [productsCollapsed, setProductsCollapsed] = useState(false);
+  const [insufficientCreditsType, setInsufficientCreditsType] = useState<"image" | "video" | null>(null);
+
+  const { credits, fetchSubscription } = useSubscription();
+
+  function saveBrandSnapshot(snapshot: BrandSnapshot) {
+    localStorage.setItem("brand:snapshot", JSON.stringify(snapshot));
+    authFetch("/api/brand/snapshot", {
+      method: "PUT",
+      body: JSON.stringify({ brandSnapshot: snapshot }),
+    }).catch(() => {});
+  }
 
   useEffect(() => {
-    const stored = localStorage.getItem("brand:snapshot");
-    if (stored) {
+    let cancelled = false;
+    (async () => {
+      // Try loading from DB first
       try {
-        const parsed = JSON.parse(stored) as BrandSnapshot;
-        setBrandGuideline(parsed);
-      } catch {
-        setShowBrandOnboarding(true);
-      }
-    } else {
-      setShowBrandOnboarding(true);
-    }
-  }, []);
-
-  // Restore fetched products when user returns to the page
-  useEffect(() => {
-    const stored = localStorage.getItem(CONTENT_STUDIO_STORAGE_KEY);
-    if (stored) {
-      try {
-        const data = JSON.parse(stored) as {
-          url: string;
-          brand: BrandSummary | null;
-          products: Product[];
-        };
-        if (data.products?.length > 0 || data.brand) {
-          setUrl(data.url || "");
-          setBrand(data.brand || null);
-          setProducts(data.products || []);
-          setStep("results");
+        const res = await authFetch("/api/brand/snapshot");
+        const data = await res.json();
+        if (!cancelled && data.brandSnapshot) {
+          setBrandGuideline(data.brandSnapshot);
+          localStorage.setItem("brand:snapshot", JSON.stringify(data.brandSnapshot));
+          return;
         }
       } catch {
-        /* ignore invalid stored data */
+        /* fall through to localStorage */
       }
-    }
+      if (cancelled) return;
+      // Fall back to localStorage
+      const stored = localStorage.getItem("brand:snapshot");
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored) as BrandSnapshot;
+          setBrandGuideline(parsed);
+        } catch {
+          setShowBrandOnboarding(true);
+        }
+      } else {
+        setShowBrandOnboarding(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Restore last scan from DB when user returns to the page
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await authFetch("/api/content-studio/scans");
+        const data = await res.json();
+        if (cancelled) return;
+        if (data.ok && data.scans?.length > 0) {
+          const latest = data.scans[0];
+          const brand = latest.brandSummary as BrandSummary | null;
+          const products = (latest.products || []) as Product[];
+          if (products.length > 0 || brand) {
+            setUrl(latest.url || "");
+            setBrand(brand);
+            setProducts(products);
+            setScanId(latest.id);
+            setStep("results");
+
+            // Also load campaigns and posters for this scan
+            try {
+              const detailRes = await authFetch(`/api/content-studio/scans?id=${latest.id}`);
+              const detailData = await detailRes.json();
+              if (!cancelled && detailData.ok) {
+                if (detailData.campaigns?.length > 0) {
+                  const c = detailData.campaigns[0];
+                  setCampaign({ name: c.campaignName || "Campaign", ads: c.ads || [] });
+                }
+                if (detailData.posters?.length > 0) {
+                  const allUrls = detailData.posters.flatMap((p: any) => p.imageUrls || []);
+                  if (allUrls.length > 0) setGeneratedPosters(allUrls);
+                }
+              }
+            } catch {
+              /* non-critical */
+            }
+          }
+        }
+      } catch {
+        /* ignore - user may not have any scans yet */
+      }
+    })();
+    return () => { cancelled = true; };
   }, []);
 
   const normalizeUrl = (input: string) => {
@@ -249,18 +304,13 @@ export default function ContentStudioPage() {
       setProducts(data.products || []);
       setStep("results");
       setSelectedProduct(null);
+      setExpandedProductIndex(null);
       setAdAngles([]);
       setCampaign(null);
-
-      // Persist for when user navigates away and returns
-      localStorage.setItem(
-        CONTENT_STUDIO_STORAGE_KEY,
-        JSON.stringify({
-          url: normalized,
-          brand: data.brand,
-          products: data.products || [],
-        })
-      );
+      setGeneratedPosters([]);
+      if (data.scanId) {
+        setScanId(data.scanId);
+      }
 
       const scanBrand = data.brand;
       if (scanBrand) {
@@ -283,7 +333,7 @@ export default function ContentStudioPage() {
               coreValueProp: scanBrand.primaryValueProposition,
             };
         setBrandGuideline(merged);
-        localStorage.setItem("brand:snapshot", JSON.stringify(merged));
+        saveBrandSnapshot(merged);
       }
     } catch (err: any) {
       clearInterval(msgInterval);
@@ -294,9 +344,19 @@ export default function ContentStudioPage() {
     }
   };
 
-  const handleProductClick = async (product: Product) => {
+  const handleProductClick = async (product: Product, index: number) => {
+    if (expandedProductIndex === index) {
+      // Collapse if clicking the same product
+      setExpandedProductIndex(null);
+      setSelectedProduct(null);
+      setAdAngles([]);
+      return;
+    }
+    setExpandedProductIndex(index);
     setSelectedProduct(product);
     setAdAngles([]);
+    setGeneratedPosters([]);
+    setCampaign(null);
     setLoadingAngles(true);
     try {
       const res = await authFetch("/api/content-studio/ad-angles", {
@@ -316,7 +376,12 @@ export default function ContentStudioPage() {
 
   const handleGeneratePoster = async (angle?: AdAngle) => {
     if (!selectedProduct) return;
-    setGeneratingPosters(true);
+    if (!credits || credits.imageCredits.total < 3) {
+      setInsufficientCreditsType("image");
+      return;
+    }
+    const angleId = angle ? angle.title : "__default__";
+    setGeneratingAngleId(angleId);
     try {
       const productImages = selectedProduct.product_images || [];
       const productImage = productImages[0];
@@ -433,13 +498,27 @@ export default function ContentStudioPage() {
 
       if (posters.length > 0) {
         setGeneratedPosters((prev) => [...prev, ...posters]);
+        // Save poster URLs to DB
+        if (scanId && selectedProduct) {
+          authFetch("/api/content-studio/posters", {
+            method: "POST",
+            body: JSON.stringify({
+              scanId,
+              productName: selectedProduct.product_name,
+              angle: angle || null,
+              imageUrls: posters,
+            }),
+          }).catch(() => { /* non-critical */ });
+        }
+        // Refresh credit balance
+        fetchSubscription();
       } else {
         showError(lastError || "Failed to generate posters");
       }
     } catch (err: any) {
       showError(err.message || "Failed to generate poster");
     } finally {
-      setGeneratingPosters(false);
+      setGeneratingAngleId(null);
     }
   };
 
@@ -450,7 +529,7 @@ export default function ContentStudioPage() {
     try {
       const res = await authFetch("/api/content-studio/generate-campaign", {
         method: "POST",
-        body: JSON.stringify({ product: p, brand }),
+        body: JSON.stringify({ product: p, brand, scanId }),
       });
       const data = await res.json();
       if (data.ok && data.campaign) {
@@ -477,7 +556,11 @@ export default function ContentStudioPage() {
       showError("Please set up brand guidelines first");
       return;
     }
-    setCreatingVideoSession(true);
+    if (!credits || credits.videoCredits.total < 1) {
+      setInsufficientCreditsType("video");
+      return;
+    }
+    setCreatingVideoAngleId(angle.title);
     try {
       const productData = {
         product_name: selectedProduct.product_name,
@@ -517,7 +600,7 @@ export default function ContentStudioPage() {
     } catch (err: any) {
       showError(err.message || "Failed to create video session");
     } finally {
-      setCreatingVideoSession(false);
+      setCreatingVideoAngleId(null);
     }
   };
 
@@ -590,11 +673,12 @@ export default function ContentStudioPage() {
     setBrand(null);
     setProducts([]);
     setSelectedProduct(null);
+    setExpandedProductIndex(null);
     setAdAngles([]);
     setGeneratedPosters([]);
     setCampaign(null);
     setError(null);
-    localStorage.removeItem(CONTENT_STUDIO_STORAGE_KEY);
+    setScanId(null);
   };
 
   async function handleWebsiteAnalyzeForEdit(website: string): Promise<BrandSnapshot | null> {
@@ -626,7 +710,7 @@ export default function ContentStudioPage() {
       if (data.result) {
         const brandSnapshot = mapFullAnalyzeToBrandSnapshot(data.result);
         setBrandGuideline(brandSnapshot);
-        localStorage.setItem("brand:snapshot", JSON.stringify(brandSnapshot));
+        saveBrandSnapshot(brandSnapshot);
         setShowBrandOnboarding(false);
         setShowBrandGuidelineModal(true);
       } else {
@@ -658,7 +742,7 @@ export default function ContentStudioPage() {
       personality: data.personality,
     };
     setBrandGuideline(brandSnapshot);
-    localStorage.setItem("brand:snapshot", JSON.stringify(brandSnapshot));
+    saveBrandSnapshot(brandSnapshot);
     setShowBrandOnboarding(false);
     setShowBrandGuidelineModal(true);
   }
@@ -672,14 +756,14 @@ export default function ContentStudioPage() {
       tone: "professional",
     };
     setBrandGuideline(minimalBrand);
-    localStorage.setItem("brand:snapshot", JSON.stringify(minimalBrand));
+    saveBrandSnapshot(minimalBrand);
     setShowBrandOnboarding(false);
     setShowBrandGuidelineModal(true);
   }
 
   function updateBrandGuideline(updated: BrandSnapshot) {
     setBrandGuideline(updated);
-    localStorage.setItem("brand:snapshot", JSON.stringify(updated));
+    saveBrandSnapshot(updated);
     localStorage.setItem("brand:guideline_seen", "true");
     setShowBrandGuidelineModal(false);
   }
@@ -703,6 +787,9 @@ export default function ContentStudioPage() {
                 <h1 className="text-4xl md:text-5xl font-bold tracking-tight max-w-6xl mx-auto text-center" style={{ color: colors.foreground }}>
                   Let&apos;s turn your website into high converting ads
                 </h1>
+                <div className="mt-3">
+                  <CreditDisplay variant="compact" showRefresh />
+                </div>
                 <p className="text-lg max-w-2xl mx-auto text-center mt-2" style={{ color: colors.mutedForeground }}>
                   Paste your website URL and we&apos;ll extract products, generate ad creatives, and build campaigns all in one place.
                 </p>
@@ -898,14 +985,14 @@ export default function ContentStudioPage() {
                 </h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
                   {products.map((p, i) => (
+                    <React.Fragment key={i}>
                     <div
-                      key={i}
-                      onClick={() => handleProductClick(p)}
+                      onClick={() => handleProductClick(p, i)}
                       className="rounded-xl p-4 border-2 cursor-pointer transition-all hover:border-[hsl(213_100%_55%)] hover:shadow-lg"
                       style={{
                         background: colors.card,
                         borderColor:
-                          selectedProduct === p ? colors.primary : colors.border,
+                          expandedProductIndex === i ? colors.primary : colors.border,
                       }}
                     >
                       <div
@@ -943,7 +1030,7 @@ export default function ContentStudioPage() {
                           size="sm"
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleProductClick(p);
+                            handleProductClick(p, i);
                           }}
                           style={{
                             background: colors.primary,
@@ -959,6 +1046,7 @@ export default function ContentStudioPage() {
                           onClick={(e) => {
                             e.stopPropagation();
                             setSelectedProduct(p);
+                            setExpandedProductIndex(i);
                             handleCreateCampaign(p);
                           }}
                           style={{
@@ -969,23 +1057,229 @@ export default function ContentStudioPage() {
                         >
                           Create Campaign
                         </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleProductClick(p);
-                          }}
-                          style={{
-                            borderColor: colors.border,
-                            color: colors.foreground,
-                            fontSize: 11,
-                          }}
-                        >
-                          View Insights
-                        </Button>
                       </div>
                     </div>
+
+                    {/* Inline expanded panel for this product */}
+                    {expandedProductIndex === i && (
+                      <div
+                        className="col-span-full rounded-xl p-6 border space-y-6"
+                        style={{
+                          background: colors.card,
+                          borderColor: colors.border,
+                        }}
+                      >
+                        {/* Ad Angles */}
+                        <div>
+                          <div className="flex items-center justify-between mb-4">
+                            <h2 className="text-lg font-semibold" style={{ color: colors.foreground }}>
+                              Ad Angles for {p.product_name}
+                            </h2>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => { setExpandedProductIndex(null); setSelectedProduct(null); }}
+                              style={{ color: colors.mutedForeground }}
+                            >
+                              <X className="w-4 h-4" />
+                            </Button>
+                          </div>
+                          {loadingAngles ? (
+                            <div className="flex items-center justify-center py-8">
+                              <Loader2 className="w-8 h-8 animate-spin" style={{ color: colors.primary }} />
+                            </div>
+                          ) : (
+                            <div className="space-y-3">
+                              {adAngles.map((angle, ai) => (
+                                <div
+                                  key={ai}
+                                  className="rounded-lg p-3 border"
+                                  style={{
+                                    background: colors.secondary,
+                                    borderColor: colors.border,
+                                  }}
+                                >
+                                  <p className="font-medium text-sm" style={{ color: colors.foreground }}>
+                                    {angle.title}
+                                  </p>
+                                  <p className="text-xs mt-1" style={{ color: colors.mutedForeground }}>
+                                    {angle.explanation}
+                                  </p>
+                                  <div className="flex gap-2 mt-2">
+                                    <Button
+                                      size="sm"
+                                      onClick={() => handleGeneratePoster(angle)}
+                                      disabled={generatingAngleId === angle.title}
+                                      style={{
+                                        background: colors.primary,
+                                        color: colors.primaryForeground,
+                                        fontSize: 11,
+                                      }}
+                                    >
+                                      {generatingAngleId === angle.title ? (
+                                        <Loader2 className="w-3 h-3 animate-spin" />
+                                      ) : (
+                                        <>
+                                          <ImageIcon className="w-3 h-3 mr-1" />
+                                          Generate Poster
+                                        </>
+                                      )}
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => handleVideoAdClick(angle)}
+                                      disabled={creatingVideoAngleId === angle.title}
+                                      style={{
+                                        borderColor: colors.border,
+                                        color: colors.foreground,
+                                        fontSize: 11,
+                                      }}
+                                    >
+                                      {creatingVideoAngleId === angle.title ? (
+                                        <Loader2 className="w-3 h-3 animate-spin" />
+                                      ) : (
+                                        <>
+                                          <Video className="w-3 h-3 mr-1" />
+                                          Video Ad
+                                        </>
+                                      )}
+                                    </Button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Generated Posters (inline) */}
+                        {generatedPosters.length > 0 && (
+                          <div>
+                            <h2 className="text-xl font-semibold mb-2" style={{ color: colors.foreground }}>
+                              Generated Creatives
+                            </h2>
+                            <p className="text-sm mb-6" style={{ color: colors.mutedForeground }}>
+                              Click Edit to describe the exact change you want (e.g. fix a typo, add text) and regenerate.
+                            </p>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                              {generatedPosters.map((img, pi) => (
+                                <div
+                                  key={pi}
+                                  className="group rounded-xl overflow-hidden border-2 transition-all hover:border-[hsl(213_100%_55%)] hover:shadow-xl"
+                                  style={{
+                                    borderColor: colors.border,
+                                    background: colors.muted,
+                                  }}
+                                >
+                                  <div className="aspect-[4/5] relative overflow-hidden">
+                                    <img
+                                      src={img}
+                                      alt={`Creative ${pi + 1}`}
+                                      className="w-full h-full object-cover"
+                                    />
+                                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                                    <div className="absolute bottom-0 left-0 right-0 p-3 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                      <Button
+                                        size="sm"
+                                        onClick={() => setEditingPosterIndex(pi)}
+                                        className="flex-1"
+                                        style={{
+                                          background: colors.primary,
+                                          color: colors.primaryForeground,
+                                        }}
+                                      >
+                                        <Pencil className="w-3.5 h-3.5 mr-1" />
+                                        Edit
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="secondary"
+                                        onClick={() => handleDownload(img, `creative-${pi + 1}.png`)}
+                                        style={{ color: colors.foreground }}
+                                      >
+                                        <Download className="w-3.5 h-3.5" />
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="secondary"
+                                        onClick={() => window.open(img, "_blank")}
+                                        style={{ color: colors.foreground }}
+                                      >
+                                        <ExternalLink className="w-3.5 h-3.5" />
+                                      </Button>
+                                    </div>
+                                  </div>
+                                  <div className="p-3 flex items-center justify-between" style={{ background: colors.card }}>
+                                    <span className="text-sm font-medium" style={{ color: colors.foreground }}>
+                                      Poster {pi + 1}
+                                    </span>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      onClick={() => setEditingPosterIndex(pi)}
+                                      style={{ color: colors.primary, fontSize: 12 }}
+                                    >
+                                      Edit
+                                    </Button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Campaign (inline) */}
+                        {campaign && (
+                          <div>
+                            <h2 className="text-lg font-semibold mb-4" style={{ color: colors.foreground }}>
+                              Campaign: {campaign.name}
+                            </h2>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              {campaign.ads.map((ad, ci) => (
+                                <div
+                                  key={ci}
+                                  className="rounded-lg p-4 border"
+                                  style={{
+                                    background: colors.secondary,
+                                    borderColor: colors.border,
+                                  }}
+                                >
+                                  <span
+                                    className="text-xs font-medium px-2 py-0.5 rounded"
+                                    style={{
+                                      background: colors.primary,
+                                      color: colors.primaryForeground,
+                                    }}
+                                  >
+                                    {ad.type}
+                                  </span>
+                                  <h3 className="font-medium mt-2" style={{ color: colors.foreground }}>
+                                    {ad.title}
+                                  </h3>
+                                  <p className="text-sm mt-1" style={{ color: colors.mutedForeground }}>
+                                    {ad.description}
+                                  </p>
+                                  <p className="text-xs mt-2" style={{ color: colors.foreground }}>
+                                    Hook: {ad.hook}
+                                  </p>
+                                  <p className="text-xs" style={{ color: colors.primary }}>
+                                    CTA: {ad.cta}
+                                  </p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {loadingCampaign && (
+                          <div className="flex items-center justify-center py-6">
+                            <Loader2 className="w-6 h-6 animate-spin" style={{ color: colors.primary }} />
+                            <span className="ml-2 text-sm" style={{ color: colors.mutedForeground }}>Generating campaign...</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    </React.Fragment>
                   ))}
                 </div>
                 {products.length === 0 && (
@@ -994,225 +1288,6 @@ export default function ContentStudioPage() {
                   </p>
                 )}
               </section>
-
-              {selectedProduct && (
-                <section
-                  className="rounded-xl p-6 border overflow-y-auto max-h-[600px]"
-                  style={{
-                    background: colors.card,
-                    borderColor: colors.border,
-                  }}
-                >
-                    <div className="flex items-center justify-between mb-4">
-                      <h2 className="text-lg font-semibold" style={{ color: colors.foreground }}>
-                        Ad Angles
-                      </h2>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setSelectedProduct(null)}
-                        style={{ color: colors.mutedForeground }}
-                      >
-                        <X className="w-4 h-4" />
-                      </Button>
-                    </div>
-                    {loadingAngles ? (
-                      <div className="flex items-center justify-center py-8">
-                        <Loader2 className="w-8 h-8 animate-spin" style={{ color: colors.primary }} />
-                      </div>
-                    ) : (
-                      <div className="space-y-3">
-                        {adAngles.map((angle, i) => (
-                          <div
-                            key={i}
-                            className="rounded-lg p-3 border"
-                            style={{
-                              background: colors.secondary,
-                              borderColor: colors.border,
-                            }}
-                          >
-                            <p className="font-medium text-sm" style={{ color: colors.foreground }}>
-                              {angle.title}
-                            </p>
-                            <p className="text-xs mt-1" style={{ color: colors.mutedForeground }}>
-                              {angle.explanation}
-                            </p>
-                            <div className="flex gap-2 mt-2">
-                              <Button
-                                size="sm"
-                                onClick={() => handleGeneratePoster(angle)}
-                                disabled={generatingPosters}
-                                style={{
-                                  background: colors.primary,
-                                  color: colors.primaryForeground,
-                                  fontSize: 11,
-                                }}
-                              >
-                                {generatingPosters ? (
-                                  <Loader2 className="w-3 h-3 animate-spin" />
-                                ) : (
-                                  <>
-                                    <ImageIcon className="w-3 h-3 mr-1" />
-                                    Generate Poster
-                                  </>
-                                )}
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleVideoAdClick(angle)}
-                                disabled={creatingVideoSession}
-                                style={{
-                                  borderColor: colors.border,
-                                  color: colors.foreground,
-                                  fontSize: 11,
-                                }}
-                              >
-                                {creatingVideoSession ? (
-                                  <Loader2 className="w-3 h-3 animate-spin" />
-                                ) : (
-                                  <>
-                                    <Video className="w-3 h-3 mr-1" />
-                                    Video Ad
-                                  </>
-                                )}
-                              </Button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </section>
-              )}
-
-              {generatedPosters.length > 0 && (
-                <section
-                  className="rounded-2xl p-8 border shadow-lg"
-                  style={{
-                    background: colors.card,
-                    borderColor: colors.border,
-                  }}
-                >
-                  <h2 className="text-xl font-semibold mb-2" style={{ color: colors.foreground }}>
-                    Generated Creatives
-                  </h2>
-                  <p className="text-sm mb-6" style={{ color: colors.mutedForeground }}>
-                    Click Edit to describe the exact change you want (e.g. fix a typo, add text) and regenerate.
-                  </p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {generatedPosters.map((img, i) => (
-                      <div
-                        key={i}
-                        className="group rounded-xl overflow-hidden border-2 transition-all hover:border-[hsl(213_100%_55%)] hover:shadow-xl"
-                        style={{
-                          borderColor: colors.border,
-                          background: colors.muted,
-                        }}
-                      >
-                        <div className="aspect-[4/5] relative overflow-hidden">
-                          <img
-                            src={img}
-                            alt={`Creative ${i + 1}`}
-                            className="w-full h-full object-cover"
-                          />
-                          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                          <div className="absolute bottom-0 left-0 right-0 p-3 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <Button
-                              size="sm"
-                              onClick={() => setEditingPosterIndex(i)}
-                              className="flex-1"
-                              style={{
-                                background: colors.primary,
-                                color: colors.primaryForeground,
-                              }}
-                            >
-                              <Pencil className="w-3.5 h-3.5 mr-1" />
-                              Edit
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              onClick={() => handleDownload(img, `creative-${i + 1}.png`)}
-                              style={{ color: colors.foreground }}
-                            >
-                              <Download className="w-3.5 h-3.5" />
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              onClick={() => window.open(img, "_blank")}
-                              style={{ color: colors.foreground }}
-                            >
-                              <ExternalLink className="w-3.5 h-3.5" />
-                            </Button>
-                          </div>
-                        </div>
-                        <div className="p-3 flex items-center justify-between" style={{ background: colors.card }}>
-                          <span className="text-sm font-medium" style={{ color: colors.foreground }}>
-                            Poster {i + 1}
-                          </span>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => setEditingPosterIndex(i)}
-                            style={{ color: colors.primary, fontSize: 12 }}
-                          >
-                            Edit
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </section>
-              )}
-
-              {campaign && (
-                <section
-                  className="rounded-xl p-6 border"
-                  style={{
-                    background: colors.card,
-                    borderColor: colors.border,
-                  }}
-                >
-                  <h2 className="text-lg font-semibold mb-4" style={{ color: colors.foreground }}>
-                    Campaign: {campaign.name}
-                  </h2>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {campaign.ads.map((ad, i) => (
-                      <div
-                        key={i}
-                        className="rounded-lg p-4 border"
-                        style={{
-                          background: colors.secondary,
-                          borderColor: colors.border,
-                        }}
-                      >
-                        <span
-                          className="text-xs font-medium px-2 py-0.5 rounded"
-                          style={{
-                            background: colors.primary,
-                            color: colors.primaryForeground,
-                          }}
-                        >
-                          {ad.type}
-                        </span>
-                        <h3 className="font-medium mt-2" style={{ color: colors.foreground }}>
-                          {ad.title}
-                        </h3>
-                        <p className="text-sm mt-1" style={{ color: colors.mutedForeground }}>
-                          {ad.description}
-                        </p>
-                        <p className="text-xs mt-2" style={{ color: colors.foreground }}>
-                          Hook: {ad.hook}
-                        </p>
-                        <p className="text-xs" style={{ color: colors.primary }}>
-                          CTA: {ad.cta}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </section>
-              )}
                       </div>
                     </CollapsibleContent>
                   </Collapsible>
@@ -1304,6 +1379,14 @@ export default function ContentStudioPage() {
               editPrompt
             )
           }
+        />
+      )}
+
+      {/* Insufficient Credits Alert */}
+      {insufficientCreditsType && (
+        <InsufficientCreditsAlert
+          type={insufficientCreditsType}
+          onClose={() => setInsufficientCreditsType(null)}
         />
       )}
     </div>

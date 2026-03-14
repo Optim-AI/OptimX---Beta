@@ -570,6 +570,47 @@ export const creativeIntelligenceFacebookPages = pgTable("creative_intelligence_
 	index("idx_creative_intelligence_facebook_pages_run_id").using("btree", table.runId.asc().nullsLast()),
 ]);
 
+// ============================================================
+// CONTENT STUDIO TABLES
+// ============================================================
+
+export const contentStudioScans = pgTable("content_studio_scans", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	userId: uuid("user_id").notNull(),
+	url: text().notNull(),
+	brandSummary: jsonb("brand_summary"),
+	products: jsonb(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (table) => [
+	index("idx_content_studio_scans_user_id").using("btree", table.userId.asc().nullsLast()),
+	index("idx_content_studio_scans_created_at").using("btree", table.createdAt.desc().nullsLast()),
+]);
+
+export const contentStudioCampaigns = pgTable("content_studio_campaigns", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	userId: uuid("user_id").notNull(),
+	scanId: uuid("scan_id").notNull().references(() => contentStudioScans.id, { onDelete: 'cascade' }),
+	productName: text("product_name").notNull(),
+	campaignName: text("campaign_name"),
+	ads: jsonb(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (table) => [
+	index("idx_content_studio_campaigns_scan_id").using("btree", table.scanId.asc().nullsLast()),
+]);
+
+export const contentStudioPosters = pgTable("content_studio_posters", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	userId: uuid("user_id").notNull(),
+	scanId: uuid("scan_id").notNull().references(() => contentStudioScans.id, { onDelete: 'cascade' }),
+	productName: text("product_name").notNull(),
+	angle: jsonb(),
+	imageUrls: jsonb("image_urls").notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (table) => [
+	index("idx_content_studio_posters_scan_id").using("btree", table.scanId.asc().nullsLast()),
+]);
+
 export const creativeIntelligenceGoogleRanks = pgTable("creative_intelligence_google_ranks", {
 	id: uuid().primaryKey().notNull().defaultRandom(),
 	runId: uuid("run_id").notNull(),

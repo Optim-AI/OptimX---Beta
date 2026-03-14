@@ -142,6 +142,12 @@ type RunData = {
     brandPosition: number | null;
     competitorRanks: Array<{ domain: string; position: number; title?: string }> | null;
   }>;
+  creatives?: Array<{
+    id: string;
+    hookId: string | null;
+    creativeType: string;
+    content: any;
+  }>;
 };
 
 type AnalysisMode = "brand" | "competitors";
@@ -168,6 +174,8 @@ export default function CreativeIntelligencePage() {
   const [runId, setRunId] = useState<string | null>(null);
   const [runData, setRunData] = useState<RunData | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [generatingCreativeHookId, setGeneratingCreativeHookId] = useState<string | null>(null);
+  const [generatedCreatives, setGeneratedCreatives] = useState<Record<string, any>>({});
 
   const addCompetitorAnalysisUrl = () => setCompetitorAnalysisUrls((p) => [...p, ""]);
   const removeCompetitorAnalysisUrl = (i: number) =>
@@ -395,6 +403,114 @@ export default function CreativeIntelligencePage() {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
+  // Populate generatedCreatives from persisted DB data
+  useEffect(() => {
+    if (runData?.creatives && runData.creatives.length > 0) {
+      const map: Record<string, any> = {};
+      for (const c of runData.creatives) {
+        if (c.hookId) map[c.hookId] = c.content;
+      }
+      setGeneratedCreatives(map);
+    }
+  }, [runData?.creatives]);
+
+  async function handleGenerateCreatives(hookId: string) {
+    if (!runId) return;
+    setGeneratingCreativeHookId(hookId);
+    try {
+      const res = await authFetch("/api/creative-intelligence/generate-creatives", {
+        method: "POST",
+        body: JSON.stringify({ runId, hookId }),
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        showError(data.error || "Failed to generate creatives");
+        return;
+      }
+      setGeneratedCreatives((prev) => ({ ...prev, [hookId]: data.creatives }));
+      showSuccess("Creatives generated!");
+    } catch (err: any) {
+      showError(err.message || "Failed to generate creatives");
+    } finally {
+      setGeneratingCreativeHookId(null);
+    }
+  }
+
+  function exportCreativePack() {
+    if (!runData) return;
+    const blob = new Blob([JSON.stringify(runData, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const domain = runData.run.brandUrl.replace(/https?:\/\//, "").replace(/\/$/, "");
+    a.href = url;
+    a.download = `creative-intelligence-pack-${domain}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function exportCopyCSV() {
+    if (!runData?.hooks?.length) return;
+    const header = "Rank,Hook Statement,Hook Type,Why It Works,Confidence Score";
+    const rows = runData.hooks.map((h) =>
+      [
+        h.rank ?? "",
+        `"${(h.hookStatement || "").replace(/"/g, '""')}"`,
+        h.hookType || "",
+        `"${(h.whyItWorks || "").replace(/"/g, '""')}"`,
+        h.confidenceScore ?? "",
+      ].join(",")
+    );
+    const csv = [header, ...rows].join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const domain = runData.run.brandUrl.replace(/https?:\/\//, "").replace(/\/$/, "");
+    a.href = url;
+    a.download = `creative-intelligence-hooks-${domain}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function exportStrategyPDF() {
+    if (!runData) return;
+    const brand = runData.brand;
+    const strategies = runData.strategies;
+    const hooks = runData.hooks;
+    const domain = runData.run.brandUrl.replace(/https?:\/\//, "").replace(/\/$/, "");
+
+    const html = `<!DOCTYPE html><html><head><title>Creative Intelligence Report - ${domain}</title>
+<style>body{font-family:system-ui,sans-serif;max-width:800px;margin:0 auto;padding:40px;color:#1a1a1a}
+h1{font-size:24px;margin-bottom:4px}h2{font-size:18px;margin-top:32px;border-bottom:1px solid #ddd;padding-bottom:8px}
+h3{font-size:15px;margin-top:20px}.meta{color:#666;font-size:13px;margin-bottom:24px}
+table{width:100%;border-collapse:collapse;margin:12px 0}th,td{text-align:left;padding:8px;border-bottom:1px solid #eee;font-size:13px}
+th{font-weight:600;background:#f5f5f5}.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;background:#f0f0f0}
+ul{padding-left:20px}li{margin-bottom:6px;font-size:13px}@media print{body{padding:20px}}</style></head><body>
+<h1>Creative Intelligence Report</h1>
+<p class="meta">${domain} &mdash; ${new Date(runData.run.createdAt).toLocaleDateString()}</p>
+${brand ? `<h2>Brand Summary</h2>
+<p><strong>Product:</strong> ${brand.productSummary || "N/A"}</p>
+<p><strong>Positioning:</strong> ${brand.positioningStatement || "N/A"}</p>
+<p><strong>Target Persona:</strong> ${brand.targetPersonaGuess || "N/A"}</p>
+<p><strong>Emotional Tone:</strong> ${brand.emotionalTone || "N/A"}</p>
+${brand.corePainsAddressed?.length ? `<p><strong>Core Pains:</strong> ${brand.corePainsAddressed.join(", ")}</p>` : ""}` : ""}
+${runData.competitors?.length ? `<h2>Competitors</h2><table><tr><th>Name</th><th>Positioning</th><th>Primary Hook</th><th>Weakness</th></tr>
+${runData.competitors.map((c) => `<tr><td>${c.name || c.domain || ""}</td><td>${c.corePositioning || ""}</td><td>${c.primaryHook || ""}</td><td>${c.weaknessDetected || ""}</td></tr>`).join("")}</table>` : ""}
+${hooks?.length ? `<h2>Ranked Hooks</h2><table><tr><th>#</th><th>Hook</th><th>Type</th><th>Confidence</th></tr>
+${hooks.map((h) => `<tr><td>${h.rank ?? ""}</td><td>${h.hookStatement}</td><td>${h.hookType || ""}</td><td>${h.confidenceScore ?? ""}%</td></tr>`).join("")}</table>` : ""}
+${strategies ? `<h2>Strategy</h2>
+${strategies.underserved_angles?.length ? `<h3>Underserved Angles</h3><ul>${strategies.underserved_angles.map((a) => `<li>${a}</li>`).join("")}</ul>` : ""}
+${strategies.white_space_opportunities?.length ? `<h3>White Space Opportunities</h3><ul>${strategies.white_space_opportunities.map((o) => `<li>${o}</li>`).join("")}</ul>` : ""}
+${strategies.market_gap_analysis?.length ? `<h3>Market Gap Analysis</h3><ul>${strategies.market_gap_analysis.map((g) => `<li><strong>${g.opportunity_statement || ""}</strong> — ${g.why_it_exists || ""} (${g.confidence_score ?? ""}%)</li>`).join("")}</ul>` : ""}` : ""}
+</body></html>`;
+
+    const win = window.open("", "_blank");
+    if (win) {
+      win.document.write(html);
+      win.document.close();
+      setTimeout(() => win.print(), 500);
+    }
+  }
+
   const painPoints = runData?.reviews?.filter((r) => r.clusterType === "pain_points") || [];
   const desiredOutcomes =
     runData?.reviews?.filter((r) => r.clusterType === "desired_outcomes") || [];
@@ -408,7 +524,7 @@ export default function CreativeIntelligencePage() {
       <div
         className="flex-1 flex flex-col h-full overflow-hidden"
         style={{
-          backgroundColor: colors.card,
+          backgroundColor: colors.background,
           borderLeft: `1px solid ${colors.border}`,
         }}
       >
@@ -418,7 +534,7 @@ export default function CreativeIntelligencePage() {
           style={{
             borderColor: colors.border,
             background: colors.gradientMesh,
-            backgroundColor: colors.card,
+            backgroundColor: colors.background,
           }}
         >
           <div className="max-w-6xl mx-auto px-6 py-6">
@@ -1176,6 +1292,120 @@ export default function CreativeIntelligencePage() {
                           >
                             {copiedId === `hook-${hook.id}` ? <Check size={16} /> : <Copy size={16} />}
                           </button>
+                          <button
+                            type="button"
+                            onClick={() => handleGenerateCreatives(hook.id)}
+                            disabled={generatingCreativeHookId === hook.id}
+                            className="p-2 rounded-lg hover:opacity-80 transition-opacity flex items-center gap-1.5 text-sm"
+                            style={{ backgroundColor: colors.primary, color: colors.primaryForeground }}
+                            title="Generate creatives from this hook"
+                          >
+                            {generatingCreativeHookId === hook.id ? (
+                              <Loader2 size={16} className="animate-spin" />
+                            ) : (
+                              <Sparkles size={16} />
+                            )}
+                            <span>{generatingCreativeHookId === hook.id ? "Generating..." : generatedCreatives[hook.id] ? "Regenerate" : "Generate Creatives"}</span>
+                          </button>
+                          {/* Generated Creatives Display */}
+                          {generatedCreatives[hook.id] && (
+                            <div className="w-full mt-4 space-y-4">
+                              {/* Poster Concepts */}
+                              {generatedCreatives[hook.id].posters?.map((poster: any, pi: number) => (
+                                <div key={pi} className="p-4 rounded-lg" style={{ backgroundColor: colors.muted + "60", border: `1px solid ${colors.border}` }}>
+                                  <h5 className="text-sm font-semibold mb-3 flex items-center gap-2" style={{ color: colors.foreground }}>
+                                    <Target size={14} />
+                                    Poster Concept
+                                    {poster.confidence_score != null && (
+                                      <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: colors.primary + "20", color: colors.primary }}>{poster.confidence_score}%</span>
+                                    )}
+                                  </h5>
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    <div>
+                                      <p className="text-xs font-medium mb-1.5" style={{ color: colors.mutedForeground }}>Primary Text Options</p>
+                                      {poster.primary_text_options?.map((t: string, i: number) => (
+                                        <div key={i} className="flex items-center gap-1 mb-1">
+                                          <span className="text-sm" style={{ color: colors.foreground }}>{t}</span>
+                                          <button type="button" onClick={() => copyToClipboard(t, `poster-primary-${pi}-${i}`)} className="opacity-60 hover:opacity-100">
+                                            {copiedId === `poster-primary-${pi}-${i}` ? <Check size={12} /> : <Copy size={12} />}
+                                          </button>
+                                        </div>
+                                      ))}
+                                    </div>
+                                    <div>
+                                      <p className="text-xs font-medium mb-1.5" style={{ color: colors.mutedForeground }}>Secondary Text Options</p>
+                                      {poster.secondary_text_options?.map((t: string, i: number) => (
+                                        <div key={i} className="flex items-center gap-1 mb-1">
+                                          <span className="text-sm" style={{ color: colors.foreground }}>{t}</span>
+                                          <button type="button" onClick={() => copyToClipboard(t, `poster-secondary-${pi}-${i}`)} className="opacity-60 hover:opacity-100">
+                                            {copiedId === `poster-secondary-${pi}-${i}` ? <Check size={12} /> : <Copy size={12} />}
+                                          </button>
+                                        </div>
+                                      ))}
+                                    </div>
+                                    <div>
+                                      <p className="text-xs font-medium mb-1.5" style={{ color: colors.mutedForeground }}>CTA Options</p>
+                                      {poster.cta_options?.map((t: string, i: number) => (
+                                        <div key={i} className="flex items-center gap-1 mb-1">
+                                          <span className="text-sm" style={{ color: colors.foreground }}>{t}</span>
+                                          <button type="button" onClick={() => copyToClipboard(t, `poster-cta-${pi}-${i}`)} className="opacity-60 hover:opacity-100">
+                                            {copiedId === `poster-cta-${pi}-${i}` ? <Check size={12} /> : <Copy size={12} />}
+                                          </button>
+                                        </div>
+                                      ))}
+                                    </div>
+                                    {poster.visual_direction && (
+                                      <div>
+                                        <p className="text-xs font-medium mb-1.5" style={{ color: colors.mutedForeground }}>Visual Direction</p>
+                                        {Object.entries(poster.visual_direction).map(([key, val]) => (
+                                          <p key={key} className="text-xs mb-0.5" style={{ color: colors.foreground }}>
+                                            <span style={{ color: colors.mutedForeground }}>{key.replace(/_/g, " ")}:</span> {String(val)}
+                                          </p>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                              {/* Video Scripts */}
+                              {generatedCreatives[hook.id].video_scripts_8s?.length > 0 && (
+                                <div className="p-4 rounded-lg" style={{ backgroundColor: colors.muted + "60", border: `1px solid ${colors.border}` }}>
+                                  <h5 className="text-sm font-semibold mb-3 flex items-center gap-2" style={{ color: colors.foreground }}>
+                                    <Video size={14} />
+                                    8s Video Scripts
+                                  </h5>
+                                  <div className="space-y-3">
+                                    {generatedCreatives[hook.id].video_scripts_8s.map((script: any, si: number) => (
+                                      <div key={si} className="p-3 rounded-lg" style={{ backgroundColor: colors.background, border: `1px solid ${colors.border}` }}>
+                                        <div className="flex items-center justify-between mb-2">
+                                          <span className="text-xs font-medium" style={{ color: colors.mutedForeground }}>Script {script.script_number || si + 1}</span>
+                                          {script.confidence_score != null && (
+                                            <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: colors.primary + "20", color: colors.primary }}>{script.confidence_score}%</span>
+                                          )}
+                                        </div>
+                                        <div className="space-y-1.5">
+                                          {[
+                                            { label: "0-2s Hook", value: script.hook_line },
+                                            { label: "2-5s Problem/Desire", value: script.problem_or_desire },
+                                            { label: "5-7s Solution", value: script.solution },
+                                            { label: "7-8s CTA", value: script.cta },
+                                          ].map((part) => (
+                                            <div key={part.label} className="flex items-start gap-2">
+                                              <span className="text-xs font-medium shrink-0 w-32" style={{ color: colors.mutedForeground }}>{part.label}</span>
+                                              <span className="text-sm flex-1" style={{ color: colors.foreground }}>{part.value}</span>
+                                              <button type="button" onClick={() => copyToClipboard(part.value || "", `script-${si}-${part.label}`)} className="opacity-60 hover:opacity-100 shrink-0">
+                                                {copiedId === `script-${si}-${part.label}` ? <Check size={12} /> : <Copy size={12} />}
+                                              </button>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -1192,15 +1422,15 @@ export default function CreativeIntelligencePage() {
                 >
                   <h3 className="font-semibold mb-4" style={{ color: colors.foreground }}>Export</h3>
                   <div className="flex flex-wrap gap-3">
-                    <Button variant="outline" size="sm">
+                    <Button variant="outline" size="sm" onClick={exportCreativePack}>
                       <Download size={16} className="mr-2" />
                       Export Creative Pack
                     </Button>
-                    <Button variant="outline" size="sm">
+                    <Button variant="outline" size="sm" onClick={exportStrategyPDF}>
                       <Download size={16} className="mr-2" />
                       Export Strategy PDF
                     </Button>
-                    <Button variant="outline" size="sm">
+                    <Button variant="outline" size="sm" onClick={exportCopyCSV}>
                       <Download size={16} className="mr-2" />
                       Export Copy CSV
                     </Button>

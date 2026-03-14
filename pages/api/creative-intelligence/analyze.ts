@@ -870,7 +870,7 @@ Return JSON with STEPS 4, 5, 6:
 
 Generate 11 hooks: 5 high-conversion + 3 emotional + 3 performance-driven. Include campaign_blueprints for top 3 ranked hooks. Be specific and data-backed.`;
   const raw = await callGemini(prompt, "Return ONLY valid JSON.", 16384);
-  const parsed = safeParseJson(raw, {});
+  const parsed = safeParseJson(raw, {}) as any;
   const hooks = (parsed.hooks || []).slice(0, 11).map((h: any, i: number) => ({
     hook_statement: h.hook_statement || "",
     hook_type: h.hook_type || "functional",
@@ -985,7 +985,7 @@ Return JSON (STEP 1 — BRAND EXTRACTION):
 
 If brand_name is a common dictionary word (boat, apple, orange, nothing, noise, etc), set is_ambiguous_brand to true.`;
     const stage1Raw = await callGemini(stage1Prompt, "Return ONLY valid JSON.");
-    const brandAnalysis = safeParseJson(stage1Raw, {});
+    const brandAnalysis = safeParseJson(stage1Raw, {}) as any;
 
     const brandContext: BrandContext = {
       brand_name: brandName,
@@ -1149,7 +1149,7 @@ Return JSON (STEP 2 — COMPETITOR ANALYSIS):
 }`;
       try {
         const compRaw = await callGemini(compPrompt, "Return ONLY valid JSON.");
-        competitorAnalysis = safeParseJson(compRaw, {});
+        competitorAnalysis = safeParseJson(compRaw, {}) as any;
         if (competitorAnalysis.competitors) {
           for (let i = 0; i < Math.min(competitorData.length, competitorAnalysis.competitors.length); i++) {
             const ca = competitorAnalysis.competitors[i];

@@ -127,7 +127,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         },
         imageUrl: [image_url],
         imagePath: [image_path],
-        isPublished: false, // Campaigns from Brand Studio start as drafts
+        isPublished: false, // Campaigns from Creative Studio start as drafts
       });
 
       return res.status(200).json({

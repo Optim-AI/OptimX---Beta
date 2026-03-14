@@ -92,26 +92,55 @@ export default function BrandStudioLanding() {
     loadSessions();
   }, []);
 
-  // ============== Load Brand from localStorage & show entry popup ==============
+  // ============== Brand Helper ==============
+
+  function saveBrandSnapshot(snapshot: BrandSnapshot) {
+    localStorage.setItem('brand:snapshot', JSON.stringify(snapshot));
+    authFetch('/api/brand/snapshot', {
+      method: 'PUT',
+      body: JSON.stringify({ brandSnapshot: snapshot }),
+    }).catch(() => {});
+  }
+
+  // ============== Load Brand from DB (fallback localStorage) & show entry popup ==============
 
   useEffect(() => {
-    const storedBrand = localStorage.getItem('brand:snapshot');
-    if (storedBrand) {
+    let cancelled = false;
+    (async () => {
+      // Try loading from DB first
       try {
-        const parsed = JSON.parse(storedBrand);
-        setBrand(parsed);
-        // Only show brand guideline modal on first visit (not every page entry)
-        if (!localStorage.getItem('brand:guideline_seen')) {
-          setShowBrandGuidelineModal(true);
+        const res = await authFetch('/api/brand/snapshot');
+        const data = await res.json();
+        if (!cancelled && data.brandSnapshot) {
+          setBrand(data.brandSnapshot);
+          localStorage.setItem('brand:snapshot', JSON.stringify(data.brandSnapshot));
+          if (!localStorage.getItem('brand:guideline_seen')) {
+            setShowBrandGuidelineModal(true);
+          }
+          return;
         }
-      } catch (e) {
-        console.error('Failed to parse stored brand:', e);
+      } catch {
+        /* fall through to localStorage */
+      }
+      if (cancelled) return;
+      // Fall back to localStorage
+      const storedBrand = localStorage.getItem('brand:snapshot');
+      if (storedBrand) {
+        try {
+          const parsed = JSON.parse(storedBrand);
+          setBrand(parsed);
+          if (!localStorage.getItem('brand:guideline_seen')) {
+            setShowBrandGuidelineModal(true);
+          }
+        } catch (e) {
+          console.error('Failed to parse stored brand:', e);
+          setShowBrandOnboarding(true);
+        }
+      } else {
         setShowBrandOnboarding(true);
       }
-    } else {
-      // No stored brand: show onboarding so user can analyze and store brand guideline
-      setShowBrandOnboarding(true);
-    }
+    })();
+    return () => { cancelled = true; };
   }, []);
 
   // ============== Session Handlers ==============
@@ -248,7 +277,7 @@ export default function BrandStudioLanding() {
       if (data.result) {
         const brandSnapshot = mapFullAnalyzeToBrandSnapshot(data.result);
         setBrand(brandSnapshot);
-        localStorage.setItem('brand:snapshot', JSON.stringify(brandSnapshot));
+        saveBrandSnapshot(brandSnapshot);
         setShowBrandOnboarding(false);
         // Show stored brand guideline in the Brand Studio page
         setShowBrandGuidelineModal(true);
@@ -286,7 +315,7 @@ export default function BrandStudioLanding() {
     };
 
     setBrand(brandSnapshot);
-    localStorage.setItem('brand:snapshot', JSON.stringify(brandSnapshot));
+    saveBrandSnapshot(brandSnapshot);
     setShowBrandOnboarding(false);
     // Show stored brand guideline so user can view/edit
     setShowBrandGuidelineModal(true);
@@ -301,14 +330,14 @@ export default function BrandStudioLanding() {
       tone: 'professional',
     };
     setBrand(minimalBrand);
-    localStorage.setItem('brand:snapshot', JSON.stringify(minimalBrand));
+    saveBrandSnapshot(minimalBrand);
     setShowBrandOnboarding(false);
     setShowBrandGuidelineModal(true);
   }
 
   function updateBrandGuideline(updated: BrandSnapshot) {
     setBrand(updated);
-    localStorage.setItem('brand:snapshot', JSON.stringify(updated));
+    saveBrandSnapshot(updated);
     localStorage.setItem('brand:guideline_seen', 'true');
     setShowBrandGuidelineModal(false);
   }

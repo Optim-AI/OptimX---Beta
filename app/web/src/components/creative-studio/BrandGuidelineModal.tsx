@@ -608,11 +608,11 @@ export default function BrandGuidelineModal({
                         href={displayBrand.website_url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 mt-1 text-sm hover:underline"
+                        className="inline-flex items-center gap-1.5 mt-1 text-sm hover:underline max-w-full"
                         style={{ color: brandKitColors.textMuted }}
                       >
-                        {displayBrand.website_url.replace(/^https?:\/\//, '')}
-                        <ExternalLink className="w-3.5 h-3.5" />
+                        <span className="truncate">{displayBrand.website_url.replace(/^https?:\/\//, '')}</span>
+                        <ExternalLink className="w-3.5 h-3.5 shrink-0" />
                       </a>
                     )}
                   </div>

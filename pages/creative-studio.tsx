@@ -1,15 +1,17 @@
 // pages/creative-studio.tsx
 // Redirect to Brand Studio (renamed from Creative Studio)
 
-import { useEffect } from 'react';
-import { useRouter } from 'next/router';
+import type { GetServerSideProps } from "next";
+
+export const getServerSideProps: GetServerSideProps = async () => {
+  return {
+    redirect: {
+      destination: "/brand-studio",
+      permanent: true,
+    },
+  };
+};
 
 export default function CreativeStudioRedirect() {
-  const router = useRouter();
-
-  useEffect(() => {
-    router.replace('/brand-studio');
-  }, [router]);
-
   return null;
 }
