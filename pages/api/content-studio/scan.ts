@@ -188,19 +188,36 @@ const PRODUCT_CLASS_PATTERNS = [
 const NON_PRODUCT_PATH_SEGMENTS = new Set([
   "cart", "checkout", "account", "login", "register", "search", "wishlist",
   "contact", "about", "faq", "help", "terms", "privacy", "blog", "news",
+  "learn", "articles", "article", "magazine", "journal", "resources",
 ]);
+
+/** Path patterns that indicate non-product content (blog, learn, editorial) */
+const NON_PRODUCT_PATH_PATTERNS = [
+  /\/learn\//i,
+  /\/blog\//i,
+  /\/news\//i,
+  /\/article/i,
+  /\/articles\//i,
+  /\/editorial/i,
+  /\/resources\//i,
+  /\/truth-be-told\//i,
+  /\/twt-chemx\//i,
+];
 
 function isCategoryPage(path: string): boolean {
   return CATEGORY_PATH_PATTERNS.some((p) => p.test(path));
 }
 
 function isProductPage(path: string): boolean {
+  // Exclude blog, learn, editorial, and other non-product content first
+  if (NON_PRODUCT_PATH_PATTERNS.some((p) => p.test(path))) return false;
+  const segments = path.split("/").filter(Boolean);
+  if (segments.some((s) => NON_PRODUCT_PATH_SEGMENTS.has(s.toLowerCase()))) return false;
+
   if (PRODUCT_PATH_PATTERNS.some((p) => p.test(path))) return true;
   // Heuristic: path depth > 1, contains hyphen, not a known non-product path
-  const segments = path.split("/").filter(Boolean);
   if (segments.length < 2) return false;
   const lastSegment = segments[segments.length - 1] || "";
-  if (NON_PRODUCT_PATH_SEGMENTS.has(lastSegment.toLowerCase())) return false;
   return lastSegment.includes("-");
 }
 
@@ -480,7 +497,7 @@ async function crawlWithPlaywright(
           prevCount = countAfterScroll;
         }
       } catch (e) {
-        console.warn("[Content Studio] Category page failed:", catUrl, e);
+        console.warn("[Ad Studio] Category page failed:", catUrl, e);
       }
     }
 
@@ -645,6 +662,7 @@ async function fetchPageHtml(url: string): Promise<string> {
   const resp = await fetch(url, {
     redirect: "follow",
     headers: { "User-Agent": "Mozilla/5.0 (compatible; OptimX-ContentStudio/1.0)" },
+    signal: AbortSignal.timeout(15000),
   });
   if (!resp.ok) throw new Error(`Failed to fetch: ${resp.statusText}`);
   return resp.text();
@@ -887,7 +905,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         productUrls = [...result.productUrls];
         homepageHtml = result.homepageHtml;
       } catch (playwrightErr: any) {
-        console.warn("[Content Studio] Playwright crawl failed, falling back to fetch:", playwrightErr?.message);
+        console.warn("[Ad Studio] Playwright crawl failed, falling back to fetch:", playwrightErr?.message);
         try {
           homepageHtml = await fetchPageHtml(url);
           productUrls = findProductLinksFallback(homepageHtml, url);
@@ -910,7 +928,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             rawProducts.push(extracted);
           }
         } catch (e) {
-          console.warn("[Content Studio] Failed to scrape product:", productUrl, e);
+          console.warn("[Ad Studio] Failed to scrape product:", productUrl, e);
         }
       }
 
@@ -1043,7 +1061,7 @@ ${JSON.stringify(rawProducts)}`;
     });
   } catch (err: any) {
     const msg = err?.message || String(err) || "Failed to scan website";
-    console.error("[Content Studio scan]", msg, err?.stack);
+    console.error("[Ad Studio scan]", msg, err?.stack);
     return res.status(500).json({
       ok: false,
       error: msg,

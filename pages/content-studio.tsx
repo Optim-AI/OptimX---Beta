@@ -1,8 +1,9 @@
 // pages/content-studio.tsx
-// Content Studio: Turn your website into high-converting ads
+// Ad Studio: Turn your website into high-converting ads
 
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/router";
+import Link from "next/link";
 import Sidebar from "@/app/web/src/components/Sidebar";
 import colors from "@/lib/ui/colors";
 import { authFetch } from "@/lib/utils";
@@ -13,7 +14,8 @@ import {
   BrandOnboarding,
   mapFullAnalyzeToBrandSnapshot,
 } from "@/app/web/src/components/creative-studio";
-import { DEFAULT_AD_BUILDER_DATA } from "@/app/web/src/components/creative-studio/utils";
+import { DEFAULT_AD_BUILDER_DATA, saveBrandSnapshot } from "@/app/web/src/components/creative-studio/utils";
+import type { Product } from "@/app/web/src/components/creative-studio/types";
 import {
   Loader2,
   Search,
@@ -27,6 +29,9 @@ import {
   X,
   ExternalLink,
   Pencil,
+  Calendar,
+  Play,
+  Check,
 } from "lucide-react";
 import PosterEditModal from "@/app/web/src/components/content-studio/PosterEditModal";
 import { Button } from "@/app/web/src/components/ui/button";
@@ -49,18 +54,6 @@ type BrandSummary = {
   primaryValueProposition: string;
 };
 
-type Product = {
-  product_name: string;
-  price: string | null;
-  description: string;
-  key_benefits: string[];
-  product_images: string[];
-  target_audience: string;
-  emotional_angles: string[];
-  use_cases: string[];
-  short_benefit: string;
-};
-
 type AdAngle = {
   title: string;
   explanation: string;
@@ -73,6 +66,23 @@ type CampaignAd = {
   hook: string;
   cta: string;
 };
+
+type CampaignPlanItem = {
+  day: number;
+  goal: string;
+  platform: string;
+  content_type: string;
+  hook: string;
+  description: string;
+};
+
+type CampaignStrategy = {
+  product_category: string;
+  target_audience: string;
+  content_themes: string[];
+};
+
+const CONTENT_STUDIO_STORAGE_KEY = "content-studio:lastScan";
 
 const SCAN_MESSAGES = [
   { text: "Crawling your website...", detail: "Discovering pages and structure" },
@@ -158,6 +168,9 @@ export default function ContentStudioPage() {
   const [generatingAngleId, setGeneratingAngleId] = useState<string | null>(null);
   const [campaign, setCampaign] = useState<{ name: string; ads: CampaignAd[] } | null>(null);
   const [loadingCampaign, setLoadingCampaign] = useState(false);
+  const [campaignPlan, setCampaignPlan] = useState<CampaignPlanItem[]>([]);
+  const [campaignStrategy, setCampaignStrategy] = useState<CampaignStrategy | null>(null);
+  const [generatingCampaignItem, setGeneratingCampaignItem] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [scanId, setScanId] = useState<string | null>(null);
 
@@ -174,13 +187,24 @@ export default function ContentStudioPage() {
 
   const { credits, fetchSubscription } = useSubscription();
 
-  function saveBrandSnapshot(snapshot: BrandSnapshot) {
-    localStorage.setItem("brand:snapshot", JSON.stringify(snapshot));
-    authFetch("/api/brand/snapshot", {
-      method: "PUT",
-      body: JSON.stringify({ brandSnapshot: snapshot }),
-    }).catch(() => {});
-  }
+  const [imageCredits, setImageCredits] = useState<number | null>(null);
+  const [videoCredits, setVideoCredits] = useState<number | null>(null);
+
+  useEffect(() => {
+    async function loadCredits() {
+      try {
+        const response = await authFetch('/api/credits/balance');
+        const data = await response.json();
+        if (data.success) {
+          setImageCredits(data.imageCredits?.total ?? 0);
+          setVideoCredits(data.videoCredits?.total ?? 0);
+        }
+      } catch (err) {
+        console.error('Error loading credits:', err);
+      }
+    }
+    loadCredits();
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -191,25 +215,13 @@ export default function ContentStudioPage() {
         const data = await res.json();
         if (!cancelled && data.brandSnapshot) {
           setBrandGuideline(data.brandSnapshot);
-          localStorage.setItem("brand:snapshot", JSON.stringify(data.brandSnapshot));
           return;
         }
       } catch {
-        /* fall through to localStorage */
+        // no snapshot available
       }
       if (cancelled) return;
-      // Fall back to localStorage
-      const stored = localStorage.getItem("brand:snapshot");
-      if (stored) {
-        try {
-          const parsed = JSON.parse(stored) as BrandSnapshot;
-          setBrandGuideline(parsed);
-        } catch {
-          setShowBrandOnboarding(true);
-        }
-      } else {
-        setShowBrandOnboarding(true);
-      }
+      setShowBrandOnboarding(true);
     })();
     return () => { cancelled = true; };
   }, []);
@@ -357,6 +369,8 @@ export default function ContentStudioPage() {
     setAdAngles([]);
     setGeneratedPosters([]);
     setCampaign(null);
+    setCampaignPlan([]);
+    setCampaignStrategy(null);
     setLoadingAngles(true);
     try {
       const res = await authFetch("/api/content-studio/ad-angles", {
@@ -367,8 +381,16 @@ export default function ContentStudioPage() {
       if (data.ok && data.angles) {
         setAdAngles(data.angles);
       }
+      if (data.campaign_plan && Array.isArray(data.campaign_plan)) {
+        setCampaignPlan(data.campaign_plan);
+      }
+      if (data.campaign_strategy) {
+        setCampaignStrategy(data.campaign_strategy);
+      }
     } catch {
       setAdAngles([]);
+      setCampaignPlan([]);
+      setCampaignStrategy(null);
     } finally {
       setLoadingAngles(false);
     }
@@ -519,6 +541,25 @@ export default function ContentStudioPage() {
       showError(err.message || "Failed to generate poster");
     } finally {
       setGeneratingAngleId(null);
+    }
+  };
+
+  const handleCampaignItemGenerate = async (item: CampaignPlanItem, index: number) => {
+    if (!selectedProduct) return;
+    setGeneratingCampaignItem(index);
+    try {
+      const isVideo = /video/i.test(item.content_type);
+      const angle: AdAngle = {
+        title: item.hook,
+        explanation: `${item.content_type} for ${item.platform}. Goal: ${item.goal}. ${item.description}`,
+      };
+      if (isVideo) {
+        await handleVideoAdClick(angle);
+      } else {
+        await handleGeneratePoster(angle);
+      }
+    } finally {
+      setGeneratingCampaignItem(null);
     }
   };
 
@@ -675,6 +716,8 @@ export default function ContentStudioPage() {
     setSelectedProduct(null);
     setExpandedProductIndex(null);
     setAdAngles([]);
+    setCampaignPlan([]);
+    setCampaignStrategy(null);
     setGeneratedPosters([]);
     setCampaign(null);
     setError(null);
@@ -764,17 +807,80 @@ export default function ContentStudioPage() {
   function updateBrandGuideline(updated: BrandSnapshot) {
     setBrandGuideline(updated);
     saveBrandSnapshot(updated);
-    localStorage.setItem("brand:guideline_seen", "true");
+    authFetch("/api/user/preferences", { method: "PUT", body: JSON.stringify({ preferences: { guideline_seen: true } }) }).catch(() => {});
     setShowBrandGuidelineModal(false);
   }
 
   const hasFetchedProducts = products.length > 0 || brand !== null;
 
   return (
-    <div className="flex min-h-screen" style={{ background: colors.background }}>
-      <Sidebar />
-      <main className="flex-1 overflow-auto">
+    <div className="h-screen flex overflow-hidden app-page">
+      <div className="flex-shrink-0 h-full">
+        <Sidebar />
+      </div>
+      <div className="flex-1 flex flex-col h-full overflow-hidden" style={{ backgroundColor: colors.card, borderLeft: `1px solid ${colors.border}` }}>
+        {/* Sticky Header */}
+        <div className="border-b flex-shrink-0" style={{ borderColor: colors.border, backgroundColor: colors.card }}>
+          <div className="max-w-6xl mx-auto px-6 py-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-2xl font-semibold flex items-center gap-2" style={{ color: colors.foreground }}>
+                  Content Studio
+                  <span
+                    className="shrink-0"
+                    style={{
+                      fontSize: 10,
+                      padding: '2px 6px',
+                      borderRadius: 4,
+                      background: 'rgba(34, 197, 94, 0.2)',
+                      color: '#22c55e',
+                      fontWeight: 600,
+                    }}
+                  >
+                    Beta
+                  </span>
+                </h1>
+                <p className="text-sm mt-1" style={{ color: colors.mutedForeground }}>
+                  Turn your website into high-converting ads
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                {imageCredits !== null && (
+                  <div className="flex items-center gap-2 px-4 py-2 rounded-lg" style={{ background: 'hsl(213 100% 55% / 0.15)', border: '1px solid hsl(213 100% 55% / 0.35)' }}>
+                    <svg className="w-5 h-5" style={{ color: colors.primary }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    <span className="font-semibold" style={{ color: colors.primary }}>{imageCredits}</span>
+                    <span className="text-sm" style={{ color: colors.primary }}>images</span>
+                  </div>
+                )}
+                {videoCredits !== null && (
+                  <div className="flex items-center gap-2 px-4 py-2 rounded-lg" style={{ background: 'hsl(270 80% 55% / 0.15)', border: '1px solid hsl(270 80% 55% / 0.3)' }}>
+                    <svg className="w-5 h-5" style={{ color: 'hsl(270 80% 65%)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                    <span className="font-semibold" style={{ color: 'hsl(270 80% 70%)' }}>{videoCredits}s</span>
+                    <span className="text-sm" style={{ color: 'hsl(270 80% 65%)' }}>video</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto">
         <div className="max-w-6xl mx-auto px-6 py-10">
+          {/* Beta feature note */}
+          <div className="mb-6 p-4 rounded-xl" style={{ backgroundColor: 'rgba(34, 197, 94, 0.12)', border: '1px solid rgba(34, 197, 94, 0.35)' }}>
+            <p className="text-sm leading-relaxed" style={{ color: '#e8f5e9' }}>
+              <strong style={{ color: '#e8f5e9' }}>Beta Feature:</strong> This feature is still in Beta, so you might notice occasional glitches or unexpected results. If you spot anything off or have ideas for improvement,{' '}
+              <Link href="/report" className="font-medium underline" style={{ color: '#4ade80' }}>
+                send us feedback here
+              </Link>
+              . Your input directly helps us refine the experience.
+            </p>
+          </div>
+
           {(step === "entry" || step === "results") && (
             <div className="flex flex-col items-center py-12">
               <div className="flex flex-col items-center mb-8">
@@ -782,7 +888,20 @@ export default function ContentStudioPage() {
                   <Sparkles className="w-7 h-7" style={{ color: colors.primary }} />
                 </div>
                 <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium mb-4" style={{ background: "hsl(213 100% 55% / 0.15)", color: colors.primary }}>
-                  AI-Powered Content Studio
+                  AI-Powered Ad Studio
+                  <span
+                    className="shrink-0"
+                    style={{
+                      fontSize: 10,
+                      padding: '2px 6px',
+                      borderRadius: 4,
+                      background: 'rgba(34, 197, 94, 0.2)',
+                      color: '#22c55e',
+                      fontWeight: 600,
+                    }}
+                  >
+                    Beta
+                  </span>
                 </div>
                 <h1 className="text-4xl md:text-5xl font-bold tracking-tight max-w-6xl mx-auto text-center" style={{ color: colors.foreground }}>
                   Let&apos;s turn your website into high converting ads
@@ -984,303 +1103,59 @@ export default function ContentStudioPage() {
                   Product Library
                 </h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-                  {products.map((p, i) => (
-                    <React.Fragment key={i}>
-                    <div
-                      onClick={() => handleProductClick(p, i)}
-                      className="rounded-xl p-4 border-2 cursor-pointer transition-all hover:border-[hsl(213_100%_55%)] hover:shadow-lg"
-                      style={{
-                        background: colors.card,
-                        borderColor:
-                          expandedProductIndex === i ? colors.primary : colors.border,
-                      }}
-                    >
+                  {products.map((p, i) => {
+                    const isSelected = selectedProduct === p;
+                    return (
                       <div
-                        className="aspect-square rounded-lg mb-3 overflow-hidden bg-[hsl(0_0%_18%)]"
-                        style={{ minHeight: 140 }}
-                      >
-                        {p.product_images?.[0] ? (
-                          <img
-                            src={p.product_images[0]}
-                            alt={p.product_name}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <div
-                            className="w-full h-full flex items-center justify-center"
-                            style={{ color: colors.mutedForeground }}
-                          >
-                            <ImageIcon className="w-12 h-12" />
-                          </div>
-                        )}
-                      </div>
-                      <h3 className="font-semibold truncate" style={{ color: colors.foreground }}>
-                        {p.product_name}
-                      </h3>
-                      {p.price && (
-                        <p className="text-sm font-medium" style={{ color: colors.primary }}>
-                          {p.price}
-                        </p>
-                      )}
-                      <p className="text-sm truncate" style={{ color: colors.mutedForeground }}>
-                        {p.short_benefit || p.description || "—"}
-                      </p>
-                      <div className="flex flex-wrap gap-2 mt-3">
-                        <Button
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleProductClick(p, i);
-                          }}
-                          style={{
-                            background: colors.primary,
-                            color: colors.primaryForeground,
-                            fontSize: 11,
-                          }}
-                        >
-                          Generate Ads
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedProduct(p);
-                            setExpandedProductIndex(i);
-                            handleCreateCampaign(p);
-                          }}
-                          style={{
-                            borderColor: colors.border,
-                            color: colors.foreground,
-                            fontSize: 11,
-                          }}
-                        >
-                          Create Campaign
-                        </Button>
-                      </div>
-                    </div>
-
-                    {/* Inline expanded panel for this product */}
-                    {expandedProductIndex === i && (
-                      <div
-                        className="col-span-full rounded-xl p-6 border space-y-6"
+                        key={i}
+                        onClick={() => handleProductClick(p)}
+                        className="relative rounded-xl p-4 border-2 cursor-pointer transition-all hover:border-[hsl(213_100%_55%)] hover:shadow-lg"
                         style={{
                           background: colors.card,
-                          borderColor: colors.border,
+                          borderColor: isSelected ? colors.primary : colors.border,
                         }}
                       >
-                        {/* Ad Angles */}
-                        <div>
-                          <div className="flex items-center justify-between mb-4">
-                            <h2 className="text-lg font-semibold" style={{ color: colors.foreground }}>
-                              Ad Angles for {p.product_name}
-                            </h2>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => { setExpandedProductIndex(null); setSelectedProduct(null); }}
+                        {isSelected && (
+                          <div
+                            className="absolute top-3 right-3 z-10 flex items-center justify-center w-6 h-6 rounded-full"
+                            style={{ background: colors.primary }}
+                          >
+                            <Check className="w-3.5 h-3.5" style={{ color: colors.primaryForeground }} />
+                          </div>
+                        )}
+                        <div
+                          className="aspect-square rounded-lg mb-3 overflow-hidden bg-[hsl(0_0%_18%)]"
+                          style={{ minHeight: 140 }}
+                        >
+                          {p.product_images?.[0] ? (
+                            <img
+                              src={p.product_images[0]}
+                              alt={p.product_name}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <div
+                              className="w-full h-full flex items-center justify-center"
                               style={{ color: colors.mutedForeground }}
                             >
-                              <X className="w-4 h-4" />
-                            </Button>
-                          </div>
-                          {loadingAngles ? (
-                            <div className="flex items-center justify-center py-8">
-                              <Loader2 className="w-8 h-8 animate-spin" style={{ color: colors.primary }} />
-                            </div>
-                          ) : (
-                            <div className="space-y-3">
-                              {adAngles.map((angle, ai) => (
-                                <div
-                                  key={ai}
-                                  className="rounded-lg p-3 border"
-                                  style={{
-                                    background: colors.secondary,
-                                    borderColor: colors.border,
-                                  }}
-                                >
-                                  <p className="font-medium text-sm" style={{ color: colors.foreground }}>
-                                    {angle.title}
-                                  </p>
-                                  <p className="text-xs mt-1" style={{ color: colors.mutedForeground }}>
-                                    {angle.explanation}
-                                  </p>
-                                  <div className="flex gap-2 mt-2">
-                                    <Button
-                                      size="sm"
-                                      onClick={() => handleGeneratePoster(angle)}
-                                      disabled={generatingAngleId === angle.title}
-                                      style={{
-                                        background: colors.primary,
-                                        color: colors.primaryForeground,
-                                        fontSize: 11,
-                                      }}
-                                    >
-                                      {generatingAngleId === angle.title ? (
-                                        <Loader2 className="w-3 h-3 animate-spin" />
-                                      ) : (
-                                        <>
-                                          <ImageIcon className="w-3 h-3 mr-1" />
-                                          Generate Poster
-                                        </>
-                                      )}
-                                    </Button>
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() => handleVideoAdClick(angle)}
-                                      disabled={creatingVideoAngleId === angle.title}
-                                      style={{
-                                        borderColor: colors.border,
-                                        color: colors.foreground,
-                                        fontSize: 11,
-                                      }}
-                                    >
-                                      {creatingVideoAngleId === angle.title ? (
-                                        <Loader2 className="w-3 h-3 animate-spin" />
-                                      ) : (
-                                        <>
-                                          <Video className="w-3 h-3 mr-1" />
-                                          Video Ad
-                                        </>
-                                      )}
-                                    </Button>
-                                  </div>
-                                </div>
-                              ))}
+                              <ImageIcon className="w-12 h-12" />
                             </div>
                           )}
                         </div>
-
-                        {/* Generated Posters (inline) */}
-                        {generatedPosters.length > 0 && (
-                          <div>
-                            <h2 className="text-xl font-semibold mb-2" style={{ color: colors.foreground }}>
-                              Generated Creatives
-                            </h2>
-                            <p className="text-sm mb-6" style={{ color: colors.mutedForeground }}>
-                              Click Edit to describe the exact change you want (e.g. fix a typo, add text) and regenerate.
-                            </p>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                              {generatedPosters.map((img, pi) => (
-                                <div
-                                  key={pi}
-                                  className="group rounded-xl overflow-hidden border-2 transition-all hover:border-[hsl(213_100%_55%)] hover:shadow-xl"
-                                  style={{
-                                    borderColor: colors.border,
-                                    background: colors.muted,
-                                  }}
-                                >
-                                  <div className="aspect-[4/5] relative overflow-hidden">
-                                    <img
-                                      src={img}
-                                      alt={`Creative ${pi + 1}`}
-                                      className="w-full h-full object-cover"
-                                    />
-                                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                                    <div className="absolute bottom-0 left-0 right-0 p-3 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                      <Button
-                                        size="sm"
-                                        onClick={() => setEditingPosterIndex(pi)}
-                                        className="flex-1"
-                                        style={{
-                                          background: colors.primary,
-                                          color: colors.primaryForeground,
-                                        }}
-                                      >
-                                        <Pencil className="w-3.5 h-3.5 mr-1" />
-                                        Edit
-                                      </Button>
-                                      <Button
-                                        size="sm"
-                                        variant="secondary"
-                                        onClick={() => handleDownload(img, `creative-${pi + 1}.png`)}
-                                        style={{ color: colors.foreground }}
-                                      >
-                                        <Download className="w-3.5 h-3.5" />
-                                      </Button>
-                                      <Button
-                                        size="sm"
-                                        variant="secondary"
-                                        onClick={() => window.open(img, "_blank")}
-                                        style={{ color: colors.foreground }}
-                                      >
-                                        <ExternalLink className="w-3.5 h-3.5" />
-                                      </Button>
-                                    </div>
-                                  </div>
-                                  <div className="p-3 flex items-center justify-between" style={{ background: colors.card }}>
-                                    <span className="text-sm font-medium" style={{ color: colors.foreground }}>
-                                      Poster {pi + 1}
-                                    </span>
-                                    <Button
-                                      size="sm"
-                                      variant="ghost"
-                                      onClick={() => setEditingPosterIndex(pi)}
-                                      style={{ color: colors.primary, fontSize: 12 }}
-                                    >
-                                      Edit
-                                    </Button>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
+                        <h3 className="font-semibold truncate" style={{ color: colors.foreground }}>
+                          {p.product_name}
+                        </h3>
+                        {p.price && (
+                          <p className="text-sm font-medium" style={{ color: colors.primary }}>
+                            {p.price}
+                          </p>
                         )}
-
-                        {/* Campaign (inline) */}
-                        {campaign && (
-                          <div>
-                            <h2 className="text-lg font-semibold mb-4" style={{ color: colors.foreground }}>
-                              Campaign: {campaign.name}
-                            </h2>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                              {campaign.ads.map((ad, ci) => (
-                                <div
-                                  key={ci}
-                                  className="rounded-lg p-4 border"
-                                  style={{
-                                    background: colors.secondary,
-                                    borderColor: colors.border,
-                                  }}
-                                >
-                                  <span
-                                    className="text-xs font-medium px-2 py-0.5 rounded"
-                                    style={{
-                                      background: colors.primary,
-                                      color: colors.primaryForeground,
-                                    }}
-                                  >
-                                    {ad.type}
-                                  </span>
-                                  <h3 className="font-medium mt-2" style={{ color: colors.foreground }}>
-                                    {ad.title}
-                                  </h3>
-                                  <p className="text-sm mt-1" style={{ color: colors.mutedForeground }}>
-                                    {ad.description}
-                                  </p>
-                                  <p className="text-xs mt-2" style={{ color: colors.foreground }}>
-                                    Hook: {ad.hook}
-                                  </p>
-                                  <p className="text-xs" style={{ color: colors.primary }}>
-                                    CTA: {ad.cta}
-                                  </p>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {loadingCampaign && (
-                          <div className="flex items-center justify-center py-6">
-                            <Loader2 className="w-6 h-6 animate-spin" style={{ color: colors.primary }} />
-                            <span className="ml-2 text-sm" style={{ color: colors.mutedForeground }}>Generating campaign...</span>
-                          </div>
-                        )}
+                        <p className="text-sm truncate" style={{ color: colors.mutedForeground }}>
+                          {p.short_benefit || p.description || "—"}
+                        </p>
                       </div>
-                    )}
-                    </React.Fragment>
-                  ))}
+                    );
+                  })}
                 </div>
                 {products.length === 0 && (
                   <p className="text-center py-8" style={{ color: colors.mutedForeground }}>
@@ -1288,6 +1163,405 @@ export default function ContentStudioPage() {
                   </p>
                 )}
               </section>
+
+              {selectedProduct && (
+                <section
+                  className="rounded-xl p-6 border overflow-y-auto max-h-[600px]"
+                  style={{
+                    background: colors.card,
+                    borderColor: colors.border,
+                  }}
+                >
+                    <div className="flex items-center justify-between mb-4">
+                      <h2 className="text-lg font-semibold" style={{ color: colors.foreground }}>
+                        Ad Angles
+                      </h2>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setSelectedProduct(null)}
+                        style={{ color: colors.mutedForeground }}
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                    {loadingAngles ? (
+                      <div className="flex items-center justify-center py-8">
+                        <Loader2 className="w-8 h-8 animate-spin" style={{ color: colors.primary }} />
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {adAngles.map((angle, i) => (
+                          <div
+                            key={i}
+                            className="rounded-lg p-3 border"
+                            style={{
+                              background: colors.secondary,
+                              borderColor: colors.border,
+                            }}
+                          >
+                            <p className="font-medium text-sm" style={{ color: colors.foreground }}>
+                              {angle.title}
+                            </p>
+                            <p className="text-xs mt-1" style={{ color: colors.mutedForeground }}>
+                              {angle.explanation}
+                            </p>
+                            <div className="flex gap-2 mt-2">
+                              <Button
+                                size="sm"
+                                onClick={() => handleGeneratePoster(angle)}
+                                disabled={generatingAngleId !== null}
+                                style={{
+                                  background: colors.primary,
+                                  color: colors.primaryForeground,
+                                  fontSize: 11,
+                                }}
+                              >
+                                {generatingAngleId === angle.id ? (
+                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                ) : (
+                                  <>
+                                    <ImageIcon className="w-3 h-3 mr-1" />
+                                    Generate Poster
+                                  </>
+                                )}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleVideoAdClick(angle)}
+                                disabled={creatingVideoAngleId !== null}
+                                style={{
+                                  borderColor: colors.border,
+                                  color: colors.foreground,
+                                  fontSize: 11,
+                                }}
+                              >
+                                {creatingVideoAngleId === angle.id ? (
+                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                ) : (
+                                  <>
+                                    <Video className="w-3 h-3 mr-1" />
+                                    Video Ad
+                                  </>
+                                )}
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </section>
+              )}
+
+              {selectedProduct && campaignPlan.length > 0 && !loadingAngles && (
+                <section
+                  className="rounded-xl p-6 border"
+                  style={{
+                    background: colors.card,
+                    borderColor: colors.border,
+                  }}
+                >
+                  <div className="flex items-center gap-3 mb-2">
+                    <div
+                      className="flex items-center justify-center w-9 h-9 rounded-lg"
+                      style={{ background: "hsl(213 100% 55% / 0.15)" }}
+                    >
+                      <Calendar className="w-5 h-5" style={{ color: colors.primary }} />
+                    </div>
+                    <div>
+                      <h2 className="text-lg font-semibold" style={{ color: colors.foreground }}>
+                        Campaign Plan
+                      </h2>
+                      <p className="text-xs" style={{ color: colors.mutedForeground }}>
+                        AI-generated strategy for {selectedProduct.product_name}
+                      </p>
+                    </div>
+                  </div>
+
+                  {campaignStrategy && (
+                    <div
+                      className="rounded-lg p-4 mb-5 mt-3"
+                      style={{
+                        background: "hsl(213 100% 55% / 0.06)",
+                        border: "1px solid hsl(213 100% 55% / 0.15)",
+                      }}
+                    >
+                      <div className="flex flex-wrap gap-x-6 gap-y-2 text-xs mb-2.5">
+                        {campaignStrategy.product_category && (
+                          <span style={{ color: colors.mutedForeground }}>
+                            Category:{" "}
+                            <span style={{ color: colors.foreground, fontWeight: 500 }}>
+                              {campaignStrategy.product_category}
+                            </span>
+                          </span>
+                        )}
+                        {campaignStrategy.target_audience && (
+                          <span style={{ color: colors.mutedForeground }}>
+                            Audience:{" "}
+                            <span style={{ color: colors.foreground, fontWeight: 500 }}>
+                              {campaignStrategy.target_audience}
+                            </span>
+                          </span>
+                        )}
+                      </div>
+                      {campaignStrategy.content_themes?.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5">
+                          {campaignStrategy.content_themes.map((theme, ti) => (
+                            <span
+                              key={ti}
+                              className="text-xs px-2.5 py-1 rounded-full"
+                              style={{
+                                background: "hsl(213 100% 55% / 0.12)",
+                                color: colors.primary,
+                              }}
+                            >
+                              {theme}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                    {campaignPlan.map((item, i) => {
+                      const isVideo = /video/i.test(item.content_type);
+                      const isPosterOrCarousel = /poster|carousel/i.test(item.content_type);
+                      const isGenerating = generatingCampaignItem === i;
+                      return (
+                        <div
+                          key={i}
+                          className="rounded-xl p-5 border transition-all hover:border-[hsl(213_100%_55%/0.5)]"
+                          style={{
+                            background: colors.secondary,
+                            borderColor: colors.border,
+                          }}
+                        >
+                          <div className="flex items-center justify-between mb-1">
+                            <span
+                              className="text-xs font-bold px-2.5 py-1 rounded-md"
+                              style={{
+                                background: "hsl(213 100% 55% / 0.15)",
+                                color: colors.primary,
+                              }}
+                            >
+                              Day {item.day}
+                            </span>
+                          </div>
+                          <p
+                            className="text-sm font-semibold mb-3"
+                            style={{ color: colors.foreground }}
+                          >
+                            Goal: {item.goal}
+                          </p>
+
+                          <div className="flex items-center gap-2 mb-3">
+                            <span
+                              className="text-xs font-medium px-2 py-0.5 rounded"
+                              style={{
+                                background: colors.muted,
+                                color: colors.foreground,
+                              }}
+                            >
+                              {item.content_type}
+                            </span>
+                            <span
+                              className="text-xs px-2 py-0.5 rounded"
+                              style={{
+                                background: colors.muted,
+                                color: colors.mutedForeground,
+                              }}
+                            >
+                              {item.platform}
+                            </span>
+                          </div>
+
+                          <div
+                            className="rounded-lg px-3 py-2.5 mb-2"
+                            style={{ background: "hsl(0 0% 12%)" }}
+                          >
+                            <p className="text-xs font-medium mb-0.5" style={{ color: colors.mutedForeground }}>
+                              Hook
+                            </p>
+                            <p
+                              className="text-sm font-medium leading-relaxed"
+                              style={{ color: colors.foreground }}
+                            >
+                              &ldquo;{item.hook}&rdquo;
+                            </p>
+                          </div>
+
+                          {item.description && (
+                            <p className="text-xs mb-4" style={{ color: colors.mutedForeground }}>
+                              {item.description}
+                            </p>
+                          )}
+
+                          <Button
+                            size="sm"
+                            onClick={() => handleCampaignItemGenerate(item, i)}
+                            disabled={isGenerating || generatingAngleId !== null || creatingVideoAngleId !== null}
+                            className="w-full mt-1"
+                            style={{
+                              background: isVideo
+                                ? "hsl(213 100% 55%)"
+                                : "hsl(213 100% 55% / 0.15)",
+                              color: isVideo ? colors.primaryForeground : colors.primary,
+                              fontSize: 12,
+                              fontWeight: 600,
+                            }}
+                          >
+                            {isGenerating ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />
+                            ) : isVideo ? (
+                              <Play className="w-3.5 h-3.5 mr-1.5" />
+                            ) : (
+                              <ImageIcon className="w-3.5 h-3.5 mr-1.5" />
+                            )}
+                            {isGenerating
+                              ? "Generating..."
+                              : isVideo
+                                ? "Generate Video Ad"
+                                : isPosterOrCarousel
+                                  ? "Generate Poster"
+                                  : "Generate Creative"}
+                          </Button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
+              )}
+
+              {generatedPosters.length > 0 && (
+                <section
+                  className="rounded-2xl p-8 border shadow-lg"
+                  style={{
+                    background: colors.card,
+                    borderColor: colors.border,
+                  }}
+                >
+                  <h2 className="text-xl font-semibold mb-2" style={{ color: colors.foreground }}>
+                    Generated Creatives
+                  </h2>
+                  <p className="text-sm mb-6" style={{ color: colors.mutedForeground }}>
+                    Click Edit to describe the exact change you want (e.g. fix a typo, add text) and regenerate.
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {generatedPosters.map((img, i) => (
+                      <div
+                        key={i}
+                        className="group rounded-xl overflow-hidden border-2 transition-all hover:border-[hsl(213_100%_55%)] hover:shadow-xl"
+                        style={{
+                          borderColor: colors.border,
+                          background: colors.muted,
+                        }}
+                      >
+                        <div className="aspect-[4/5] relative overflow-hidden">
+                          <img
+                            src={img}
+                            alt={`Creative ${i + 1}`}
+                            className="w-full h-full object-cover"
+                          />
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                          <div className="absolute bottom-0 left-0 right-0 p-3 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <Button
+                              size="sm"
+                              onClick={() => setEditingPosterIndex(i)}
+                              className="flex-1"
+                              style={{
+                                background: colors.primary,
+                                color: colors.primaryForeground,
+                              }}
+                            >
+                              <Pencil className="w-3.5 h-3.5 mr-1" />
+                              Edit
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => handleDownload(img, `creative-${i + 1}.png`)}
+                              style={{ color: colors.foreground }}
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => window.open(img, "_blank")}
+                              style={{ color: colors.foreground }}
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" />
+                            </Button>
+                          </div>
+                        </div>
+                        <div className="p-3 flex items-center justify-between" style={{ background: colors.card }}>
+                          <span className="text-sm font-medium" style={{ color: colors.foreground }}>
+                            Poster {i + 1}
+                          </span>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setEditingPosterIndex(i)}
+                            style={{ color: colors.primary, fontSize: 12 }}
+                          >
+                            Edit
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {campaign && (
+                <section
+                  className="rounded-xl p-6 border"
+                  style={{
+                    background: colors.card,
+                    borderColor: colors.border,
+                  }}
+                >
+                  <h2 className="text-lg font-semibold mb-4" style={{ color: colors.foreground }}>
+                    Campaign: {campaign.name}
+                  </h2>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {campaign.ads.map((ad, i) => (
+                      <div
+                        key={i}
+                        className="rounded-lg p-4 border"
+                        style={{
+                          background: colors.secondary,
+                          borderColor: colors.border,
+                        }}
+                      >
+                        <span
+                          className="text-xs font-medium px-2 py-0.5 rounded"
+                          style={{
+                            background: colors.primary,
+                            color: colors.primaryForeground,
+                          }}
+                        >
+                          {ad.type}
+                        </span>
+                        <h3 className="font-medium mt-2" style={{ color: colors.foreground }}>
+                          {ad.title}
+                        </h3>
+                        <p className="text-sm mt-1" style={{ color: colors.mutedForeground }}>
+                          {ad.description}
+                        </p>
+                        <p className="text-xs mt-2" style={{ color: colors.foreground }}>
+                          Hook: {ad.hook}
+                        </p>
+                        <p className="text-xs" style={{ color: colors.primary }}>
+                          CTA: {ad.cta}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
                       </div>
                     </CollapsibleContent>
                   </Collapsible>
@@ -1328,7 +1602,8 @@ export default function ContentStudioPage() {
             </div>
           )}
         </div>
-      </main>
+        </div>
+      </div>
 
       {/* Brand Onboarding Modal */}
       {showBrandOnboarding && (
@@ -1359,7 +1634,7 @@ export default function ContentStudioPage() {
           }
           onUpdate={updateBrandGuideline}
           onClose={() => {
-            localStorage.setItem("brand:guideline_seen", "true");
+            authFetch("/api/user/preferences", { method: "PUT", body: JSON.stringify({ preferences: { guideline_seen: true } }) }).catch(() => {});
             setShowBrandGuidelineModal(false);
           }}
           onWebsiteAnalyze={handleWebsiteAnalyzeForEdit}

@@ -18,6 +18,7 @@ import {
   mapFullAnalyzeToBrandSnapshot,
 } from '@/app/web/src/components/creative-studio';
 import { authFetch } from '@/lib/utils';
+import { saveBrandSnapshot } from '@/app/web/src/components/creative-studio/utils';
 
 export default function BrandStudioLanding() {
   const router = useRouter();
@@ -94,51 +95,34 @@ export default function BrandStudioLanding() {
 
   // ============== Brand Helper ==============
 
-  function saveBrandSnapshot(snapshot: BrandSnapshot) {
-    localStorage.setItem('brand:snapshot', JSON.stringify(snapshot));
-    authFetch('/api/brand/snapshot', {
-      method: 'PUT',
-      body: JSON.stringify({ brandSnapshot: snapshot }),
-    }).catch(() => {});
-  }
-
-  // ============== Load Brand from DB (fallback localStorage) & show entry popup ==============
+  // ============== Load Brand from DB & show entry popup ==============
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      // Try loading from DB first
+      // Load brand from DB
       try {
         const res = await authFetch('/api/brand/snapshot');
         const data = await res.json();
         if (!cancelled && data.brandSnapshot) {
           setBrand(data.brandSnapshot);
-          localStorage.setItem('brand:snapshot', JSON.stringify(data.brandSnapshot));
-          if (!localStorage.getItem('brand:guideline_seen')) {
-            setShowBrandGuidelineModal(true);
+          // Check guideline_seen from DB preferences
+          try {
+            const prefRes = await authFetch('/api/user/preferences');
+            const prefData = await prefRes.json();
+            if (!cancelled && !prefData.preferences?.guideline_seen) {
+              setShowBrandGuidelineModal(true);
+            }
+          } catch {
+            // ignore preference load failure
           }
           return;
         }
       } catch {
-        /* fall through to localStorage */
+        // no snapshot available
       }
       if (cancelled) return;
-      // Fall back to localStorage
-      const storedBrand = localStorage.getItem('brand:snapshot');
-      if (storedBrand) {
-        try {
-          const parsed = JSON.parse(storedBrand);
-          setBrand(parsed);
-          if (!localStorage.getItem('brand:guideline_seen')) {
-            setShowBrandGuidelineModal(true);
-          }
-        } catch (e) {
-          console.error('Failed to parse stored brand:', e);
-          setShowBrandOnboarding(true);
-        }
-      } else {
-        setShowBrandOnboarding(true);
-      }
+      setShowBrandOnboarding(true);
     })();
     return () => { cancelled = true; };
   }, []);
@@ -338,7 +322,7 @@ export default function BrandStudioLanding() {
   function updateBrandGuideline(updated: BrandSnapshot) {
     setBrand(updated);
     saveBrandSnapshot(updated);
-    localStorage.setItem('brand:guideline_seen', 'true');
+    authFetch('/api/user/preferences', { method: 'PUT', body: JSON.stringify({ preferences: { guideline_seen: true } }) }).catch(() => {});
     setShowBrandGuidelineModal(false);
   }
 
@@ -594,7 +578,7 @@ export default function BrandStudioLanding() {
             brand={brand}
             onUpdate={updateBrandGuideline}
             onClose={() => {
-              localStorage.setItem('brand:guideline_seen', 'true');
+              authFetch('/api/user/preferences', { method: 'PUT', body: JSON.stringify({ preferences: { guideline_seen: true } }) }).catch(() => {});
               setShowBrandGuidelineModal(false);
             }}
             onWebsiteAnalyze={handleWebsiteAnalyzeForEdit}

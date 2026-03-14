@@ -826,9 +826,25 @@ ${rankSummary.length > 0 ? JSON.stringify(rankSummary, null, 2) : "No rank data.
 TONE PREFERENCE: ${toneHint || "Balanced."}
 CAMPAIGN GOAL: ${userPrefs.campaignGoal || "Conversions"}
 
+CRITICAL — ACT AS AN AI AD ANALYST:
+- strategy_snapshot: Synthesize from ALL data (reviews, competitors, Meta ads, hooks). Be SPECIFIC to this brand. No generic phrases.
+- ad_format_recommendations: Score each format 0-100 based on: what competitors use in Meta Ad Library, what fits this product/audience, review sentiment, platform best practices. Scores must sum to a logical distribution (not all 70s). Include brief reasoning per format.
+
 Return JSON with STEPS 4, 5, 6:
 
 {
+  "strategy_snapshot": {
+    "market_gap": "1-2 sentences. Specific gap this brand can own. Reference real competitor/review signals.",
+    "winning_angle": "1-2 sentences. The single best hook/angle for this brand. Not generic.",
+    "best_creative_direction": "1-2 sentences. Tone, style, visual direction. Specific to product and audience.",
+    "recommended_ad_format": "Primary format: Short video|UGC|Static poster|Carousel. Plus 1 sentence why."
+  },
+  "ad_format_recommendations": [
+    {"format": "Short Video Ads", "score": 0-100, "reasoning": "Why this score for THIS brand"},
+    {"format": "UGC Style Ads", "score": 0-100, "reasoning": "Why"},
+    {"format": "Static Posters", "score": 0-100, "reasoning": "Why"},
+    {"format": "Carousel Ads", "score": 0-100, "reasoning": "Why"}
+  ],
   "market_gap_analysis": [
     {
       "opportunity_statement": "string",
@@ -886,6 +902,8 @@ Generate 11 hooks: 5 high-conversion + 3 emotional + 3 performance-driven. Inclu
   return {
     hooks,
     strategies: {
+      strategy_snapshot: parsed.strategy_snapshot || null,
+      ad_format_recommendations: parsed.ad_format_recommendations || [],
       market_gap_analysis: parsed.market_gap_analysis || [],
       underserved_angles: parsed.underserved_angles || [],
       white_space_opportunities: parsed.white_space_opportunities || [],
@@ -980,7 +998,21 @@ Return JSON (STEP 1 — BRAND EXTRACTION):
   "core_pains_addressed": ["pain1", "pain2", "pain3"],
   "emotional_tone": "Professional|Playful|Bold|Minimalist|etc",
   "target_persona_guess": "Who is the ideal customer",
-  "is_ambiguous_brand": false
+  "is_ambiguous_brand": false,
+  "products": [
+    {
+      "product_name": "string",
+      "price": "e.g. $29.99 or null if unknown",
+      "description": "1-2 sentence product description",
+      "key_benefits": ["benefit1", "benefit2"],
+      "product_images": [],
+      "target_audience": "Who this product is for",
+      "emotional_angles": ["angle1", "angle2"],
+      "use_cases": ["use case 1", "use case 2"],
+      "short_benefit": "One line benefit summary",
+      "category": "e.g. electronics, skincare, software"
+    }
+  ]
 }
 
 If brand_name is a common dictionary word (boat, apple, orange, nothing, noise, etc), set is_ambiguous_brand to true.`;
@@ -1008,6 +1040,7 @@ If brand_name is a common dictionary word (boat, apple, orange, nothing, noise, 
       emotionalTone: brandAnalysis.emotional_tone || null,
       targetPersonaGuess: brandAnalysis.target_persona_guess || null,
       rawAnalysis: { ...brandAnalysis, ...brandContext },
+      products: Array.isArray(brandAnalysis.products) ? brandAnalysis.products : [],
     });
 
     // Stage 2: Contextual Competitor Discovery (Context → Query → Classify → Validate → Store)

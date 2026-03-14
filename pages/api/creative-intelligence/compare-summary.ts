@@ -3,6 +3,9 @@
 
 import type { NextApiRequest, NextApiResponse } from "next";
 import { getUserIdFromRequest } from "@/auth/request";
+import { db } from "@/database/client";
+import { creativeIntelligenceRuns } from "@/database/schema";
+import { eq } from "drizzle-orm";
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GEMINI_VEO_API_KEY;
 const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta";
@@ -149,7 +152,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(401).json({ ok: false, error: "Authentication required" });
   }
 
-  const { brand, competitors } = req.body || {};
+  const { brand, competitors, runId, competitorRunIds } = req.body || {};
   if (!brand || !Array.isArray(competitors) || competitors.length === 0) {
     return res.status(400).json({ ok: false, error: "brand and competitors array required" });
   }
@@ -230,6 +233,20 @@ ${competitorData
 
     const raw = await callGemini(prompt, systemInstruction, 4096, true);
     const result = parseJson(raw);
+
+    // Persist comparison insights to DB
+    if (runId) {
+      try {
+        await db.update(creativeIntelligenceRuns)
+          .set({
+            comparisonInsights: result,
+            competitorRunIds: Array.isArray(competitorRunIds) ? competitorRunIds : [],
+          })
+          .where(eq(creativeIntelligenceRuns.id, runId));
+      } catch (e) {
+        console.error("Failed to persist comparison insights:", e);
+      }
+    }
 
     return res.status(200).json({
       ok: true,

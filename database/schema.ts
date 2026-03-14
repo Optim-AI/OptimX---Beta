@@ -125,6 +125,8 @@ export const profiles = pgTable("profiles", {
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 	tagline: text(),
 	organisationName: text("organisation_name"),
+	brandSnapshot: jsonb("brand_snapshot"),
+	uiPreferences: jsonb("ui_preferences").default('{}'),
 }, (table) => [
 	index("profiles_business_mobile_idx").using("btree", table.businessMobile.asc().nullsLast()).where(sql`${table.businessMobile} IS NOT NULL`),
 	uniqueIndex("profiles_email_idx").using("btree", table.email.asc().nullsLast()).where(sql`${table.email} IS NOT NULL`),
@@ -439,6 +441,8 @@ export const creativeIntelligenceRuns = pgTable("creative_intelligence_runs", {
 	errorMessage: text("error_message"),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+	comparisonInsights: jsonb("comparison_insights"),
+	competitorRunIds: text("competitor_run_ids").array(),
 }, (table) => [
 	index("idx_creative_intelligence_runs_user_id").using("btree", table.userId.asc().nullsLast()),
 	index("idx_creative_intelligence_runs_created_at").using("btree", table.createdAt.desc().nullsLast()),
@@ -453,6 +457,7 @@ export const creativeIntelligenceBrands = pgTable("creative_intelligence_brands"
 	emotionalTone: text("emotional_tone"),
 	targetPersonaGuess: text("target_persona_guess"),
 	rawAnalysis: jsonb("raw_analysis"),
+	products: jsonb(),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 }, (table) => [
 	index("idx_creative_intelligence_brands_run_id").using("btree", table.runId.asc().nullsLast()),

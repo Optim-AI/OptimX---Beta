@@ -126,6 +126,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         targetAudience: run.targetAudience,
         campaignGoal: run.campaignGoal,
         createdAt: run.createdAt,
+        comparisonInsights: run.comparisonInsights || null,
+        competitorRunIds: run.competitorRunIds || null,
       },
       brand: brand || null,
       competitors,
