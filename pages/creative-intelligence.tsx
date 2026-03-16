@@ -612,7 +612,7 @@ export default function CreativeIntelligencePage() {
         <div className="flex-1 overflow-y-auto">
           <div className="max-w-6xl mx-auto px-6 py-8">
             {/* Beta feature note */}
-            <div className="mb-6 p-4 rounded-xl" style={{ backgroundColor: 'rgba(34, 197, 94, 0.12)', border: '1px solid rgba(34, 197, 94, 0.35)' }}>
+             <div className="mb-6 p-4 rounded-xl" style={{ backgroundColor: 'rgba(34, 197, 94, 0.12)', border: '1px solid rgba(34, 197, 94, 0.35)' }}>
               <p className="text-sm leading-relaxed" style={{ color: '#e8f5e9' }}>
                 <strong style={{ color: '#e8f5e9' }}>Beta Feature:</strong> This feature is still in Beta, so you might notice occasional glitches or unexpected results. If you spot anything off or have ideas for improvement,{' '}
                 <Link href="/report" className="font-medium underline" style={{ color: '#4ade80' }}>
