@@ -190,25 +190,6 @@ export default function ContentStudioPage() {
   const [imageCredits, setImageCredits] = useState<number | null>(null);
   const [videoCredits, setVideoCredits] = useState<number | null>(null);
 
-  const [imageCredits, setImageCredits] = useState<number | null>(null);
-  const [videoCredits, setVideoCredits] = useState<number | null>(null);
-
-  useEffect(() => {
-    async function loadCredits() {
-      try {
-        const response = await authFetch('/api/credits/balance');
-        const data = await response.json();
-        if (data.success) {
-          setImageCredits(data.imageCredits?.total ?? 0);
-          setVideoCredits(data.videoCredits?.total ?? 0);
-        }
-      } catch (err) {
-        console.error('Error loading credits:', err);
-      }
-    }
-    loadCredits();
-  }, []);
-
   useEffect(() => {
     async function loadCredits() {
       try {
@@ -386,11 +367,8 @@ export default function ContentStudioPage() {
     setExpandedProductIndex(index);
     setSelectedProduct(product);
     setAdAngles([]);
-<<<<<<< HEAD
-=======
     setGeneratedPosters([]);
     setCampaign(null);
->>>>>>> ee790c4d4c98a60d7dd666a2935c678ea244a03f
     setCampaignPlan([]);
     setCampaignStrategy(null);
     setLoadingAngles(true);
@@ -563,25 +541,6 @@ export default function ContentStudioPage() {
       showError(err.message || "Failed to generate poster");
     } finally {
       setGeneratingAngleId(null);
-    }
-  };
-
-  const handleCampaignItemGenerate = async (item: CampaignPlanItem, index: number) => {
-    if (!selectedProduct) return;
-    setGeneratingCampaignItem(index);
-    try {
-      const isVideo = /video/i.test(item.content_type);
-      const angle: AdAngle = {
-        title: item.hook,
-        explanation: `${item.content_type} for ${item.platform}. Goal: ${item.goal}. ${item.description}`,
-      };
-      if (isVideo) {
-        await handleVideoAdClick(angle);
-      } else {
-        await handleGeneratePoster(angle);
-      }
-    } finally {
-      setGeneratingCampaignItem(null);
     }
   };
 
@@ -1442,11 +1401,7 @@ export default function ContentStudioPage() {
                           <Button
                             size="sm"
                             onClick={() => handleCampaignItemGenerate(item, i)}
-<<<<<<< HEAD
-                            disabled={isGenerating || generatingPosters || creatingVideoSession}
-=======
                             disabled={isGenerating || generatingAngleId !== null || creatingVideoAngleId !== null}
->>>>>>> ee790c4d4c98a60d7dd666a2935c678ea244a03f
                             className="w-full mt-1"
                             style={{
                               background: isVideo

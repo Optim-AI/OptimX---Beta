@@ -45,12 +45,8 @@ import {
   CartesianGrid,
 } from "recharts";
 import type { BrandSnapshot } from "@/app/web/src/components/creative-studio";
-<<<<<<< HEAD
 import { DEFAULT_AD_BUILDER_DATA } from "@/app/web/src/components/creative-studio/utils";
-=======
-import { DEFAULT_AD_BUILDER_DATA, mapCreativeIntelligenceBrandToSnapshot } from "@/app/web/src/components/creative-studio/utils";
 import type { Product } from "@/app/web/src/components/creative-studio/types";
->>>>>>> ee790c4d4c98a60d7dd666a2935c678ea244a03f
 import { Progress } from "@/app/web/src/components/ui/progress";
 import { Button } from "@/app/web/src/components/ui/button";
 import { Input } from "@/app/web/src/components/ui/input";
@@ -237,25 +233,6 @@ export default function CreativeIntelligencePage() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [generatingCreativeHookId, setGeneratingCreativeHookId] = useState<string | null>(null);
   const [generatedCreatives, setGeneratedCreatives] = useState<Record<string, any>>({});
-
-  const [imageCredits, setImageCredits] = useState<number | null>(null);
-  const [videoCredits, setVideoCredits] = useState<number | null>(null);
-
-  useEffect(() => {
-    async function loadCredits() {
-      try {
-        const response = await authFetch('/api/credits/balance');
-        const data = await response.json();
-        if (data.success) {
-          setImageCredits(data.imageCredits?.total ?? 0);
-          setVideoCredits(data.videoCredits?.total ?? 0);
-        }
-      } catch (err) {
-        console.error('Error loading credits:', err);
-      }
-    }
-    loadCredits();
-  }, []);
 
   const [imageCredits, setImageCredits] = useState<number | null>(null);
   const [videoCredits, setVideoCredits] = useState<number | null>(null);
@@ -551,8 +528,6 @@ export default function CreativeIntelligencePage() {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-<<<<<<< HEAD
-=======
   // Populate generatedCreatives from persisted DB data
   useEffect(() => {
     if (runData?.creatives && runData.creatives.length > 0) {
@@ -660,8 +635,6 @@ ${strategies.market_gap_analysis?.length ? `<h3>Market Gap Analysis</h3><ul>${st
       setTimeout(() => win.print(), 500);
     }
   }
-
->>>>>>> ee790c4d4c98a60d7dd666a2935c678ea244a03f
   async function handleGenerateFromHook(hook: RunData["hooks"][0], type: "poster" | "video") {
     if (!runData?.brand || !runData?.run?.brandUrl) return;
     const brandSnapshot = mapCreativeIntelligenceBrandToSnapshot(
@@ -737,18 +710,14 @@ ${strategies.market_gap_analysis?.length ? `<h3>Market Gap Analysis</h3><ul>${st
         }}
       >
         {/* Sticky Header */}
-        <div
-          className="border-b flex-shrink-0"
-          style={{
-            borderColor: colors.border,
-<<<<<<< HEAD
-            backgroundColor: colors.card,
-=======
-            background: colors.gradientMesh,
-            backgroundColor: colors.background,
->>>>>>> ee790c4d4c98a60d7dd666a2935c678ea244a03f
-          }}
-        >
+      <div
+        className="border-b flex-shrink-0"
+        style={{
+          borderColor: colors.border,
+          background: colors.gradientMesh,
+          backgroundColor: colors.background,
+        }}
+      >
           <div className="max-w-6xl mx-auto px-6 py-4">
             <div className="flex items-center justify-between">
               <div>
@@ -809,11 +778,7 @@ ${strategies.market_gap_analysis?.length ? `<h3>Market Gap Analysis</h3><ul>${st
         <div className="flex-1 overflow-y-auto">
           <div className="max-w-6xl mx-auto px-6 py-8">
             {/* Beta feature note */}
-<<<<<<< HEAD
-             <div className="mb-6 p-4 rounded-xl" style={{ backgroundColor: 'rgba(34, 197, 94, 0.12)', border: '1px solid rgba(34, 197, 94, 0.35)' }}>
-=======
             <div className="mb-6 p-4 rounded-xl" style={{ backgroundColor: 'rgba(34, 197, 94, 0.12)', border: '1px solid rgba(34, 197, 94, 0.35)' }}>
->>>>>>> ee790c4d4c98a60d7dd666a2935c678ea244a03f
               <p className="text-sm leading-relaxed" style={{ color: '#e8f5e9' }}>
                 <strong style={{ color: '#e8f5e9' }}>Beta Feature:</strong> This feature is still in Beta, so you might notice occasional glitches or unexpected results. If you spot anything off or have ideas for improvement,{' '}
                 <Link href="/report" className="font-medium underline" style={{ color: '#4ade80' }}>
@@ -1669,253 +1634,223 @@ ${strategies.market_gap_analysis?.length ? `<h3>Market Gap Analysis</h3><ul>${st
                     <div className="space-y-4">
                       {runData.hooks.map((hook) => {
                         const strength = hook.confidenceScore ?? 70;
-                        const oppScore = hook.competitorOverlapLevel === "low" || hook.competitorOverlapLevel === "low_overlap" ? 85 : hook.competitorOverlapLevel === "medium" ? 60 : 40;
-                        const saturation = hook.competitorOverlapLevel === "high" ? "High" : hook.competitorOverlapLevel === "medium" ? "Medium" : "Low";
-                        return (
-                        <div
-                          key={hook.id}
-                          className="p-5 rounded-xl transition-colors"
-                          style={{
-                            backgroundColor: colors.background,
-                            border: `1px solid ${colors.border}`,
-                          }}
-                        >
-                          <p className="text-lg font-bold mb-2" style={{ color: colors.foreground }}>
-                            {hook.hookStatement}
-                          </p>
-                          <div className="flex flex-wrap gap-2 mb-2">
-                            <span className="text-xs px-2 py-0.5 rounded" style={{ backgroundColor: colors.muted, color: colors.mutedForeground }}>
-                              {hook.hookType || "—"}
-                            </span>
-                            <SaturationBadge level={hook.competitorOverlapLevel} />
-                          </div>
-                          {/* Hook strength meter */}
-                          <div className="mb-2">
-                            <div className="flex justify-between text-xs mb-1">
-                              <span style={{ color: colors.mutedForeground }}>Hook strength</span>
-                              <span style={{ color: colors.foreground }}>{strength}%</span>
-                            </div>
-                            <Progress value={strength} className="h-1.5 rounded-full" />
-                          </div>
-                          {/* Opportunity score & Market saturation */}
-                          <div className="flex flex-wrap gap-4 mb-2 text-xs">
-                            <div>
-                              <span style={{ color: colors.mutedForeground }}>Opportunity score: </span>
-                              <span className="font-medium" style={{ color: colors.foreground }}>{oppScore}%</span>
-                            </div>
-                            <div>
-                              <span style={{ color: colors.mutedForeground }}>Market saturation: </span>
-                              <span className="font-medium" style={{ color: colors.foreground }}>{saturation}</span>
-                            </div>
-                          </div>
-                          {/* Market Saturation Indicator */}
-                          <MarketSaturationIndicator
-                            label="Competitor usage of this angle"
-                            pct={(hook as any).saturation_score ?? (hook.competitorOverlapLevel === "high" ? 70 : hook.competitorOverlapLevel === "medium" ? 50 : 25)}
-                          />
-                          {/* Evidence from reviews */}
-                          {hook.supportingReviewPhrase && (
-                            <div className="mb-2 p-2 rounded-lg" style={{ backgroundColor: colors.muted + "60", borderLeft: `3px solid ${colors.primary}` }}>
-                              <p className="text-xs font-medium mb-0.5" style={{ color: colors.mutedForeground }}>Evidence from reviews</p>
-                              <p className="text-sm italic" style={{ color: colors.foreground }}>&ldquo;{hook.supportingReviewPhrase}&rdquo;</p>
-                            </div>
-                          )}
-                          {hook.whyItWorks && (
-                            <p className="text-sm mb-2" style={{ color: colors.mutedForeground }}>{hook.whyItWorks}</p>
-                          )}
-<<<<<<< HEAD
-=======
-                          {hook.confidenceScore != null && (
-                            <div className="mb-3">
-                              <div className="flex justify-between text-xs mb-1">
-                                <span style={{ color: colors.mutedForeground }}>Confidence</span>
-                                <span style={{ color: colors.foreground }}>{hook.confidenceScore}%</span>
-                              </div>
-                              <Progress value={hook.confidenceScore} className="h-1.5 rounded-full" />
-                            </div>
-                          )}
->>>>>>> ee790c4d4c98a60d7dd666a2935c678ea244a03f
-                          <div className="flex items-center gap-2 mt-3 flex-wrap">
-                            <Button
-                              size="sm"
-                              onClick={() => handleGenerateFromHook(hook, "poster")}
-                              style={{ backgroundColor: colors.primary, color: colors.primaryForeground }}
-                            >
-                              <Image size={14} className="mr-1.5" />
-                              Generate Poster
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleGenerateFromHook(hook, "video")}
-                              style={{ borderColor: colors.border, color: colors.foreground }}
-                            >
-                              <Video size={14} className="mr-1.5" />
-                              Generate Video
-                            </Button>
-                            <button
-                              type="button"
-                              onClick={() => copyToClipboard(hook.hookStatement + (hook.whyItWorks ? `\n\nWhy it works: ${hook.whyItWorks}` : ""), `hook-${hook.id}`)}
-                              className="p-2 rounded-lg hover:opacity-80 transition-opacity"
-                              style={{ backgroundColor: colors.muted, color: colors.foreground }}
-                              title="Copy hook"
-                            >
-                              {copiedId === `hook-${hook.id}` ? <Check size={16} /> : <Copy size={16} />}
-                            </button>
-<<<<<<< HEAD
-                          </div>
-                        </div>
-                        );
-                      })}
-                    </div>
-                  </SectionCard>
-                )}
+                        const oppScore =
+                          hook.competitorOverlapLevel === "low" || hook.competitorOverlapLevel === "low_overlap"
+                            ? 85
+                            : hook.competitorOverlapLevel === "medium"
+                            ? 60
+                            : 40;
+                        const saturation =
+                          hook.competitorOverlapLevel === "high"
+                            ? "High"
+                            : hook.competitorOverlapLevel === "medium"
+                            ? "Medium"
+                            : "Low";
 
-                {/* Creative Angle Library */}
-                {creativeAngleCards.length > 0 && (
-                  <SectionCard title="Creative Angle Library" icon={<LayoutGrid size={20} />} onHistoryClick={scrollToHistory}>
-                    <p className="text-sm mb-4" style={{ color: colors.mutedForeground }}>
-                      Choose campaign direction with angle, emotion, and best format.
-                    </p>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {creativeAngleCards.map((bp: any, i: number) => (
-                        <div
-                          key={i}
-                          className="p-4 rounded-xl"
-                          style={{
-                            backgroundColor: colors.background,
-                            border: `1px solid ${colors.border}`,
-                          }}
-                        >
-                          <p className="text-xs font-medium mb-1" style={{ color: colors.mutedForeground }}>Angle</p>
-                          <p className="font-semibold mb-2" style={{ color: colors.foreground }}>
-                            {bp.messaging_focus?.slice(0, 50) || bp.hookStatement?.slice(0, 50) || "—"}
-                            {(bp.messaging_focus?.length || bp.hookStatement?.length || 0) > 50 ? "…" : ""}
-                          </p>
-                          <p className="text-xs mb-1" style={{ color: colors.mutedForeground }}>
-                            <span className="font-medium">Emotion:</span> {bp.emotional_tone_direction || "Pleasure + Health"}
-                          </p>
-                          <p className="text-xs" style={{ color: colors.mutedForeground }}>
-                            <span className="font-medium">Best format:</span> {bp.ad_format || "Short video"}
-                          </p>
-=======
-                            <button
-                              type="button"
-                              onClick={() => handleGenerateCreatives(hook.id)}
-                              disabled={generatingCreativeHookId === hook.id}
-                              className="p-2 rounded-lg hover:opacity-80 transition-opacity flex items-center gap-1.5 text-sm"
-                              style={{ backgroundColor: colors.primary, color: colors.primaryForeground }}
-                              title="Generate creatives from this hook"
-                            >
-                              {generatingCreativeHookId === hook.id ? (
-                                <Loader2 size={16} className="animate-spin" />
-                              ) : (
-                                <Sparkles size={16} />
-                              )}
-                              <span>{generatingCreativeHookId === hook.id ? "Generating..." : generatedCreatives[hook.id] ? "Regenerate" : "Generate Creatives"}</span>
-                            </button>
-                          </div>
-                          {/* Generated Creatives Display */}
-                          {generatedCreatives[hook.id] && (
-                            <div className="w-full mt-4 space-y-4">
-                              {/* Poster Concepts */}
-                              {generatedCreatives[hook.id].posters?.map((poster: any, pi: number) => (
-                                <div key={pi} className="p-4 rounded-lg" style={{ backgroundColor: colors.muted + "60", border: `1px solid ${colors.border}` }}>
-                                  <h5 className="text-sm font-semibold mb-3 flex items-center gap-2" style={{ color: colors.foreground }}>
-                                    <Target size={14} />
-                                    Poster Concept
-                                    {poster.confidence_score != null && (
-                                      <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: colors.primary + "20", color: colors.primary }}>{poster.confidence_score}%</span>
-                                    )}
-                                  </h5>
-                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                    <div>
-                                      <p className="text-xs font-medium mb-1.5" style={{ color: colors.mutedForeground }}>Primary Text Options</p>
-                                      {poster.primary_text_options?.map((t: string, i: number) => (
-                                        <div key={i} className="flex items-center gap-1 mb-1">
-                                          <span className="text-sm" style={{ color: colors.foreground }}>{t}</span>
-                                          <button type="button" onClick={() => copyToClipboard(t, `poster-primary-${pi}-${i}`)} className="opacity-60 hover:opacity-100">
-                                            {copiedId === `poster-primary-${pi}-${i}` ? <Check size={12} /> : <Copy size={12} />}
-                                          </button>
-                                        </div>
-                                      ))}
-                                    </div>
-                                    <div>
-                                      <p className="text-xs font-medium mb-1.5" style={{ color: colors.mutedForeground }}>Secondary Text Options</p>
-                                      {poster.secondary_text_options?.map((t: string, i: number) => (
-                                        <div key={i} className="flex items-center gap-1 mb-1">
-                                          <span className="text-sm" style={{ color: colors.foreground }}>{t}</span>
-                                          <button type="button" onClick={() => copyToClipboard(t, `poster-secondary-${pi}-${i}`)} className="opacity-60 hover:opacity-100">
-                                            {copiedId === `poster-secondary-${pi}-${i}` ? <Check size={12} /> : <Copy size={12} />}
-                                          </button>
-                                        </div>
-                                      ))}
-                                    </div>
-                                    <div>
-                                      <p className="text-xs font-medium mb-1.5" style={{ color: colors.mutedForeground }}>CTA Options</p>
-                                      {poster.cta_options?.map((t: string, i: number) => (
-                                        <div key={i} className="flex items-center gap-1 mb-1">
-                                          <span className="text-sm" style={{ color: colors.foreground }}>{t}</span>
-                                          <button type="button" onClick={() => copyToClipboard(t, `poster-cta-${pi}-${i}`)} className="opacity-60 hover:opacity-100">
-                                            {copiedId === `poster-cta-${pi}-${i}` ? <Check size={12} /> : <Copy size={12} />}
-                                          </button>
-                                        </div>
-                                      ))}
-                                    </div>
-                                    {poster.visual_direction && (
+                        return (
+                          <div
+                            key={hook.id}
+                            className="p-5 rounded-xl transition-colors"
+                            style={{
+                              backgroundColor: colors.background,
+                              border: `1px solid ${colors.border}`,
+                            }}
+                          >
+                            <p className="text-lg font-bold mb-2" style={{ color: colors.foreground }}>
+                              {hook.hookStatement}
+                            </p>
+                            <div className="flex flex-wrap gap-2 mb-2">
+                              <span className="text-xs px-2 py-0.5 rounded" style={{ backgroundColor: colors.muted, color: colors.mutedForeground }}>
+                                {hook.hookType || "—"}
+                              </span>
+                              <SaturationBadge level={hook.competitorOverlapLevel} />
+                            </div>
+                            {/* Hook strength meter */}
+                            <div className="mb-2">
+                              <div className="flex justify-between text-xs mb-1">
+                                <span style={{ color: colors.mutedForeground }}>Hook strength</span>
+                                <span style={{ color: colors.foreground }}>{strength}%</span>
+                              </div>
+                              <Progress value={strength} className="h-1.5 rounded-full" />
+                            </div>
+                            {/* Opportunity score & Market saturation */}
+                            <div className="flex flex-wrap gap-4 mb-2 text-xs">
+                              <div>
+                                <span style={{ color: colors.mutedForeground }}>Opportunity score: </span>
+                                <span className="font-medium" style={{ color: colors.foreground }}>{oppScore}%</span>
+                              </div>
+                              <div>
+                                <span style={{ color: colors.mutedForeground }}>Market saturation: </span>
+                                <span className="font-medium" style={{ color: colors.foreground }}>{saturation}</span>
+                              </div>
+                            </div>
+                            {/* Market Saturation Indicator */}
+                            <MarketSaturationIndicator
+                              label="Competitor usage of this angle"
+                              pct={(hook as any).saturation_score ?? (hook.competitorOverlapLevel === "high" ? 70 : hook.competitorOverlapLevel === "medium" ? 50 : 25)}
+                            />
+                            {/* Evidence from reviews */}
+                            {hook.supportingReviewPhrase && (
+                              <div className="mb-2 p-2 rounded-lg" style={{ backgroundColor: colors.muted + "60", borderLeft: `3px solid ${colors.primary}` }}>
+                                <p className="text-xs font-medium mb-0.5" style={{ color: colors.mutedForeground }}>Evidence from reviews</p>
+                                <p className="text-sm italic" style={{ color: colors.foreground }}>&ldquo;{hook.supportingReviewPhrase}&rdquo;</p>
+                              </div>
+                            )}
+                            {hook.whyItWorks && (
+                              <p className="text-sm mb-2" style={{ color: colors.mutedForeground }}>{hook.whyItWorks}</p>
+                            )}
+                            {hook.confidenceScore != null && (
+                              <div className="mb-3">
+                                <div className="flex justify-between text-xs mb-1">
+                                  <span style={{ color: colors.mutedForeground }}>Confidence</span>
+                                  <span style={{ color: colors.foreground }}>{hook.confidenceScore}%</span>
+                                </div>
+                                <Progress value={hook.confidenceScore} className="h-1.5 rounded-full" />
+                              </div>
+                            )}
+                            <div className="flex items-center gap-2 mt-3 flex-wrap">
+                              <Button
+                                size="sm"
+                                onClick={() => handleGenerateFromHook(hook, "poster")}
+                                style={{ backgroundColor: colors.primary, color: colors.primaryForeground }}
+                              >
+                                <Image size={14} className="mr-1.5" />
+                                Generate Poster
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleGenerateFromHook(hook, "video")}
+                                style={{ borderColor: colors.border, color: colors.foreground }}
+                              >
+                                <Video size={14} className="mr-1.5" />
+                                Generate Video
+                              </Button>
+                              <button
+                                type="button"
+                                onClick={() => copyToClipboard(hook.hookStatement + (hook.whyItWorks ? `\n\nWhy it works: ${hook.whyItWorks}` : ""), `hook-${hook.id}`)}
+                                className="p-2 rounded-lg hover:opacity-80 transition-opacity"
+                                style={{ backgroundColor: colors.muted, color: colors.foreground }}
+                                title="Copy hook"
+                              >
+                                {copiedId === `hook-${hook.id}` ? <Check size={16} /> : <Copy size={16} />}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleGenerateCreatives(hook.id)}
+                                disabled={generatingCreativeHookId === hook.id}
+                                className="p-2 rounded-lg hover:opacity-80 transition-opacity flex items-center gap-1.5 text-sm"
+                                style={{ backgroundColor: colors.primary, color: colors.primaryForeground }}
+                                title="Generate creatives from this hook"
+                              >
+                                {generatingCreativeHookId === hook.id ? (
+                                  <Loader2 size={16} className="animate-spin" />
+                                ) : (
+                                  <Sparkles size={16} />
+                                )}
+                                <span>{generatingCreativeHookId === hook.id ? "Generating..." : generatedCreatives[hook.id] ? "Regenerate" : "Generate Creatives"}</span>
+                              </button>
+                            </div>
+                            {/* Generated Creatives Display */}
+                            {generatedCreatives[hook.id] && (
+                              <div className="w-full mt-4 space-y-4">
+                                {/* Poster Concepts */}
+                                {generatedCreatives[hook.id].posters?.map((poster: any, pi: number) => (
+                                  <div key={pi} className="p-4 rounded-lg" style={{ backgroundColor: colors.muted + "60", border: `1px solid ${colors.border}` }}>
+                                    <h5 className="text-sm font-semibold mb-3 flex items-center gap-2" style={{ color: colors.foreground }}>
+                                      <Target size={14} />
+                                      Poster Concept
+                                      {poster.confidence_score != null && (
+                                        <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: colors.primary + "20", color: colors.primary }}>{poster.confidence_score}%</span>
+                                      )}
+                                    </h5>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                       <div>
-                                        <p className="text-xs font-medium mb-1.5" style={{ color: colors.mutedForeground }}>Visual Direction</p>
-                                        {Object.entries(poster.visual_direction).map(([key, val]) => (
-                                          <p key={key} className="text-xs mb-0.5" style={{ color: colors.foreground }}>
-                                            <span style={{ color: colors.mutedForeground }}>{key.replace(/_/g, " ")}:</span> {String(val)}
-                                          </p>
+                                        <p className="text-xs font-medium mb-1.5" style={{ color: colors.mutedForeground }}>Primary Text Options</p>
+                                        {poster.primary_text_options?.map((t: string, i: number) => (
+                                          <div key={i} className="flex items-center gap-1 mb-1">
+                                            <span className="text-sm" style={{ color: colors.foreground }}>{t}</span>
+                                            <button type="button" onClick={() => copyToClipboard(t, `poster-primary-${pi}-${i}`)} className="opacity-60 hover:opacity-100">
+                                              {copiedId === `poster-primary-${pi}-${i}` ? <Check size={12} /> : <Copy size={12} />}
+                                            </button>
+                                          </div>
                                         ))}
                                       </div>
-                                    )}
-                                  </div>
-                                </div>
-                              ))}
-                              {/* Video Scripts */}
-                              {generatedCreatives[hook.id].video_scripts_8s?.length > 0 && (
-                                <div className="p-4 rounded-lg" style={{ backgroundColor: colors.muted + "60", border: `1px solid ${colors.border}` }}>
-                                  <h5 className="text-sm font-semibold mb-3 flex items-center gap-2" style={{ color: colors.foreground }}>
-                                    <Video size={14} />
-                                    8s Video Scripts
-                                  </h5>
-                                  <div className="space-y-3">
-                                    {generatedCreatives[hook.id].video_scripts_8s.map((script: any, si: number) => (
-                                      <div key={si} className="p-3 rounded-lg" style={{ backgroundColor: colors.background, border: `1px solid ${colors.border}` }}>
-                                        <div className="flex items-center justify-between mb-2">
-                                          <span className="text-xs font-medium" style={{ color: colors.mutedForeground }}>Script {script.script_number || si + 1}</span>
-                                          {script.confidence_score != null && (
-                                            <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: colors.primary + "20", color: colors.primary }}>{script.confidence_score}%</span>
-                                          )}
-                                        </div>
-                                        <div className="space-y-1.5">
-                                          {[
-                                            { label: "0-2s Hook", value: script.hook_line },
-                                            { label: "2-5s Problem/Desire", value: script.problem_or_desire },
-                                            { label: "5-7s Solution", value: script.solution },
-                                            { label: "7-8s CTA", value: script.cta },
-                                          ].map((part) => (
-                                            <div key={part.label} className="flex items-start gap-2">
-                                              <span className="text-xs font-medium shrink-0 w-32" style={{ color: colors.mutedForeground }}>{part.label}</span>
-                                              <span className="text-sm flex-1" style={{ color: colors.foreground }}>{part.value}</span>
-                                              <button type="button" onClick={() => copyToClipboard(part.value || "", `script-${si}-${part.label}`)} className="opacity-60 hover:opacity-100 shrink-0">
-                                                {copiedId === `script-${si}-${part.label}` ? <Check size={12} /> : <Copy size={12} />}
-                                              </button>
-                                            </div>
+                                      <div>
+                                        <p className="text-xs font-medium mb-1.5" style={{ color: colors.mutedForeground }}>Secondary Text Options</p>
+                                        {poster.secondary_text_options?.map((t: string, i: number) => (
+                                          <div key={i} className="flex items-center gap-1 mb-1">
+                                            <span className="text-sm" style={{ color: colors.foreground }}>{t}</span>
+                                            <button type="button" onClick={() => copyToClipboard(t, `poster-secondary-${pi}-${i}`)} className="opacity-60 hover:opacity-100">
+                                              {copiedId === `poster-secondary-${pi}-${i}` ? <Check size={12} /> : <Copy size={12} />}
+                                            </button>
+                                          </div>
+                                        ))}
+                                      </div>
+                                      <div>
+                                        <p className="text-xs font-medium mb-1.5" style={{ color: colors.mutedForeground }}>CTA Options</p>
+                                        {poster.cta_options?.map((t: string, i: number) => (
+                                          <div key={i} className="flex items-center gap-1 mb-1">
+                                            <span className="text-sm" style={{ color: colors.foreground }}>{t}</span>
+                                            <button type="button" onClick={() => copyToClipboard(t, `poster-cta-${pi}-${i}`)} className="opacity-60 hover:opacity-100">
+                                              {copiedId === `poster-cta-${pi}-${i}` ? <Check size={12} /> : <Copy size={12} />}
+                                            </button>
+                                          </div>
+                                        ))}
+                                      </div>
+                                      {poster.visual_direction && (
+                                        <div>
+                                          <p className="text-xs font-medium mb-1.5" style={{ color: colors.mutedForeground }}>Visual Direction</p>
+                                          {Object.entries(poster.visual_direction).map(([key, val]) => (
+                                            <p key={key} className="text-xs mb-0.5" style={{ color: colors.foreground }}>
+                                              <span style={{ color: colors.mutedForeground }}>{key.replace(/_/g, " ")}:</span> {String(val)}
+                                            </p>
                                           ))}
                                         </div>
-                                      </div>
-                                    ))}
+                                      )}
+                                    </div>
                                   </div>
-                                </div>
-                              )}
-                            </div>
-                          )}
->>>>>>> ee790c4d4c98a60d7dd666a2935c678ea244a03f
-                        </div>
+                                ))}
+                                {/* Video Scripts */}
+                                {generatedCreatives[hook.id].video_scripts_8s?.length > 0 && (
+                                  <div className="p-4 rounded-lg" style={{ backgroundColor: colors.muted + "60", border: `1px solid ${colors.border}` }}>
+                                    <h5 className="text-sm font-semibold mb-3 flex items-center gap-2" style={{ color: colors.foreground }}>
+                                      <Video size={14} />
+                                      8s Video Scripts
+                                    </h5>
+                                    <div className="space-y-3">
+                                      {generatedCreatives[hook.id].video_scripts_8s.map((script: any, si: number) => (
+                                        <div key={si} className="p-3 rounded-lg" style={{ backgroundColor: colors.background, border: `1px solid ${colors.border}` }}>
+                                          <div className="flex items-center justify-between mb-2">
+                                            <span className="text-xs font-medium" style={{ color: colors.mutedForeground }}>Script {script.script_number || si + 1}</span>
+                                            {script.confidence_score != null && (
+                                              <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: colors.primary + "20", color: colors.primary }}>{script.confidence_score}%</span>
+                                            )}
+                                          </div>
+                                          <div className="space-y-1.5">
+                                            {[
+                                              { label: "0-2s Hook", value: script.hook_line },
+                                              { label: "2-5s Problem/Desire", value: script.problem_or_desire },
+                                              { label: "5-7s Solution", value: script.solution },
+                                              { label: "7-8s CTA", value: script.cta },
+                                            ].map((part) => (
+                                              <div key={part.label} className="flex items-start gap-2">
+                                                <span className="text-xs font-medium shrink-0 w-32" style={{ color: colors.mutedForeground }}>{part.label}</span>
+                                                <span className="text-sm flex-1" style={{ color: colors.foreground }}>{part.value}</span>
+                                                <button type="button" onClick={() => copyToClipboard(part.value || "", `script-${si}-${part.label}`)} className="opacity-60 hover:opacity-100 shrink-0">
+                                                  {copiedId === `script-${si}-${part.label}` ? <Check size={12} /> : <Copy size={12} />}
+                                                </button>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         );
                       })}
                     </div>
