@@ -886,7 +886,7 @@ Return JSON with STEPS 4, 5, 6:
 
 Generate 11 hooks: 5 high-conversion + 3 emotional + 3 performance-driven. Include campaign_blueprints for top 3 ranked hooks. Be specific and data-backed.`;
   const raw = await callGemini(prompt, "Return ONLY valid JSON.", 16384);
-  const parsed = safeParseJson(raw, {});
+  const parsed = safeParseJson(raw, {}) as any;
   const hooks = (parsed.hooks || []).slice(0, 11).map((h: any, i: number) => ({
     hook_statement: h.hook_statement || "",
     hook_type: h.hook_type || "functional",
@@ -998,12 +998,26 @@ Return JSON (STEP 1 — BRAND EXTRACTION):
   "core_pains_addressed": ["pain1", "pain2", "pain3"],
   "emotional_tone": "Professional|Playful|Bold|Minimalist|etc",
   "target_persona_guess": "Who is the ideal customer",
-  "is_ambiguous_brand": false
+  "is_ambiguous_brand": false,
+  "products": [
+    {
+      "product_name": "string",
+      "price": "e.g. $29.99 or null if unknown",
+      "description": "1-2 sentence product description",
+      "key_benefits": ["benefit1", "benefit2"],
+      "product_images": [],
+      "target_audience": "Who this product is for",
+      "emotional_angles": ["angle1", "angle2"],
+      "use_cases": ["use case 1", "use case 2"],
+      "short_benefit": "One line benefit summary",
+      "category": "e.g. electronics, skincare, software"
+    }
+  ]
 }
 
 If brand_name is a common dictionary word (boat, apple, orange, nothing, noise, etc), set is_ambiguous_brand to true.`;
     const stage1Raw = await callGemini(stage1Prompt, "Return ONLY valid JSON.");
-    const brandAnalysis = safeParseJson(stage1Raw, {});
+    const brandAnalysis = safeParseJson(stage1Raw, {}) as any;
 
     const brandContext: BrandContext = {
       brand_name: brandName,
@@ -1026,6 +1040,7 @@ If brand_name is a common dictionary word (boat, apple, orange, nothing, noise, 
       emotionalTone: brandAnalysis.emotional_tone || null,
       targetPersonaGuess: brandAnalysis.target_persona_guess || null,
       rawAnalysis: { ...brandAnalysis, ...brandContext },
+      products: Array.isArray(brandAnalysis.products) ? brandAnalysis.products : [],
     });
 
     // Stage 2: Contextual Competitor Discovery (Context → Query → Classify → Validate → Store)
@@ -1167,7 +1182,7 @@ Return JSON (STEP 2 — COMPETITOR ANALYSIS):
 }`;
       try {
         const compRaw = await callGemini(compPrompt, "Return ONLY valid JSON.");
-        competitorAnalysis = safeParseJson(compRaw, {});
+        competitorAnalysis = safeParseJson(compRaw, {}) as any;
         if (competitorAnalysis.competitors) {
           for (let i = 0; i < Math.min(competitorData.length, competitorAnalysis.competitors.length); i++) {
             const ca = competitorAnalysis.competitors[i];

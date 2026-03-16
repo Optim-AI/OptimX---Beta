@@ -54,14 +54,20 @@ export function clampQuantity(creditType: 'image' | 'video', value: number): num
 /**
  * Calculates subtotal + GST + total.
  * We round GST to the nearest rupee because our `payments.amount` is stored as an integer INR value in rupee.
+ * Optional `overrides.unitPriceInr` lets the caller supply a fetched price (e.g. from live pricing API).
  */
-export function calculateTotalsInr(params: { creditType: 'image' | 'video'; credits: number }) {
-  const { creditType, credits } = params;
-  const unitPriceInr = getUnitPriceInr(creditType);
+export function calculateTotalsInr(params: {
+  creditType: 'image' | 'video';
+  credits: number;
+  overrides?: { unitPriceInr?: number };
+}) {
+  const { creditType, credits, overrides } = params;
+  const unitPriceInr = overrides?.unitPriceInr ?? getUnitPriceInr(creditType);
   const subtotalInr = credits * unitPriceInr;
   const gstRate = BUY_CREDITS_PRICING.gstRate;
   const gstAmountInr = Math.round(subtotalInr * gstRate);
   const totalInr = subtotalInr + gstAmountInr;
   return { unitPriceInr, subtotalInr, gstRate, gstAmountInr, totalInr };
 }
+
 

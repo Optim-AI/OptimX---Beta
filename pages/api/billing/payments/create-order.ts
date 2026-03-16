@@ -3,7 +3,9 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { getUserIdFromRequest } from '@/auth/request';
 import { razorpay, RAZORPAY_KEY_ID, isRazorpayConfigured } from '@/lib/razorpay/client';
 import { PaymentsDAO } from '@/database/models/Payments.dao';
-import { calculateTotalsInr, getMinQuantity, getMaxQuantity } from '@/lib/billing/pricing';
+import { VoucherDAO } from '@/database/models/Voucher.dao';
+import { calculateTotalsInrFromDb } from '@/lib/billing/pricing.server';
+import { getMinQuantity, getMaxQuantity } from '@/lib/billing/pricing';
 
 /**
  * POST /api/billing/payments/create-order
@@ -26,7 +28,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const { creditType, credits, billingEmail } = req.body;
+    const { creditType, credits, billingEmail, voucherId } = req.body;
 
     // Validate inputs
     if (!creditType || (creditType !== 'image' && creditType !== 'video')) {
@@ -52,7 +54,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     // IMPORTANT: compute amount server-side (never trust client-sent amount)
-    const totals = calculateTotalsInr({ creditType, credits: creditsNum });
+    const totals = await calculateTotalsInrFromDb({ creditType, credits: creditsNum });
+
+    // Validate voucher if provided
+    let voucherCredits = 0;
+    if (voucherId) {
+      const validation = await VoucherDAO.validateForRedemption(voucherId, userId, creditType);
+      if (!validation.valid) {
+        return res.status(400).json({ error: validation.error });
+      }
+      voucherCredits = validation.voucher!.credits;
+    }
 
     // Create Razorpay order
     const order = await razorpay.orders.create({
@@ -89,6 +101,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         gstAmountInr: totals.gstAmountInr,
         totalInr: totals.totalInr,
         ...(billingEmail ? { billingEmail } : {}),
+        ...(voucherId ? { voucherId, voucherCredits } : {}),
       },
     });
 
@@ -104,6 +117,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       gstRate: totals.gstRate,
       gstAmountInr: totals.gstAmountInr,
       totalInr: totals.totalInr,
+      ...(voucherCredits > 0 ? { voucherCredits } : {}),
     });
   } catch (error: any) {
     console.error('Create order error:', error);

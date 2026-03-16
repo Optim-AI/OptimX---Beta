@@ -20,6 +20,7 @@ import {
   Users,
   CreditCard,
   Settings,
+  Ticket,
 } from 'lucide-react';
 import colors from '@/lib/ui/colors';
 
@@ -92,7 +93,23 @@ interface UserPayment {
   razorpayPaymentId: string | null;
 }
 
-type ActiveSection = 'plans' | 'reports' | 'users' | 'settings';
+interface VoucherData {
+  id: string;
+  userId: string;
+  creditType: string;
+  credits: number;
+  status: string;
+  expiresAt: string | null;
+  redeemedAt: string | null;
+  issuedBy: string;
+  note: string | null;
+  createdAt: string;
+  updatedAt: string;
+  userEmail: string | null;
+  userFullName: string | null;
+}
+
+type ActiveSection = 'plans' | 'reports' | 'users' | 'settings' | 'vouchers';
 
 export default function AdminDashboard() {
   const router = useRouter();
@@ -124,6 +141,8 @@ export default function AdminDashboard() {
   const [reportsLoading, setReportsLoading] = useState(false);
   const [selectedReport, setSelectedReport] = useState<ReportData | null>(null);
   const [updatingReportStatus, setUpdatingReportStatus] = useState(false);
+  const [reportVouchers, setReportVouchers] = useState<VoucherData[]>([]);
+  const [reportVouchersLoading, setReportVouchersLoading] = useState(false);
 
   // Users state
   const [usersData, setUsersData] = useState<UserData[]>([]);
@@ -136,6 +155,23 @@ export default function AdminDashboard() {
   const [imageRetentionDays, setImageRetentionDays] = useState<number>(7);
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
+  const [creditPricing, setCreditPricing] = useState({ imageCreditPriceInr: 10, videoSecondPriceInr: 26 });
+  const [savingCreditPricing, setSavingCreditPricing] = useState(false);
+
+  // Vouchers state
+  const [vouchersData, setVouchersData] = useState<VoucherData[]>([]);
+  const [vouchersLoading, setVouchersLoading] = useState(false);
+  const [showCreateVoucher, setShowCreateVoucher] = useState(false);
+  const [createVoucherForm, setCreateVoucherForm] = useState({
+    userId: '',
+    creditType: 'image' as 'image' | 'video',
+    credits: 10,
+    expiresAt: '',
+    note: '',
+    reportId: '',
+  });
+  const [creatingVoucher, setCreatingVoucher] = useState(false);
+  const [revokingVoucherId, setRevokingVoucherId] = useState<string | null>(null);
 
   useEffect(() => {
     // Check if admin is logged in
@@ -160,6 +196,10 @@ export default function AdminDashboard() {
     }
     if (activeSection === 'settings') {
       fetchImageRetention();
+      fetchCreditPricing();
+    }
+    if (activeSection === 'vouchers' && vouchersData.length === 0) {
+      fetchVouchers();
     }
   }, [activeSection]);
 
@@ -344,6 +384,193 @@ export default function AdminDashboard() {
     } finally {
       setSavingSettings(false);
     }
+  }
+
+  async function fetchCreditPricing() {
+    try {
+      const token = localStorage.getItem('admin_token');
+      const response = await fetch('/api/admin/settings/credit-pricing', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (response.status === 401) {
+        localStorage.removeItem('admin_token');
+        localStorage.removeItem('admin_username');
+        router.replace('/admin/login');
+        return;
+      }
+      const result = await response.json();
+      if (result.success) {
+        setCreditPricing({
+          imageCreditPriceInr: result.imageCreditPriceInr,
+          videoSecondPriceInr: result.videoSecondPriceInr,
+        });
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to fetch credit pricing');
+    }
+  }
+
+  async function handleSaveCreditPricing() {
+    setSavingCreditPricing(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const token = localStorage.getItem('admin_token');
+      const response = await fetch('/api/admin/settings/credit-pricing', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(creditPricing),
+      });
+      const result = await response.json();
+      if (!result.success) {
+        setError(result.error || 'Failed to save credit pricing');
+        return;
+      }
+      setSuccess(result.message);
+    } catch (err: any) {
+      setError(err.message || 'Failed to save credit pricing');
+    } finally {
+      setSavingCreditPricing(false);
+    }
+  }
+
+  async function fetchVouchers() {
+    setVouchersLoading(true);
+    try {
+      const token = localStorage.getItem('admin_token');
+      const response = await fetch('/api/admin/vouchers/list', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (response.status === 401) {
+        localStorage.removeItem('admin_token');
+        localStorage.removeItem('admin_username');
+        router.replace('/admin/login');
+        return;
+      }
+      const result = await response.json();
+      if (result.success) {
+        setVouchersData(result.vouchers);
+      } else {
+        setError(result.error || 'Failed to fetch vouchers');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to fetch vouchers');
+    } finally {
+      setVouchersLoading(false);
+    }
+  }
+
+  async function handleCreateVoucher() {
+    setCreatingVoucher(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const token = localStorage.getItem('admin_token');
+      const response = await fetch('/api/admin/vouchers/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          userId: createVoucherForm.userId,
+          creditType: createVoucherForm.creditType,
+          credits: createVoucherForm.credits,
+          expiresAt: createVoucherForm.expiresAt || undefined,
+          note: createVoucherForm.note || undefined,
+          reportId: createVoucherForm.reportId || undefined,
+        }),
+      });
+      const result = await response.json();
+      if (!result.success) {
+        setError(result.error || 'Failed to create voucher');
+        return;
+      }
+      setSuccess('Voucher created successfully');
+      setShowCreateVoucher(false);
+      const reportId = createVoucherForm.reportId;
+      setCreateVoucherForm({ userId: '', creditType: 'image', credits: 10, expiresAt: '', note: '', reportId: '' });
+      await fetchVouchers();
+      // Refresh report vouchers if we came from a report
+      if (reportId && selectedReport) {
+        fetchReportVouchers(reportId);
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to create voucher');
+    } finally {
+      setCreatingVoucher(false);
+    }
+  }
+
+  async function handleRevokeVoucher(voucherId: string) {
+    setRevokingVoucherId(voucherId);
+    setError(null);
+    setSuccess(null);
+    try {
+      const token = localStorage.getItem('admin_token');
+      const response = await fetch('/api/admin/vouchers/revoke', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ voucherId }),
+      });
+      const result = await response.json();
+      if (!result.success) {
+        setError(result.error || 'Failed to revoke voucher');
+        return;
+      }
+      setSuccess('Voucher revoked successfully');
+      setVouchersData((prev) =>
+        prev.map((v) => (v.id === voucherId ? { ...v, status: 'revoked', updatedAt: new Date().toISOString() } : v))
+      );
+    } catch (err: any) {
+      setError(err.message || 'Failed to revoke voucher');
+    } finally {
+      setRevokingVoucherId(null);
+    }
+  }
+
+  async function fetchReportVouchers(reportId: string) {
+    setReportVouchersLoading(true);
+    try {
+      const token = localStorage.getItem('admin_token');
+      const response = await fetch(`/api/admin/vouchers/list?reportId=${reportId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const result = await response.json();
+      if (result.success) {
+        setReportVouchers(result.vouchers);
+      }
+    } catch {
+      // silently fail
+    } finally {
+      setReportVouchersLoading(false);
+    }
+  }
+
+  async function handleIssueVoucherFromReport(report: ReportData) {
+    if (usersData.length === 0) await fetchUsers();
+    const noteText = `Issued for ${report.type} report: "${report.message.slice(0, 80)}${report.message.length > 80 ? '...' : ''}"`;
+    setCreateVoucherForm({
+      userId: report.userId,
+      creditType: 'image',
+      credits: 10,
+      expiresAt: '',
+      note: noteText,
+      reportId: report.id,
+    });
+    setShowCreateVoucher(true);
+  }
+
+  function handleSelectReport(report: ReportData) {
+    setSelectedReport(report);
+    setReportVouchers([]);
+    fetchReportVouchers(report.id);
   }
 
   async function handleUpdateReportStatus(reportId: string, status: string) {
@@ -552,6 +779,13 @@ export default function AdminDashboard() {
     resolved: reportsData.filter((r) => r.status === 'resolved').length,
   };
 
+  const voucherCounts = {
+    total: vouchersData.length,
+    active: vouchersData.filter((v) => v.status === 'active').length,
+    redeemed: vouchersData.filter((v) => v.status === 'redeemed').length,
+    revokedOrExpired: vouchersData.filter((v) => v.status === 'revoked' || v.status === 'expired').length,
+  };
+
   if (loading) {
     return (
       <div className="page loading-page">
@@ -653,6 +887,13 @@ export default function AdminDashboard() {
           >
             <Settings size={18} />
             Settings
+          </button>
+          <button
+            className={`section-btn ${activeSection === 'vouchers' ? 'active' : ''}`}
+            onClick={() => setActiveSection('vouchers')}
+          >
+            <Ticket size={18} />
+            Vouchers
           </button>
         </div>
 
@@ -910,7 +1151,7 @@ export default function AdminDashboard() {
                         const statusColor = getStatusColor(report.status);
                         const typeColor = getTypeColor(report.type);
                         return (
-                          <tr key={report.id} className="report-row" onClick={() => setSelectedReport(report)}>
+                          <tr key={report.id} className="report-row" onClick={() => handleSelectReport(report)}>
                             <td style={{ whiteSpace: 'nowrap' }}>{formatDate(report.createdAt)}</td>
                             <td>
                               <span className="user-cell" title={report.userEmail || report.userId}>
@@ -943,7 +1184,7 @@ export default function AdminDashboard() {
                                 className="edit-btn"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setSelectedReport(report);
+                                  handleSelectReport(report);
                                 }}
                                 title="View report"
                               >
@@ -1133,6 +1374,224 @@ export default function AdminDashboard() {
                   </span>
                 </div>
               </div>
+            </div>
+
+            <div className="plans-card" style={{ marginTop: '24px' }}>
+              <div className="plans-header">
+                <h3>Credit Pricing</h3>
+              </div>
+
+              <div style={{ maxWidth: '480px' }}>
+                <p style={{ fontSize: '14px', color: '#64748b', marginBottom: '20px', lineHeight: 1.6 }}>
+                  Set the per-unit price for image credits and video seconds. These prices are used on the Buy Credits page and for order calculations.
+                </p>
+
+                <div className="form-group" style={{ marginBottom: '16px' }}>
+                  <label>Price per image credit (₹)</label>
+                  <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                    <input
+                      type="number"
+                      min={1}
+                      step={1}
+                      value={creditPricing.imageCreditPriceInr}
+                      onChange={(e) =>
+                        setCreditPricing((prev) => ({
+                          ...prev,
+                          imageCreditPriceInr: parseFloat(e.target.value) || 0,
+                        }))
+                      }
+                      style={{ width: '120px' }}
+                    />
+                  </div>
+                </div>
+
+                <div className="form-group" style={{ marginBottom: '16px' }}>
+                  <label>Price per video second (₹)</label>
+                  <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                    <input
+                      type="number"
+                      min={1}
+                      step={1}
+                      value={creditPricing.videoSecondPriceInr}
+                      onChange={(e) =>
+                        setCreditPricing((prev) => ({
+                          ...prev,
+                          videoSecondPriceInr: parseFloat(e.target.value) || 0,
+                        }))
+                      }
+                      style={{ width: '120px' }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                  <button
+                    className="save-btn"
+                    onClick={handleSaveCreditPricing}
+                    disabled={savingCreditPricing}
+                  >
+                    {savingCreditPricing ? (
+                      <>
+                        <RefreshCw size={16} className="spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Save size={16} />
+                        Save
+                      </>
+                    )}
+                  </button>
+                </div>
+                <span className="help-text">
+                  Default: ₹10 per image credit, ₹26 per video second.
+                </span>
+              </div>
+            </div>
+          </>
+        )}
+
+        {activeSection === 'vouchers' && (
+          <>
+            {/* Voucher Statistics */}
+            <div className="stats-grid">
+              <div className="stat-card">
+                <div className="stat-icon total">
+                  <Ticket size={24} />
+                </div>
+                <div className="stat-content">
+                  <div className="stat-value">{voucherCounts.total}</div>
+                  <div className="stat-label">Total Vouchers</div>
+                </div>
+              </div>
+
+              <div className="stat-card">
+                <div className="stat-icon active">
+                  <CheckCircle size={24} />
+                </div>
+                <div className="stat-content">
+                  <div className="stat-value">{voucherCounts.active}</div>
+                  <div className="stat-label">Active</div>
+                </div>
+              </div>
+
+              <div className="stat-card">
+                <div className="stat-icon mode">
+                  <CreditCard size={24} />
+                </div>
+                <div className="stat-content">
+                  <div className="stat-value">{voucherCounts.redeemed}</div>
+                  <div className="stat-label">Redeemed</div>
+                </div>
+              </div>
+
+              <div className="stat-card">
+                <div className="stat-icon inactive">
+                  <XCircle size={24} />
+                </div>
+                <div className="stat-content">
+                  <div className="stat-value">{voucherCounts.revokedOrExpired}</div>
+                  <div className="stat-label">Revoked / Expired</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Vouchers Table */}
+            <div className="plans-card">
+              <div className="plans-header">
+                <h3>All Vouchers</h3>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button className="refresh-btn" onClick={fetchVouchers} disabled={vouchersLoading}>
+                    <RefreshCw size={16} className={vouchersLoading ? 'spin' : ''} />
+                    {vouchersLoading ? 'Loading...' : 'Refresh'}
+                  </button>
+                  <button className="save-btn" onClick={() => { if (usersData.length === 0) fetchUsers(); setShowCreateVoucher(true); }}>
+                    <Ticket size={16} />
+                    Create Voucher
+                  </button>
+                </div>
+              </div>
+
+              {vouchersLoading && vouchersData.length === 0 ? (
+                <div className="empty-state">
+                  <RefreshCw size={24} className="spin" />
+                  <p>Loading vouchers...</p>
+                </div>
+              ) : vouchersData.length > 0 ? (
+                <div className="table-wrapper">
+                  <table className="plans-table">
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th>User</th>
+                        <th>Type</th>
+                        <th>Credits</th>
+                        <th>Status</th>
+                        <th>Expires</th>
+                        <th>Issued By</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {vouchersData.map((voucher) => {
+                        const vStatusColor = voucher.status === 'active' ? { bg: '#d1fae5', color: '#065f46' }
+                          : voucher.status === 'redeemed' ? { bg: '#dbeafe', color: '#1e40af' }
+                          : voucher.status === 'revoked' ? { bg: '#fef2f2', color: '#dc2626' }
+                          : { bg: '#fef3c7', color: '#92400e' };
+                        return (
+                          <tr key={voucher.id}>
+                            <td style={{ whiteSpace: 'nowrap' }}>{formatDate(voucher.createdAt)}</td>
+                            <td>
+                              <span className="user-cell" title={voucher.userEmail || voucher.userId}>
+                                {voucher.userFullName || voucher.userEmail || voucher.userId.slice(0, 8) + '...'}
+                              </span>
+                            </td>
+                            <td>
+                              <span className="billing-badge">{voucher.creditType}</span>
+                            </td>
+                            <td className="plan-name">
+                              {voucher.credits}{voucher.creditType === 'video' ? 's' : ''}
+                            </td>
+                            <td>
+                              <span
+                                className="report-status-badge"
+                                style={{ background: vStatusColor.bg, color: vStatusColor.color }}
+                              >
+                                {voucher.status}
+                              </span>
+                            </td>
+                            <td style={{ whiteSpace: 'nowrap' }}>
+                              {voucher.expiresAt ? formatDate(voucher.expiresAt) : '—'}
+                            </td>
+                            <td>{voucher.issuedBy}</td>
+                            <td>
+                              {voucher.status === 'active' && (
+                                <button
+                                  className="edit-btn"
+                                  onClick={() => handleRevokeVoucher(voucher.id)}
+                                  disabled={revokingVoucherId === voucher.id}
+                                  title="Revoke voucher"
+                                  style={{ color: '#dc2626', borderColor: '#fecaca' }}
+                                >
+                                  {revokingVoucherId === voucher.id ? (
+                                    <RefreshCw size={14} className="spin" />
+                                  ) : (
+                                    <XCircle size={16} />
+                                  )}
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="empty-state">
+                  <p>No vouchers found</p>
+                </div>
+              )}
             </div>
           </>
         )}
@@ -1329,11 +1788,60 @@ export default function AdminDashboard() {
                   </div>
                 </div>
               )}
+
+              {/* Vouchers issued for this report */}
+              <div className="report-detail-item full-width" style={{ marginTop: '20px' }}>
+                <label>Vouchers Issued</label>
+                {reportVouchersLoading ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 0', color: '#64748b', fontSize: '14px' }}>
+                    <RefreshCw size={14} className="spin" />
+                    Loading...
+                  </div>
+                ) : reportVouchers.length > 0 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '4px' }}>
+                    {reportVouchers.map((v) => {
+                      const vColor = v.status === 'active' ? { bg: '#d1fae5', color: '#065f46' }
+                        : v.status === 'redeemed' ? { bg: '#dbeafe', color: '#1e40af' }
+                        : { bg: '#fef2f2', color: '#dc2626' };
+                      return (
+                        <div key={v.id} style={{
+                          display: 'flex', alignItems: 'center', gap: '10px',
+                          padding: '10px 14px', borderRadius: '8px', background: '#f8fafc',
+                          border: '1px solid #e2e8f0', fontSize: '14px',
+                        }}>
+                          <Ticket size={16} color="#64748b" />
+                          <span style={{ fontWeight: 600 }}>
+                            {v.credits}{v.creditType === 'video' ? 's' : ''} {v.creditType} credits
+                          </span>
+                          <span
+                            className="report-status-badge"
+                            style={{ background: vColor.bg, color: vColor.color }}
+                          >
+                            {v.status}
+                          </span>
+                          <span style={{ marginLeft: 'auto', fontSize: '12px', color: '#94a3b8' }}>
+                            {formatDate(v.createdAt)}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p style={{ fontSize: '14px', color: '#94a3b8', margin: '4px 0 0' }}>No vouchers issued for this report</p>
+                )}
+              </div>
             </div>
 
             <div className="modal-footer">
               <button className="cancel-btn" onClick={() => setSelectedReport(null)}>
                 Close
+              </button>
+              <button
+                className="save-btn"
+                onClick={() => handleIssueVoucherFromReport(selectedReport)}
+              >
+                <Ticket size={16} />
+                Issue Voucher
               </button>
             </div>
           </div>
@@ -1466,6 +1974,115 @@ export default function AdminDashboard() {
             <div className="modal-footer">
               <button className="cancel-btn" onClick={() => { setSelectedUser(null); setUserPayments([]); }}>
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create Voucher Modal */}
+      {showCreateVoucher && (
+        <div className="modal-overlay" onClick={() => setShowCreateVoucher(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Create Voucher</h3>
+              <button className="close-btn" onClick={() => setShowCreateVoucher(false)}>
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="modal-body">
+              <div className="form-grid">
+                <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                  <label>User</label>
+                  <select
+                    value={createVoucherForm.userId}
+                    onChange={(e) => setCreateVoucherForm({ ...createVoucherForm, userId: e.target.value })}
+                    style={{ padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '15px', color: '#0f172a', backgroundColor: 'white' }}
+                  >
+                    <option value="">Select a user...</option>
+                    {usersData.map((user) => (
+                      <option key={user.id} value={user.id}>
+                        {user.fullName || user.email || user.id.slice(0, 8)} — {user.email || 'no email'}{user.businessName ? ` — ${user.businessName}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  {createVoucherForm.userId && (() => {
+                    const selectedUser = usersData.find((u) => u.id === createVoucherForm.userId);
+                    return selectedUser ? (
+                      <div style={{ marginTop: '8px', padding: '10px 12px', background: '#f1f5f9', borderRadius: '8px', fontSize: '13px', color: '#334155', lineHeight: 1.6 }}>
+                        <strong>{selectedUser.fullName || '—'}</strong>
+                        {selectedUser.email && <span> · {selectedUser.email}</span>}
+                        {selectedUser.businessName && <span> · {selectedUser.businessName}</span>}
+                      </div>
+                    ) : null;
+                  })()}
+                </div>
+
+                <div className="form-group">
+                  <label>Credit Type</label>
+                  <select
+                    value={createVoucherForm.creditType}
+                    onChange={(e) => setCreateVoucherForm({ ...createVoucherForm, creditType: e.target.value as 'image' | 'video' })}
+                    style={{ padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '15px', color: '#0f172a', backgroundColor: 'white' }}
+                  >
+                    <option value="image">Image</option>
+                    <option value="video">Video</option>
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label>Credits {createVoucherForm.creditType === 'video' ? '(seconds)' : ''}</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={createVoucherForm.credits}
+                    onChange={(e) => setCreateVoucherForm({ ...createVoucherForm, credits: parseInt(e.target.value) || 0 })}
+                  />
+                </div>
+
+                <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                  <label>Expiry Date (optional)</label>
+                  <input
+                    type="datetime-local"
+                    value={createVoucherForm.expiresAt}
+                    onChange={(e) => setCreateVoucherForm({ ...createVoucherForm, expiresAt: e.target.value })}
+                  />
+                  <span className="help-text">Leave empty for no expiry</span>
+                </div>
+
+                <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                  <label>Note (optional)</label>
+                  <textarea
+                    value={createVoucherForm.note}
+                    onChange={(e) => setCreateVoucherForm({ ...createVoucherForm, note: e.target.value })}
+                    rows={2}
+                    placeholder="Reason for issuing this voucher..."
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="modal-footer">
+              <button className="cancel-btn" onClick={() => setShowCreateVoucher(false)} disabled={creatingVoucher}>
+                Cancel
+              </button>
+              <button
+                className="save-btn"
+                onClick={handleCreateVoucher}
+                disabled={creatingVoucher || !createVoucherForm.userId || createVoucherForm.credits <= 0}
+              >
+                {creatingVoucher ? (
+                  <>
+                    <RefreshCw size={16} className="spin" />
+                    Creating...
+                  </>
+                ) : (
+                  <>
+                    <Ticket size={16} />
+                    Create Voucher
+                  </>
+                )}
               </button>
             </div>
           </div>
@@ -1923,6 +2540,8 @@ export default function AdminDashboard() {
           font-weight: 600;
           cursor: pointer;
           width: fit-content;
+          color: #0f172a;
+          background: white;
         }
         .status-select:focus {
           outline: none;
@@ -2042,6 +2661,7 @@ export default function AdminDashboard() {
           max-width: 600px;
           max-height: 90vh;
           overflow-y: auto;
+          color: #0f172a;
         }
         .modal-header {
           display: flex;
@@ -2096,6 +2716,8 @@ export default function AdminDashboard() {
           border: 1px solid #e2e8f0;
           border-radius: 8px;
           font-size: 15px;
+          color: #0f172a;
+          background: white;
           transition: all 200ms;
         }
         .form-group input:focus,

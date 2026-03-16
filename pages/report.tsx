@@ -15,7 +15,7 @@ import { Label } from "../app/web/src/components/ui/label";
 import { Textarea } from "../app/web/src/components/ui/textarea";
 import { toast } from "../app/web/src/hooks/use-toast";
 import { authFetch } from "@/lib/utils";
-import { Flag, AlertCircle, MessageSquare, Upload, X, CheckCircle, Loader2, Clock, Eye, CheckCircle2 } from "lucide-react";
+import { Flag, AlertCircle, MessageSquare, Upload, X, CheckCircle, Loader2, Clock, Eye, CheckCircle2, Ticket } from "lucide-react";
 import colors from "@/lib/ui/colors";
 
 const MAX_IMAGES = 3;
@@ -32,6 +32,14 @@ interface UserReport {
   status: string;
   createdAt: string | null;
   updatedAt: string | null;
+  vouchers?: {
+    id: string;
+    creditType: string;
+    credits: number;
+    status: string;
+    expiresAt: string | null;
+    createdAt: string | null;
+  }[];
 }
 
 function fileToDataUrl(file: File): Promise<string> {
@@ -500,6 +508,38 @@ export default function ReportPage() {
                       <p className="mt-1 truncate text-xs" style={{ color: colors.mutedForeground }}>
                         {report.pageUrl}
                       </p>
+                    )}
+                    {report.vouchers && report.vouchers.length > 0 && (
+                      <div className="mt-3 space-y-2">
+                        {report.vouchers.map((v) => {
+                          const isActive = v.status === 'active';
+                          const isRedeemed = v.status === 'redeemed';
+                          return (
+                            <div
+                              key={v.id}
+                              className="flex items-center gap-2 rounded-lg border px-3 py-2"
+                              style={{
+                                backgroundColor: isActive ? 'rgba(34, 197, 94, 0.08)' : isRedeemed ? 'rgba(59, 130, 246, 0.08)' : 'rgba(100,100,100,0.06)',
+                                borderColor: isActive ? 'rgba(34, 197, 94, 0.25)' : isRedeemed ? 'rgba(59, 130, 246, 0.25)' : 'rgba(100,100,100,0.15)',
+                              }}
+                            >
+                              <Ticket size={14} style={{ color: isActive ? 'rgb(34, 197, 94)' : colors.mutedForeground, flexShrink: 0 }} />
+                              <span className="text-xs font-medium" style={{ color: isActive ? 'rgb(34, 197, 94)' : colors.cardForeground }}>
+                                Voucher: +{v.credits}{v.creditType === 'video' ? 's' : ''} {v.creditType} credits
+                              </span>
+                              <span
+                                className="ml-auto inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold"
+                                style={{
+                                  backgroundColor: isActive ? 'rgba(34, 197, 94, 0.15)' : isRedeemed ? 'rgba(59, 130, 246, 0.15)' : 'rgba(100,100,100,0.12)',
+                                  color: isActive ? 'rgb(74, 222, 128)' : isRedeemed ? 'rgb(96, 165, 250)' : colors.mutedForeground,
+                                }}
+                              >
+                                {v.status}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
                     )}
                   </div>
                 ))}

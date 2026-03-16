@@ -14,6 +14,7 @@ import {
   creativeIntelligenceMetaAds,
   creativeIntelligenceFacebookPages,
   creativeIntelligenceGoogleRanks,
+  creativeIntelligenceCreatives,
 } from "@/database/schema";
 import { eq, and, asc } from "drizzle-orm";
 
@@ -105,6 +106,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       // Table may not exist if migration not run yet
     }
 
+    let creatives: any[] = [];
+    try {
+      creatives = await db
+        .select()
+        .from(creativeIntelligenceCreatives)
+        .where(eq(creativeIntelligenceCreatives.runId, id));
+    } catch {
+      // Table may not exist if migration not run yet
+    }
+
     return res.status(200).json({
       ok: true,
       run: {
@@ -115,6 +126,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         targetAudience: run.targetAudience,
         campaignGoal: run.campaignGoal,
         createdAt: run.createdAt,
+        comparisonInsights: run.comparisonInsights || null,
+        competitorRunIds: run.competitorRunIds || null,
       },
       brand: brand || null,
       competitors,
@@ -124,6 +137,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       metaAds,
       facebookPages,
       googleRanks,
+      creatives,
     });
   } catch (err: any) {
     console.error("Run fetch error:", err);

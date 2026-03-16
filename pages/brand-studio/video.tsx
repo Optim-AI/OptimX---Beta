@@ -24,6 +24,7 @@ import {
   VIDEO_DURATIONS,
   mapFullAnalyzeToBrandSnapshot,
 } from '@/app/web/src/components/creative-studio';
+import { authFetch, safeResponseJson } from '@/lib/utils';
 
 /** Build full voiceover script from scene-by-scene storyboard (source of truth for voiceover) */
 function getVoiceoverFromStoryboard(storyboard: Array<{ voiceover_line?: string; voiceover_script?: string }> | null | undefined): string {
@@ -55,7 +56,6 @@ const AD_STYLE_DESCRIPTIONS: Record<string, string> = {
   'Motion Graphics': 'Design-forward animated composition. Typography-free visual transitions, graphic elements, and smooth animated visual flow.',
   'Retro': 'Vintage-inspired aesthetic. Film grain, nostalgic color tones, old-school styling with classic visual energy.',
 };
-import { authFetch } from '@/lib/utils';
 import { supabase } from '@/auth/supabase/client';
 import { Check, ChevronLeft, ChevronRight } from 'lucide-react';
 
@@ -484,7 +484,7 @@ export default function VideoSessionPage() {
         body: JSON.stringify({ url: website }),
       });
 
-      const data = await response.json();
+      const data = await safeResponseJson<{ result?: unknown; error?: string }>(response);
 
       // API returns { result: {...} } on success, { error: string } on failure
       if (data.result) {
@@ -547,6 +547,57 @@ export default function VideoSessionPage() {
     setBrand(updated);
     saveBrandSnapshot(updated);
     setShowBrandGuidelineModal(false);
+  }
+
+  async function handleWebsiteReanalyze(website: string): Promise<BrandSnapshot | null> {
+    setIsAnalyzingBrand(true);
+    try {
+      const response = await authFetch('/api/brand/fullAnalyze', {
+        method: 'POST',
+        body: JSON.stringify({ url: website }),
+      });
+      const data = await safeResponseJson<{ result?: unknown; error?: string }>(response);
+      if (data.result) {
+        const result = data.result as Record<string, any>;
+        const brandSnapshot: BrandSnapshot = {
+          name: result.facts?.company_name || 'Unknown Brand',
+          description: result.positioning?.primary_value_proposition || '',
+          audience: result.facts?.who_it_is_for?.join(', ') || '',
+          offering: result.facts?.what_they_sell?.join(', ') || '',
+          tone: result.brandVoice || result.personality || 'professional',
+          logo: result.logo,
+          logoUrl: result.logoUrl,
+          primaryColors: result.primaryColors,
+          fontStyles: result.fontStyles,
+          brandVoice: result.brandVoice,
+          coreValueProp: result.coreValueProp,
+          ctaPatterns: result.ctaPatterns,
+          productCategory: result.productCategory,
+          pricePositioning: result.pricePositioning,
+          personality: result.personality,
+          colors: result.colors
+            ? {
+                primary: result.colors.primary ?? undefined,
+                secondary: result.colors.secondary ?? undefined,
+                accent: result.colors.accent ?? undefined,
+              }
+            : undefined,
+        };
+        setBrand(brandSnapshot);
+        saveBrandSnapshot(brandSnapshot);
+        setShowBrandGuidelineModal(false);
+        return brandSnapshot;
+      } else {
+        showError(data.error || 'Could not analyze website. Please try again.');
+        return null;
+      }
+    } catch (err: any) {
+      console.error('Brand re-analyze error:', err);
+      showError(`Error analyzing website: ${err?.message || 'Unknown error'}. Please try again.`);
+      return null;
+    } finally {
+      setIsAnalyzingBrand(false);
+    }
   }
 
   // ============== Product Handlers ==============
@@ -662,10 +713,10 @@ export default function VideoSessionPage() {
         }),
       });
 
-      const result = await response.json();
+      const result = await safeResponseJson<{ ok: boolean; error?: string; script?: unknown }>(response);
       if (!result.ok) throw new Error(result.error);
 
-      const scriptData = result.script;
+      const scriptData = result.script as Record<string, any>;
 
       setAdBuilderData({
         ...adBuilderData,
@@ -734,13 +785,13 @@ export default function VideoSessionPage() {
         }),
       });
 
-      const result = await response.json();
+      const result = await safeResponseJson<{ ok: boolean; error?: string; videoUrl?: string }>(response);
       if (!result.ok) throw new Error(result.error);
 
       const videoId = `video_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       const newVideo = {
         id: videoId,
-        url: result.videoUrl,
+        url: result.videoUrl || '',
         prompt: finalPrompt,
         timestamp: Date.now(),
       };
@@ -2103,7 +2154,7 @@ export default function VideoSessionPage() {
             brand={brand}
             onUpdate={updateBrandGuideline}
             onClose={() => setShowBrandGuidelineModal(false)}
-            onWebsiteAnalyze={handleWebsiteAnalyzeForEdit}
+            onWebsiteAnalyze={handleWebsiteReanalyze}
           />
         )}
 

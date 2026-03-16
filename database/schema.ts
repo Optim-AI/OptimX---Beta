@@ -125,6 +125,8 @@ export const profiles = pgTable("profiles", {
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 	tagline: text(),
 	organisationName: text("organisation_name"),
+	brandSnapshot: jsonb("brand_snapshot"),
+	uiPreferences: jsonb("ui_preferences").default('{}'),
 }, (table) => [
 	index("profiles_business_mobile_idx").using("btree", table.businessMobile.asc().nullsLast()).where(sql`${table.businessMobile} IS NOT NULL`),
 	uniqueIndex("profiles_email_idx").using("btree", table.email.asc().nullsLast()).where(sql`${table.email} IS NOT NULL`),
@@ -298,6 +300,26 @@ export const creditHistory = pgTable("credit_history", {
 	index("idx_credit_history_created").using("btree", table.createdAt.asc().nullsLast()),
 ]);
 
+// vouchers table
+export const vouchers = pgTable("vouchers", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	userId: uuid("user_id").notNull(),
+	creditType: text("credit_type").notNull(), // 'image' | 'video'
+	credits: integer().notNull(),
+	status: text().notNull().default('active'), // 'active' | 'redeemed' | 'expired' | 'revoked'
+	expiresAt: timestamp("expires_at", { withTimezone: true, mode: 'string' }),
+	redeemedAt: timestamp("redeemed_at", { withTimezone: true, mode: 'string' }),
+	redeemedPaymentId: uuid("redeemed_payment_id"),
+	issuedBy: text("issued_by").notNull(),
+	reportId: uuid("report_id"),
+	note: text(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (table) => [
+	index("idx_vouchers_user_id").using("btree", table.userId.asc().nullsLast()),
+	index("idx_vouchers_status").using("btree", table.status.asc().nullsLast()),
+]);
+
 // user_generated_image table
 export const userGeneratedImage = pgTable("user_generated_image", {
 	id: uuid().primaryKey().notNull().defaultRandom(),
@@ -419,6 +441,8 @@ export const creativeIntelligenceRuns = pgTable("creative_intelligence_runs", {
 	errorMessage: text("error_message"),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+	comparisonInsights: jsonb("comparison_insights"),
+	competitorRunIds: text("competitor_run_ids").array(),
 }, (table) => [
 	index("idx_creative_intelligence_runs_user_id").using("btree", table.userId.asc().nullsLast()),
 	index("idx_creative_intelligence_runs_created_at").using("btree", table.createdAt.desc().nullsLast()),
@@ -433,6 +457,7 @@ export const creativeIntelligenceBrands = pgTable("creative_intelligence_brands"
 	emotionalTone: text("emotional_tone"),
 	targetPersonaGuess: text("target_persona_guess"),
 	rawAnalysis: jsonb("raw_analysis"),
+	products: jsonb(),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 }, (table) => [
 	index("idx_creative_intelligence_brands_run_id").using("btree", table.runId.asc().nullsLast()),
@@ -548,6 +573,47 @@ export const creativeIntelligenceFacebookPages = pgTable("creative_intelligence_
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 }, (table) => [
 	index("idx_creative_intelligence_facebook_pages_run_id").using("btree", table.runId.asc().nullsLast()),
+]);
+
+// ============================================================
+// CONTENT STUDIO TABLES
+// ============================================================
+
+export const contentStudioScans = pgTable("content_studio_scans", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	userId: uuid("user_id").notNull(),
+	url: text().notNull(),
+	brandSummary: jsonb("brand_summary"),
+	products: jsonb(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (table) => [
+	index("idx_content_studio_scans_user_id").using("btree", table.userId.asc().nullsLast()),
+	index("idx_content_studio_scans_created_at").using("btree", table.createdAt.desc().nullsLast()),
+]);
+
+export const contentStudioCampaigns = pgTable("content_studio_campaigns", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	userId: uuid("user_id").notNull(),
+	scanId: uuid("scan_id").notNull().references(() => contentStudioScans.id, { onDelete: 'cascade' }),
+	productName: text("product_name").notNull(),
+	campaignName: text("campaign_name"),
+	ads: jsonb(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (table) => [
+	index("idx_content_studio_campaigns_scan_id").using("btree", table.scanId.asc().nullsLast()),
+]);
+
+export const contentStudioPosters = pgTable("content_studio_posters", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	userId: uuid("user_id").notNull(),
+	scanId: uuid("scan_id").notNull().references(() => contentStudioScans.id, { onDelete: 'cascade' }),
+	productName: text("product_name").notNull(),
+	angle: jsonb(),
+	imageUrls: jsonb("image_urls").notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (table) => [
+	index("idx_content_studio_posters_scan_id").using("btree", table.scanId.asc().nullsLast()),
 ]);
 
 export const creativeIntelligenceGoogleRanks = pgTable("creative_intelligence_google_ranks", {

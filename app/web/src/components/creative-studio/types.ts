@@ -51,6 +51,20 @@ export type StudioMode = "select" | "poster" | "video";
 
 export type SessionType = "poster" | "video";
 
+// Product type shared across content-studio, creative-intelligence, and brand-studio
+export type Product = {
+  product_name: string;
+  price: string | null;
+  description: string;
+  key_benefits: string[];
+  product_images: string[];
+  target_audience: string;
+  emotional_angles: string[];
+  use_cases: string[];
+  short_benefit: string;
+  category?: string;
+};
+
 // Ad Builder Wizard Types
 export type AdBuilderStep = 1 | 2 | 3 | 4;
 

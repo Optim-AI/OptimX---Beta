@@ -14,7 +14,8 @@ import {
   BrandOnboarding,
   mapFullAnalyzeToBrandSnapshot,
 } from "@/app/web/src/components/creative-studio";
-import { DEFAULT_AD_BUILDER_DATA } from "@/app/web/src/components/creative-studio/utils";
+import { DEFAULT_AD_BUILDER_DATA, saveBrandSnapshot } from "@/app/web/src/components/creative-studio/utils";
+import type { Product } from "@/app/web/src/components/creative-studio/types";
 import {
   Loader2,
   Search,
@@ -41,6 +42,9 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/app/web/src/components/ui/collapsible";
+import { CreditDisplay } from "@/app/web/src/components/billing/CreditDisplay";
+import { InsufficientCreditsAlert } from "@/app/web/src/components/billing/InsufficientCreditsAlert";
+import { useSubscription } from "@/app/web/src/hooks/use-subscription";
 
 type BrandSummary = {
   name: string;
@@ -48,18 +52,6 @@ type BrandSummary = {
   industry: string;
   targetAudience: string;
   primaryValueProposition: string;
-};
-
-type Product = {
-  product_name: string;
-  price: string | null;
-  description: string;
-  key_benefits: string[];
-  product_images: string[];
-  target_audience: string;
-  emotional_angles: string[];
-  use_cases: string[];
-  short_benefit: string;
 };
 
 type AdAngle = {
@@ -169,16 +161,18 @@ export default function ContentStudioPage() {
   const [brand, setBrand] = useState<BrandSummary | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [expandedProductIndex, setExpandedProductIndex] = useState<number | null>(null);
   const [adAngles, setAdAngles] = useState<AdAngle[]>([]);
   const [loadingAngles, setLoadingAngles] = useState(false);
   const [generatedPosters, setGeneratedPosters] = useState<string[]>([]);
-  const [generatingPosters, setGeneratingPosters] = useState(false);
+  const [generatingAngleId, setGeneratingAngleId] = useState<string | null>(null);
   const [campaign, setCampaign] = useState<{ name: string; ads: CampaignAd[] } | null>(null);
   const [loadingCampaign, setLoadingCampaign] = useState(false);
   const [campaignPlan, setCampaignPlan] = useState<CampaignPlanItem[]>([]);
   const [campaignStrategy, setCampaignStrategy] = useState<CampaignStrategy | null>(null);
   const [generatingCampaignItem, setGeneratingCampaignItem] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [scanId, setScanId] = useState<string | null>(null);
 
   const [brandGuideline, setBrandGuideline] = useState<BrandSnapshot | null>(null);
   const [showBrandGuidelineModal, setShowBrandGuidelineModal] = useState(false);
@@ -186,9 +180,15 @@ export default function ContentStudioPage() {
   const [isAnalyzingBrand, setIsAnalyzingBrand] = useState(false);
   const [onboardingMode, setOnboardingMode] = useState<"website" | "manual">("website");
   const [editingPosterIndex, setEditingPosterIndex] = useState<number | null>(null);
-  const [creatingVideoSession, setCreatingVideoSession] = useState(false);
+  const [creatingVideoAngleId, setCreatingVideoAngleId] = useState<string | null>(null);
   const [editingPosterUrl, setEditingPosterUrl] = useState<string | null>(null);
   const [productsCollapsed, setProductsCollapsed] = useState(false);
+  const [insufficientCreditsType, setInsufficientCreditsType] = useState<"image" | "video" | null>(null);
+
+  const { credits, fetchSubscription } = useSubscription();
+
+  const [imageCredits, setImageCredits] = useState<number | null>(null);
+  const [videoCredits, setVideoCredits] = useState<number | null>(null);
 
   const [imageCredits, setImageCredits] = useState<number | null>(null);
   const [videoCredits, setVideoCredits] = useState<number | null>(null);
@@ -210,39 +210,84 @@ export default function ContentStudioPage() {
   }, []);
 
   useEffect(() => {
-    const stored = localStorage.getItem("brand:snapshot");
-    if (stored) {
+    async function loadCredits() {
       try {
-        const parsed = JSON.parse(stored) as BrandSnapshot;
-        setBrandGuideline(parsed);
-      } catch {
-        setShowBrandOnboarding(true);
+        const response = await authFetch('/api/credits/balance');
+        const data = await response.json();
+        if (data.success) {
+          setImageCredits(data.imageCredits?.total ?? 0);
+          setVideoCredits(data.videoCredits?.total ?? 0);
+        }
+      } catch (err) {
+        console.error('Error loading credits:', err);
       }
-    } else {
-      setShowBrandOnboarding(true);
     }
+    loadCredits();
   }, []);
 
-  // Restore fetched products when user returns to the page
   useEffect(() => {
-    const stored = localStorage.getItem(CONTENT_STUDIO_STORAGE_KEY);
-    if (stored) {
+    let cancelled = false;
+    (async () => {
+      // Try loading from DB first
       try {
-        const data = JSON.parse(stored) as {
-          url: string;
-          brand: BrandSummary | null;
-          products: Product[];
-        };
-        if (data.products?.length > 0 || data.brand) {
-          setUrl(data.url || "");
-          setBrand(data.brand || null);
-          setProducts(data.products || []);
-          setStep("results");
+        const res = await authFetch("/api/brand/snapshot");
+        const data = await res.json();
+        if (!cancelled && data.brandSnapshot) {
+          setBrandGuideline(data.brandSnapshot);
+          return;
         }
       } catch {
-        /* ignore invalid stored data */
+        // no snapshot available
       }
-    }
+      if (cancelled) return;
+      setShowBrandOnboarding(true);
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Restore last scan from DB when user returns to the page
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await authFetch("/api/content-studio/scans");
+        const data = await res.json();
+        if (cancelled) return;
+        if (data.ok && data.scans?.length > 0) {
+          const latest = data.scans[0];
+          const brand = latest.brandSummary as BrandSummary | null;
+          const products = (latest.products || []) as Product[];
+          if (products.length > 0 || brand) {
+            setUrl(latest.url || "");
+            setBrand(brand);
+            setProducts(products);
+            setScanId(latest.id);
+            setStep("results");
+
+            // Also load campaigns and posters for this scan
+            try {
+              const detailRes = await authFetch(`/api/content-studio/scans?id=${latest.id}`);
+              const detailData = await detailRes.json();
+              if (!cancelled && detailData.ok) {
+                if (detailData.campaigns?.length > 0) {
+                  const c = detailData.campaigns[0];
+                  setCampaign({ name: c.campaignName || "Campaign", ads: c.ads || [] });
+                }
+                if (detailData.posters?.length > 0) {
+                  const allUrls = detailData.posters.flatMap((p: any) => p.imageUrls || []);
+                  if (allUrls.length > 0) setGeneratedPosters(allUrls);
+                }
+              }
+            } catch {
+              /* non-critical */
+            }
+          }
+        }
+      } catch {
+        /* ignore - user may not have any scans yet */
+      }
+    })();
+    return () => { cancelled = true; };
   }, []);
 
   const normalizeUrl = (input: string) => {
@@ -290,18 +335,13 @@ export default function ContentStudioPage() {
       setProducts(data.products || []);
       setStep("results");
       setSelectedProduct(null);
+      setExpandedProductIndex(null);
       setAdAngles([]);
       setCampaign(null);
-
-      // Persist for when user navigates away and returns
-      localStorage.setItem(
-        CONTENT_STUDIO_STORAGE_KEY,
-        JSON.stringify({
-          url: normalized,
-          brand: data.brand,
-          products: data.products || [],
-        })
-      );
+      setGeneratedPosters([]);
+      if (data.scanId) {
+        setScanId(data.scanId);
+      }
 
       const scanBrand = data.brand;
       if (scanBrand) {
@@ -324,7 +364,7 @@ export default function ContentStudioPage() {
               coreValueProp: scanBrand.primaryValueProposition,
             };
         setBrandGuideline(merged);
-        localStorage.setItem("brand:snapshot", JSON.stringify(merged));
+        saveBrandSnapshot(merged);
       }
     } catch (err: any) {
       clearInterval(msgInterval);
@@ -335,9 +375,22 @@ export default function ContentStudioPage() {
     }
   };
 
-  const handleProductClick = async (product: Product) => {
+  const handleProductClick = async (product: Product, index: number) => {
+    if (expandedProductIndex === index) {
+      // Collapse if clicking the same product
+      setExpandedProductIndex(null);
+      setSelectedProduct(null);
+      setAdAngles([]);
+      return;
+    }
+    setExpandedProductIndex(index);
     setSelectedProduct(product);
     setAdAngles([]);
+<<<<<<< HEAD
+=======
+    setGeneratedPosters([]);
+    setCampaign(null);
+>>>>>>> ee790c4d4c98a60d7dd666a2935c678ea244a03f
     setCampaignPlan([]);
     setCampaignStrategy(null);
     setLoadingAngles(true);
@@ -367,7 +420,12 @@ export default function ContentStudioPage() {
 
   const handleGeneratePoster = async (angle?: AdAngle) => {
     if (!selectedProduct) return;
-    setGeneratingPosters(true);
+    if (!credits || credits.imageCredits.total < 3) {
+      setInsufficientCreditsType("image");
+      return;
+    }
+    const angleId = angle ? angle.title : "__default__";
+    setGeneratingAngleId(angleId);
     try {
       const productImages = selectedProduct.product_images || [];
       const productImage = productImages[0];
@@ -484,13 +542,46 @@ export default function ContentStudioPage() {
 
       if (posters.length > 0) {
         setGeneratedPosters((prev) => [...prev, ...posters]);
+        // Save poster URLs to DB
+        if (scanId && selectedProduct) {
+          authFetch("/api/content-studio/posters", {
+            method: "POST",
+            body: JSON.stringify({
+              scanId,
+              productName: selectedProduct.product_name,
+              angle: angle || null,
+              imageUrls: posters,
+            }),
+          }).catch(() => { /* non-critical */ });
+        }
+        // Refresh credit balance
+        fetchSubscription();
       } else {
         showError(lastError || "Failed to generate posters");
       }
     } catch (err: any) {
       showError(err.message || "Failed to generate poster");
     } finally {
-      setGeneratingPosters(false);
+      setGeneratingAngleId(null);
+    }
+  };
+
+  const handleCampaignItemGenerate = async (item: CampaignPlanItem, index: number) => {
+    if (!selectedProduct) return;
+    setGeneratingCampaignItem(index);
+    try {
+      const isVideo = /video/i.test(item.content_type);
+      const angle: AdAngle = {
+        title: item.hook,
+        explanation: `${item.content_type} for ${item.platform}. Goal: ${item.goal}. ${item.description}`,
+      };
+      if (isVideo) {
+        await handleVideoAdClick(angle);
+      } else {
+        await handleGeneratePoster(angle);
+      }
+    } finally {
+      setGeneratingCampaignItem(null);
     }
   };
 
@@ -520,7 +611,7 @@ export default function ContentStudioPage() {
     try {
       const res = await authFetch("/api/content-studio/generate-campaign", {
         method: "POST",
-        body: JSON.stringify({ product: p, brand }),
+        body: JSON.stringify({ product: p, brand, scanId }),
       });
       const data = await res.json();
       if (data.ok && data.campaign) {
@@ -547,7 +638,11 @@ export default function ContentStudioPage() {
       showError("Please set up brand guidelines first");
       return;
     }
-    setCreatingVideoSession(true);
+    if (!credits || credits.videoCredits.total < 1) {
+      setInsufficientCreditsType("video");
+      return;
+    }
+    setCreatingVideoAngleId(angle.title);
     try {
       const productData = {
         product_name: selectedProduct.product_name,
@@ -587,7 +682,7 @@ export default function ContentStudioPage() {
     } catch (err: any) {
       showError(err.message || "Failed to create video session");
     } finally {
-      setCreatingVideoSession(false);
+      setCreatingVideoAngleId(null);
     }
   };
 
@@ -660,13 +755,14 @@ export default function ContentStudioPage() {
     setBrand(null);
     setProducts([]);
     setSelectedProduct(null);
+    setExpandedProductIndex(null);
     setAdAngles([]);
     setCampaignPlan([]);
     setCampaignStrategy(null);
     setGeneratedPosters([]);
     setCampaign(null);
     setError(null);
-    localStorage.removeItem(CONTENT_STUDIO_STORAGE_KEY);
+    setScanId(null);
   };
 
   async function handleWebsiteAnalyzeForEdit(website: string): Promise<BrandSnapshot | null> {
@@ -698,7 +794,7 @@ export default function ContentStudioPage() {
       if (data.result) {
         const brandSnapshot = mapFullAnalyzeToBrandSnapshot(data.result);
         setBrandGuideline(brandSnapshot);
-        localStorage.setItem("brand:snapshot", JSON.stringify(brandSnapshot));
+        saveBrandSnapshot(brandSnapshot);
         setShowBrandOnboarding(false);
         setShowBrandGuidelineModal(true);
       } else {
@@ -730,7 +826,7 @@ export default function ContentStudioPage() {
       personality: data.personality,
     };
     setBrandGuideline(brandSnapshot);
-    localStorage.setItem("brand:snapshot", JSON.stringify(brandSnapshot));
+    saveBrandSnapshot(brandSnapshot);
     setShowBrandOnboarding(false);
     setShowBrandGuidelineModal(true);
   }
@@ -744,15 +840,15 @@ export default function ContentStudioPage() {
       tone: "professional",
     };
     setBrandGuideline(minimalBrand);
-    localStorage.setItem("brand:snapshot", JSON.stringify(minimalBrand));
+    saveBrandSnapshot(minimalBrand);
     setShowBrandOnboarding(false);
     setShowBrandGuidelineModal(true);
   }
 
   function updateBrandGuideline(updated: BrandSnapshot) {
     setBrandGuideline(updated);
-    localStorage.setItem("brand:snapshot", JSON.stringify(updated));
-    localStorage.setItem("brand:guideline_seen", "true");
+    saveBrandSnapshot(updated);
+    authFetch("/api/user/preferences", { method: "PUT", body: JSON.stringify({ preferences: { guideline_seen: true } }) }).catch(() => {});
     setShowBrandGuidelineModal(false);
   }
 
@@ -851,6 +947,9 @@ export default function ContentStudioPage() {
                 <h1 className="text-4xl md:text-5xl font-bold tracking-tight max-w-6xl mx-auto text-center" style={{ color: colors.foreground }}>
                   Let&apos;s turn your website into high converting ads
                 </h1>
+                <div className="mt-3">
+                  <CreditDisplay variant="compact" showRefresh />
+                </div>
                 <p className="text-lg max-w-2xl mx-auto text-center mt-2" style={{ color: colors.mutedForeground }}>
                   Paste your website URL and we&apos;ll extract products, generate ad creatives, and build campaigns all in one place.
                 </p>
@@ -1152,14 +1251,14 @@ export default function ContentStudioPage() {
                               <Button
                                 size="sm"
                                 onClick={() => handleGeneratePoster(angle)}
-                                disabled={generatingPosters}
+                                disabled={generatingAngleId !== null}
                                 style={{
                                   background: colors.primary,
                                   color: colors.primaryForeground,
                                   fontSize: 11,
                                 }}
                               >
-                                {generatingPosters ? (
+                                {generatingAngleId === angle.id ? (
                                   <Loader2 className="w-3 h-3 animate-spin" />
                                 ) : (
                                   <>
@@ -1172,14 +1271,14 @@ export default function ContentStudioPage() {
                                 size="sm"
                                 variant="outline"
                                 onClick={() => handleVideoAdClick(angle)}
-                                disabled={creatingVideoSession}
+                                disabled={creatingVideoAngleId !== null}
                                 style={{
                                   borderColor: colors.border,
                                   color: colors.foreground,
                                   fontSize: 11,
                                 }}
                               >
-                                {creatingVideoSession ? (
+                                {creatingVideoAngleId === angle.id ? (
                                   <Loader2 className="w-3 h-3 animate-spin" />
                                 ) : (
                                   <>
@@ -1343,7 +1442,11 @@ export default function ContentStudioPage() {
                           <Button
                             size="sm"
                             onClick={() => handleCampaignItemGenerate(item, i)}
+<<<<<<< HEAD
                             disabled={isGenerating || generatingPosters || creatingVideoSession}
+=======
+                            disabled={isGenerating || generatingAngleId !== null || creatingVideoAngleId !== null}
+>>>>>>> ee790c4d4c98a60d7dd666a2935c678ea244a03f
                             className="w-full mt-1"
                             style={{
                               background: isVideo
@@ -1576,7 +1679,7 @@ export default function ContentStudioPage() {
           }
           onUpdate={updateBrandGuideline}
           onClose={() => {
-            localStorage.setItem("brand:guideline_seen", "true");
+            authFetch("/api/user/preferences", { method: "PUT", body: JSON.stringify({ preferences: { guideline_seen: true } }) }).catch(() => {});
             setShowBrandGuidelineModal(false);
           }}
           onWebsiteAnalyze={handleWebsiteAnalyzeForEdit}
@@ -1596,6 +1699,14 @@ export default function ContentStudioPage() {
               editPrompt
             )
           }
+        />
+      )}
+
+      {/* Insufficient Credits Alert */}
+      {insufficientCreditsType && (
+        <InsufficientCreditsAlert
+          type={insufficientCreditsType}
+          onClose={() => setInsufficientCreditsType(null)}
         />
       )}
     </div>

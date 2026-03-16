@@ -1,5 +1,6 @@
 // app/web/src/hooks/use-subscription.ts
 import { create } from 'zustand';
+import { authFetch } from '@/lib/utils';
 import { persist } from 'zustand/middleware';
 
 interface CreditBalance {
@@ -67,7 +68,7 @@ export const useSubscription = create<SubscriptionState>()(
         }
         set({ isLoading: true, error: null });
         try {
-          const response = await fetch('/api/billing/subscriptions/current');
+          const response = await authFetch('/api/billing/subscriptions/current');
           const data = await response.json();
 
           if (data.success) {
@@ -112,9 +113,8 @@ export const useSubscription = create<SubscriptionState>()(
         }
 
         try {
-          const response = await fetch('/api/credits/deduct', {
+          const response = await authFetch('/api/credits/deduct', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ type: 'image', amount }),
           });
           const data = await response.json();
@@ -136,9 +136,8 @@ export const useSubscription = create<SubscriptionState>()(
         }
 
         try {
-          const response = await fetch('/api/credits/deduct', {
+          const response = await authFetch('/api/credits/deduct', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ type: 'video', amount: seconds }),
           });
           const data = await response.json();

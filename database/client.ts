@@ -79,6 +79,7 @@ export function extractDbError(error: any): {
   pgConstraint?: string;
   cause?: string;
   databaseUrl?: string;
+  isAuthError?: boolean;
 } {
   // The original pg error is often in error.cause
   const cause = error?.cause ?? error;

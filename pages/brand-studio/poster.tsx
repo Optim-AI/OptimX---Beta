@@ -33,7 +33,11 @@ import {
   ASPECT_RATIOS,
   mapFullAnalyzeToBrandSnapshot,
 } from '@/app/web/src/components/creative-studio';
+<<<<<<< HEAD
 import { authFetch } from '@/lib/utils';
+=======
+import { authFetch, safeResponseJson } from '@/lib/utils';
+>>>>>>> ee790c4d4c98a60d7dd666a2935c678ea244a03f
 import PosterEditModal from '@/app/web/src/components/content-studio/PosterEditModal';
 
 /** Download image to user's device - works for data URLs and remote URLs (blob-based for reliable download) */
@@ -570,7 +574,7 @@ export default function PosterSessionPage() {
         body: JSON.stringify({ url: website }),
       });
       
-      const data = await response.json();
+      const data = await safeResponseJson<{ result?: unknown; error?: string }>(response);
       
       // API returns { result: {...} } on success, { error: string } on failure
       if (data.result) {
@@ -670,6 +674,59 @@ export default function PosterSessionPage() {
     setBrand(updated);
     saveBrandSnapshot(updated);
     setShowBrandGuidelineModal(false);
+  }
+
+  async function handleWebsiteReanalyze(website: string): Promise<BrandSnapshot | null> {
+    setIsAnalyzingBrand(true);
+    try {
+      const response = await authFetch('/api/brand/fullAnalyze', {
+        method: 'POST',
+        body: JSON.stringify({ url: website }),
+      });
+      const data = await safeResponseJson<{ result?: unknown; error?: string }>(response);
+      if (data.result) {
+        const result = data.result as Record<string, any>;
+        const brandSnapshot: BrandSnapshot = {
+          name: result.facts?.company_name || 'Unknown Brand',
+          description: result.positioning?.primary_value_proposition || '',
+          audience: result.facts?.who_it_is_for?.join(', ') || '',
+          offering: result.facts?.what_they_sell?.join(', ') || '',
+          tone: result.brandVoice || result.personality || 'professional',
+          logo: result.logo,
+          logoUrl: result.logoUrl,
+          primaryColors: result.primaryColors,
+          fontStyles: result.fontStyles,
+          brandVoice: result.brandVoice,
+          coreValueProp: result.coreValueProp,
+          ctaPatterns: result.ctaPatterns,
+          productCategory: result.productCategory,
+          pricePositioning: result.pricePositioning,
+          personality: result.personality,
+          colors: result.colors
+            ? {
+                primary: result.colors.primary ?? undefined,
+                secondary: result.colors.secondary ?? undefined,
+                accent: result.colors.accent ?? undefined,
+              }
+            : undefined,
+        };
+        setBrand(brandSnapshot);
+        saveBrandSnapshot(brandSnapshot);
+        setShowBrandGuidelineModal(false);
+        setPhase('brand-review');
+        addMessage('system', `I've re-analyzed your website and updated your brand information.`);
+        return brandSnapshot;
+      } else {
+        addMessage('system', `I had trouble analyzing that website: ${data.error || 'Unknown error'}. Please try a different URL or edit manually.`);
+        return null;
+      }
+    } catch (err: any) {
+      console.error('Brand re-analyze error:', err);
+      addMessage('system', `There was an error analyzing your website: ${err?.message || 'Unknown error'}. Please try again or edit manually.`);
+      return null;
+    } finally {
+      setIsAnalyzingBrand(false);
+    }
   }
 
   // ============== Product Handlers ==============
@@ -1741,7 +1798,7 @@ export default function PosterSessionPage() {
             brand={brand}
             onUpdate={updateBrandGuideline}
             onClose={() => setShowBrandGuidelineModal(false)}
-            onWebsiteAnalyze={handleWebsiteAnalyzeForEdit}
+            onWebsiteAnalyze={handleWebsiteReanalyze}
           />
         )}
 
@@ -2448,23 +2505,6 @@ function PosterGrid({
 
   // Handle download - use blob-based approach so data URLs and remote URLs actually download
   const handleDownload = async (poster: string, idx: number) => {
-    try {
-      // Save to local storage for history
-      const storageKey = 'creative_studio_downloaded_posters';
-      const existingPosters = JSON.parse(localStorage.getItem(storageKey) || '[]');
-      const posterEntry = {
-        id: `poster_${Date.now()}_${idx}`,
-        url: poster,
-        downloadedAt: Date.now(),
-        index: idx,
-        prompt: posterPrompt || '',
-      };
-      existingPosters.push(posterEntry);
-      const trimmedPosters = existingPosters.slice(-50);
-      localStorage.setItem(storageKey, JSON.stringify(trimmedPosters));
-    } catch (e) {
-      console.warn('Could not save to download history:', e);
-    }
     try {
       await downloadImageToLocal(poster, `poster-${idx + 1}.png`);
     } catch (error) {

@@ -2,6 +2,45 @@
 // Extracted from pages/creative-studio.tsx for modularity
 
 import type { BrandSnapshot, PosterConfig } from './types';
+import { authFetch } from '@/lib/utils';
+
+/** Save brand snapshot to DB via API */
+export async function saveBrandSnapshot(snapshot: BrandSnapshot): Promise<void> {
+  await authFetch("/api/brand/snapshot", {
+    method: "PUT",
+    body: JSON.stringify({ brandSnapshot: snapshot }),
+  });
+}
+
+/** Map creative intelligence brand data to BrandSnapshot */
+export function mapCreativeIntelligenceBrandToSnapshot(
+  brand: any,
+  brandUrl: string
+): BrandSnapshot {
+  const raw = brand?.rawAnalysis || {};
+  let domain = "Brand";
+  try {
+    domain = new URL(brandUrl).hostname.replace("www.", "").split(".")[0];
+    domain = domain.charAt(0).toUpperCase() + domain.slice(1);
+  } catch {
+    // ignore
+  }
+  const name = raw.product_name || domain;
+  return {
+    name,
+    description: brand?.productSummary || raw.current_positioning_statement || "",
+    audience: raw.primary_target_audience || brand?.targetPersonaGuess || "",
+    offering: brand?.productSummary || raw.product_category || "",
+    tone: raw.brand_tone || brand?.emotionalTone || "professional",
+    logo: raw.logo,
+    logoUrl: raw.logoUrl,
+    primaryColors: raw.primaryColors || [],
+    fontStyles: raw.fontStyles,
+    coreValueProp: raw.core_value_prop,
+    productCategory: raw.product_category,
+    pricePositioning: raw.price_positioning,
+  };
+}
 
 /** Map fullAnalyze API result to BrandSnapshot (Brand Kit format) */
 export function mapFullAnalyzeToBrandSnapshot(result: any): BrandSnapshot {

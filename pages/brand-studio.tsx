@@ -18,6 +18,7 @@ import {
   mapFullAnalyzeToBrandSnapshot,
 } from '@/app/web/src/components/creative-studio';
 import { authFetch } from '@/lib/utils';
+import { saveBrandSnapshot } from '@/app/web/src/components/creative-studio/utils';
 
 export default function BrandStudioLanding() {
   const router = useRouter();
@@ -92,26 +93,38 @@ export default function BrandStudioLanding() {
     loadSessions();
   }, []);
 
-  // ============== Load Brand from localStorage & show entry popup ==============
+  // ============== Brand Helper ==============
+
+  // ============== Load Brand from DB & show entry popup ==============
 
   useEffect(() => {
-    const storedBrand = localStorage.getItem('brand:snapshot');
-    if (storedBrand) {
+    let cancelled = false;
+    (async () => {
+      // Load brand from DB
       try {
-        const parsed = JSON.parse(storedBrand);
-        setBrand(parsed);
-        // Only show brand guideline modal on first visit (not every page entry)
-        if (!localStorage.getItem('brand:guideline_seen')) {
-          setShowBrandGuidelineModal(true);
+        const res = await authFetch('/api/brand/snapshot');
+        const data = await res.json();
+        if (!cancelled && data.brandSnapshot) {
+          setBrand(data.brandSnapshot);
+          // Check guideline_seen from DB preferences
+          try {
+            const prefRes = await authFetch('/api/user/preferences');
+            const prefData = await prefRes.json();
+            if (!cancelled && !prefData.preferences?.guideline_seen) {
+              setShowBrandGuidelineModal(true);
+            }
+          } catch {
+            // ignore preference load failure
+          }
+          return;
         }
-      } catch (e) {
-        console.error('Failed to parse stored brand:', e);
-        setShowBrandOnboarding(true);
+      } catch {
+        // no snapshot available
       }
-    } else {
-      // No stored brand: show onboarding so user can analyze and store brand guideline
+      if (cancelled) return;
       setShowBrandOnboarding(true);
-    }
+    })();
+    return () => { cancelled = true; };
   }, []);
 
   // ============== Session Handlers ==============
@@ -248,7 +261,7 @@ export default function BrandStudioLanding() {
       if (data.result) {
         const brandSnapshot = mapFullAnalyzeToBrandSnapshot(data.result);
         setBrand(brandSnapshot);
-        localStorage.setItem('brand:snapshot', JSON.stringify(brandSnapshot));
+        saveBrandSnapshot(brandSnapshot);
         setShowBrandOnboarding(false);
         // Show stored brand guideline in the Brand Studio page
         setShowBrandGuidelineModal(true);
@@ -286,7 +299,7 @@ export default function BrandStudioLanding() {
     };
 
     setBrand(brandSnapshot);
-    localStorage.setItem('brand:snapshot', JSON.stringify(brandSnapshot));
+    saveBrandSnapshot(brandSnapshot);
     setShowBrandOnboarding(false);
     // Show stored brand guideline so user can view/edit
     setShowBrandGuidelineModal(true);
@@ -301,15 +314,15 @@ export default function BrandStudioLanding() {
       tone: 'professional',
     };
     setBrand(minimalBrand);
-    localStorage.setItem('brand:snapshot', JSON.stringify(minimalBrand));
+    saveBrandSnapshot(minimalBrand);
     setShowBrandOnboarding(false);
     setShowBrandGuidelineModal(true);
   }
 
   function updateBrandGuideline(updated: BrandSnapshot) {
     setBrand(updated);
-    localStorage.setItem('brand:snapshot', JSON.stringify(updated));
-    localStorage.setItem('brand:guideline_seen', 'true');
+    saveBrandSnapshot(updated);
+    authFetch('/api/user/preferences', { method: 'PUT', body: JSON.stringify({ preferences: { guideline_seen: true } }) }).catch(() => {});
     setShowBrandGuidelineModal(false);
   }
 
@@ -565,7 +578,7 @@ export default function BrandStudioLanding() {
             brand={brand}
             onUpdate={updateBrandGuideline}
             onClose={() => {
-              localStorage.setItem('brand:guideline_seen', 'true');
+              authFetch('/api/user/preferences', { method: 'PUT', body: JSON.stringify({ preferences: { guideline_seen: true } }) }).catch(() => {});
               setShowBrandGuidelineModal(false);
             }}
             onWebsiteAnalyze={handleWebsiteAnalyzeForEdit}

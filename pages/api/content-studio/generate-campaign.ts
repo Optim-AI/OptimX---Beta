@@ -3,6 +3,7 @@
 
 import type { NextApiRequest, NextApiResponse } from "next";
 import { getUserIdFromRequest } from "@/auth/request";
+import { ContentStudioCampaignDAO } from "@/database/models/ContentStudioCampaign.dao";
 
 const GEMINI_API_KEY =
   process.env.GEMINI_API_KEY ||
@@ -42,7 +43,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(401).json({ ok: false, error: "Authentication required" });
   }
 
-  const { product, brand } = req.body;
+  const { product, brand, scanId } = req.body;
   if (!product || typeof product !== "object") {
     return res.status(400).json({ ok: false, error: "Product data required" });
   }
@@ -102,12 +103,33 @@ CRITICAL: Never use asterisks (*) in any text. No * between words or sentences. 
   try {
     const raw = await callGemini(prompt);
     const campaign = JSON.parse(raw || "{}");
+
+    const campaignResult = {
+      name: campaign.campaign_name || "Campaign",
+      ads: Array.isArray(campaign.ads) ? campaign.ads : [],
+    };
+
+    // Save campaign to DB if scanId provided
+    let campaignId: string | undefined;
+    if (scanId) {
+      try {
+        const saved = await ContentStudioCampaignDAO.create({
+          userId,
+          scanId,
+          productName: product.product_name || "Product",
+          campaignName: campaignResult.name,
+          ads: campaignResult.ads,
+        });
+        campaignId = saved.id;
+      } catch (dbErr: any) {
+        console.error("[Content Studio] Campaign DB save failed:", dbErr?.message);
+      }
+    }
+
     return res.status(200).json({
       ok: true,
-      campaign: {
-        name: campaign.campaign_name || "Campaign",
-        ads: Array.isArray(campaign.ads) ? campaign.ads : [],
-      },
+      campaignId,
+      campaign: campaignResult,
     });
   } catch (err: any) {
     console.error("Campaign generation error:", err);

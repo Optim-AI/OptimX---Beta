@@ -1,5 +1,5 @@
--- Create reports table for user error reports and feedback
-CREATE TABLE reports (
+-- Create reports table for user error reports and feedback (skipped if already exists from earlier migration)
+CREATE TABLE IF NOT EXISTS reports (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL,
   type TEXT NOT NULL,            -- 'error' | 'feedback'
@@ -11,6 +11,6 @@ CREATE TABLE reports (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_reports_user_id ON reports(user_id);
-CREATE INDEX idx_reports_status ON reports(status);
-CREATE INDEX idx_reports_created_at ON reports(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_reports_user_id ON reports(user_id);
+CREATE INDEX IF NOT EXISTS idx_reports_status ON reports(status);
+CREATE INDEX IF NOT EXISTS idx_reports_created_at ON reports(created_at DESC);
