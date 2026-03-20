@@ -42,7 +42,6 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/app/web/src/components/ui/collapsible";
-import { CreditDisplay } from "@/app/web/src/components/billing/CreditDisplay";
 import { InsufficientCreditsAlert } from "@/app/web/src/components/billing/InsufficientCreditsAlert";
 import { useSubscription } from "@/app/web/src/hooks/use-subscription";
 
@@ -83,6 +82,23 @@ type CampaignStrategy = {
 };
 
 const CONTENT_STUDIO_STORAGE_KEY = "content-studio:lastScan";
+const SESSION_HISTORY_KEY = "content-studio:sessionHistory";
+const MAX_SESSIONS = 20;
+
+type AdGenerationSession = {
+  id: string;
+  product: Product;
+  adAngles: AdAngle[];
+  campaignPlan: CampaignPlanItem[];
+  campaignStrategy: CampaignStrategy | null;
+  generatedPosters: string[];
+  campaign: { name: string; ads: CampaignAd[] } | null;
+  loadingAngles: boolean;
+  generatingAngleId: string | null;
+  creatingVideoAngleId: string | null;
+  generatingCampaignItem: number | null;
+  createdAt: number;
+};
 
 const SCAN_MESSAGES = [
   { text: "Crawling your website...", detail: "Discovering pages and structure" },
@@ -160,17 +176,10 @@ export default function ContentStudioPage() {
   const [scanProgress, setScanProgress] = useState(0);
   const [brand, setBrand] = useState<BrandSummary | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [expandedProductIndex, setExpandedProductIndex] = useState<number | null>(null);
-  const [adAngles, setAdAngles] = useState<AdAngle[]>([]);
-  const [loadingAngles, setLoadingAngles] = useState(false);
-  const [generatedPosters, setGeneratedPosters] = useState<string[]>([]);
-  const [generatingAngleId, setGeneratingAngleId] = useState<string | null>(null);
-  const [campaign, setCampaign] = useState<{ name: string; ads: CampaignAd[] } | null>(null);
+  const [sessions, setSessions] = useState<AdGenerationSession[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [loadingCampaign, setLoadingCampaign] = useState(false);
-  const [campaignPlan, setCampaignPlan] = useState<CampaignPlanItem[]>([]);
-  const [campaignStrategy, setCampaignStrategy] = useState<CampaignStrategy | null>(null);
-  const [generatingCampaignItem, setGeneratingCampaignItem] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [scanId, setScanId] = useState<string | null>(null);
 
@@ -180,7 +189,6 @@ export default function ContentStudioPage() {
   const [isAnalyzingBrand, setIsAnalyzingBrand] = useState(false);
   const [onboardingMode, setOnboardingMode] = useState<"website" | "manual">("website");
   const [editingPosterIndex, setEditingPosterIndex] = useState<number | null>(null);
-  const [creatingVideoAngleId, setCreatingVideoAngleId] = useState<string | null>(null);
   const [editingPosterUrl, setEditingPosterUrl] = useState<string | null>(null);
   const [productsCollapsed, setProductsCollapsed] = useState(false);
   const [insufficientCreditsType, setInsufficientCreditsType] = useState<"image" | "video" | null>(null);
@@ -189,6 +197,35 @@ export default function ContentStudioPage() {
 
   const [imageCredits, setImageCredits] = useState<number | null>(null);
   const [videoCredits, setVideoCredits] = useState<number | null>(null);
+
+  const activeSession = activeSessionId ? sessions.find((s) => s.id === activeSessionId) : null;
+  const selectedProduct = activeSession?.product ?? null;
+
+  // Load session history from localStorage on mount
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(SESSION_HISTORY_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored) as AdGenerationSession[];
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setSessions(parsed.slice(0, MAX_SESSIONS));
+          if (!activeSessionId && parsed[0]) setActiveSessionId(parsed[0].id);
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  // Persist sessions to localStorage when they change
+  useEffect(() => {
+    if (sessions.length === 0) return;
+    try {
+      localStorage.setItem(SESSION_HISTORY_KEY, JSON.stringify(sessions.slice(0, MAX_SESSIONS)));
+    } catch {
+      /* ignore */
+    }
+  }, [sessions]);
 
   useEffect(() => {
     async function loadCredits() {
@@ -245,23 +282,7 @@ export default function ContentStudioPage() {
             setScanId(latest.id);
             setStep("results");
 
-            // Also load campaigns and posters for this scan
-            try {
-              const detailRes = await authFetch(`/api/content-studio/scans?id=${latest.id}`);
-              const detailData = await detailRes.json();
-              if (!cancelled && detailData.ok) {
-                if (detailData.campaigns?.length > 0) {
-                  const c = detailData.campaigns[0];
-                  setCampaign({ name: c.campaignName || "Campaign", ads: c.ads || [] });
-                }
-                if (detailData.posters?.length > 0) {
-                  const allUrls = detailData.posters.flatMap((p: any) => p.imageUrls || []);
-                  if (allUrls.length > 0) setGeneratedPosters(allUrls);
-                }
-              }
-            } catch {
-              /* non-critical */
-            }
+            // Sessions are loaded from localStorage; campaigns/posters per product live in session history
           }
         }
       } catch {
@@ -315,11 +336,9 @@ export default function ContentStudioPage() {
       setBrand(data.brand);
       setProducts(data.products || []);
       setStep("results");
-      setSelectedProduct(null);
       setExpandedProductIndex(null);
-      setAdAngles([]);
-      setCampaign(null);
-      setGeneratedPosters([]);
+      setSessions([]);
+      setActiveSessionId(null);
       if (data.scanId) {
         setScanId(data.scanId);
       }
@@ -358,52 +377,92 @@ export default function ContentStudioPage() {
 
   const handleProductClick = async (product: Product, index: number) => {
     if (expandedProductIndex === index) {
-      // Collapse if clicking the same product
       setExpandedProductIndex(null);
-      setSelectedProduct(null);
-      setAdAngles([]);
       return;
     }
     setExpandedProductIndex(index);
-    setSelectedProduct(product);
-    setAdAngles([]);
-    setGeneratedPosters([]);
-    setCampaign(null);
-    setCampaignPlan([]);
-    setCampaignStrategy(null);
-    setLoadingAngles(true);
+
+    // Check if we already have a session for this product
+    const existing = sessions.find((s) => s.product.product_name === product.product_name);
+    if (existing) {
+      setActiveSessionId(existing.id);
+      setExpandedProductIndex(index);
+      setProductsCollapsed(true);
+      return;
+    }
+
+    // Create new session tab
+    const newId = `session_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+    const newSession: AdGenerationSession = {
+      id: newId,
+      product,
+      adAngles: [],
+      campaignPlan: [],
+      campaignStrategy: null,
+      generatedPosters: [],
+      campaign: null,
+      loadingAngles: true,
+      generatingAngleId: null,
+      creatingVideoAngleId: null,
+      generatingCampaignItem: null,
+      createdAt: Date.now(),
+    };
+    setSessions((prev) => [newSession, ...prev].slice(0, MAX_SESSIONS));
+    setActiveSessionId(newId);
+    setProductsCollapsed(true);
+
     try {
       const res = await authFetch("/api/content-studio/ad-angles", {
         method: "POST",
         body: JSON.stringify({ product, brand }),
       });
       const data = await res.json();
-      if (data.ok && data.angles) {
-        setAdAngles(data.angles);
-      }
-      if (data.campaign_plan && Array.isArray(data.campaign_plan)) {
-        setCampaignPlan(data.campaign_plan);
-      }
-      if (data.campaign_strategy) {
-        setCampaignStrategy(data.campaign_strategy);
-      }
+      setSessions((prev) =>
+        prev.map((s) =>
+          s.id === newId
+            ? {
+                ...s,
+                adAngles: data.ok && data.angles ? data.angles : [],
+                campaignPlan: Array.isArray(data.campaign_plan) ? data.campaign_plan : [],
+                campaignStrategy: data.campaign_strategy ?? null,
+                loadingAngles: false,
+              }
+            : s
+        )
+      );
     } catch {
-      setAdAngles([]);
-      setCampaignPlan([]);
-      setCampaignStrategy(null);
-    } finally {
-      setLoadingAngles(false);
+      setSessions((prev) =>
+        prev.map((s) => (s.id === newId ? { ...s, loadingAngles: false } : s))
+      );
     }
   };
 
+  const updateSession = (sessionId: string, updater: (s: AdGenerationSession) => Partial<AdGenerationSession>) => {
+    setSessions((prev) =>
+      prev.map((s) => (s.id === sessionId ? { ...s, ...updater(s) } : s))
+    );
+  };
+
+  const closeSession = (sessionId: string) => {
+    setSessions((prev) => {
+      const next = prev.filter((s) => s.id !== sessionId);
+      if (activeSessionId === sessionId) {
+        setActiveSessionId(next[0]?.id ?? null);
+      }
+      return next;
+    });
+    setExpandedProductIndex(null);
+  };
+
   const handleGeneratePoster = async (angle?: AdAngle) => {
-    if (!selectedProduct) return;
+    if (!activeSession || !selectedProduct) return;
+    const sessionId = activeSession.id;
     if (!credits || credits.imageCredits.total < 3) {
       setInsufficientCreditsType("image");
       return;
     }
     const angleId = angle ? angle.title : "__default__";
-    setGeneratingAngleId(angleId);
+    updateSession(sessionId, () => ({ generatingAngleId: angleId }));
     try {
       const productImages = selectedProduct.product_images || [];
       const productImage = productImages[0];
@@ -519,7 +578,9 @@ export default function ContentStudioPage() {
       }
 
       if (posters.length > 0) {
-        setGeneratedPosters((prev) => [...prev, ...posters]);
+        updateSession(sessionId, (s) => ({
+          generatedPosters: [...s.generatedPosters, ...posters],
+        }));
         // Save poster URLs to DB
         if (scanId && selectedProduct) {
           authFetch("/api/content-studio/posters", {
@@ -540,13 +601,14 @@ export default function ContentStudioPage() {
     } catch (err: any) {
       showError(err.message || "Failed to generate poster");
     } finally {
-      setGeneratingAngleId(null);
+      updateSession(sessionId, () => ({ generatingAngleId: null }));
     }
   };
 
   const handleCampaignItemGenerate = async (item: CampaignPlanItem, index: number) => {
-    if (!selectedProduct) return;
-    setGeneratingCampaignItem(index);
+    if (!activeSession || !selectedProduct) return;
+    const sessionId = activeSession.id;
+    updateSession(sessionId, () => ({ generatingCampaignItem: index }));
     try {
       const isVideo = /video/i.test(item.content_type);
       const angle: AdAngle = {
@@ -559,7 +621,7 @@ export default function ContentStudioPage() {
         await handleGeneratePoster(angle);
       }
     } finally {
-      setGeneratingCampaignItem(null);
+      updateSession(sessionId, () => ({ generatingCampaignItem: null }));
     }
   };
 
@@ -573,9 +635,9 @@ export default function ContentStudioPage() {
         body: JSON.stringify({ product: p, brand, scanId }),
       });
       const data = await res.json();
-      if (data.ok && data.campaign) {
-        setCampaign(data.campaign);
-      } else {
+      if (data.ok && data.campaign && activeSession) {
+        updateSession(activeSession.id, () => ({ campaign: data.campaign }));
+      } else if (!data.ok) {
         showError(data.error || "Failed to generate campaign");
       }
     } catch (err: any) {
@@ -593,15 +655,16 @@ export default function ContentStudioPage() {
   };
 
   const handleVideoAdClick = async (angle: AdAngle) => {
-    if (!selectedProduct || (!brandGuideline && !brand)) {
+    if (!activeSession || !selectedProduct || (!brandGuideline && !brand)) {
       showError("Please set up brand guidelines first");
       return;
     }
+    const sessionId = activeSession.id;
     if (!credits || credits.videoCredits.total < 1) {
       setInsufficientCreditsType("video");
       return;
     }
-    setCreatingVideoAngleId(angle.title);
+    updateSession(sessionId, () => ({ creatingVideoAngleId: angle.title }));
     try {
       const productData = {
         product_name: selectedProduct.product_name,
@@ -641,7 +704,7 @@ export default function ContentStudioPage() {
     } catch (err: any) {
       showError(err.message || "Failed to create video session");
     } finally {
-      setCreatingVideoAngleId(null);
+      updateSession(sessionId, () => ({ creatingVideoAngleId: null }));
     }
   };
 
@@ -696,11 +759,13 @@ export default function ContentStudioPage() {
         }),
       });
       const data = await res.json();
-      if (data.ok && data.image) {
-        setGeneratedPosters((prev) =>
-          prev.map((url, i) => (i === posterIndex ? data.image : url))
-        );
-      } else {
+      if (data.ok && data.image && activeSession) {
+        updateSession(activeSession.id, (s) => ({
+          generatedPosters: s.generatedPosters.map((url, i) =>
+            i === posterIndex ? data.image : url
+          ),
+        }));
+      } else if (!data.ok) {
         showError(data.error || "Failed to regenerate poster");
       }
     } catch (err: any) {
@@ -713,15 +778,16 @@ export default function ContentStudioPage() {
     setUrl("");
     setBrand(null);
     setProducts([]);
-    setSelectedProduct(null);
     setExpandedProductIndex(null);
-    setAdAngles([]);
-    setCampaignPlan([]);
-    setCampaignStrategy(null);
-    setGeneratedPosters([]);
-    setCampaign(null);
+    setSessions([]);
+    setActiveSessionId(null);
     setError(null);
     setScanId(null);
+    try {
+      localStorage.removeItem(SESSION_HISTORY_KEY);
+    } catch {
+      /* ignore */
+    }
   };
 
   async function handleWebsiteAnalyzeForEdit(website: string): Promise<BrandSnapshot | null> {
@@ -906,9 +972,6 @@ export default function ContentStudioPage() {
                 <h1 className="text-4xl md:text-5xl font-bold tracking-tight max-w-6xl mx-auto text-center" style={{ color: colors.foreground }}>
                   Let&apos;s turn your website into high converting ads
                 </h1>
-                <div className="mt-3">
-                  <CreditDisplay variant="compact" showRefresh />
-                </div>
                 <p className="text-lg max-w-2xl mx-auto text-center mt-2" style={{ color: colors.mutedForeground }}>
                   Paste your website URL and we&apos;ll extract products, generate ad creatives, and build campaigns all in one place.
                 </p>
@@ -1104,11 +1167,11 @@ export default function ContentStudioPage() {
                 </h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
                   {products.map((p, i) => {
-                    const isSelected = selectedProduct === p;
+                    const isSelected = selectedProduct?.product_name === p.product_name;
                     return (
                       <div
                         key={i}
-                        onClick={() => handleProductClick(p)}
+                        onClick={() => handleProductClick(p, i)}
                         className="relative rounded-xl p-4 border-2 cursor-pointer transition-all hover:border-[hsl(213_100%_55%)] hover:shadow-lg"
                         style={{
                           background: colors.card,
@@ -1163,8 +1226,94 @@ export default function ContentStudioPage() {
                   </p>
                 )}
               </section>
+                        </div>
+                      </CollapsibleContent>
+                    </Collapsible>
+                  </div>
+                )}
 
-              {selectedProduct && (
+              {/* Ad Generation Section - tab-based, opens when product is selected */}
+              {sessions.length > 0 && (
+                <>
+                {/* Tab bar - browser-like */}
+                <div className="w-full max-w-6xl mt-6 flex items-center gap-1 overflow-x-auto pb-2" style={{ borderBottom: `1px solid ${colors.border}` }}>
+                  {sessions.map((s) => (
+                    <button
+                      key={s.id}
+                      onClick={() => setActiveSessionId(s.id)}
+                      className="flex items-center gap-2 px-4 py-2.5 rounded-t-lg text-sm font-medium shrink-0 transition-colors"
+                      style={{
+                        background: activeSessionId === s.id ? colors.card : "transparent",
+                        color: activeSessionId === s.id ? colors.foreground : colors.mutedForeground,
+                        border: `1px solid ${activeSessionId === s.id ? colors.border : "transparent"}`,
+                        borderBottom: activeSessionId === s.id ? `1px solid ${colors.card}` : "none",
+                      }}
+                    >
+                      <span className="truncate max-w-[140px]">{s.product.product_name}</span>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); closeSession(s.id); }}
+                        className="p-0.5 rounded hover:bg-black/10"
+                        style={{ color: colors.mutedForeground }}
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </button>
+                  ))}
+                </div>
+
+              {activeSession && (
+                <div className="w-full max-w-6xl mt-8 space-y-8">
+                  <div className="rounded-2xl border overflow-hidden" style={{ borderColor: colors.border, background: colors.card }}>
+                    <div className="px-6 py-4 border-b flex items-center justify-between" style={{ borderColor: colors.border, background: "hsl(213 100% 55% / 0.06)" }}>
+                      <div className="flex items-center gap-3">
+                        <div className="flex items-center justify-center w-10 h-10 rounded-lg" style={{ background: "hsl(213 100% 55% / 0.15)" }}>
+                          <Sparkles className="w-5 h-5" style={{ color: colors.primary }} />
+                        </div>
+                        <div>
+                          <h2 className="text-lg font-semibold" style={{ color: colors.foreground }}>
+                            Ad Generation
+                          </h2>
+                          <p className="text-sm" style={{ color: colors.mutedForeground }}>
+                            {activeSession.product.product_name}
+                          </p>
+                        </div>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => activeSession && closeSession(activeSession.id)}
+                        style={{ color: colors.mutedForeground }}
+                      >
+                        <X className="w-4 h-4 mr-1" />
+                        Close tab
+                      </Button>
+                    </div>
+                    <div className="p-6 space-y-8">
+                {/* Product image & details */}
+                <section className="rounded-xl p-6 border" style={{ background: colors.secondary, borderColor: colors.border }}>
+                  <h2 className="text-lg font-semibold mb-4" style={{ color: colors.foreground }}>Product</h2>
+                  <div className="flex gap-6">
+                    <div className="aspect-square w-32 shrink-0 rounded-lg overflow-hidden bg-[hsl(0_0%_18%)]">
+                      {activeSession.product.product_images?.[0] ? (
+                        <img src={activeSession.product.product_images[0]} alt={activeSession.product.product_name} className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center" style={{ color: colors.mutedForeground }}>
+                          <ImageIcon className="w-10 h-10" />
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold" style={{ color: colors.foreground }}>{activeSession.product.product_name}</h3>
+                      {activeSession.product.price && (
+                        <p className="text-sm font-medium mt-1" style={{ color: colors.primary }}>{activeSession.product.price}</p>
+                      )}
+                      <p className="text-sm mt-2 line-clamp-3" style={{ color: colors.mutedForeground }}>
+                        {activeSession.product.short_benefit || activeSession.product.description || "—"}
+                      </p>
+                    </div>
+                  </div>
+                </section>
+
                 <section
                   className="rounded-xl p-6 border overflow-y-auto max-h-[600px]"
                   style={{
@@ -1172,26 +1321,18 @@ export default function ContentStudioPage() {
                     borderColor: colors.border,
                   }}
                 >
-                    <div className="flex items-center justify-between mb-4">
+                    <div className="mb-4">
                       <h2 className="text-lg font-semibold" style={{ color: colors.foreground }}>
                         Ad Angles
                       </h2>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setSelectedProduct(null)}
-                        style={{ color: colors.mutedForeground }}
-                      >
-                        <X className="w-4 h-4" />
-                      </Button>
                     </div>
-                    {loadingAngles ? (
+                    {activeSession.loadingAngles ? (
                       <div className="flex items-center justify-center py-8">
                         <Loader2 className="w-8 h-8 animate-spin" style={{ color: colors.primary }} />
                       </div>
                     ) : (
                       <div className="space-y-3">
-                        {adAngles.map((angle, i) => (
+                        {activeSession.adAngles.map((angle, i) => (
                           <div
                             key={i}
                             className="rounded-lg p-3 border"
@@ -1210,14 +1351,14 @@ export default function ContentStudioPage() {
                               <Button
                                 size="sm"
                                 onClick={() => handleGeneratePoster(angle)}
-                                disabled={generatingAngleId !== null}
+                                disabled={activeSession.generatingAngleId !== null}
                                 style={{
                                   background: colors.primary,
                                   color: colors.primaryForeground,
                                   fontSize: 11,
                                 }}
                               >
-                                {generatingAngleId === angle.id ? (
+                                {activeSession.generatingAngleId === angle.title ? (
                                   <Loader2 className="w-3 h-3 animate-spin" />
                                 ) : (
                                   <>
@@ -1230,14 +1371,14 @@ export default function ContentStudioPage() {
                                 size="sm"
                                 variant="outline"
                                 onClick={() => handleVideoAdClick(angle)}
-                                disabled={creatingVideoAngleId !== null}
+                                disabled={activeSession.creatingVideoAngleId !== null}
                                 style={{
                                   borderColor: colors.border,
                                   color: colors.foreground,
                                   fontSize: 11,
                                 }}
                               >
-                                {creatingVideoAngleId === angle.id ? (
+                                {activeSession.creatingVideoAngleId === angle.title ? (
                                   <Loader2 className="w-3 h-3 animate-spin" />
                                 ) : (
                                   <>
@@ -1252,9 +1393,8 @@ export default function ContentStudioPage() {
                       </div>
                     )}
                   </section>
-              )}
 
-              {selectedProduct && campaignPlan.length > 0 && !loadingAngles && (
+              {activeSession.campaignPlan.length > 0 && !activeSession.loadingAngles && (
                 <section
                   className="rounded-xl p-6 border"
                   style={{
@@ -1274,12 +1414,12 @@ export default function ContentStudioPage() {
                         Campaign Plan
                       </h2>
                       <p className="text-xs" style={{ color: colors.mutedForeground }}>
-                        AI-generated strategy for {selectedProduct.product_name}
+                        AI-generated strategy for {activeSession.product.product_name}
                       </p>
                     </div>
                   </div>
 
-                  {campaignStrategy && (
+                  {activeSession.campaignStrategy && (
                     <div
                       className="rounded-lg p-4 mb-5 mt-3"
                       style={{
@@ -1288,26 +1428,26 @@ export default function ContentStudioPage() {
                       }}
                     >
                       <div className="flex flex-wrap gap-x-6 gap-y-2 text-xs mb-2.5">
-                        {campaignStrategy.product_category && (
+                        {activeSession.campaignStrategy.product_category && (
                           <span style={{ color: colors.mutedForeground }}>
                             Category:{" "}
                             <span style={{ color: colors.foreground, fontWeight: 500 }}>
-                              {campaignStrategy.product_category}
+                              {activeSession.campaignStrategy.product_category}
                             </span>
                           </span>
                         )}
-                        {campaignStrategy.target_audience && (
+                        {activeSession.campaignStrategy.target_audience && (
                           <span style={{ color: colors.mutedForeground }}>
                             Audience:{" "}
                             <span style={{ color: colors.foreground, fontWeight: 500 }}>
-                              {campaignStrategy.target_audience}
+                              {activeSession.campaignStrategy.target_audience}
                             </span>
                           </span>
                         )}
                       </div>
-                      {campaignStrategy.content_themes?.length > 0 && (
+                      {activeSession.campaignStrategy.content_themes?.length > 0 && (
                         <div className="flex flex-wrap gap-1.5">
-                          {campaignStrategy.content_themes.map((theme, ti) => (
+                          {activeSession.campaignStrategy.content_themes!.map((theme, ti) => (
                             <span
                               key={ti}
                               className="text-xs px-2.5 py-1 rounded-full"
@@ -1325,10 +1465,10 @@ export default function ContentStudioPage() {
                   )}
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                    {campaignPlan.map((item, i) => {
+                    {activeSession.campaignPlan.map((item, i) => {
                       const isVideo = /video/i.test(item.content_type);
                       const isPosterOrCarousel = /poster|carousel/i.test(item.content_type);
-                      const isGenerating = generatingCampaignItem === i;
+                      const isGenerating = activeSession.generatingCampaignItem === i;
                       return (
                         <div
                           key={i}
@@ -1401,7 +1541,7 @@ export default function ContentStudioPage() {
                           <Button
                             size="sm"
                             onClick={() => handleCampaignItemGenerate(item, i)}
-                            disabled={isGenerating || generatingAngleId !== null || creatingVideoAngleId !== null}
+                            disabled={isGenerating || activeSession.generatingAngleId !== null || activeSession.creatingVideoAngleId !== null}
                             className="w-full mt-1"
                             style={{
                               background: isVideo
@@ -1434,7 +1574,7 @@ export default function ContentStudioPage() {
                 </section>
               )}
 
-              {generatedPosters.length > 0 && (
+              {activeSession.generatedPosters.length > 0 && (
                 <section
                   className="rounded-2xl p-8 border shadow-lg"
                   style={{
@@ -1449,7 +1589,7 @@ export default function ContentStudioPage() {
                     Click Edit to describe the exact change you want (e.g. fix a typo, add text) and regenerate.
                   </p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {generatedPosters.map((img, i) => (
+                    {activeSession.generatedPosters.map((img, i) => (
                       <div
                         key={i}
                         className="group rounded-xl overflow-hidden border-2 transition-all hover:border-[hsl(213_100%_55%)] hover:shadow-xl"
@@ -1515,7 +1655,7 @@ export default function ContentStudioPage() {
                 </section>
               )}
 
-              {campaign && (
+              {activeSession.campaign && (
                 <section
                   className="rounded-xl p-6 border"
                   style={{
@@ -1524,10 +1664,10 @@ export default function ContentStudioPage() {
                   }}
                 >
                   <h2 className="text-lg font-semibold mb-4" style={{ color: colors.foreground }}>
-                    Campaign: {campaign.name}
+                    Campaign: {activeSession.campaign.name}
                   </h2>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {campaign.ads.map((ad, i) => (
+                    {activeSession.campaign.ads.map((ad, i) => (
                       <div
                         key={i}
                         className="rounded-lg p-4 border"
@@ -1562,10 +1702,11 @@ export default function ContentStudioPage() {
                   </div>
                 </section>
               )}
-                      </div>
-                    </CollapsibleContent>
-                  </Collapsible>
+                    </div>
+                  </div>
                 </div>
+              )}
+                </>
               )}
             </div>
           )}
@@ -1642,14 +1783,14 @@ export default function ContentStudioPage() {
       )}
 
       {/* Poster Edit Modal */}
-      {editingPosterIndex !== null && generatedPosters[editingPosterIndex] && (
+      {editingPosterIndex !== null && activeSession?.generatedPosters[editingPosterIndex] && (
         <PosterEditModal
-          imageUrl={generatedPosters[editingPosterIndex]}
+          imageUrl={activeSession.generatedPosters[editingPosterIndex]}
           posterIndex={editingPosterIndex}
           onClose={() => setEditingPosterIndex(null)}
           onRegenerate={(editPrompt) =>
             handleRegenerateWithEdit(
-              generatedPosters[editingPosterIndex],
+              activeSession!.generatedPosters[editingPosterIndex],
               editingPosterIndex,
               editPrompt
             )

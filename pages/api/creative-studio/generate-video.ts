@@ -2,6 +2,7 @@
 // Reference: https://ai.google.dev/gemini-api/docs/video
 import type { NextApiRequest, NextApiResponse } from "next";
 import { GoogleGenAI } from "@google/genai";
+import sharp from "sharp";
 
 export const config = {
   api: {
@@ -23,19 +24,45 @@ function parseDataUrl(dataUrl: string): { imageBytes: string; mimeType: string }
   return { mimeType: match[1], imageBytes: match[2] };
 }
 
-// Fetch image from URL and convert to base64
+// Convert image to JPEG/PNG (Veo requires supported formats - WebP/GIF can fail)
+async function convertToSupportedFormat(
+  buffer: Buffer,
+  inputMime: string
+): Promise<{ imageBytes: string; mimeType: string }> {
+  const mime = inputMime.toLowerCase().split(";")[0].trim();
+  // JPEG and PNG are reliably supported by Veo
+  if (mime === "image/jpeg" || mime === "image/png") {
+    return { imageBytes: buffer.toString("base64"), mimeType: mime };
+  }
+  try {
+    const sharpInput = mime.includes("svg") ? { density: 144 } : undefined;
+    const converted = await sharp(buffer, sharpInput)
+      .jpeg({ quality: 92 })
+      .toBuffer();
+    console.log(`🔄 Converted ${mime} → image/jpeg for Veo compatibility`);
+    return { imageBytes: converted.toString("base64"), mimeType: "image/jpeg" };
+  } catch (e) {
+    console.warn("Sharp conversion failed, passing through:", e);
+    return { imageBytes: buffer.toString("base64"), mimeType: mime };
+  }
+}
+
+// Fetch image from URL and convert to base64 (with format conversion for Veo)
 async function fetchImageAsBase64(url: string): Promise<{ imageBytes: string; mimeType: string } | null> {
   try {
     // Skip if it's already a data URL
     if (url.startsWith('data:')) {
-      return parseDataUrl(url);
+      const parsed = parseDataUrl(url);
+      if (!parsed) return null;
+      const buffer = Buffer.from(parsed.imageBytes, "base64");
+      return convertToSupportedFormat(buffer, parsed.mimeType);
     }
     
     // Fetch the image
     const response = await fetch(url, {
       headers: {
         'Accept': 'image/*',
-        'User-Agent': 'OptimX-VideoGenerator/1.0',
+        'User-Agent': 'Mozilla/5.0 (compatible; OptimX-VideoGenerator/1.0)',
       },
     });
     
@@ -47,34 +74,40 @@ async function fetchImageAsBase64(url: string): Promise<{ imageBytes: string; mi
     const contentType = response.headers.get('content-type') || 'image/jpeg';
     const mimeType = contentType.split(';')[0].trim();
     
-    // Only allow supported image types
-    if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(mimeType)) {
+    // Allow common image types - we'll convert unsupported ones
+    const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    if (!allowed.includes(mimeType)) {
       console.warn(`Unsupported image type: ${mimeType}`);
       return null;
     }
     
     const arrayBuffer = await response.arrayBuffer();
-    const imageBytes = Buffer.from(arrayBuffer).toString('base64');
+    const buffer = Buffer.from(arrayBuffer);
     
-    // Validate the base64 is not too large (max ~10MB decoded)
-    if (imageBytes.length > 14_000_000) {
+    const result = await convertToSupportedFormat(buffer, mimeType);
+    
+    if (result.imageBytes.length > 14_000_000) {
       console.warn('Image too large, skipping');
       return null;
     }
     
-    console.log(`✅ Fetched image: ${mimeType}, ${Math.round(imageBytes.length / 1024)}KB`);
-    return { imageBytes, mimeType };
+    console.log(`✅ Fetched image: ${mimeType} → ${result.mimeType}, ${Math.round(result.imageBytes.length / 1024)}KB`);
+    return result;
   } catch (error) {
     console.warn(`Error fetching image:`, error);
     return null;
   }
 }
 
-// Get image data from URL or data URL
+// Get image data from URL or data URL (with format conversion for Veo)
 async function getImageData(imageSource: string): Promise<{ imageBytes: string; mimeType: string } | null> {
   if (imageSource.startsWith('data:')) {
-    return parseDataUrl(imageSource);
-  } else if (imageSource.startsWith('http://') || imageSource.startsWith('https://')) {
+    const parsed = parseDataUrl(imageSource);
+    if (!parsed) return null;
+    const buffer = Buffer.from(parsed.imageBytes, "base64");
+    return convertToSupportedFormat(buffer, parsed.mimeType);
+  }
+  if (imageSource.startsWith('http://') || imageSource.startsWith('https://')) {
     return await fetchImageAsBase64(imageSource);
   }
   console.warn('Invalid image source format');
@@ -134,29 +167,33 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       productImagesCount: product_images?.length || 0,
     });
 
-    // Build reference images array (Veo 3.1 structure: referenceImages with referenceType "asset")
-    // These are the EXACT product/images from URL or upload — video must depict them precisely
+    // Build reference images array (Veo 3.1: max 3 reference images)
+    // Priority: hero_image > brand_logo > product_images
+    const MAX_REFERENCE_IMAGES = 3;
     const referenceImagePromises: Promise<{ image: { imageBytes: string; mimeType: string }; referenceType: "asset" } | null>[] = [];
     
-    if (hero_image) {
+    if (hero_image && referenceImagePromises.length < MAX_REFERENCE_IMAGES) {
       console.log('📷 Adding hero image as reference asset...');
       referenceImagePromises.push(createReferenceAsset(hero_image));
     }
-    if (brand_logo) {
+    if (brand_logo && referenceImagePromises.length < MAX_REFERENCE_IMAGES) {
       console.log('📷 Adding brand logo as reference asset...');
       referenceImagePromises.push(createReferenceAsset(brand_logo));
     }
-    if (product_images && Array.isArray(product_images)) {
-      for (const img of product_images.slice(0, 3)) {
-        if (img && img !== hero_image && img !== brand_logo) {
-          console.log('📷 Adding product image as reference asset...');
-          referenceImagePromises.push(createReferenceAsset(img));
-        }
+    if (product_images && Array.isArray(product_images) && referenceImagePromises.length < MAX_REFERENCE_IMAGES) {
+      const slotsLeft = MAX_REFERENCE_IMAGES - referenceImagePromises.length;
+      const productImgs = product_images
+        .filter((img: string) => img && img !== hero_image && img !== brand_logo)
+        .slice(0, slotsLeft);
+      for (const img of productImgs) {
+        console.log('📷 Adding product image as reference asset...');
+        referenceImagePromises.push(createReferenceAsset(img));
       }
     }
     
     const referenceImageResults = await Promise.all(referenceImagePromises);
-    const referenceImages = referenceImageResults.filter((r): r is NonNullable<typeof r> => r != null);
+    let referenceImages = referenceImageResults.filter((r): r is NonNullable<typeof r> => r != null);
+    referenceImages = referenceImages.slice(0, MAX_REFERENCE_IMAGES);
     
     if (referenceImages.length > 0) {
       console.log(`✅ ${referenceImages.length} reference image(s) ready — video must depict these exactly`);

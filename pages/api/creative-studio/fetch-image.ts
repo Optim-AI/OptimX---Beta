@@ -1,6 +1,7 @@
 // pages/api/creative-studio/fetch-image.ts
 import type { NextApiRequest, NextApiResponse } from "next";
 import { JSDOM } from "jsdom";
+import sharp from "sharp";
 import { supabaseAdmin } from "@/auth/supabase/client";
 import { getUserIdFromRequest } from "@/auth/request";
 
@@ -174,11 +175,20 @@ export default async function handler(
 
     // Get image as buffer
     const arrayBuffer = await response.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+    const rawBuffer = Buffer.from(arrayBuffer);
 
-    // Convert to base64 data URL (needed for Gemini inline image generation)
+    // Convert to JPEG for compatibility (Gemini, Veo, etc.)
+    let buffer: Buffer;
+    const outputContentType = "image/jpeg";
+    try {
+      buffer = await sharp(rawBuffer).jpeg({ quality: 92 }).toBuffer();
+    } catch (e) {
+      console.warn("Sharp conversion failed, using original:", e);
+      buffer = rawBuffer;
+    }
+
     const base64 = buffer.toString("base64");
-    const dataUrl = `data:${contentType};base64,${base64}`;
+    const dataUrl = `data:${outputContentType};base64,${base64}`;
 
     // Upload to Supabase storage so we store a URL, not a data URL in the DB
     let publicUrl: string | null = null;
@@ -186,13 +196,12 @@ export default async function handler(
     try {
       const userId = await getUserIdFromRequest(req);
       const uid = userId || "anonymous";
-      const ext = contentType.split("/")[1]?.split(";")[0] || "png";
-      storagePath = `generated/${uid}/${Date.now()}_product.${ext}`;
+      storagePath = `generated/${uid}/${Date.now()}_product.jpg`;
 
       const { error: uploadError } = await supabaseAdmin.storage
         .from("campaign-assets")
         .upload(storagePath, buffer, {
-          contentType,
+          contentType: outputContentType,
           cacheControl: "3600",
           upsert: true,
         });
@@ -214,7 +223,7 @@ export default async function handler(
       dataUrl,
       publicUrl,
       storagePath,
-      contentType,
+      contentType: outputContentType,
       size: buffer.length,
     });
   } catch (error: any) {

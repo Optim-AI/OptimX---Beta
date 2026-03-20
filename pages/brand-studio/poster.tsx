@@ -33,11 +33,7 @@ import {
   ASPECT_RATIOS,
   mapFullAnalyzeToBrandSnapshot,
 } from '@/app/web/src/components/creative-studio';
-<<<<<<< HEAD
-import { authFetch } from '@/lib/utils';
-=======
 import { authFetch, safeResponseJson } from '@/lib/utils';
->>>>>>> ee790c4d4c98a60d7dd666a2935c678ea244a03f
 import PosterEditModal from '@/app/web/src/components/content-studio/PosterEditModal';
 
 /** Download image to user's device - works for data URLs and remote URLs (blob-based for reliable download) */
