@@ -30,6 +30,9 @@ import {
   MessageSquare,
   MapPin,
   Grid3X3,
+  RefreshCw,
+  History,
+  ChevronDown,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -236,6 +239,9 @@ export default function CreativeIntelligencePage() {
 
   const [imageCredits, setImageCredits] = useState<number | null>(null);
   const [videoCredits, setVideoCredits] = useState<number | null>(null);
+  const [brandUrlVersions, setBrandUrlVersions] = useState<Array<{ id: string; brandUrl: string; createdAt: string }>>([]);
+  const [isRegenerating, setIsRegenerating] = useState(false);
+  const [showVersionDropdown, setShowVersionDropdown] = useState(false);
 
   useEffect(() => {
     async function loadCredits() {
@@ -429,6 +435,64 @@ export default function CreativeIntelligencePage() {
     }
   }
 
+  async function fetchBrandUrlVersions(url: string) {
+    try {
+      const res = await authFetch(`/api/creative-intelligence/list?brandUrl=${encodeURIComponent(url)}`);
+      const data = await res.json();
+      if (data.ok && data.runs) {
+        setBrandUrlVersions(data.runs);
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  async function handleRegenerate() {
+    if (!brandUrl.trim() || isAnalyzing || isRegenerating) return;
+    setIsRegenerating(true);
+    setProgressStep(0);
+    try {
+      const res = await authFetch("/api/creative-intelligence/analyze", {
+        method: "POST",
+        body: JSON.stringify({
+          brandUrl: brandUrl.trim(),
+          competitorUrls: [],
+        }),
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        showError(data.error || "Regeneration failed");
+        return;
+      }
+      setRunId(data.runId);
+      for (let i = 0; i < 60; i++) {
+        await new Promise((r) => setTimeout(r, 2000));
+        setProgressStep(Math.min(i + 1, 6));
+        const runRes = await authFetch(`/api/creative-intelligence/run?id=${data.runId}`);
+        const runJson = await runRes.json();
+        if (runJson.ok && runJson.run?.status === "completed") {
+          setRunData(runJson);
+          setGeneratedCreatives({});
+          break;
+        }
+        if (runJson.ok && runJson.run?.status === "failed") {
+          showError(runJson.run?.errorMessage || "Regeneration failed");
+          break;
+        }
+      }
+      const runRes = await authFetch(`/api/creative-intelligence/run?id=${data.runId}`);
+      const runJson = await runRes.json();
+      if (runJson.ok && runJson.run?.status === "completed") {
+        setRunData(runJson);
+      }
+    } catch (err: any) {
+      showError(err?.message || "Regeneration failed");
+    } finally {
+      setIsRegenerating(false);
+      setProgressStep(7);
+    }
+  }
+
   React.useEffect(() => {
     if (runId && !runData && !isAnalyzing) {
       fetchRunData(runId);
@@ -462,7 +526,12 @@ export default function CreativeIntelligencePage() {
   }, []);
 
   useEffect(() => {
-    if (runData?.run?.id) fetchHistory();
+    if (runData?.run?.id) {
+      fetchHistory();
+      if (runData.run.brandUrl) {
+        fetchBrandUrlVersions(runData.run.brandUrl);
+      }
+    }
   }, [runData?.run?.id]);
 
   useEffect(() => {
@@ -1097,6 +1166,119 @@ ${strategies.market_gap_analysis?.length ? `<h3>Market Gap Analysis</h3><ul>${st
             {/* Output Sections - Brand analysis only (not shown in Competitor Analysis mode) */}
             {mode === "brand" && runData && (
               <>
+                {/* Regenerate bar + version dropdown */}
+                <div
+                  className="flex items-center justify-between rounded-xl p-4 mb-6"
+                  style={{
+                    background: colors.card,
+                    border: `1px solid ${colors.border}`,
+                  }}
+                >
+                  <div className="flex items-center gap-3">
+                    <Sparkles size={20} style={{ color: colors.primary }} />
+                    <div>
+                      <p className="text-sm font-medium" style={{ color: colors.foreground }}>
+                        Analysis for{" "}
+                        {(() => {
+                          try { return new URL(runData.run.brandUrl).hostname.replace("www.", ""); }
+                          catch { return runData.run.brandUrl; }
+                        })()}
+                      </p>
+                      <p className="text-xs" style={{ color: colors.mutedForeground }}>
+                        Generated {new Date(runData.run.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {brandUrlVersions.length > 1 && (
+                      <div className="relative">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="flex items-center gap-1.5"
+                          style={{ color: colors.mutedForeground }}
+                          onClick={() => setShowVersionDropdown(!showVersionDropdown)}
+                        >
+                          <History className="w-4 h-4" />
+                          <span className="text-xs">
+                            v{brandUrlVersions.findIndex((v) => v.id === runData.run.id) + 1 || brandUrlVersions.length} of {brandUrlVersions.length}
+                          </span>
+                          <ChevronDown className="w-3 h-3" />
+                        </Button>
+                        {showVersionDropdown && (
+                          <>
+                            <div className="fixed inset-0 z-40" onClick={() => setShowVersionDropdown(false)} />
+                            <div
+                              className="absolute right-0 top-full mt-1 w-64 rounded-lg border shadow-lg z-50"
+                              style={{ background: colors.card, borderColor: colors.border }}
+                            >
+                              <div className="p-2">
+                                <p className="text-xs font-medium px-2 py-1 mb-1" style={{ color: colors.mutedForeground }}>
+                                  Previous Versions ({brandUrlVersions.length})
+                                </p>
+                                <div className="max-h-60 overflow-y-auto space-y-0.5">
+                                  {brandUrlVersions.map((v, idx) => {
+                                    const isCurrent = v.id === runData.run.id;
+                                    return (
+                                      <button
+                                        key={v.id}
+                                        onClick={() => {
+                                          if (!isCurrent) {
+                                            fetchRunData(v.id);
+                                          }
+                                          setShowVersionDropdown(false);
+                                        }}
+                                        className="w-full text-left px-2 py-1.5 rounded text-sm transition-colors"
+                                        style={{
+                                          color: isCurrent ? colors.primary : colors.foreground,
+                                          background: isCurrent ? colors.primary + "15" : "transparent",
+                                        }}
+                                        onMouseEnter={(e) => { if (!isCurrent) e.currentTarget.style.background = colors.muted; }}
+                                        onMouseLeave={(e) => { if (!isCurrent) e.currentTarget.style.background = "transparent"; }}
+                                      >
+                                        <span className="font-medium">Version {idx + 1}</span>
+                                        {isCurrent && <span className="text-xs ml-1">(current)</span>}
+                                        <span className="text-xs ml-2" style={{ color: colors.mutedForeground }}>
+                                          {new Date(v.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                                        </span>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleRegenerate}
+                      disabled={isAnalyzing || isRegenerating}
+                      className="flex items-center gap-1.5"
+                      style={{
+                        borderColor: colors.border,
+                        color: colors.primary,
+                      }}
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${isRegenerating ? "animate-spin" : ""}`} />
+                      {isRegenerating ? "Regenerating..." : "Regenerate"}
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Regeneration progress */}
+                {isRegenerating && (
+                  <div className="mb-6 p-4 rounded-xl" style={{ background: colors.card, border: `1px solid ${colors.border}` }}>
+                    <div className="flex items-center gap-3 mb-2">
+                      <Loader2 className="w-5 h-5 animate-spin" style={{ color: colors.primary }} />
+                      <p className="text-sm font-medium" style={{ color: colors.foreground }}>Re-analyzing brand...</p>
+                    </div>
+                    <Progress value={(progressStep / 7) * 100} className="h-2 rounded-full" />
+                  </div>
+                )}
+
                 {/* Strategy Snapshot - AI-generated, executive clarity in 5 seconds */}
                 {runData.brand && (
                   <SectionCard title="Strategy Snapshot" icon={<Sparkles size={20} />} onHistoryClick={scrollToHistory}>
@@ -1847,7 +2029,7 @@ ${strategies.market_gap_analysis?.length ? `<h3>Market Gap Analysis</h3><ul>${st
                                       ))}
                                     </div>
                                   </div>
-                                )}git 
+                                )}
                               </div>
                             )}
                           </div>
