@@ -616,6 +616,27 @@ export const contentStudioPosters = pgTable("content_studio_posters", {
 	index("idx_content_studio_posters_scan_id").using("btree", table.scanId.asc().nullsLast()),
 ]);
 
+// Content Studio version history (per product ad generation)
+export const contentStudioVersions = pgTable("content_studio_versions", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	userId: uuid("user_id").notNull(),
+	scanId: uuid("scan_id").references(() => contentStudioScans.id, { onDelete: 'cascade' }),
+	productName: text("product_name").notNull(),
+	versionNumber: integer("version_number").notNull().default(1),
+	adAngles: jsonb("ad_angles"),
+	campaignPlan: jsonb("campaign_plan"),
+	campaignStrategy: jsonb("campaign_strategy"),
+	generatedPosters: jsonb("generated_posters"),
+	campaign: jsonb(),
+	productData: jsonb("product_data"),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (table) => [
+	index("idx_cs_versions_user").using("btree", table.userId.asc().nullsLast()),
+	index("idx_cs_versions_user_product").using("btree", table.userId.asc().nullsLast(), table.productName.asc().nullsLast()),
+	index("idx_cs_versions_scan").using("btree", table.scanId.asc().nullsLast()),
+	index("idx_cs_versions_created").using("btree", table.createdAt.desc().nullsLast()),
+]);
+
 export const creativeIntelligenceGoogleRanks = pgTable("creative_intelligence_google_ranks", {
 	id: uuid().primaryKey().notNull().defaultRandom(),
 	runId: uuid("run_id").notNull(),

@@ -32,6 +32,8 @@ import {
   Calendar,
   Play,
   Check,
+  RefreshCw,
+  History,
 } from "lucide-react";
 import PosterEditModal from "@/app/web/src/components/content-studio/PosterEditModal";
 import { Button } from "@/app/web/src/components/ui/button";
@@ -81,9 +83,14 @@ type CampaignStrategy = {
   content_themes: string[];
 };
 
-const CONTENT_STUDIO_STORAGE_KEY = "content-studio:lastScan";
-const SESSION_HISTORY_KEY = "content-studio:sessionHistory";
 const MAX_SESSIONS = 20;
+const OPEN_TABS_KEY = "content-studio:openTabs";
+
+type VersionHistoryItem = {
+  id: string;
+  versionNumber: number;
+  createdAt: string;
+};
 
 type AdGenerationSession = {
   id: string;
@@ -98,6 +105,9 @@ type AdGenerationSession = {
   creatingVideoAngleId: string | null;
   generatingCampaignItem: number | null;
   createdAt: number;
+  versionHistory?: VersionHistoryItem[];
+  currentVersionId?: string | null;
+  isRegenerating?: boolean;
 };
 
 const SCAN_MESSAGES = [
@@ -192,6 +202,9 @@ export default function ContentStudioPage() {
   const [editingPosterUrl, setEditingPosterUrl] = useState<string | null>(null);
   const [productsCollapsed, setProductsCollapsed] = useState(false);
   const [insufficientCreditsType, setInsufficientCreditsType] = useState<"image" | "video" | null>(null);
+  const [showVersionDropdown, setShowVersionDropdown] = useState(false);
+  const versionBtnRef = React.useRef<HTMLButtonElement>(null);
+  const tabsRestoredRef = React.useRef(false);
 
   const { credits, fetchSubscription } = useSubscription();
 
@@ -201,31 +214,6 @@ export default function ContentStudioPage() {
   const activeSession = activeSessionId ? sessions.find((s) => s.id === activeSessionId) : null;
   const selectedProduct = activeSession?.product ?? null;
 
-  // Load session history from localStorage on mount
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(SESSION_HISTORY_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored) as AdGenerationSession[];
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setSessions(parsed.slice(0, MAX_SESSIONS));
-          if (!activeSessionId && parsed[0]) setActiveSessionId(parsed[0].id);
-        }
-      }
-    } catch {
-      /* ignore */
-    }
-  }, []);
-
-  // Persist sessions to localStorage when they change
-  useEffect(() => {
-    if (sessions.length === 0) return;
-    try {
-      localStorage.setItem(SESSION_HISTORY_KEY, JSON.stringify(sessions.slice(0, MAX_SESSIONS)));
-    } catch {
-      /* ignore */
-    }
-  }, [sessions]);
 
   useEffect(() => {
     async function loadCredits() {
@@ -263,7 +251,7 @@ export default function ContentStudioPage() {
     return () => { cancelled = true; };
   }, []);
 
-  // Restore last scan from DB when user returns to the page
+  // Restore last scan from DB, then restore open tabs from localStorage
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -273,24 +261,121 @@ export default function ContentStudioPage() {
         if (cancelled) return;
         if (data.ok && data.scans?.length > 0) {
           const latest = data.scans[0];
-          const brand = latest.brandSummary as BrandSummary | null;
-          const products = (latest.products || []) as Product[];
-          if (products.length > 0 || brand) {
+          const scannedBrand = latest.brandSummary as BrandSummary | null;
+          const scannedProducts = (latest.products || []) as Product[];
+          if (scannedProducts.length > 0 || scannedBrand) {
             setUrl(latest.url || "");
-            setBrand(brand);
-            setProducts(products);
+            setBrand(scannedBrand);
+            setProducts(scannedProducts);
             setScanId(latest.id);
             setStep("results");
 
-            // Sessions are loaded from localStorage; campaigns/posters per product live in session history
+            // Restore open tabs from localStorage
+            try {
+              const stored = localStorage.getItem(OPEN_TABS_KEY);
+              if (stored) {
+                const tabInfo = JSON.parse(stored) as { productNames: string[]; activeProduct: string | null };
+                if (tabInfo.productNames?.length > 0) {
+                  const restoredSessions: AdGenerationSession[] = [];
+                  let restoredActiveId: string | null = null;
+
+                  for (const pName of tabInfo.productNames) {
+                    const product = scannedProducts.find((p) => p.product_name === pName);
+                    if (!product) continue;
+
+                    const sessionId = `session_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+                    const session: AdGenerationSession = {
+                      id: sessionId,
+                      product,
+                      adAngles: [],
+                      campaignPlan: [],
+                      campaignStrategy: null,
+                      generatedPosters: [],
+                      campaign: null,
+                      loadingAngles: true,
+                      generatingAngleId: null,
+                      creatingVideoAngleId: null,
+                      generatingCampaignItem: null,
+                      createdAt: Date.now(),
+                    };
+
+                    // Load latest version from DB
+                    try {
+                      const vhRes = await authFetch(`/api/content-studio/versions?productName=${encodeURIComponent(pName)}&_t=${Date.now()}`);
+                      const vhData = await vhRes.json();
+                      if (vhData.ok && Array.isArray(vhData.versions) && vhData.versions.length > 0) {
+                        const latestId = vhData.versions[0].id;
+                        const vRes = await authFetch(`/api/content-studio/versions?id=${latestId}&_t=${Date.now()}`);
+                        const vText = await vRes.text();
+                        let vData: any;
+                        try { vData = JSON.parse(vText); } catch { vData = null; }
+                        if (vData?.ok && vData.version) {
+                          const v = vData.version;
+                          session.adAngles = Array.isArray(v.adAngles) ? v.adAngles : [];
+                          session.campaignPlan = Array.isArray(v.campaignPlan) ? v.campaignPlan : [];
+                          session.campaignStrategy = v.campaignStrategy || null;
+                          session.generatedPosters = Array.isArray(v.generatedPosters) ? v.generatedPosters : [];
+                          session.campaign = v.campaign || null;
+                          session.loadingAngles = false;
+                          session.currentVersionId = latestId;
+                          session.versionHistory = vhData.versions.map((vh: any) => ({
+                            id: vh.id,
+                            versionNumber: vh.versionNumber,
+                            createdAt: vh.createdAt,
+                          }));
+                        } else {
+                          session.loadingAngles = false;
+                        }
+                      } else {
+                        session.loadingAngles = false;
+                      }
+                    } catch {
+                      session.loadingAngles = false;
+                    }
+
+                    restoredSessions.push(session);
+                    if (pName === tabInfo.activeProduct) {
+                      restoredActiveId = sessionId;
+                    }
+                  }
+
+                  if (cancelled) return;
+                  if (restoredSessions.length > 0) {
+                    setSessions(restoredSessions);
+                    setActiveSessionId(restoredActiveId || restoredSessions[0].id);
+                    setProductsCollapsed(true);
+                  }
+                }
+              }
+            } catch {
+              /* ignore tab restore errors */
+            }
+            tabsRestoredRef.current = true;
           }
         }
       } catch {
         /* ignore - user may not have any scans yet */
       }
+      tabsRestoredRef.current = true;
     })();
     return () => { cancelled = true; };
   }, []);
+
+  // Persist open tabs to localStorage whenever sessions or active tab changes
+  useEffect(() => {
+    if (!tabsRestoredRef.current) return;
+    try {
+      if (sessions.length === 0) {
+        localStorage.removeItem(OPEN_TABS_KEY);
+        return;
+      }
+      const tabInfo = {
+        productNames: sessions.map((s) => s.product.product_name),
+        activeProduct: activeSession?.product.product_name ?? null,
+      };
+      localStorage.setItem(OPEN_TABS_KEY, JSON.stringify(tabInfo));
+    } catch { /* ignore */ }
+  }, [sessions, activeSessionId]);
 
   const normalizeUrl = (input: string) => {
     const trimmed = input.trim();
@@ -388,6 +473,11 @@ export default function ContentStudioPage() {
       setActiveSessionId(existing.id);
       setExpandedProductIndex(index);
       setProductsCollapsed(true);
+      if (!existing.versionHistory) {
+        fetchVersionHistory(product.product_name).then((vh) => {
+          if (vh.length > 0) updateSession(existing.id, () => ({ versionHistory: vh }));
+        });
+      }
       return;
     }
 
@@ -412,24 +502,76 @@ export default function ContentStudioPage() {
     setProductsCollapsed(true);
 
     try {
+      // Check DB for existing versions — restore latest instead of regenerating
+      const versionHistory = await fetchVersionHistory(product.product_name);
+      if (versionHistory.length > 0) {
+        const latestId = versionHistory[0].id;
+        const vRes = await authFetch(`/api/content-studio/versions?id=${latestId}&_t=${Date.now()}`);
+        const vText = await vRes.text();
+        let vData: any;
+        try { vData = JSON.parse(vText); } catch { vData = null; }
+        if (vData?.ok && vData.version) {
+          const v = vData.version;
+          setSessions((prev) =>
+            prev.map((s) =>
+              s.id === newId
+                ? {
+                    ...s,
+                    adAngles: Array.isArray(v.adAngles) ? v.adAngles : [],
+                    campaignPlan: Array.isArray(v.campaignPlan) ? v.campaignPlan : [],
+                    campaignStrategy: v.campaignStrategy || null,
+                    generatedPosters: Array.isArray(v.generatedPosters) ? v.generatedPosters : [],
+                    campaign: v.campaign || null,
+                    loadingAngles: false,
+                    versionHistory,
+                    currentVersionId: latestId,
+                  }
+                : s
+            )
+          );
+          return;
+        }
+      }
+
+      // No saved versions — generate fresh
       const res = await authFetch("/api/content-studio/ad-angles", {
         method: "POST",
         body: JSON.stringify({ product, brand }),
       });
       const data = await res.json();
+
+      const newAngles = data.ok && data.angles ? data.angles : [];
+      const newPlan = Array.isArray(data.campaign_plan) ? data.campaign_plan : [];
+      const newStrategy = data.campaign_strategy ?? null;
+
       setSessions((prev) =>
         prev.map((s) =>
           s.id === newId
             ? {
                 ...s,
-                adAngles: data.ok && data.angles ? data.angles : [],
-                campaignPlan: Array.isArray(data.campaign_plan) ? data.campaign_plan : [],
-                campaignStrategy: data.campaign_strategy ?? null,
+                adAngles: newAngles,
+                campaignPlan: newPlan,
+                campaignStrategy: newStrategy,
                 loadingAngles: false,
               }
             : s
         )
       );
+
+      // Save this first generation to DB
+      const tempSession: AdGenerationSession = {
+        ...newSession,
+        adAngles: newAngles,
+        campaignPlan: newPlan,
+        campaignStrategy: newStrategy,
+        loadingAngles: false,
+      };
+      const savedId = await saveVersionToDb(tempSession);
+      const freshHistory = await fetchVersionHistory(product.product_name);
+      updateSession(newId, () => ({
+        versionHistory: freshHistory,
+        currentVersionId: savedId,
+      }));
     } catch {
       setSessions((prev) =>
         prev.map((s) => (s.id === newId ? { ...s, loadingAngles: false } : s))
@@ -444,6 +586,7 @@ export default function ContentStudioPage() {
   };
 
   const closeSession = (sessionId: string) => {
+    setShowVersionDropdown(false);
     setSessions((prev) => {
       const next = prev.filter((s) => s.id !== sessionId);
       if (activeSessionId === sessionId) {
@@ -452,6 +595,135 @@ export default function ContentStudioPage() {
       return next;
     });
     setExpandedProductIndex(null);
+  };
+
+  const fetchVersionHistory = async (productName: string): Promise<VersionHistoryItem[]> => {
+    try {
+      const res = await authFetch(`/api/content-studio/versions?productName=${encodeURIComponent(productName)}&_t=${Date.now()}`);
+      const data = await res.json();
+      if (data.ok && Array.isArray(data.versions)) {
+        return data.versions.map((v: any) => ({
+          id: v.id,
+          versionNumber: v.versionNumber,
+          createdAt: v.createdAt,
+        }));
+      }
+    } catch { /* ignore */ }
+    return [];
+  };
+
+  const saveVersionToDb = async (session: AdGenerationSession): Promise<string | null> => {
+    try {
+      const res = await authFetch("/api/content-studio/versions", {
+        method: "POST",
+        body: JSON.stringify({
+          scanId: scanId || undefined,
+          productName: session.product.product_name,
+          adAngles: session.adAngles,
+          campaignPlan: session.campaignPlan,
+          campaignStrategy: session.campaignStrategy,
+          generatedPosters: session.generatedPosters,
+          campaign: session.campaign,
+          productData: session.product,
+        }),
+      });
+      const data = await res.json();
+      return data.ok ? data.version?.id ?? null : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const handleRestoreVersion = async (versionId: string) => {
+    if (!activeSession) return;
+    const sessionId = activeSession.id;
+    try {
+      const res = await authFetch(`/api/content-studio/versions?id=${versionId}&_t=${Date.now()}`);
+      const text = await res.text();
+      let data: any;
+      try { data = JSON.parse(text); } catch { data = null; }
+      if (!data || !data.ok || !data.version) {
+        showError("Could not load version data");
+        return;
+      }
+      const v = data.version;
+      setSessions((prev) =>
+        prev.map((s) =>
+          s.id === sessionId
+            ? {
+                ...s,
+                adAngles: Array.isArray(v.adAngles) ? [...v.adAngles] : [],
+                campaignPlan: Array.isArray(v.campaignPlan) ? [...v.campaignPlan] : [],
+                campaignStrategy: v.campaignStrategy ? { ...v.campaignStrategy } : null,
+                generatedPosters: Array.isArray(v.generatedPosters) ? [...v.generatedPosters] : [],
+                campaign: v.campaign ? { ...v.campaign } : null,
+                currentVersionId: versionId,
+              }
+            : s
+        )
+      );
+    } catch (err: any) {
+      showError(err?.message || "Failed to restore version");
+    }
+  };
+
+  const handleRegenerate = async () => {
+    if (!activeSession || activeSession.loadingAngles || activeSession.isRegenerating) return;
+    const sessionId = activeSession.id;
+    const product = activeSession.product;
+
+    updateSession(sessionId, () => ({ isRegenerating: true }));
+
+    // Save current state as a version before regenerating
+    await saveVersionToDb(activeSession);
+
+    updateSession(sessionId, () => ({
+      loadingAngles: true,
+      adAngles: [],
+      campaignPlan: [],
+      campaignStrategy: null,
+      campaign: null,
+    }));
+
+    try {
+      const res = await authFetch("/api/content-studio/ad-angles", {
+        method: "POST",
+        body: JSON.stringify({ product, brand }),
+      });
+      const data = await res.json();
+
+      const newAngles = data.ok && data.angles ? data.angles : [];
+      const newPlan = Array.isArray(data.campaign_plan) ? data.campaign_plan : [];
+      const newStrategy = data.campaign_strategy ?? null;
+
+      // Update session with new data first
+      updateSession(sessionId, () => ({
+        adAngles: newAngles,
+        campaignPlan: newPlan,
+        campaignStrategy: newStrategy,
+        loadingAngles: false,
+        isRegenerating: false,
+      }));
+
+      // Save the new generation to DB as well
+      const newVersionId = await saveVersionToDb({
+        ...activeSession,
+        adAngles: newAngles,
+        campaignPlan: newPlan,
+        campaignStrategy: newStrategy,
+        generatedPosters: activeSession.generatedPosters,
+        campaign: activeSession.campaign,
+      });
+
+      // Refresh version history
+      const versionHistory = await fetchVersionHistory(product.product_name);
+      updateSession(sessionId, () => ({
+        versionHistory,
+        currentVersionId: newVersionId,
+      }));
+    } catch {
+      updateSession(sessionId, () => ({ loadingAngles: false, isRegenerating: false }));
+    }
   };
 
   const handleGeneratePoster = async (angle?: AdAngle) => {
@@ -783,11 +1055,6 @@ export default function ContentStudioPage() {
     setActiveSessionId(null);
     setError(null);
     setScanId(null);
-    try {
-      localStorage.removeItem(SESSION_HISTORY_KEY);
-    } catch {
-      /* ignore */
-    }
   };
 
   async function handleWebsiteAnalyzeForEdit(website: string): Promise<BrandSnapshot | null> {
@@ -1278,15 +1545,97 @@ export default function ContentStudioPage() {
                           </p>
                         </div>
                       </div>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => activeSession && closeSession(activeSession.id)}
-                        style={{ color: colors.mutedForeground }}
-                      >
-                        <X className="w-4 h-4 mr-1" />
-                        Close tab
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        {/* Version history dropdown */}
+                        {activeSession.versionHistory && activeSession.versionHistory.length > 1 && (
+                          <>
+                            <Button
+                              ref={versionBtnRef}
+                              size="sm"
+                              variant="ghost"
+                              className="flex items-center gap-1.5"
+                              style={{ color: colors.mutedForeground }}
+                              onClick={() => setShowVersionDropdown(!showVersionDropdown)}
+                            >
+                              <History className="w-4 h-4" />
+                              <span className="text-xs">
+                                {(() => {
+                                  const idx = activeSession.versionHistory!.findIndex((v) => v.id === activeSession.currentVersionId);
+                                  return idx >= 0 ? `v${activeSession.versionHistory!.length - idx}` : `v${activeSession.versionHistory!.length}`;
+                                })()}
+                                {" / "}{activeSession.versionHistory.length}
+                              </span>
+                              <ChevronDown className="w-3 h-3" />
+                            </Button>
+                            {showVersionDropdown && (
+                              <>
+                                <div className="fixed inset-0 z-[9998]" onClick={() => setShowVersionDropdown(false)} />
+                                <div
+                                  className="fixed w-64 rounded-lg border shadow-lg z-[9999]"
+                                  style={{
+                                    background: colors.card,
+                                    borderColor: colors.border,
+                                    top: versionBtnRef.current
+                                      ? versionBtnRef.current.getBoundingClientRect().bottom + 4
+                                      : 0,
+                                    left: versionBtnRef.current
+                                      ? Math.min(
+                                          versionBtnRef.current.getBoundingClientRect().right - 256,
+                                          window.innerWidth - 272
+                                        )
+                                      : 0,
+                                  }}
+                                >
+                                  <div className="p-2">
+                                    <p className="text-xs font-medium px-2 py-1 mb-1" style={{ color: colors.mutedForeground }}>
+                                      Versions ({activeSession.versionHistory.length})
+                                    </p>
+                                    <div className="max-h-60 overflow-y-auto space-y-0.5">
+                                      {activeSession.versionHistory.map((v, idx) => {
+                                        const isCurrent = v.id === activeSession.currentVersionId;
+                                        const label = `Version ${activeSession.versionHistory!.length - idx}`;
+                                        return (
+                                          <button
+                                            key={v.id}
+                                            onClick={async () => {
+                                              setShowVersionDropdown(false);
+                                              if (!isCurrent) await handleRestoreVersion(v.id);
+                                            }}
+                                            className="w-full text-left px-2 py-1.5 rounded text-sm transition-colors"
+                                            style={{
+                                              color: isCurrent ? colors.primary : colors.foreground,
+                                              background: isCurrent ? colors.primary + "15" : "transparent",
+                                            }}
+                                            onMouseEnter={(e) => { if (!isCurrent) e.currentTarget.style.background = colors.muted; }}
+                                            onMouseLeave={(e) => { if (!isCurrent) e.currentTarget.style.background = isCurrent ? colors.primary + "15" : "transparent"; }}
+                                          >
+                                            <span className="font-medium">{label}</span>
+                                            {isCurrent && <span className="text-xs ml-1">(current)</span>}
+                                            <span className="text-xs ml-2" style={{ color: colors.mutedForeground }}>
+                                              {new Date(v.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                                            </span>
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                </div>
+                              </>
+                            )}
+                          </>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={handleRegenerate}
+                          disabled={activeSession.loadingAngles || !!activeSession.isRegenerating}
+                          className="flex items-center gap-1.5"
+                          style={{ borderColor: colors.border, color: colors.primary }}
+                        >
+                          <RefreshCw className={`w-3.5 h-3.5 ${activeSession.isRegenerating ? "animate-spin" : ""}`} />
+                          {activeSession.isRegenerating ? "Regenerating..." : "Regenerate"}
+                        </Button>
+                      </div>
                     </div>
                     <div className="p-6 space-y-8">
                 {/* Product image & details */}
