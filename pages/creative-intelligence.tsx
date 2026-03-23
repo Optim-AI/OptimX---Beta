@@ -1847,7 +1847,7 @@ ${strategies.market_gap_analysis?.length ? `<h3>Market Gap Analysis</h3><ul>${st
                                       ))}
                                     </div>
                                   </div>
-                                )}
+                                )}git 
                               </div>
                             )}
                           </div>
