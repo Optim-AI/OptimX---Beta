@@ -170,21 +170,17 @@ async function handleCreateSession(
   }
 
   try {
-    const trimmedName = name.trim();
+    let trimmedName = name.trim();
 
-    // Check for duplicate session name for this user and session type
-    const exists = await CreativeStudioSessionDAO.existsByNameAndType(
-      userId,
-      trimmedName,
-      sessionType
-    );
-
-    if (exists) {
-      return res.status(400).json({
-        ok: false,
-        error: `A ${sessionType} session with this name already exists. Please choose a different name.`,
-      });
+    // Auto-deduplicate: if name already exists, append (2), (3), etc.
+    let dedupAttempt = 0;
+    let candidateName = trimmedName;
+    while (await CreativeStudioSessionDAO.existsByNameAndType(userId, candidateName, sessionType)) {
+      dedupAttempt++;
+      candidateName = `${trimmedName} (${dedupAttempt + 1})`;
+      if (dedupAttempt > 50) break;
     }
+    trimmedName = candidateName;
 
     const payload: any = {
       userId,

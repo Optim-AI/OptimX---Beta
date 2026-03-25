@@ -1458,15 +1458,6 @@ export default function PosterSessionPage() {
       return;
     }
     
-    // Check for duplicate session name
-    const isDuplicate = posterSessions.some(
-      s => s.name.toLowerCase() === name.toLowerCase()
-    );
-    if (isDuplicate) {
-      showAlert('A session with this name already exists. Please choose a different name.', 'Duplicate Name');
-      return;
-    }
-    
     setIsCreatingSession(true);
     try {
       const response = await authFetch('/api/creative-studio/sessions', {

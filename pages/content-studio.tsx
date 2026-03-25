@@ -206,6 +206,10 @@ export default function ContentStudioPage() {
   const versionBtnRef = React.useRef<HTMLButtonElement>(null);
   const tabsRestoredRef = React.useRef(false);
 
+  const [recentlyClosed, setRecentlyClosed] = useState<Product[]>([]);
+  const [showRecentlyClosed, setShowRecentlyClosed] = useState(false);
+  const recentlyClosedBtnRef = React.useRef<HTMLButtonElement>(null);
+
   const { credits, fetchSubscription } = useSubscription();
 
   const [imageCredits, setImageCredits] = useState<number | null>(null);
@@ -588,6 +592,14 @@ export default function ContentStudioPage() {
   const closeSession = (sessionId: string) => {
     setShowVersionDropdown(false);
     setSessions((prev) => {
+      const closed = prev.find((s) => s.id === sessionId);
+      if (closed) {
+        setRecentlyClosed((rc) => {
+          const already = rc.some((p) => p.product_name === closed.product.product_name);
+          if (already) return rc;
+          return [closed.product, ...rc].slice(0, 10);
+        });
+      }
       const next = prev.filter((s) => s.id !== sessionId);
       if (activeSessionId === sessionId) {
         setActiveSessionId(next[0]?.id ?? null);
@@ -595,6 +607,18 @@ export default function ContentStudioPage() {
       return next;
     });
     setExpandedProductIndex(null);
+  };
+
+  const reopenClosedTab = (product: Product) => {
+    setRecentlyClosed((rc) => rc.filter((p) => p.product_name !== product.product_name));
+    setShowRecentlyClosed(false);
+    const existingSession = sessions.find((s) => s.product.product_name === product.product_name);
+    if (existingSession) {
+      setActiveSessionId(existingSession.id);
+      return;
+    }
+    const idx = products.findIndex((p) => p.product_name === product.product_name);
+    handleProductClick(product, idx >= 0 ? idx : 0);
   };
 
   const fetchVersionHistory = async (productName: string): Promise<VersionHistoryItem[]> => {
@@ -1503,29 +1527,96 @@ export default function ContentStudioPage() {
               {sessions.length > 0 && (
                 <>
                 {/* Tab bar - browser-like */}
-                <div className="w-full max-w-6xl mt-6 flex items-center gap-1 overflow-x-auto pb-2" style={{ borderBottom: `1px solid ${colors.border}` }}>
-                  {sessions.map((s) => (
-                    <button
-                      key={s.id}
-                      onClick={() => setActiveSessionId(s.id)}
-                      className="flex items-center gap-2 px-4 py-2.5 rounded-t-lg text-sm font-medium shrink-0 transition-colors"
-                      style={{
-                        background: activeSessionId === s.id ? colors.card : "transparent",
-                        color: activeSessionId === s.id ? colors.foreground : colors.mutedForeground,
-                        border: `1px solid ${activeSessionId === s.id ? colors.border : "transparent"}`,
-                        borderBottom: activeSessionId === s.id ? `1px solid ${colors.card}` : "none",
-                      }}
-                    >
-                      <span className="truncate max-w-[140px]">{s.product.product_name}</span>
+                <div className="w-full max-w-6xl mt-6 flex items-center gap-1 pb-2" style={{ borderBottom: `1px solid ${colors.border}` }}>
+                  <div className="flex items-center gap-1 overflow-x-auto flex-1 min-w-0">
+                    {sessions.map((s) => (
                       <button
-                        onClick={(e) => { e.stopPropagation(); closeSession(s.id); }}
-                        className="p-0.5 rounded hover:bg-black/10"
-                        style={{ color: colors.mutedForeground }}
+                        key={s.id}
+                        onClick={() => setActiveSessionId(s.id)}
+                        className="flex items-center gap-2 px-4 py-2.5 rounded-t-lg text-sm font-medium shrink-0 transition-colors"
+                        style={{
+                          background: activeSessionId === s.id ? colors.card : "transparent",
+                          color: activeSessionId === s.id ? colors.foreground : colors.mutedForeground,
+                          border: `1px solid ${activeSessionId === s.id ? colors.border : "transparent"}`,
+                          borderBottom: activeSessionId === s.id ? `1px solid ${colors.card}` : "none",
+                        }}
                       >
-                        <X className="w-3.5 h-3.5" />
+                        <span className="truncate max-w-[140px]">{s.product.product_name}</span>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); closeSession(s.id); }}
+                          className="p-0.5 rounded hover:bg-black/10"
+                          style={{ color: colors.mutedForeground }}
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
                       </button>
-                    </button>
-                  ))}
+                    ))}
+                  </div>
+
+                  {/* Recently closed tabs history button */}
+                  {recentlyClosed.length > 0 && (
+                    <div className="relative shrink-0 ml-auto">
+                      <button
+                        ref={recentlyClosedBtnRef}
+                        onClick={() => setShowRecentlyClosed((v) => !v)}
+                        className="flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-xs font-medium transition-colors hover:bg-white/5"
+                        style={{ color: colors.mutedForeground }}
+                        title="Recently closed tabs"
+                      >
+                        <History className="w-4 h-4" />
+                        <span className="flex items-center justify-center w-4.5 h-4.5 rounded-full text-[10px] font-bold" style={{ background: colors.primary, color: colors.primaryForeground }}>
+                          {recentlyClosed.length}
+                        </span>
+                      </button>
+
+                      {showRecentlyClosed && (
+                        <>
+                          <div className="fixed inset-0 z-[9998]" onClick={() => setShowRecentlyClosed(false)} />
+                          <div
+                            className="absolute right-0 top-full mt-1 w-72 rounded-lg border shadow-xl z-[9999] overflow-hidden"
+                            style={{ background: colors.card, borderColor: colors.border }}
+                          >
+                            <div className="px-3 py-2.5 border-b flex items-center justify-between" style={{ borderColor: colors.border }}>
+                              <span className="text-xs font-semibold" style={{ color: colors.foreground }}>Recently Closed</span>
+                              <button
+                                onClick={() => { setRecentlyClosed([]); setShowRecentlyClosed(false); }}
+                                className="text-[10px] px-1.5 py-0.5 rounded hover:bg-white/5 transition-colors"
+                                style={{ color: colors.mutedForeground }}
+                              >
+                                Clear all
+                              </button>
+                            </div>
+                            <div className="max-h-64 overflow-y-auto py-1">
+                              {recentlyClosed.map((product) => (
+                                <button
+                                  key={product.product_name}
+                                  onClick={() => reopenClosedTab(product)}
+                                  className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-white/5 transition-colors"
+                                >
+                                  {product.product_images?.[0] ? (
+                                    <img
+                                      src={product.product_images[0]}
+                                      alt=""
+                                      className="w-8 h-8 rounded object-cover shrink-0"
+                                      style={{ border: `1px solid ${colors.border}` }}
+                                    />
+                                  ) : (
+                                    <div className="w-8 h-8 rounded shrink-0 flex items-center justify-center" style={{ background: colors.muted }}>
+                                      <ImageIcon className="w-4 h-4" style={{ color: colors.mutedForeground }} />
+                                    </div>
+                                  )}
+                                  <span className="text-sm truncate" style={{ color: colors.foreground }}>
+                                    {product.product_name}
+                                  </span>
+                                  <RefreshCw className="w-3.5 h-3.5 shrink-0 ml-auto" style={{ color: colors.mutedForeground }} />
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
                 </div>
 
               {activeSession && (

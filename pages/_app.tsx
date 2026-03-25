@@ -12,18 +12,13 @@ const LiquidGlassAnimator = dynamic(() => import("../app/web/src/components/Liqu
 const fontFamily = "ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif";
 
 export default function MyApp({ Component, pageProps }: AppProps) {
-  // loading state: true during initial paint + during route changes
-  const [loading, setLoading] = React.useState<boolean>(true);
+  const [loading, setLoading] = React.useState<boolean>(false);
 
   React.useEffect(() => {
-    let initialTimer: number | undefined;
     let completeTimer: number | undefined;
-
-    initialTimer = window.setTimeout(() => setLoading(false), 700);
 
     const handleStart = () => {
       setLoading(true);
-      if (initialTimer) { clearTimeout(initialTimer); initialTimer = undefined; }
       if (completeTimer) { clearTimeout(completeTimer); completeTimer = undefined; }
     };
     const handleComplete = () => {
@@ -36,7 +31,6 @@ export default function MyApp({ Component, pageProps }: AppProps) {
     Router.events.on("routeChangeError", handleComplete);
 
     return () => {
-      if (initialTimer) clearTimeout(initialTimer);
       if (completeTimer) clearTimeout(completeTimer);
       Router.events.off("routeChangeStart", handleStart);
       Router.events.off("routeChangeComplete", handleComplete);

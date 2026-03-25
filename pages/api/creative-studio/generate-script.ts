@@ -124,6 +124,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const durationSeconds = typeof duration === 'number' ? Math.max(5, Math.min(120, duration)) : parseInt(String(duration || '6'), 10) || 6;
     const durationSecondsClamped = Math.max(5, Math.min(120, durationSeconds));
 
+    // Voiceover must be SHORT (under 8s spoken) to leave room for visuals and background audio
+    const maxVoiceoverSeconds = Math.min(8, durationSecondsClamped);
+    const maxVoiceoverWords = Math.floor(maxVoiceoverSeconds * 2.2);
+
     const isHookMode = style === "Hook";
     const isCommercialMode = style === "Commercial";
     const isUGCMode = style === "UGC Style";
@@ -166,7 +170,7 @@ This IS: A paid brand commercial. Script-driven via voiceover only. NO text over
 Your mindset:
 - Product as hero: show product clearly within first 3 seconds. Product must appear in at least 60% of total frames.
 - ${durationSecondsClamped}-second formula: 0–2s Pattern Interrupt (strong hook visual, movement, contrast) → 2–${Math.floor(durationSecondsClamped * 0.6)}s Product as Hero (clean product shots, close-ups, premium lighting) → ${Math.floor(durationSecondsClamped * 0.6)}–${durationSecondsClamped - 1}s Emotional Payoff (outcome, transformation) → ${durationSecondsClamped - 1}–${durationSecondsClamped}s Brand Lock-In (product hero frame, logo via environment, strong closing VO).
-- Voiceover: confident, clear, short sentences. Max 18–25 spoken words. Hook → Value → Outcome → Brand line. No filler, no overexplaining.
+- Voiceover: confident, clear, short sentences. Max ${maxVoiceoverWords} spoken words (must fit under ${maxVoiceoverSeconds} seconds). Hook → Value → Outcome → Brand line. No filler, no overexplaining. Keep voiceover SHORT so there is breathing room for visuals and background music/audio.
 - Visual: controlled lighting, soft highlights, high contrast, studio or lifestyle premium look. Smooth camera (push-in, slider, cinematic pans). Shallow depth of field. NO handheld shaky shots, NO casual iPhone vlog style.
 - Emotional angles: Confidence, Status, Relief, Energy, Control, Simplicity, Transformation. Never default to humor unless user explicitly requests.
 - NO on-screen text, captions, subtitles, lower thirds, UI mockups, or typography. All messaging via voiceover and visual storytelling.${multiSceneEnforcement}`;
@@ -196,13 +200,13 @@ Your role:
 - Take the user's ad vision and product details as your creative brief. Their vision is the soul of the film; the product is what you're selling.
 - Write the entire script (shot plan, storyboard, voiceover) so it fits the chosen duration exactly. Every second is intentional.
 - Plan scene-by-scene with precise timing that adds up to the total duration. No filler; every beat serves the idea and the user's described vision.
-- Write voiceover that can be read aloud in the chosen duration (roughly 2–2.5 words per second for natural pace).
+- Write voiceover that is SHORT and punchy — max ${maxVoiceoverWords} words, spoken in under ${maxVoiceoverSeconds} seconds (roughly 2–2.5 words per second). Voiceover must NOT fill the entire video duration; leave breathing room for visuals, music, and ambient audio to shine.
 - Output must be production-ready, director-grade JSON only.
 
 Rules:
 - Total duration is exactly ${durationSecondsClamped} seconds. All shots and voiceover must fit this.
 - Shot lengths and storyboard durations must sum to ${durationSecondsClamped}s. E.g. for ${durationSecondsClamped}s use ~${Math.max(2, Math.floor(durationSecondsClamped / 3))}–${Math.max(4, Math.ceil(durationSecondsClamped / 2))} shots.
-- Voiceover script must be readable in ${durationSecondsClamped} seconds (about ${Math.floor(durationSecondsClamped * 2.2)}–${Math.floor(durationSecondsClamped * 2.5)} words max).
+- Voiceover script must be SHORT — max ${maxVoiceoverWords} words, spoken in under ${maxVoiceoverSeconds} seconds. Do NOT fill the entire ${durationSecondsClamped}-second duration with voiceover. Leave silent/music-only moments for visuals and ambient audio to breathe.
 - Avoid generic or templated lines. Reflect the user's vision and the product's story. The script should feel written for this brand, this product, and this specific vision.${multiSceneEnforcement}`;
     }
 
@@ -233,7 +237,7 @@ COMMERCIAL THEME — MANDATORY ${recommendedScenes}-SCENE STRUCTURE (${durationS
 Storyboard MUST have exactly ${recommendedScenes} scenes with consecutive non-overlapping time_range values.
 Each scene MUST have a UNIQUE, SPECIFIC visual_description — describe the exact shot, camera angle, lighting, subject.
 visual_style_guide: controlled lighting, soft highlights, high contrast, smooth camera (push-in, slider, cinematic pans), shallow depth of field.
-Voiceover: max 18–25 words. Confident, clear. Hook → Value → Outcome → Brand line.
+Voiceover: max ${maxVoiceoverWords} words, under ${maxVoiceoverSeconds} seconds spoken. Confident, clear. Hook → Value → Outcome → Brand line. Leave silent moments for visuals and music to breathe.
 NO on-screen text, captions, or typography. Purely visual + voiceover.`;
     } else if (isUGCMode) {
       styleRequirements = `
@@ -247,7 +251,7 @@ UGC THEME — MANDATORY ${recommendedScenes}-SCENE STRUCTURE (${durationSecondsC
 Storyboard MUST have exactly ${recommendedScenes} scenes with consecutive non-overlapping time_range values.
 Each scene MUST have a UNIQUE, SPECIFIC visual_description — describe what the person is doing, their expression, the setting.
 visual_style_guide: handheld, slight natural shake, eye-level selfie angle, natural light, real-world setting (bedroom, kitchen, office).
-Voiceover: max 20–30 words. Casual, conversational, first person. No marketing buzzwords.
+Voiceover: max ${maxVoiceoverWords} words, under ${maxVoiceoverSeconds} seconds spoken. Casual, conversational, first person. No marketing buzzwords. Leave gaps for visuals and ambient audio.
 Character description: include age, vibe, setting for UGC creator.`;
     }
 
@@ -277,7 +281,7 @@ DIRECTOR REQUIREMENTS:
 - Each shot: 1–3 seconds. Time ranges must be consecutive like "0-2s", "2-4s", "4-6s", "6-8s". They must sum to ${durationSecondsClamped}s.
 - Each shot MUST have a unique, specific visual description — not generic. Describe exact camera angle, subject position, lighting setup, and composition.
 - Specify camera (angle, movement), lighting, and composition for each shot.
-- Voiceover (if enabled): write a script in ${language === "tamil" ? "Tamil" : language === "hindi" ? "Hindi" : "English"} that can be read in ${durationSecondsClamped} seconds (~${Math.floor(durationSecondsClamped * 2.2)}–${Math.floor(durationSecondsClamped * 2.5)} words). ${key_message ? `Weave in: "${key_message}".` : ""} ${cta ? `End with CTA: "${cta}".` : ""}
+- Voiceover (if enabled): write a SHORT script in ${language === "tamil" ? "Tamil" : language === "hindi" ? "Hindi" : "English"} that takes UNDER ${maxVoiceoverSeconds} seconds to speak (~${maxVoiceoverWords} words MAX at 2.2 words/sec). The voiceover must NOT fill the entire ${durationSecondsClamped}-second video — leave silent/music-only moments so visuals and background audio have room to breathe. ${key_message ? `Weave in: "${key_message}".` : ""} ${cta ? `End with CTA: "${cta}".` : ""}
 - final_video_prompt: 300–800 tokens, director-grade, describing the full ${durationSecondsClamped}-second film (cinematic lighting, movement, pacing, color, premium brand quality), aligned with the user's described vision.
 ${styleRequirements}
 
@@ -339,7 +343,7 @@ Return your response as a JSON object with this exact structure. The storyboard 
     "motion_style": "Overall motion",
     "brand_polish": "Brand polish (e.g. Apple/Stripe quality)"
   },
-  "voiceover_script": "${voiceover ? `Full voiceover script in ${language === "tamil" ? "Tamil" : language === "hindi" ? "Hindi" : "English"}, readable in exactly ${durationSecondsClamped} seconds, ${tone || "Energetic"} tone.` : "N/A - Voiceover disabled"}",
+  "voiceover_script": "${voiceover ? `Short voiceover script in ${language === "tamil" ? "Tamil" : language === "hindi" ? "Hindi" : "English"}, MAX ${maxVoiceoverWords} words, spoken in UNDER ${maxVoiceoverSeconds} seconds. ${tone || "Energetic"} tone. Leave silent moments for visuals and music.` : "N/A - Voiceover disabled"}",
   "headline": "",
   "subtext": "",
   "final_video_prompt": "Single cinematic prompt (300-800 tokens) for the full ${durationSecondsClamped}-second video: camera, lighting, composition, pacing, color grading, shot transitions, premium quality. CRITICAL: Do NOT describe or include any on-screen text, captions, titles, headlines, or text overlays. The video is purely visual with no written text."

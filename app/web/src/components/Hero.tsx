@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback, useRef, useEffect } from "react";
+import React, { useState, useCallback, useRef, useEffect, memo } from "react";
 import Image from "next/image";
 import { Button } from "./ui/button";
 import {
@@ -78,6 +78,36 @@ function interleaveMedia(images: string[], videos: string[]): CarouselMediaItem[
 }
 
 const AD_CREATIVE_MEDIA: CarouselMediaItem[] = interleaveMedia(AD_CREATIVE_IMAGES, AD_CREATIVE_VIDEOS);
+
+const LazyVideo = memo(function LazyVideo({ src, label }: { src: string; label: string }) {
+  const ref = useRef<HTMLVideoElement>(null);
+  const [isVisible, setIsVisible] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) { setIsVisible(true); observer.disconnect(); } },
+      { rootMargin: "200px" }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <video
+      ref={ref}
+      src={isVisible ? src : undefined}
+      muted
+      loop
+      playsInline
+      autoPlay={isVisible}
+      preload="none"
+      className="absolute inset-0 w-full h-full object-cover"
+      aria-label={label}
+    />
+  );
+});
 
 const PROGRESS_STEPS = [
   "Analyzing website...",
@@ -435,7 +465,7 @@ const Hero: React.FC = () => {
         {/* Headline - PRD */}
         <div className="text-center mb-4 mx-auto max-w-6xl animate-[fadeUp_0.7s_cubic-bezier(0.16,1,0.3,1)_both" style={{ animationDelay: "0.1s" }}>
           <h1 className="text-4xl sm:text-[46px] font-normal leading-tight tracking-tight md:whitespace-nowrap" style={{ color: colors.foreground }}>
-          Create High Converting ads From a Single Prompt..
+          Your AI Marketing Partner.
           </h1>
         </div>
         <p className="text-center text-xl mb-8 max-w-3xl mx-auto font-extralight animate-[fadeUp_0.7s_cubic-bezier(0.16,1,0.3,1)_both" style={{ color: colors.mutedForeground, animationDelay: "0.25s" }}>
@@ -550,14 +580,9 @@ const Hero: React.FC = () => {
                         sizes="(max-width: 640px) 200px, (max-width: 768px) 240px, 260px"
                       />
                     ) : (
-                      <video
+                      <LazyVideo
                         src={item.src}
-                        muted
-                        loop
-                        playsInline
-                        autoPlay
-                        className="absolute inset-0 w-full h-full object-cover"
-                        aria-label={`Ad creative video ${(index % AD_CREATIVE_MEDIA.length) + 1}`}
+                        label={`Ad creative video ${(index % AD_CREATIVE_MEDIA.length) + 1}`}
                       />
                     )}
                   </div>

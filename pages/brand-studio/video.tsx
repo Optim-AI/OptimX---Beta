@@ -900,15 +900,6 @@ export default function VideoSessionPage() {
       return;
     }
 
-    // Check for duplicate session name
-    const isDuplicate = videoSessions.some(
-      s => s.name.toLowerCase() === name.toLowerCase()
-    );
-    if (isDuplicate) {
-      showAlert('A session with this name already exists. Please choose a different name.', 'Duplicate Name');
-      return;
-    }
-
     setIsCreatingSession(true);
     try {
       const response = await authFetch('/api/creative-studio/sessions', {
