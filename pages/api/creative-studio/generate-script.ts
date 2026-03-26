@@ -1,5 +1,9 @@
 // pages/api/creative-studio/generate-script.ts
 import type { NextApiRequest, NextApiResponse } from "next";
+import {
+  fetchWithGeminiRateLimitRetry,
+  isGeminiRateLimitError,
+} from "@/lib/gemini-retry";
 
 // Configure API route to handle large payloads (product images as base64 data URLs)
 export const config = {
@@ -393,7 +397,7 @@ CRITICAL — NO ON-SCREEN TEXT: Set headline, subtext, and every storyboard on_s
     console.log("System prompt length:", systemPrompt.length, "chars");
 
     // Use gemini-2.5-flash which has better support for system instructions
-    const response = await fetch(
+    const response = await fetchWithGeminiRateLimitRetry(
       `${GEMINI_BASE_URL}/models/gemini-2.5-flash:generateContent`,
       {
         method: "POST",
@@ -402,7 +406,8 @@ CRITICAL — NO ON-SCREEN TEXT: Set headline, subtext, and every storyboard on_s
           "x-goog-api-key": GEMINI_API_KEY,
         },
         body: requestBodyStr,
-      }
+      },
+      { operationLabel: "creative-studio-generateContent", maxRetries: 5 }
     );
 
     if (!response.ok) {
@@ -668,7 +673,14 @@ CRITICAL — NO ON-SCREEN TEXT: Set headline, subtext, and every storyboard on_s
   } catch (error: any) {
     console.error("Script generation error:", error);
     console.error("Error stack:", error.stack);
-    
+
+    if (isGeminiRateLimitError(error)) {
+      return res.status(429).json({
+        ok: false,
+        error: "Rate limit exceeded. Please try again in a moment.",
+      });
+    }
+
     // Handle specific error types
     if (error.name === 'SyntaxError' || error.message?.includes('JSON')) {
       return res.status(400).json({

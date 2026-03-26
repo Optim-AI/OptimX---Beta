@@ -3,6 +3,11 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { GoogleGenAI } from "@google/genai";
 import sharp from "sharp";
+import {
+  fetchWithGeminiRateLimitRetry,
+  isGeminiRateLimitError,
+  withRetryOnGeminiRateLimit,
+} from "@/lib/gemini-retry";
 
 export const config = {
   api: {
@@ -273,19 +278,26 @@ SAFETY CONSTRAINT: This is a professional brand advertisement. All people must b
       config: generateConfig,
     };
 
-    let operation = await ai.models.generateVideos(generateParams);
+    let operation = await withRetryOnGeminiRateLimit(
+      () => ai.models.generateVideos(generateParams),
+      { maxRetries: 6, operationLabel: "veo-generateVideos" }
+    );
 
     console.log('⏳ Video generation started, polling for completion...');
 
-    // Poll until complete
-    const maxAttempts = 60; // 10 minutes max
+    // Poll until complete (12s between polls to reduce sustained RPM on operations API)
+    const pollIntervalMs = 12_000;
+    const maxAttempts = 60;
     let attempts = 0;
 
     while (!operation.done && attempts < maxAttempts) {
       attempts++;
       console.log(`⏳ Polling attempt ${attempts}/${maxAttempts}...`);
-      await new Promise((resolve) => setTimeout(resolve, 10000)); // 10 second intervals
-      operation = await ai.operations.getVideosOperation({ operation });
+      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+      operation = await withRetryOnGeminiRateLimit(
+        () => ai.operations.getVideosOperation({ operation }),
+        { maxRetries: 8, operationLabel: "veo-getVideosOperation" }
+      );
     }
 
     if (!operation.done) {
@@ -330,9 +342,13 @@ SAFETY CONSTRAINT: This is a professional brand advertisement. All people must b
       console.log('📹 Video returned as base64 data');
     } else if (generatedVideo.video.uri) {
       console.log('📹 Downloading video from URI...');
-      const videoResponse = await fetch(generatedVideo.video.uri, {
-        headers: { "x-goog-api-key": GEMINI_VEO_API_KEY },
-      });
+      const videoResponse = await fetchWithGeminiRateLimitRetry(
+        generatedVideo.video.uri,
+        {
+          headers: { "x-goog-api-key": GEMINI_VEO_API_KEY },
+        },
+        { maxRetries: 6, operationLabel: "veo-download-video" }
+      );
       if (!videoResponse.ok) {
         console.error('Failed to download video:', videoResponse.status);
         return res.status(500).json({ ok: false, error: "Failed to download generated video" });
@@ -365,7 +381,7 @@ SAFETY CONSTRAINT: This is a professional brand advertisement. All people must b
       });
     }
     
-    if (errorMessage.includes('quota') || errorMessage.includes('rate')) {
+    if (isGeminiRateLimitError(error) || errorMessage.includes('quota') || errorMessage.includes('rate')) {
       return res.status(429).json({
         ok: false,
         error: "API rate limit reached. Please wait a moment and try again.",
