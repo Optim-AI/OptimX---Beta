@@ -235,13 +235,17 @@ ${voiceover_script ? `Voiceover: "${voiceover_script}"` : "No voiceover - use mu
 ${headline ? `Display headline: "${headline}"` : ""}
 ${subtext ? `Display subtext: "${subtext}"` : ""}
 
-${referenceImages.length > 0 ? `CRITICAL — REFERENCE IMAGES: The attached reference images show the EXACT product (and/or logo) uploaded or fetched by the user. You MUST depict this product precisely in the video: same appearance, design, colors, packaging, and branding. Do not redesign, reimagine, or alter the product. The reference images are the source of truth. Generate a video ad that features this exact product.` : "Create visuals based on the description above."}`;
+${referenceImages.length > 0 ? `CRITICAL — REFERENCE IMAGES: The attached reference images show the EXACT product (and/or logo) uploaded or fetched by the user. You MUST depict this product precisely in the video: same appearance, design, colors, packaging, and branding. Do not redesign, reimagine, or alter the product. The reference images are the source of truth. Generate a video ad that features this exact product.` : "Create visuals based on the description above."}
+
+SAFETY CONSTRAINT: This is a professional brand advertisement. All people must be fully clothed in appropriate attire. Absolutely no nudity, partial nudity, or revealing clothing. Keep all content safe for work and family-friendly.`;
     } else if (prompt) {
       videoPrompt = `Create a ${videoDuration}-second video ad (${videoAspectRatio} aspect ratio).
 
 ${prompt}
 
-${referenceImages.length > 0 ? `CRITICAL: The attached reference images show the EXACT product. Depict it precisely — same look, design, and branding. Do not change or redesign the product. The video ad must feature this exact product as shown in the references.` : ''}`;
+${referenceImages.length > 0 ? `CRITICAL: The attached reference images show the EXACT product. Depict it precisely — same look, design, and branding. Do not change or redesign the product. The video ad must feature this exact product as shown in the references.` : ''}
+
+SAFETY CONSTRAINT: This is a professional brand advertisement. All people must be fully clothed in appropriate attire. Absolutely no nudity, partial nudity, or revealing clothing. Keep all content safe for work and family-friendly.`;
     } else {
       return res.status(400).json({ ok: false, error: "Either 'prompt' or 'final_video_prompt' is required" });
     }
@@ -249,11 +253,13 @@ ${referenceImages.length > 0 ? `CRITICAL: The attached reference images show the
     console.log('📝 Video prompt length:', videoPrompt.length);
     console.log('🚀 Starting Veo 3.1 video generation...', { aspectRatio: videoAspectRatio });
 
-    // Config structure per Veo 3.1 reference: aspectRatio, optional referenceImages (each { image, referenceType: "asset" })
     const generateConfig: any = {
       aspectRatio: videoAspectRatio,
-      resolution: "720p",
       numberOfVideos: 1,
+      personGeneration: "allow_adult",
+      generateAudio: true,
+      negativePrompt: "nudity, naked, nsfw, sexually explicit, pornographic, revealing clothing, underwear, lingerie, sheer clothing, bare skin, suggestive poses",
+      safetyFilterLevel: "BLOCK_LOW_AND_ABOVE",
     };
     if (referenceImages.length > 0) {
       generateConfig.referenceImages = referenceImages;
@@ -287,10 +293,32 @@ ${referenceImages.length > 0 ? `CRITICAL: The attached reference images show the
       return res.status(408).json({ ok: false, error: "Video generation timed out. Please try again." });
     }
 
+    if (operation.error) {
+      console.error('❌ Video generation operation failed:', JSON.stringify(operation.error));
+      const errMsg = (operation.error as any).message || JSON.stringify(operation.error);
+      return res.status(500).json({ ok: false, error: `Video generation failed: ${errMsg}` });
+    }
+
+    const raiFilteredCount = operation.response?.raiMediaFilteredCount;
+    const raiReasons = operation.response?.raiMediaFilteredReasons;
+
+    if (raiFilteredCount && raiFilteredCount > 0) {
+      console.error('❌ Video filtered by safety policy:', { raiFilteredCount, raiReasons });
+      const reasonDetail = raiReasons?.length ? ` (${raiReasons.join(', ')})` : '';
+      return res.status(400).json({
+        ok: false,
+        error: `Video was blocked by content safety filters${reasonDetail}. Try adjusting your prompt or images to avoid restricted content.`,
+      });
+    }
+
     const generatedVideo = operation.response?.generatedVideos?.[0];
     if (!generatedVideo?.video) {
       console.error('❌ No video in response:', JSON.stringify(operation.response).substring(0, 500));
-      return res.status(500).json({ ok: false, error: "Video not found in response" });
+      console.error('❌ Operation metadata:', JSON.stringify(operation.metadata).substring(0, 500));
+      return res.status(500).json({
+        ok: false,
+        error: "Video generation completed but no video was returned. This may be due to content filtering or a temporary API issue. Please try again with a different prompt.",
+      });
     }
 
     console.log('✅ Video generated successfully!');
