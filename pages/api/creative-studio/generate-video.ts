@@ -262,8 +262,6 @@ SAFETY CONSTRAINT: This is a professional brand advertisement. All people must b
       aspectRatio: videoAspectRatio,
       numberOfVideos: 1,
       personGeneration: "allow_adult",
-      generateAudio: true,
-      negativePrompt: "nudity, naked, nsfw, sexually explicit, pornographic, revealing clothing, underwear, lingerie, sheer clothing, bare skin, suggestive poses",
       safetyFilterLevel: "BLOCK_LOW_AND_ABOVE",
     };
     if (referenceImages.length > 0) {
@@ -381,7 +379,11 @@ SAFETY CONSTRAINT: This is a professional brand advertisement. All people must b
       });
     }
     
-    if (isGeminiRateLimitError(error) || errorMessage.includes('quota') || errorMessage.includes('rate')) {
+    const looksLikeRateLimit =
+      /\brate limit\b|rate-limit|too many requests|requests per|RESOURCE_EXHAUSTED/i.test(
+        errorMessage
+      );
+    if (isGeminiRateLimitError(error) || errorMessage.includes('quota') || looksLikeRateLimit) {
       return res.status(429).json({
         ok: false,
         error: "API rate limit reached. Please wait a moment and try again.",
