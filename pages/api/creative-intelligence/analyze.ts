@@ -3,7 +3,7 @@
 
 import type { NextApiRequest, NextApiResponse } from "next";
 import { getUserIdFromRequest } from "@/auth/request";
-import { db } from "@/database/client";
+import { db, extractDbError } from "@/database/client";
 import {
   creativeIntelligenceRuns,
   creativeIntelligenceBrands,
@@ -23,6 +23,20 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GEMINI_VEO_API_
 const SEARCH_API_KEY = process.env.SEARCH_API_KEY || process.env.SERPAPI_KEY;
 const META_AD_LIBRARY_TOKEN = process.env.META_AD_LIBRARY_ACCESS_TOKEN;
 const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta";
+
+function normalizeCompetitorUrls(input: unknown): string[] {
+  if (Array.isArray(input)) {
+    return input.filter((u): u is string => typeof u === "string" && u.trim().length > 0);
+  }
+  return [];
+}
+
+function normalizeAdvancedSettings(input: unknown): Record<string, unknown> {
+  if (input && typeof input === "object" && !Array.isArray(input)) {
+    return input as Record<string, unknown>;
+  }
+  return {};
+}
 
 export const config = {
   api: {
@@ -925,12 +939,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const {
     brandUrl,
-    competitorUrls = [],
+    competitorUrls: rawCompetitorUrls,
     industry,
     targetAudience,
     campaignGoal,
-    advancedSettings = {},
-  } = req.body;
+    advancedSettings: rawAdvancedSettings,
+  } = req.body || {};
+  const competitorUrls = normalizeCompetitorUrls(rawCompetitorUrls);
+  const advancedSettings = normalizeAdvancedSettings(rawAdvancedSettings);
 
   if (!brandUrl || typeof brandUrl !== "string") {
     return res.status(400).json({ ok: false, error: "Brand URL is required" });
@@ -950,7 +966,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .values({
         userId,
         brandUrl,
-        competitorUrls: Array.isArray(competitorUrls) ? competitorUrls : [],
+        competitorUrls,
         industry: industry || null,
         targetAudience: targetAudience || null,
         campaignGoal: campaignGoal || null,
@@ -1362,7 +1378,14 @@ Return JSON (STEP 2 — COMPETITOR ANALYSIS):
 
     // Stage 4: Hooks + Strategy
     await updateProgress(runId, 6, STEPS[5]);
-    const advanced = (typeof advancedSettings === "object" && advancedSettings) || {};
+    const adv =
+      advancedSettings && typeof advancedSettings === "object" && !Array.isArray(advancedSettings)
+        ? advancedSettings
+        : {};
+    const toneEmotional =
+      typeof adv.toneEmotional === "number" ? adv.toneEmotional : undefined;
+    const campaignFromAdvanced =
+      typeof adv.campaignGoal === "string" ? adv.campaignGoal : undefined;
     const { hooks, strategies } = await generateHooks(
       {
         ...brandAnalysis,
@@ -1378,8 +1401,8 @@ Return JSON (STEP 2 — COMPETITOR ANALYSIS):
       { brand: fbBrand, competitors: fbCompetitors },
       googleRanks,
       {
-        toneEmotional: advanced.toneEmotional,
-        campaignGoal: campaignGoal || advanced.campaignGoal,
+        toneEmotional,
+        campaignGoal: campaignGoal || campaignFromAdvanced,
       }
     );
 
@@ -1420,19 +1443,31 @@ Return JSON (STEP 2 — COMPETITOR ANALYSIS):
   } catch (err: any) {
     console.error("Creative Intelligence pipeline error:", err?.message || err);
     console.error("Stack:", err?.stack);
+    const dbInfo = extractDbError(err);
+    const pgCause = err?.cause?.message || dbInfo.cause;
     if (runId) {
-      await db
-        .update(creativeIntelligenceRuns)
-        .set({
-          status: "failed",
-          errorMessage: err.message || "Unknown error",
-          updatedAt: new Date().toISOString(),
-        })
-        .where(eq(creativeIntelligenceRuns.id, runId));
+      try {
+        await db
+          .update(creativeIntelligenceRuns)
+          .set({
+            status: "failed",
+            errorMessage: pgCause || err.message || "Unknown error",
+            updatedAt: new Date().toISOString(),
+          })
+          .where(eq(creativeIntelligenceRuns.id, runId));
+      } catch {
+        // Run row may not exist if insert failed
+      }
     }
+
+    const schemaHint =
+      dbInfo.pgCode === "42703"
+        ? " Database is missing a required column. Run scripts/apply-creative-intelligence-columns.sql on your production database (Supabase SQL Editor), then retry."
+        : "";
+
     return res.status(500).json({
       ok: false,
-      error: err.message || "Analysis failed",
+      error: (pgCause || dbInfo.message || err.message || "Analysis failed") + schemaHint,
     });
   }
 }
