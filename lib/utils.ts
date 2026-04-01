@@ -53,6 +53,11 @@ export async function safeResponseJson<T = unknown>(response: Response): Promise
   try {
     return JSON.parse(text) as T;
   } catch {
+    if (!response.ok && response.status === 413) {
+      throw new Error(
+        'file size too large (413). Images or data in this request exceed the 4 MB limit—try smaller files or fewer images.'
+      );
+    }
     const msg = !response.ok
       ? `Server error (${response.status}). Please try again.`
       : 'Invalid response from server.';

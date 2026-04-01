@@ -35,6 +35,80 @@ function getVoiceoverFromStoryboard(storyboard: Array<{ voiceover_line?: string;
     .join(' ');
 }
 
+/** Vercel caps request bodies at ~4.5MB; large base64 galleries exceed this before the API runs. */
+const MAX_VIDEO_API_REF_IMAGES = 3;
+const VERCEL_SAFE_BODY_BYTES = 4 * 1024 * 1024;
+
+async function compressDataUrlForVideoApi(dataUrl: string): Promise<string> {
+  if (!dataUrl.startsWith('data:') || dataUrl.length < 600_000) return dataUrl;
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const maxDim = 1600;
+      let w = img.naturalWidth || img.width;
+      let h = img.naturalHeight || img.height;
+      if (w <= 0 || h <= 0) {
+        resolve(dataUrl);
+        return;
+      }
+      if (w > maxDim || h > maxDim) {
+        const r = Math.min(maxDim / w, maxDim / h);
+        w = Math.round(w * r);
+        h = Math.round(h * r);
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        resolve(dataUrl);
+        return;
+      }
+      ctx.drawImage(img, 0, 0, w, h);
+      try {
+        let q = 0.86;
+        let out = canvas.toDataURL('image/jpeg', q);
+        while (out.length > 1_100_000 && q > 0.52) {
+          q -= 0.07;
+          out = canvas.toDataURL('image/jpeg', q);
+        }
+        resolve(out);
+      } catch {
+        resolve(dataUrl);
+      }
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
+
+async function prepareVideoGenerateImages(args: {
+  hero_image: string | null;
+  brand_logo: string | null;
+  product_images: string[];
+}): Promise<{ hero_image: string | null; brand_logo: string | null; product_images: string[] }> {
+  const { hero_image, brand_logo, product_images } = args;
+  const slotsForProducts = Math.max(
+    0,
+    MAX_VIDEO_API_REF_IMAGES - (hero_image ? 1 : 0) - (brand_logo ? 1 : 0)
+  );
+  const productSlice = product_images
+    .filter((img) => img && img !== hero_image && img !== brand_logo)
+    .slice(0, slotsForProducts);
+
+  const [h, l, ...rest] = await Promise.all([
+    hero_image ? compressDataUrlForVideoApi(hero_image) : Promise.resolve(null),
+    brand_logo ? compressDataUrlForVideoApi(brand_logo) : Promise.resolve(null),
+    ...productSlice.map((u) => compressDataUrlForVideoApi(u)),
+  ]);
+
+  return {
+    hero_image: h,
+    brand_logo: l,
+    product_images: rest,
+  };
+}
+
 // Aspect ratio options with orientation for video ad setup (9:16, 16:9 only)
 const ASPECT_RATIO_OPTIONS: { ratio: '9:16' | '16:9'; orientation: string }[] = [
   { ratio: '9:16', orientation: 'Portrait' },
@@ -768,21 +842,37 @@ export default function VideoSessionPage() {
       // Prefer brand guideline logo when available so the fetched/configured logo is used in the video
       const brandLogo = brand?.logo ?? brand?.logoUrl ?? adBuilderData.product.brand_logo ?? null;
 
+      const preparedImages = await prepareVideoGenerateImages({
+        hero_image: adBuilderData.product.hero_image,
+        brand_logo: brandLogo,
+        product_images: adBuilderData.product.product_images,
+      });
+
+      const videoBody = {
+        product_name: adBuilderData.product.product_name,
+        brand_name: adBuilderData.product.brand_name,
+        style: adBuilderData.adSetup.style,
+        duration: adBuilderData.adSetup.duration,
+        aspect_ratio: adBuilderData.adSetup.aspect_ratio,
+        quality: adBuilderData.adSetup.quality || 'standard',
+        final_video_prompt: finalPrompt,
+        voiceover_script: getVoiceoverFromStoryboard(adBuilderData.storyboard) || adBuilderData.voiceover.script,
+        product_images: preparedImages.product_images,
+        hero_image: preparedImages.hero_image,
+        brand_logo: preparedImages.brand_logo,
+      };
+      const bodyString = JSON.stringify(videoBody);
+      if (new Blob([bodyString]).size > VERCEL_SAFE_BODY_BYTES) {
+        showError(
+          'Reference images are too large for the server (about 4 MB max on production). Try smaller files or remove extra product photos from the gallery.',
+          'file size too large'
+        );
+        return;
+      }
+
       const response = await authFetch('/api/creative-studio/generate-video', {
         method: 'POST',
-        body: JSON.stringify({
-          product_name: adBuilderData.product.product_name,
-          brand_name: adBuilderData.product.brand_name,
-          style: adBuilderData.adSetup.style,
-          duration: adBuilderData.adSetup.duration,
-          aspect_ratio: adBuilderData.adSetup.aspect_ratio,
-          quality: adBuilderData.adSetup.quality || 'standard',
-          final_video_prompt: finalPrompt,
-          voiceover_script: getVoiceoverFromStoryboard(adBuilderData.storyboard) || adBuilderData.voiceover.script,
-          product_images: adBuilderData.product.product_images,
-          hero_image: adBuilderData.product.hero_image,
-          brand_logo: brandLogo,
-        }),
+        body: bodyString,
       });
 
       const result = await safeResponseJson<{ ok: boolean; error?: string; videoUrl?: string }>(response);
