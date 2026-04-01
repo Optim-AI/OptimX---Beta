@@ -261,8 +261,7 @@ SAFETY CONSTRAINT: This is a professional brand advertisement. All people must b
     const generateConfig: any = {
       aspectRatio: videoAspectRatio,
       numberOfVideos: 1,
-      personGeneration: "allow_adult",
-      safetyFilterLevel: "BLOCK_LOW_AND_ABOVE",
+      safetyFilterLevel: "BLOCK_ONLY_HIGH",
     };
     if (referenceImages.length > 0) {
       generateConfig.referenceImages = referenceImages;
