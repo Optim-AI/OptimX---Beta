@@ -4,6 +4,7 @@ import type { AppProps } from "next/app";
 import * as React from "react";
 import dynamic from "next/dynamic";
 import Router from "next/router";
+import { Analytics } from "@vercel/analytics/next";
 import AlertModal from "@/app/web/src/components/ui/AlertModal";
 
 const LiquidGlassAnimator = dynamic(() => import("../app/web/src/components/LiquidGlassAnimator").then((m) => m.default), { ssr: false });
@@ -133,6 +134,8 @@ export default function MyApp({ Component, pageProps }: AppProps) {
 
       {/* Global alert/confirm modal */}
       <AlertModal />
+
+      <Analytics />
     </>
   );
 }
