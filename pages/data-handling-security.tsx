@@ -176,7 +176,7 @@ const DataHandlingSecurity: React.FC = () => {
                 <li>Download their data (on request)</li>
               </ul>
 
-              <p>Requests are processed via <strong>info@optimx.app</strong> within 15 days.</p>
+              <p>Requests are processed via <strong>info@skalxai.app</strong> within 15 days.</p>
             </article>
 
             <div className="mt-8 flex justify-between items-center">

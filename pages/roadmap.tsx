@@ -115,7 +115,7 @@ const Roadmap: React.FC = () => {
                       <a href="/community">Discuss on community</a>
                     </Button>
                     <Button size="sm" style={{ background: colors.gradientPrimary, color: colors.primaryForeground }}>
-                      <a href="mailto:info@optimx.app" className="flex items-center gap-2">Email Product <ArrowRight className="h-4 w-4" /></a>
+                      <a href="mailto:info@skalxai.app" className="flex items-center gap-2">Email Product <ArrowRight className="h-4 w-4" /></a>
                     </Button>
                   </div>
                 </div>
@@ -127,7 +127,7 @@ const Roadmap: React.FC = () => {
 
                 <div className="mt-6">
                   <h4 style={{ color: colors.foreground, fontWeight: 700 }}>Contact</h4>
-                  <div style={{ color: colors.mutedForeground, marginTop: 6 }}>Email: <strong>info@optimx.app</strong></div>
+                  <div style={{ color: colors.mutedForeground, marginTop: 6 }}>Email: <strong>info@skalxai.app</strong></div>
                 </div>
               </aside>
 

@@ -53,7 +53,7 @@ const HelpCenter: React.FC = () => {
     },
     {
       q: "How do I request a refund?",
-      a: "Email info@optimx.app with your registered email, payment ID, and reason. Refunds for unused credits must be requested within 7 days of purchase.",
+      a: "Email info@skalxai.app with your registered email, payment ID, and reason. Refunds for unused credits must be requested within 7 days of purchase.",
     },
   ];
 
@@ -186,11 +186,11 @@ const HelpCenter: React.FC = () => {
                 <div>
                   <h3 style={{ color: colors.foreground }}>Support Channels</h3>
                   <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <a href="mailto:info@optimx.app" className="p-4 rounded-lg border flex items-center gap-3" style={{ borderColor: withAlpha(colors.border, 0.6), background: colors.card }}>
+                    <a href="mailto:info@skalxai.app" className="p-4 rounded-lg border flex items-center gap-3" style={{ borderColor: withAlpha(colors.border, 0.6), background: colors.card }}>
                       <Mail className="h-5 w-5" style={{ color: colors.primary }} />
                       <div>
                         <div style={{ color: colors.foreground, fontWeight: 700 }}>Email Support</div>
-                        <div style={{ color: colors.mutedForeground, fontSize: 13 }}>info@optimx.app</div>
+                        <div style={{ color: colors.mutedForeground, fontSize: 13 }}>info@skalxai.app</div>
                       </div>
                     </a>
 
@@ -247,7 +247,7 @@ const HelpCenter: React.FC = () => {
                 <div className="mt-6">
                   <h4 style={{ color: colors.foreground, fontWeight: 700 }}>Contact</h4>
                   <div className="text-sm" style={{ color: colors.mutedForeground }}>
-                    Email: <strong>info@optimx.app</strong>
+                    Email: <strong>info@skalxai.app</strong>
                   </div>
                 </div>
 

@@ -60,7 +60,7 @@ const FAQ: React.FC = () => {
             </span>
           </h2>
           <p className="text-xl font-extralight" style={{ color: colors.mutedForeground }}>
-            Got questions? We&apos;ve got answers. If you can&apos;t find what you&apos;re looking for, reach out at info@optimx.app.
+            Got questions? We&apos;ve got answers. If you can&apos;t find what you&apos;re looking for, reach out at info@skalxai.app.
           </p>
         </div>
 

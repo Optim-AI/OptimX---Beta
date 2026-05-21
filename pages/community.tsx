@@ -154,7 +154,7 @@ const Community: React.FC = () => {
               <div>
                 <h3 style={{ color: colors.foreground }}>Need help?</h3>
                 <p style={{ color: colors.mutedForeground }}>
-                  Email: <strong>info@optimx.app</strong>
+                  Email: <strong>info@skalxai.app</strong>
                   <br /> Join our Discord for real-time help and product announcements.
                 </p>
                 <div className="mt-3 flex gap-3">

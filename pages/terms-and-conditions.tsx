@@ -1121,7 +1121,7 @@ const TermsAndConditions: React.FC = () => {
                 className="text-[15px] leading-[1.7]"
                 style={{ color: colors.foreground }}
               >
-                Email: info@optimx.app
+                Email: info@skalxai.app
               </p>
             </SectionBlock>
 

@@ -1002,11 +1002,11 @@ export default function SettingsPage(): JSX.Element {
                   <p className="text-sm leading-relaxed" style={{ color: colors.mutedForeground }}>
                     To remove your data or permanently delete your account, email{" "}
                     <a
-                      href="mailto:info@optimx.app?subject=Delete%20Account&body=delete%20-%20[reason]"
+                      href="mailto:info@skalxai.app?subject=Delete%20Account&body=delete%20-%20[reason]"
                       className="font-medium underline"
                       style={{ color: colors.primary }}
                     >
-                      info@optimx.app
+                      info@skalxai.app
                     </a>{" "}
                     with the subject <span className="font-semibold" style={{ color: colors.foreground }}>&quot;delete&quot;</span> and a brief reason.
                   </p>
