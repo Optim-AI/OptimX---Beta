@@ -362,7 +362,7 @@ const Contact = () => {
                           Reachout to us
                         </h3>
                         <p style={{ color: colors.mutedForeground }}>
-                          info@optimx.app
+                          info@skalxai.app
                         </p>
                         <p style={{ color: colors.mutedForeground }}>
                           <a

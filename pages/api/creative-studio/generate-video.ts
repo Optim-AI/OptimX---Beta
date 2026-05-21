@@ -226,6 +226,28 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       "Bold & Energetic": { prefix: "A bold, high-energy", details: "Dynamic, fast-paced visuals with punchy edits and vibrant colors." },
     };
 
+    // Global realism + editing constraints to reduce "AI look"
+    // Veo responds well to explicit cinematography + post-production direction (even though it generates one clip).
+    const realismAndEditSpec = `
+REALISM & IMAGE QUALITY (CRITICAL):
+- Photorealistic live-action footage (unless the user explicitly requested animation).
+- Bright, well-exposed image (avoid dim/underexposed scenes). Clean whites, natural skin tones, realistic contrast.
+- Natural camera physics: realistic motion blur, stable horizon, no wobble/jitter, no warping.
+- Commercial-grade color: consistent color temperature and grading across the whole video.
+- High detail without "AI sharpness": avoid over-smoothing, plastic skin, halos, painterly textures.
+
+EDITING & TRANSITIONS (CRITICAL):
+- Make it feel human-shot and professionally edited, not AI-generated.
+- Use a clear multi-shot edit (3–7 shots total) WITH motivated cuts on action/beat.
+- Prefer real-world transitions: match cuts, whip-pan cut, rack-focus cut, speed-ramp cut, natural occlusion wipe (passing object), or hard cuts.
+- Avoid floaty morphing transitions, hallucinated dissolves, random camera teleports, flicker between shots, or object/label changes.
+
+NEGATIVE CONSTRAINTS:
+- No dark, muddy lighting. No flicker, strobing, frame-to-frame texture crawling.
+- No jumping logos, changing packaging text, shifting product geometry, or inconsistent branding.
+- No extra fingers/limbs, warped faces, melting objects, glitch artifacts, or watermark overlays.
+`.trim();
+
     if (final_video_prompt) {
       const styleConfig = styleDescriptions[style] || { prefix: "A professional", details: "" };
       
@@ -234,6 +256,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 ${styleConfig.details}
 
 ${final_video_prompt}
+
+${realismAndEditSpec}
 
 Aspect ratio: ${videoAspectRatio}
 ${voiceover_script ? `Voiceover: "${voiceover_script}"` : "No voiceover - use music/sound effects."}
@@ -247,6 +271,8 @@ SAFETY CONSTRAINT: This is a professional brand advertisement. All people must b
       videoPrompt = `Create a ${videoDuration}-second video ad (${videoAspectRatio} aspect ratio).
 
 ${prompt}
+
+${realismAndEditSpec}
 
 ${referenceImages.length > 0 ? `CRITICAL: The attached reference images show the EXACT product. Depict it precisely — same look, design, and branding. Do not change or redesign the product. The video ad must feature this exact product as shown in the references.` : ''}
 
@@ -271,7 +297,7 @@ SAFETY CONSTRAINT: This is a professional brand advertisement. All people must b
     // generateVideos params: model, prompt, config (with referenceImages when provided)
     const generateParams: any = {
       model: "veo-3.1-fast-generate-preview",
-      prompt: videoPrompt,
+      prompt: videoPrompt, 
       config: generateConfig,
     };
 

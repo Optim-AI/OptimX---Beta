@@ -42,7 +42,7 @@ const ParallaxBackground = dynamic(() => import("../app/web/src/components/Paral
 const Hero = dynamic(() => import("../app/web/src/components/Hero"), { ssr: false, loading: HeroSkeleton });
 const ComparisonSection = dynamic(() => import("../app/web/src/components/ComparisonSection"), { ssr: false });
 const BuiltFor = dynamic(() => import("../app/web/src/components/BuiltFor"), { ssr: false });
-const PricingPreview = dynamic(() => import("../app/web/src/components/PricingPreview"), { ssr: false });
+const ContactForPricing = dynamic(() => import("../app/web/src/components/ContactForPricing"), { ssr: false });
 const HowCreditsWork = dynamic(() => import("../app/web/src/components/HowCreditsWork"), { ssr: false });
 const FAQ = dynamic(() => import("../app/web/src/components/FAQ"), { ssr: false });
 const FinalCTA = dynamic(() => import("../app/web/src/components/FinalCTA"), { ssr: false });
@@ -88,7 +88,7 @@ const Home: React.FC = () => {
         {/* <ComparisonSection /> */}
         <HowCreditsWork />
         <BuiltFor />
-        <PricingPreview />
+        <ContactForPricing />
         <FAQ />
         <FinalCTA />
       </main>

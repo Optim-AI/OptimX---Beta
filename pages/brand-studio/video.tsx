@@ -252,22 +252,25 @@ export default function VideoSessionPage() {
     }
   }, [generatedVideos, selectedVideoId]);
 
-  // Animate video generation steps (0–5) while generating
+  // Animate video generation steps while generating
+  // Extended (16s) has 9 steps and takes ~3-4 min; standard has 5 steps and takes ~1-2 min
+  const isExtendedDuration = (adBuilderData.adSetup.duration ?? 8) > 8;
+  const maxGenerationSteps = isExtendedDuration ? 9 : 5;
   useEffect(() => {
     if (!isGeneratingVideo) {
       setGenerationStep(0);
       return;
     }
     setGenerationStep(0);
-    const stepDuration = 3000;
+    const stepDuration = isExtendedDuration ? 25_000 : 3_000;
     const interval = setInterval(() => {
       setGenerationStep((prev) => {
-        if (prev >= 5) return 5;
+        if (prev >= maxGenerationSteps) return maxGenerationSteps;
         return prev + 1;
       });
     }, stepDuration);
     return () => clearInterval(interval);
-  }, [isGeneratingVideo]);
+  }, [isGeneratingVideo, isExtendedDuration, maxGenerationSteps]);
 
   // ============== Load Session ==============
 
@@ -870,7 +873,13 @@ export default function VideoSessionPage() {
         return;
       }
 
-      const response = await authFetch('/api/creative-studio/generate-video', {
+      const durationSeconds = Number(adBuilderData.adSetup.duration) || 0;
+      const videoEndpoint =
+        durationSeconds > 8
+          ? '/api/creative-studio/generate-video-stitched'
+          : '/api/creative-studio/generate-video';
+
+      const response = await authFetch(videoEndpoint, {
         method: 'POST',
         body: bodyString,
       });
@@ -1354,29 +1363,47 @@ export default function VideoSessionPage() {
                   <div>
                     <label className="block text-sm font-medium mb-2" style={{ color: colors.foreground }}>Duration</label>
                     <div className="flex gap-3">
-                      {VIDEO_DURATIONS.map((dur) => (
-                        <button
-                          key={dur}
-                          onClick={() =>
-                            setAdBuilderData({
-                              ...adBuilderData,
-                              adSetup: { ...adBuilderData.adSetup, duration: dur },
-                            })
-                          }
-                          className="px-6 py-3 rounded-lg border-2 font-medium transition-colors"
-                          style={{
-                            borderColor: adBuilderData.adSetup.duration === dur ? colors.primary : colors.border,
-                            backgroundColor: adBuilderData.adSetup.duration === dur ? 'hsl(213 100% 55% / 0.2)' : 'transparent',
-                            color: adBuilderData.adSetup.duration === dur ? colors.primary : colors.foreground,
-                          }}
-                        >
-                          {dur}s
-                        </button>
-                      ))}
+                      {VIDEO_DURATIONS.map((dur) => {
+                        const isSelected = adBuilderData.adSetup.duration === dur;
+                        const isExtended = dur > 8;
+                        return (
+                          <button
+                            key={dur}
+                            onClick={() =>
+                              setAdBuilderData({
+                                ...adBuilderData,
+                                adSetup: { ...adBuilderData.adSetup, duration: dur },
+                              })
+                            }
+                            className="relative px-6 py-3 rounded-lg border-2 font-medium transition-colors"
+                            style={{
+                              borderColor: isSelected ? colors.primary : colors.border,
+                              backgroundColor: isSelected ? 'hsl(213 100% 55% / 0.2)' : 'transparent',
+                              color: isSelected ? colors.primary : colors.foreground,
+                            }}
+                          >
+                            {dur}s
+                            {isExtended && (
+                              <span
+                                className="absolute -top-2 -right-2 text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none"
+                                style={{ backgroundColor: colors.primary, color: 'white' }}
+                              >
+                                2×8s
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
                     </div>
-                    <p className="mt-2 text-xs" style={{ color: colors.mutedForeground }}>
-                      Standard length: 8 s.
-                    </p>
+                    {adBuilderData.adSetup.duration > 8 ? (
+                      <p className="mt-2 text-xs" style={{ color: colors.primary }}>
+                        Extended: generates 2 clips and stitches them into one seamless video. Takes ~3-4 min.
+                      </p>
+                    ) : (
+                      <p className="mt-2 text-xs" style={{ color: colors.mutedForeground }}>
+                        Standard length: 8s. Select 16s for an extended ad.
+                      </p>
+                    )}
                   </div>
 
                   {/* Aspect Ratio */}
@@ -1984,7 +2011,14 @@ export default function VideoSessionPage() {
                     </div>
                     <div>
                       <p className="text-sm" style={{ color: colors.mutedForeground }}>Duration</p>
-                      <p className="font-medium" style={{ color: colors.foreground }}>{adBuilderData.adSetup.duration}s</p>
+                      <p className="font-medium" style={{ color: colors.foreground }}>
+                        {adBuilderData.adSetup.duration}s
+                        {adBuilderData.adSetup.duration > 8 && (
+                          <span className="ml-2 text-xs font-normal px-2 py-0.5 rounded-full" style={{ backgroundColor: 'hsl(213 100% 55% / 0.15)', color: colors.primary }}>
+                            2 clips stitched
+                          </span>
+                        )}
+                      </p>
                     </div>
                     <div>
                       <p className="text-sm" style={{ color: colors.mutedForeground }}>Aspect Ratio</p>
@@ -2030,7 +2064,12 @@ export default function VideoSessionPage() {
                     {isGeneratingVideo ? (
                       <span className="flex items-center justify-center gap-2">
                         <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent" />
-                        Generating Video...
+                        {adBuilderData.adSetup.duration > 8 ? 'Generating Extended Video...' : 'Generating Video...'}
+                      </span>
+                    ) : adBuilderData.adSetup.duration > 8 ? (
+                      <span className="flex items-center justify-center gap-2">
+                        Generate Extended Video
+                        <span className="text-xs opacity-80 font-normal">(16s &middot; 2 clips stitched)</span>
                       </span>
                     ) : (
                       'Generate Video'
@@ -2038,65 +2077,89 @@ export default function VideoSessionPage() {
                   </button>
 
                   {/* Video Generation Progress */}
-                  {isGeneratingVideo && (
-                    <div className="mt-4 p-6 rounded-xl border" style={{ backgroundColor: colors.muted, borderColor: colors.border }}>
-                      <div className="flex items-center gap-3 mb-4">
-                        <div className="relative">
-                          <div className="w-10 h-10 rounded-full border-3 border-t-transparent animate-spin" style={{ borderColor: colors.primary, borderTopColor: 'transparent' }} />
-                          <div className="absolute inset-0 w-10 h-10 rounded-full border-3 border-t-transparent animate-spin" style={{ borderColor: 'transparent', borderBottomColor: colors.primary, animationDirection: 'reverse', animationDuration: '1.5s' }} />
-                        </div>
-                        <div>
-                          <p className="font-semibold" style={{ color: colors.foreground }}>AI is generating your video</p>
-                          <p className="text-sm" style={{ color: colors.mutedForeground }}>This may take 1-2 minutes. Please don't close this page.</p>
-                        </div>
-                      </div>
-                      <div className="space-y-2">
-                        {[
+                  {isGeneratingVideo && (() => {
+                    const isExtended = adBuilderData.adSetup.duration > 8;
+                    const steps = isExtended
+                      ? [
+                          'Analyzing your prompt',
+                          'Building campaign strategy',
+                          'Writing script',
+                          'Generating clip 1 of 2',
+                          'Rendering clip 1',
+                          'Extracting continuity frame',
+                          'Generating clip 2 of 2',
+                          'Rendering clip 2',
+                          'Stitching clips into final video',
+                        ]
+                      : [
                           'Analyzing your prompt',
                           'Building campaign strategy',
                           'Writing script',
                           'Generating scenes',
                           'Rendering final video',
-                        ].map((label, i) => {
-                          const isCompleted = i < generationStep || (generationStep >= 5 && i <= 4);
-                          const shouldFadeIn = i === generationStep && generationStep < 5;
-                          if (i > generationStep && generationStep < 5) return null;
-                          return (
-                            <div
-                              key={label}
-                              className="flex items-center gap-2"
-                              style={{
-                                opacity: shouldFadeIn ? 0 : 1,
-                                animation: shouldFadeIn ? 'videoStepFadeIn 0.5s ease-out forwards' : undefined,
-                              }}
-                            >
-                              {isCompleted ? (
-                                <Check className="w-4 h-4 flex-shrink-0" style={{ color: colors.primary }} />
-                              ) : (
-                                <div className="w-4 h-4 flex-shrink-0 rounded-full border-2 border-t-transparent animate-spin" style={{ borderColor: colors.primary, borderTopColor: 'transparent' }} />
-                              )}
-                              <span className="text-sm" style={{ color: isCompleted ? colors.foreground : colors.mutedForeground }}>{label}{!isCompleted && '...'}</span>
-                            </div>
-                          );
-                        })}
+                        ];
+                    const totalSteps = steps.length;
+                    const cappedStep = Math.min(generationStep, totalSteps);
+                    return (
+                      <div className="mt-4 p-6 rounded-xl border" style={{ backgroundColor: colors.muted, borderColor: colors.border }}>
+                        <div className="flex items-center gap-3 mb-4">
+                          <div className="relative">
+                            <div className="w-10 h-10 rounded-full border-3 border-t-transparent animate-spin" style={{ borderColor: colors.primary, borderTopColor: 'transparent' }} />
+                            <div className="absolute inset-0 w-10 h-10 rounded-full border-3 border-t-transparent animate-spin" style={{ borderColor: 'transparent', borderBottomColor: colors.primary, animationDirection: 'reverse', animationDuration: '1.5s' }} />
+                          </div>
+                          <div>
+                            <p className="font-semibold" style={{ color: colors.foreground }}>
+                              {isExtended ? 'AI is generating your extended video' : 'AI is generating your video'}
+                            </p>
+                            <p className="text-sm" style={{ color: colors.mutedForeground }}>
+                              {isExtended
+                                ? 'Generating 2 clips & stitching — this takes 3-4 minutes. Please don\u2019t close this page.'
+                                : 'This may take 1-2 minutes. Please don\u2019t close this page.'}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          {steps.map((label, i) => {
+                            const isCompleted = i < cappedStep || (cappedStep >= totalSteps && i <= totalSteps - 1);
+                            const shouldFadeIn = i === cappedStep && cappedStep < totalSteps;
+                            if (i > cappedStep && cappedStep < totalSteps) return null;
+                            return (
+                              <div
+                                key={label}
+                                className="flex items-center gap-2"
+                                style={{
+                                  opacity: shouldFadeIn ? 0 : 1,
+                                  animation: shouldFadeIn ? 'videoStepFadeIn 0.5s ease-out forwards' : undefined,
+                                }}
+                              >
+                                {isCompleted ? (
+                                  <Check className="w-4 h-4 flex-shrink-0" style={{ color: colors.primary }} />
+                                ) : (
+                                  <div className="w-4 h-4 flex-shrink-0 rounded-full border-2 border-t-transparent animate-spin" style={{ borderColor: colors.primary, borderTopColor: 'transparent' }} />
+                                )}
+                                <span className="text-sm" style={{ color: isCompleted ? colors.foreground : colors.mutedForeground }}>{label}{!isCompleted && '...'}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <style jsx global>{`
+                          @keyframes videoStepFadeIn {
+                            from { opacity: 0; transform: translateY(-4px); }
+                            to { opacity: 1; transform: translateY(0); }
+                          }
+                        `}</style>
+                        <div className="mt-4 w-full rounded-full h-1.5 overflow-hidden" style={{ backgroundColor: colors.border }}>
+                          <div
+                            className="h-full rounded-full transition-all duration-500 ease-out"
+                            style={{
+                              backgroundColor: colors.primary,
+                              width: `${Math.min(100, (cappedStep / totalSteps) * 80 + 20)}%`,
+                            }}
+                          />
+                        </div>
                       </div>
-                      <style jsx global>{`
-                        @keyframes videoStepFadeIn {
-                          from { opacity: 0; transform: translateY(-4px); }
-                          to { opacity: 1; transform: translateY(0); }
-                        }
-                      `}</style>
-                      <div className="mt-4 w-full rounded-full h-1.5 overflow-hidden" style={{ backgroundColor: colors.border }}>
-                        <div
-                          className="h-full rounded-full transition-all duration-500 ease-out"
-                          style={{
-                            backgroundColor: colors.primary,
-                            width: `${Math.min(100, (generationStep / 5) * 80 + 20)}%`,
-                          }}
-                        />
-                      </div>
-                    </div>
-                  )}
+                    );
+                  })()}
                 </div>
 
                 {/* Generated Videos - Primary + Variations */}

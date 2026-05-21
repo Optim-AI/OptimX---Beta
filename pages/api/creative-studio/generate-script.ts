@@ -128,9 +128,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const durationSeconds = typeof duration === 'number' ? Math.max(5, Math.min(120, duration)) : parseInt(String(duration || '6'), 10) || 6;
     const durationSecondsClamped = Math.max(5, Math.min(120, durationSeconds));
 
-    // Voiceover must be SHORT (under 8s spoken) to leave room for visuals and background audio
-    const maxVoiceoverSeconds = Math.min(8, durationSecondsClamped);
+    // Voiceover budget: scales with duration but never exceeds (duration - 1)s
+    // 8s video → max 6s VO (~13 words); 16s video → max 15s VO (~33 words)
+    const maxVoiceoverSeconds = durationSecondsClamped <= 8
+      ? Math.min(Math.ceil(durationSecondsClamped * 0.75), durationSecondsClamped - 2)
+      : Math.min(durationSecondsClamped - 1, 15);
     const maxVoiceoverWords = Math.floor(maxVoiceoverSeconds * 2.2);
+
+    // For stitched videos (>8s), we generate two Veo clips. The script must have a natural midpoint.
+    const isStitchedDuration = durationSecondsClamped > 8;
+    const midpointSeconds = isStitchedDuration ? Math.round(durationSecondsClamped / 2) : 0;
 
     const isHookMode = style === "Hook";
     const isCommercialMode = style === "Commercial";
@@ -143,6 +150,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // System prompt: Creative Ad Film Director — interprets user vision, duration, and needs to write the best script
     let systemPrompt: string;
 
+    const stitchedMidpointRule = isStitchedDuration ? `
+- TWO-CLIP MIDPOINT RULE (CRITICAL for ${durationSecondsClamped}s extended videos):
+  This video will be rendered as TWO separate ~${midpointSeconds}s clips that are stitched together. You MUST design the storyboard so that:
+  1. The scene closest to the ${midpointSeconds}s mark is a CLEAN CUT POINT — it ends on a complete action/beat (not mid-motion).
+  2. The scene immediately after ${midpointSeconds}s starts a new shot/angle (match-cut, whip-pan exit, or new framing) so the stitch feels like a natural edit.
+  3. Lighting, color grade, location, wardrobe, and product placement MUST stay consistent across both halves.
+  4. The story should have a clear two-act structure: PART 1 (0–${midpointSeconds}s) = Hook + Setup + Product Introduction; PART 2 (${midpointSeconds}–${durationSecondsClamped}s) = Demonstration/Story + Emotional Payoff + CTA.
+  5. Include "midpoint_cut_after_scene" in the output JSON set to the last scene number of PART 1.
+  6. Do NOT end PART 1 on a cliffhanger mid-action — end on a resolved beat (product reveal, pause, smile, held shot).
+  7. Start PART 2 with a new camera angle or slight location shift so the edit point feels motivated.` : '';
+
     const multiSceneEnforcement = `
 
 CRITICAL — MULTI-SCENE STORYBOARD REQUIREMENT:
@@ -151,7 +169,7 @@ CRITICAL — MULTI-SCENE STORYBOARD REQUIREMENT:
 - Each scene should be 1–3 seconds long. Break the ${durationSecondsClamped}-second video into distinct visual beats.
 - Each scene MUST have a unique visual_description — no two scenes should describe the same thing.
 - Each scene MUST have a specific time_range like "0-2s", "2-4s", "4-6s" etc. Time ranges must be consecutive and non-overlapping.
-- The storyboard array is the MOST IMPORTANT part of the output. Put maximum creative effort into each scene's visual_description, emotion, and motion_style.`;
+- The storyboard array is the MOST IMPORTANT part of the output. Put maximum creative effort into each scene's visual_description, emotion, and motion_style.${stitchedMidpointRule}`;
 
     if (isHookMode) {
       systemPrompt = `You are a performance-first ad creative director specializing in scroll-stopping, conversion-focused video ads. This is attention warfare, NOT cinematic storytelling.
@@ -192,51 +210,69 @@ Your mindset:
 - Emotional bias: Surprise, Relatability, Relief, Curiosity, Honest recommendation. NOT prestige, status, or brand dominance.
 - Editing: jump cuts, natural pauses, reaction zoom, fast pacing. NO smooth cinematic transitions, NO dramatic slow motion.${multiSceneEnforcement}`;
     } else {
+      const extendedDirectorNote = isStitchedDuration ? `
+- EXTENDED VIDEO (${durationSecondsClamped}s / two-clip stitch):
+  This video will be rendered as two ~${midpointSeconds}s clips stitched into one. Design a clear TWO-ACT arc:
+  • ACT 1 (0–${midpointSeconds}s): Hook → Product Introduction → Key Visual Setup. End on a resolved beat (hero product shot, a pause, or a held expression) — NOT mid-motion.
+  • ACT 2 (${midpointSeconds}–${durationSecondsClamped}s): Start with a new camera angle/framing (match-cut, whip-pan, or slight location shift). Continue with Demonstration/Story → Emotional Payoff → Brand CTA.
+  Maintain identical lighting, color grade, location, wardrobe, and product styling across both acts so the stitch is invisible.
+  The midpoint must feel like a professional "motivated cut" — not a random jump.` : '';
+
       systemPrompt = `You are an award-winning creative ad film director. You think and write like one: story, emotion, rhythm, and every second on screen is intentional.
 
 Your mindset:
 - When the user describes their "Video Ad Vision," you interpret it like a creative brief. What do they really want? (e.g. trust, desire, urgency, aspiration, humor, premium feel.) Infer the emotional goal, the audience vibe, and the single idea the ad must land.
-- Duration shapes the creative: ${durationSecondsClamped}s is your canvas. Short (5–6s) = one punchy idea, bold hook, no flab. Medium (7–8s) = setup + payoff, or a clear arc. Longer (9–12s) = you can build mood, story, or a twist. Design the script so the duration feels right for the vision — not padded, not rushed.
+- Duration shapes the creative: ${durationSecondsClamped}s is your canvas. Short (5–6s) = one punchy idea, bold hook, no flab. Medium (7–8s) = setup + payoff, or a clear arc. Longer (9–16s) = you can build mood, a full story arc, or a twist with two clear acts. Design the script so the duration feels right for the vision — not padded, not rushed.
 - The user's description is your North Star. Every shot, line, and beat should serve that vision and the product. No generic filler; make it feel bespoke to what they asked for.
-- Use the language of film: wide, close-up, push-in, rack focus, dolly, cut on action, lighting (e.g. golden hour, high-key, silhouette). Think Tier-1 ad agency / film director — production-ready, cinematic.
+- Use the language of film: wide, close-up, push-in, rack focus, dolly, cut on action, lighting (e.g. golden hour, high-key, silhouette). Think Tier-1 ad agency / film director — production-ready, cinematic.${extendedDirectorNote}
 
 Your role:
 - Take the user's ad vision and product details as your creative brief. Their vision is the soul of the film; the product is what you're selling.
 - Write the entire script (shot plan, storyboard, voiceover) so it fits the chosen duration exactly. Every second is intentional.
 - Plan scene-by-scene with precise timing that adds up to the total duration. No filler; every beat serves the idea and the user's described vision.
-- Write voiceover that is SHORT and punchy — max ${maxVoiceoverWords} words, spoken in under ${maxVoiceoverSeconds} seconds (roughly 2–2.5 words per second). Voiceover must NOT fill the entire video duration; leave breathing room for visuals, music, and ambient audio to shine.
+- Write voiceover that is punchy — max ${maxVoiceoverWords} words, spoken in under ${maxVoiceoverSeconds} seconds (roughly 2–2.5 words per second). Leave breathing room for visuals, music, and ambient audio to shine.
 - Output must be production-ready, director-grade JSON only.
 
 Rules:
 - Total duration is exactly ${durationSecondsClamped} seconds. All shots and voiceover must fit this.
 - Shot lengths and storyboard durations must sum to ${durationSecondsClamped}s. E.g. for ${durationSecondsClamped}s use ~${Math.max(2, Math.floor(durationSecondsClamped / 3))}–${Math.max(4, Math.ceil(durationSecondsClamped / 2))} shots.
-- Voiceover script must be SHORT — max ${maxVoiceoverWords} words, spoken in under ${maxVoiceoverSeconds} seconds. Do NOT fill the entire ${durationSecondsClamped}-second duration with voiceover. Leave silent/music-only moments for visuals and ambient audio to breathe.
+- Voiceover script must be max ${maxVoiceoverWords} words, spoken in under ${maxVoiceoverSeconds} seconds. Leave silent/music-only moments for visuals and ambient audio to breathe.
 - Avoid generic or templated lines. Reflect the user's vision and the product's story. The script should feel written for this brand, this product, and this specific vision.${multiSceneEnforcement}`;
     }
 
     // Style-specific requirements appended to user prompt
     let styleRequirements = '';
     if (isHookMode) {
+      const hookExtended = isStitchedDuration ? `
+— EXTENDED ${durationSecondsClamped}s HOOK (two-clip stitch):
+  PART 1 (0–${midpointSeconds}s): Pattern Interrupt → Emotional Trigger → Product Tease. End on a clear product reveal beat.
+  PART 2 (${midpointSeconds}–${durationSecondsClamped}s): New angle → Product Demo/Proof → Urgency Build → Hard CTA.
+  Each part has ${Math.ceil(recommendedScenes / 2)} scenes. Midpoint cut must feel like a fast, motivated edit.` : '';
       styleRequirements = `
 
 HOOK MODE — MANDATORY ${recommendedScenes}-SCENE STRUCTURE (${durationSecondsClamped} seconds exactly):
 - Scene 1 (0–2s): PATTERN INTERRUPT — Bold visual hook. Stop scrolling. Fast cut, high impact. No slow intro.
 - Scene 2 (2–4s): EMOTIONAL TRIGGER — Pain, Desire, Urgency, or Curiosity. High emotional tension.
 - Scene 3 (4–6s): PRODUCT REVEAL — Product must appear clearly. Fast, direct. No mystery.
-- Scene 4 (6–${durationSecondsClamped}s): STRONG CTA — Clear visual call-to-action moment.
+- Scene 4 (6–${isStitchedDuration ? midpointSeconds : durationSecondsClamped}s): ${isStitchedDuration ? 'PRODUCT HERO — Clear resolved beat, product fully visible. End of PART 1.' : 'STRONG CTA — Clear visual call-to-action moment.'}${hookExtended}
 
 Storyboard MUST have exactly ${recommendedScenes} scenes with consecutive non-overlapping time_range values.
 Each scene MUST have a UNIQUE, SPECIFIC visual_description — describe the exact shot, camera angle, lighting, subject.
 visual_style_guide.motion_style must emphasize: fast cuts, high motion energy, tight framing, strong contrast.
 NO on-screen text. Purely visual.`;
     } else if (isCommercialMode) {
+      const commercialExtended = isStitchedDuration ? `
+— EXTENDED ${durationSecondsClamped}s COMMERCIAL (two-clip stitch):
+  PART 1 (0–${midpointSeconds}s): Hook → Product Introduction → Key Benefit. End on clean product hero shot.
+  PART 2 (${midpointSeconds}–${durationSecondsClamped}s): New angle → Deeper Demo → Emotional Transformation → Brand CTA.
+  Maintain identical studio lighting, color grade, and product placement across both parts.` : '';
       styleRequirements = `
 
 COMMERCIAL THEME — MANDATORY ${recommendedScenes}-SCENE STRUCTURE (${durationSecondsClamped} seconds):
 - Scene 1 (0–2s): PATTERN INTERRUPT — Strong hook visual, movement, contrast, emotion. Product tease or problem tease.
 - Scene 2 (2–4s): PRODUCT AS HERO — Clean product shots, close-up details, use-case in action. Premium lighting.
 - Scene 3 (4–6s): PRODUCT IN ACTION — Dynamic camera movement, product demonstration, lifestyle context.
-- Scene 4 (6–${durationSecondsClamped}s): EMOTIONAL PAYOFF + BRAND LOCK-IN — Outcome transformation, product hero frame.
+- Scene 4 (6–${isStitchedDuration ? midpointSeconds : durationSecondsClamped}s): ${isStitchedDuration ? 'PART 1 CLOSE — Product hero frame, resolved beat. Clean exit for stitch.' : 'EMOTIONAL PAYOFF + BRAND LOCK-IN — Outcome transformation, product hero frame.'}${commercialExtended}
 
 Storyboard MUST have exactly ${recommendedScenes} scenes with consecutive non-overlapping time_range values.
 Each scene MUST have a UNIQUE, SPECIFIC visual_description — describe the exact shot, camera angle, lighting, subject.
@@ -244,13 +280,18 @@ visual_style_guide: controlled lighting, soft highlights, high contrast, smooth 
 Voiceover: max ${maxVoiceoverWords} words, under ${maxVoiceoverSeconds} seconds spoken. Confident, clear. Hook → Value → Outcome → Brand line. Leave silent moments for visuals and music to breathe.
 NO on-screen text, captions, or typography. Purely visual + voiceover.`;
     } else if (isUGCMode) {
+      const ugcExtended = isStitchedDuration ? `
+— EXTENDED ${durationSecondsClamped}s UGC (two-clip stitch):
+  PART 1 (0–${midpointSeconds}s): Hook → First Impression → Initial Reaction. End on a natural pause/beat (person looks at camera, holds product up).
+  PART 2 (${midpointSeconds}–${durationSecondsClamped}s): Jump-cut to new angle → Deeper experience/demo → Honest verdict → Soft CTA.
+  Same person, same room, same lighting. The jump-cut at the midpoint should feel like a natural UGC edit.` : '';
       styleRequirements = `
 
 UGC THEME — MANDATORY ${recommendedScenes}-SCENE STRUCTURE (${durationSecondsClamped} seconds):
 - Scene 1 (0–2s): HOOK (spoken) — Direct, attention-grabbing. Feels spontaneous. e.g. "Wait, why is nobody talking about this?"
 - Scene 2 (2–4s): FIRST IMPRESSION — Unboxing, first look, initial reaction. Genuine surprise or curiosity.
 - Scene 3 (4–6s): EXPERIENCE / DEMO — Showing product in use, personal commentary. Honest, relatable.
-- Scene 4 (6–${durationSecondsClamped}s): SOFT CTA — "You should try this." "I'm not going back." No hard sales pitch.
+- Scene 4 (6–${isStitchedDuration ? midpointSeconds : durationSecondsClamped}s): ${isStitchedDuration ? 'PAUSE BEAT — Person pauses, holds product, looks at camera. Natural resting point for Part 1.' : 'SOFT CTA — "You should try this." "I\'m not going back." No hard sales pitch.'}${ugcExtended}
 
 Storyboard MUST have exactly ${recommendedScenes} scenes with consecutive non-overlapping time_range values.
 Each scene MUST have a UNIQUE, SPECIFIC visual_description — describe what the person is doing, their expression, the setting.
@@ -285,18 +326,27 @@ DIRECTOR REQUIREMENTS:
 - Each shot: 1–3 seconds. Time ranges must be consecutive like "0-2s", "2-4s", "4-6s", "6-8s". They must sum to ${durationSecondsClamped}s.
 - Each shot MUST have a unique, specific visual description — not generic. Describe exact camera angle, subject position, lighting setup, and composition.
 - Specify camera (angle, movement), lighting, and composition for each shot.
-- Voiceover (if enabled): write a SHORT script in ${language === "tamil" ? "Tamil" : language === "hindi" ? "Hindi" : "English"} that takes UNDER ${maxVoiceoverSeconds} seconds to speak (~${maxVoiceoverWords} words MAX at 2.2 words/sec). The voiceover must NOT fill the entire ${durationSecondsClamped}-second video — leave silent/music-only moments so visuals and background audio have room to breathe. ${key_message ? `Weave in: "${key_message}".` : ""} ${cta ? `End with CTA: "${cta}".` : ""}
+- Voiceover (if enabled): write a script in ${language === "tamil" ? "Tamil" : language === "hindi" ? "Hindi" : "English"} that takes UNDER ${maxVoiceoverSeconds} seconds to speak (~${maxVoiceoverWords} words MAX at 2.2 words/sec).${isStitchedDuration ? `
+  CRITICAL FOR ${durationSecondsClamped}s EXTENDED VIDEO:
+  - The voiceover must tell a COMPLETE story across the full ${durationSecondsClamped} seconds — NOT just an 8-second script repeated.
+  - Distribute voiceover_line across ALL ${recommendedScenes} scenes. The first half of scenes (Part 1, 0–${midpointSeconds}s) gets the setup/hook voiceover; the second half (Part 2, ${midpointSeconds}–${durationSecondsClamped}s) gets the payoff/CTA voiceover.
+  - voiceover_script must be the FULL narration for all ${durationSecondsClamped} seconds combined (max ${maxVoiceoverWords} words / ${maxVoiceoverSeconds}s spoken).
+  - Do NOT write the same lines for both halves. Each scene's voiceover_line must be unique and progress the story.` : ` The voiceover must NOT fill the entire ${durationSecondsClamped}-second video — leave silent/music-only moments so visuals and background audio have room to breathe.`} ${key_message ? `Weave in: "${key_message}".` : ""} ${cta ? `End with CTA: "${cta}".` : ""}
 - final_video_prompt: 300–800 tokens, director-grade, describing the full ${durationSecondsClamped}-second film (cinematic lighting, movement, pacing, color, premium brand quality), aligned with the user's described vision.
 ${styleRequirements}
 
 Return your response as a JSON object with this exact structure. The storyboard MUST have ${recommendedScenes} scenes (minimum ${minScenes}):
 {
-  "ad_angle": "The creative angle and hook, inspired by the user's vision and product (1-2 lines)",
+  "ad_angle": "The creative angle and hook, inspired by the user's vision and product (1-2 lines)",${isStitchedDuration ? `\n  "midpoint_cut_after_scene": <number — the last scene of PART 1, i.e. the scene that ends closest to ${midpointSeconds}s>,` : ''}
   "shot_plan": [
     { "time": "0-2s", "description": "Shot 1 description with camera, lighting, composition" },
     { "time": "2-4s", "description": "Shot 2 description — MUST be different from shot 1" },
     { "time": "4-6s", "description": "Shot 3 description — MUST be different from shots 1-2" },
-    { "time": "6-${durationSecondsClamped}s", "description": "Shot 4 description — MUST be different from shots 1-3" }
+    { "time": "6-${isStitchedDuration ? midpointSeconds : durationSecondsClamped}s", "description": "Shot 4 description — MUST be different from shots 1-3" }${isStitchedDuration ? `,
+    { "time": "${midpointSeconds}-${midpointSeconds + 2}s", "description": "Shot 5 (PART 2 opens) — NEW angle/framing after the midpoint cut, match-cut or whip-pan from end of Part 1" },
+    { "time": "${midpointSeconds + 2}-${midpointSeconds + 4}s", "description": "Shot 6 — different from shot 5, progress the Part 2 story" },
+    { "time": "${midpointSeconds + 4}-${durationSecondsClamped - 2}s", "description": "Shot 7 — emotional payoff, product benefit in action" },
+    { "time": "${durationSecondsClamped - 2}-${durationSecondsClamped}s", "description": "Shot 8 — CTA / brand lock-in, final hero frame" }` : ''}
   ],
   "storyboard": [
     {
@@ -332,13 +382,53 @@ Return your response as a JSON object with this exact structure. The storyboard 
     {
       "scene": 4,
       "duration": "2s",
-      "time_range": "6-${durationSecondsClamped}s",
-      "visual_description": "Final beat. Product hero / CTA moment. Distinct from all prior scenes.",
+      "time_range": "6-${isStitchedDuration ? midpointSeconds : durationSecondsClamped}s",
+      "visual_description": "${isStitchedDuration ? 'END OF PART 1 — Resolved beat: product hero shot, held frame, or pause. Must feel complete (not mid-action). This is where Clip 1 ends.' : 'Final beat. Product hero / CTA moment. Distinct from all prior scenes.'}",
       "on_screen_text": "",
-      "emotion": "Closing emotion",
-      "motion_style": "Closing camera style",
-      "voiceover_line": "Closing voiceover line"
-    }
+      "emotion": "Closing emotion${isStitchedDuration ? ' for Part 1' : ''}",
+      "motion_style": "${isStitchedDuration ? 'Camera settles or holds — clean exit frame for stitch point' : 'Closing camera style'}",
+      "voiceover_line": "${isStitchedDuration ? 'Voiceover line that completes a thought (not left hanging)' : 'Closing voiceover line'}"
+    }${isStitchedDuration ? `,
+    {
+      "scene": 5,
+      "duration": "2s",
+      "time_range": "${midpointSeconds}-${midpointSeconds + 2}s",
+      "visual_description": "START OF PART 2 — New camera angle or slight location shift. Match-cut or whip-pan from Part 1 ending. Same lighting/grade/product but fresh framing.",
+      "on_screen_text": "",
+      "emotion": "Renewed energy / curiosity",
+      "motion_style": "New camera move that motivates the cut (match-cut, whip-pan entry, rack focus to new subject)",
+      "voiceover_line": "Voiceover picks up naturally from Part 1"
+    },
+    {
+      "scene": 6,
+      "duration": "2s",
+      "time_range": "${midpointSeconds + 2}-${midpointSeconds + 4}s",
+      "visual_description": "Product demonstration or story progression — different from scene 5",
+      "on_screen_text": "",
+      "emotion": "Engagement / desire",
+      "motion_style": "Dynamic camera for energy",
+      "voiceover_line": "Continue the story"
+    },
+    {
+      "scene": 7,
+      "duration": "2s",
+      "time_range": "${midpointSeconds + 4}-${durationSecondsClamped - 2}s",
+      "visual_description": "Emotional payoff — transformation, benefit, or outcome moment",
+      "on_screen_text": "",
+      "emotion": "Satisfaction / aspiration",
+      "motion_style": "Cinematic payoff movement",
+      "voiceover_line": "Emotional payoff line"
+    },
+    {
+      "scene": 8,
+      "duration": "2s",
+      "time_range": "${durationSecondsClamped - 2}-${durationSecondsClamped}s",
+      "visual_description": "Brand CTA — product hero final frame, logo visible in environment, strong closing composition",
+      "on_screen_text": "",
+      "emotion": "Trust / confidence",
+      "motion_style": "Slow settle or static hero frame",
+      "voiceover_line": "Final CTA voiceover"
+    }` : ''}
   ],
   "visual_style_guide": {
     "color_palette": "Color palette",
@@ -347,10 +437,10 @@ Return your response as a JSON object with this exact structure. The storyboard 
     "motion_style": "Overall motion",
     "brand_polish": "Brand polish (e.g. Apple/Stripe quality)"
   },
-  "voiceover_script": "${voiceover ? `Short voiceover script in ${language === "tamil" ? "Tamil" : language === "hindi" ? "Hindi" : "English"}, MAX ${maxVoiceoverWords} words, spoken in UNDER ${maxVoiceoverSeconds} seconds. ${tone || "Energetic"} tone. Leave silent moments for visuals and music.` : "N/A - Voiceover disabled"}",
+  "voiceover_script": "${voiceover ? `Voiceover script in ${language === "tamil" ? "Tamil" : language === "hindi" ? "Hindi" : "English"}, MAX ${maxVoiceoverWords} words, spoken in UNDER ${maxVoiceoverSeconds} seconds. ${tone || "Energetic"} tone. Leave silent moments for visuals and music.` : "N/A - Voiceover disabled"}",
   "headline": "",
   "subtext": "",
-  "final_video_prompt": "Single cinematic prompt (300-800 tokens) for the full ${durationSecondsClamped}-second video: camera, lighting, composition, pacing, color grading, shot transitions, premium quality. CRITICAL: Do NOT describe or include any on-screen text, captions, titles, headlines, or text overlays. The video is purely visual with no written text."
+  "final_video_prompt": "Single cinematic prompt (300-800 tokens) for the full ${durationSecondsClamped}-second video: camera, lighting, composition, pacing, color grading, shot transitions, premium quality.${isStitchedDuration ? ' IMPORTANT: This video is rendered as two ~' + midpointSeconds + 's clips. Describe a CONSISTENT visual world across both halves. The midpoint should feel like a motivated professional edit cut, not a random jump.' : ''} CRITICAL: Do NOT describe or include any on-screen text, captions, titles, headlines, or text overlays. The video is purely visual with no written text."
 }
 
 IMPORTANT — STORYBOARD VALIDATION:
@@ -358,7 +448,10 @@ IMPORTANT — STORYBOARD VALIDATION:
 - Each scene's time_range must be consecutive: "0-2s", "2-4s", "4-6s", "6-8s" etc.
 - Each scene's visual_description must be UNIQUE and SPECIFIC — not a copy of the final_video_prompt or a generic summary.
 - shot_plan and storyboard durations must cover 0 to ${durationSecondsClamped} seconds total.
-- final_video_prompt must describe the entire ${durationSecondsClamped}-second film with rich cinematic language.
+- final_video_prompt must describe the entire ${durationSecondsClamped}-second film with rich cinematic language.${isStitchedDuration ? `
+- midpoint_cut_after_scene MUST be set to the scene number whose time_range ends at or closest to ${midpointSeconds}s. This is where Clip 1 ends and Clip 2 begins.
+- The scene at the midpoint must END on a resolved visual beat. The scene after must START with a new angle/framing.
+- Lighting, color grade, location, wardrobe, and product must be IDENTICAL across both halves — the stitch must be invisible.` : ''}
 - Return ONLY valid JSON; no markdown, no code fences, no extra text.
 
 CRITICAL — NO ON-SCREEN TEXT: Set headline, subtext, and every storyboard on_screen_text to empty string. The video must NEVER display any text, captions, titles, or overlays. Purely visual only.`;
@@ -386,7 +479,7 @@ CRITICAL — NO ON-SCREEN TEXT: Set headline, subtext, and every storyboard on_s
         temperature: 0.8,
         top_k: 40,
         top_p: 0.95,
-        max_output_tokens: 4000,
+        max_output_tokens: isStitchedDuration ? 6000 : 4000,
         response_mime_type: "application/json",
       },
     };

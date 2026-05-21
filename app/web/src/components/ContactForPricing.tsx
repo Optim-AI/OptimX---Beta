@@ -1,11 +1,12 @@
 "use client";
 
-import Link from "next/link";
 import { Button } from "./ui/button";
 import { Card, CardContent } from "./ui/card";
 import { useScrollAnimation } from "../hooks/use-scroll-animation";
 import { Mail, Phone, MessageSquare, ArrowRight } from "lucide-react";
 import colors from '@/lib/ui/colors';
+
+const CALENDLY_URL = 'https://calendly.com/reachout-optim/new-meeting';
 
 export default function ContactForPricing() {
   const { elementRef: sectionRef, isVisible: sectionVisible } =
@@ -45,11 +46,10 @@ export default function ContactForPricing() {
               </span>
             </h2>
             <p
-              className="text-xl max-w-2xl mx-auto"
+              className="text-xl max-w-5xl mx-auto leading-relaxed"
               style={{ color: colors.mutedForeground }}
             >
-              Every business is unique. Let&apos;s create a custom plan that
-              perfectly matches your marketing goals and budget.
+              Every business is different. Our pricing is tailored based on your goals, scope, and scale, so you only pay for what actually drives results.
             </p>
           </div>
 
@@ -117,26 +117,26 @@ export default function ContactForPricing() {
                       Contact us to learn about our pricing and get started with SkalX AI.
                     </p>
 
-                    <div className="space-y-3">
-                      <Button
-                        asChild
-                        variant="hero"
-                        className="w-full shadow-glow btn-premium"
-                        size="lg"
-                        style={{
-                          background: colors.gradientPrimary,
-                          color: colors.primaryForeground,
-                          boxShadow: colors.shadowGlow,
-                        }}
+                    <Button
+                      asChild
+                      variant="hero"
+                      className="w-full shadow-glow btn-premium"
+                      size="lg"
+                      style={{
+                        background: colors.gradientPrimary,
+                        color: colors.primaryForeground,
+                        boxShadow: colors.shadowGlow,
+                      }}
+                    >
+                      <a
+                        href={CALENDLY_URL}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-center w-full"
                       >
-                        <Link href="/contact" className="flex items-center justify-center w-full">
-                          Contact Us for Pricing <ArrowRight className="ml-2 h-4 w-4 inline-block" />
-                        </Link>
-                      </Button>
-                      <Button asChild variant="outline" className="w-full" size="lg">
-                        <Link href="/#features" className="w-full text-center">Review Now</Link>
-                      </Button>
-                    </div>
+                        Schedule Meeting <ArrowRight className="ml-2 h-4 w-4 inline-block" />
+                      </a>
+                    </Button>
                   </div>
                 </div>
               </div>

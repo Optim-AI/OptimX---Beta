@@ -33,6 +33,7 @@ import {
   ASPECT_RATIOS,
   mapFullAnalyzeToBrandSnapshot,
 } from '@/app/web/src/components/creative-studio';
+import type { Product } from '@/app/web/src/components/creative-studio/types';
 import { authFetch, safeResponseJson } from '@/lib/utils';
 import PosterEditModal from '@/app/web/src/components/content-studio/PosterEditModal';
 
@@ -137,6 +138,12 @@ export default function PosterSessionPage() {
   // Image preview state (for chat history images)
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
 
+  // Fetched products state (from website scan, like Ad Studio)
+  const [fetchedProducts, setFetchedProducts] = useState<Product[]>([]);
+  const [productsCollapsed, setProductsCollapsed] = useState(false);
+  const [scannedUrl, setScannedUrl] = useState<string>('');
+  const [isScanningProducts, setIsScanningProducts] = useState(false);
+
   // Initial greeting - picked once per session for conversational variety
   const [initialGreeting] = useState(() =>
     pickMessage([
@@ -215,6 +222,9 @@ export default function PosterSessionPage() {
       setConfig(DEFAULT_POSTER_CONFIG);
       setGeneratedPosters([]);
       setHasInsufficientCredits(false);
+      setFetchedProducts([]);
+      setScannedUrl('');
+      setProductsCollapsed(false);
       
       try {
         // Handle 'new' session - load brand from database
@@ -584,6 +594,7 @@ export default function PosterSessionPage() {
           "Got it! I've analyzed your website. Review the details below and adjust as needed.",
           "Here's what I found from your site. Let me know if anything needs updating.",
         ]));
+        // Products scan happens in parallel from handleSubmit
       } else {
         console.error('Brand analysis failed:', data.error || 'Unknown error');
         addMessage('system', pickMessage([
@@ -725,7 +736,104 @@ export default function PosterSessionPage() {
     }
   }
 
-  // ============== Product Handlers ==============
+  // ============== Product Scan / Selection Handlers ==============
+
+  async function scanWebsiteForProducts(websiteUrl: string) {
+    setIsScanningProducts(true);
+    setScannedUrl(websiteUrl);
+    try {
+      const res = await authFetch('/api/content-studio/scan', {
+        method: 'POST',
+        body: JSON.stringify({ url: websiteUrl }),
+      });
+      const data = await res.json();
+      if (data.ok && data.products && data.products.length > 0) {
+        setFetchedProducts(data.products);
+        setProductsCollapsed(false);
+        addMessage('system', pickMessage([
+          `Found ${data.products.length} products from the website! Select one below or describe what you want.`,
+          `Fetched ${data.products.length} products. Pick one to use, or describe your poster idea.`,
+          `${data.products.length} products detected. Click any product to use it, or type your own description.`,
+        ]));
+      } else {
+        setFetchedProducts([]);
+      }
+    } catch (err: any) {
+      console.error('Product scan error:', err);
+    } finally {
+      setIsScanningProducts(false);
+    }
+  }
+
+  async function handleFetchedProductSelect(product: Product) {
+    const firstImage = product.product_images?.[0];
+    let productImageFile: File | undefined;
+    let productImageDataUrl: string | undefined;
+
+    if (firstImage) {
+      try {
+        const res = await authFetch('/api/creative-studio/fetch-image', {
+          method: 'POST',
+          body: JSON.stringify({ url: firstImage, directFetch: true }),
+        });
+        const data = await res.json();
+        if (data.ok && data.dataUrl) {
+          productImageDataUrl = data.dataUrl;
+          const base64Data = data.dataUrl.split(',')[1];
+          const binaryString = atob(base64Data);
+          const bytes = new Uint8Array(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+          }
+          const blob = new Blob([bytes], { type: 'image/jpeg' });
+          productImageFile = new File([blob], `${product.product_name}.jpg`, { type: 'image/jpeg' });
+        }
+      } catch {
+        // Image fetch failed, proceed without it
+      }
+    }
+
+    const promptText = `${product.product_name}${product.short_benefit ? ' - ' + product.short_benefit : ''}${product.description ? '. ' + product.description : ''}`;
+    setProductPrompt(promptText);
+
+    if (productImageFile && productImageDataUrl) {
+      setProductImages([productImageFile]);
+      setSavedProductData({
+        prompt: promptText,
+        images: [productImageFile],
+        imageDataUrls: [productImageDataUrl],
+      });
+
+      const storageUrls = await uploadDataUrlsToStorage([productImageDataUrl]);
+      addMessage('user', `Selected: ${product.product_name}`, [productImageFile], storageUrls.length > 0 ? storageUrls : undefined);
+
+      addMessage('system', pickMessage([
+        `Great choice! "${product.product_name}" — what style are you going for?`,
+        `${product.product_name} selected! Describe the poster style — bold, minimal, playful?`,
+        `Using ${product.product_name}. What kind of poster do you want?`,
+      ]));
+      setPhase('poster-prompt');
+    } else {
+      setSavedProductData({
+        prompt: promptText,
+        images: [],
+        imageDataUrls: [],
+      });
+      setPosterPrompt(promptText);
+      addMessage('user', `Selected: ${product.product_name}`);
+      const echo = product.product_name.length > 50 ? product.product_name.slice(0, 50) + '...' : product.product_name;
+      addMessage('system', pickMessage([
+        `${echo} — nice! Pick a vibe and format below.`,
+        `Got it! "${echo}" — what theme and aspect ratio work for you?`,
+        `Love it. Pick a theme and format for your poster.`,
+      ]));
+      setPhase('config');
+    }
+
+    setProductsCollapsed(true);
+  }
+
+  // ============== Product Image Handlers ==============
   
   function handleProductImageSelect(files: FileList | null) {
     if (files) {
@@ -1290,6 +1398,8 @@ export default function PosterSessionPage() {
       // Use setTimeout to allow React to render the message before starting analysis
       setTimeout(() => {
         handleWebsiteBrandSetup(currentInput);
+        // Also scan for products in the background
+        scanWebsiteForProducts(currentInput);
       }, 0);
     } else if (!brand) {
       // Show brand onboarding
@@ -1307,6 +1417,9 @@ export default function PosterSessionPage() {
         console.log('Fetching image from URL:', url);
         addMessage('user', currentInput);
         setThinkingMessages(['Fetching image from URL...']);
+        
+        // Also scan for products in background so user can pick from the grid
+        if (url) scanWebsiteForProducts(url);
         
         setTimeout(async () => {
           try {
@@ -1662,6 +1775,18 @@ export default function PosterSessionPage() {
                 </div>
               )}
 
+              {/* Fetched Products Grid (from website scan) */}
+              {(fetchedProducts.length > 0 || isScanningProducts) && (
+                <FetchedProductsPanel
+                  products={fetchedProducts}
+                  scannedUrl={scannedUrl}
+                  isScanning={isScanningProducts}
+                  collapsed={productsCollapsed}
+                  onToggleCollapsed={() => setProductsCollapsed(prev => !prev)}
+                  onSelectProduct={handleFetchedProductSelect}
+                />
+              )}
+
               {/* Insufficient Credits Alert */}
               {hasInsufficientCredits && (
                 <InsufficientCreditsAlert
@@ -1964,6 +2089,123 @@ export default function PosterSessionPage() {
 }
 
 // ============== Sub-components (simplified versions for this page) ==============
+
+function FetchedProductsPanel({
+  products,
+  scannedUrl,
+  isScanning,
+  collapsed,
+  onToggleCollapsed,
+  onSelectProduct,
+}: {
+  products: Product[];
+  scannedUrl: string;
+  isScanning: boolean;
+  collapsed: boolean;
+  onToggleCollapsed: () => void;
+  onSelectProduct: (product: Product) => void;
+}) {
+  const hostname = scannedUrl ? scannedUrl.replace(/^https?:\/\//, '').split('/')[0] : 'website';
+
+  return (
+    <div className="w-full max-w-4xl">
+      <div
+        className="rounded-xl border overflow-hidden"
+        style={{ borderColor: colors.border, background: colors.card }}
+      >
+        {/* Collapsible Header */}
+        <button
+          onClick={onToggleCollapsed}
+          className="flex items-center justify-between w-full px-5 py-3.5 text-left hover:opacity-90 transition-opacity"
+          style={{ background: colors.card, borderBottom: collapsed ? 'none' : `1px solid ${colors.border}` }}
+        >
+          <span className="font-semibold text-sm truncate mr-2" style={{ color: colors.foreground }}>
+            {isScanning ? 'Scanning products...' : (
+              <>
+                Fetched products from {hostname}
+                {products.length > 0 && ` \u2022 ${products.length} products`}
+              </>
+            )}
+          </span>
+          <svg
+            className={`w-5 h-5 shrink-0 transition-transform duration-200 ${collapsed ? '' : 'rotate-180'}`}
+            style={{ color: colors.mutedForeground }}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+
+        {/* Collapsible Content */}
+        {!collapsed && (
+          <div className="p-5" style={{ background: colors.background }}>
+            {isScanning ? (
+              <div className="flex items-center justify-center py-8 gap-3" style={{ color: colors.mutedForeground }}>
+                <div
+                  className="animate-spin rounded-full h-5 w-5 border-2 border-t-transparent"
+                  style={{ borderColor: colors.border, borderTopColor: colors.primary }}
+                />
+                <span className="text-sm">Scanning website for products...</span>
+              </div>
+            ) : products.length > 0 ? (
+              <>
+                <p className="text-xs mb-4" style={{ color: colors.mutedForeground }}>
+                  Click a product to use it for your poster
+                </p>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                  {products.map((p, i) => (
+                    <button
+                      key={i}
+                      onClick={() => onSelectProduct(p)}
+                      className="text-left rounded-lg p-3 border transition-all hover:shadow-md hover:border-[hsl(213_100%_55%)] group"
+                      style={{ background: colors.card, borderColor: colors.border }}
+                    >
+                      <div
+                        className="aspect-square rounded-md mb-2 overflow-hidden"
+                        style={{ background: 'hsl(0 0% 15%)' }}
+                      >
+                        {p.product_images?.[0] ? (
+                          <img
+                            src={p.product_images[0]}
+                            alt={p.product_name}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center" style={{ color: colors.mutedForeground }}>
+                            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                          </div>
+                        )}
+                      </div>
+                      <h4 className="text-xs font-semibold truncate" style={{ color: colors.foreground }}>
+                        {p.product_name}
+                      </h4>
+                      {p.price && (
+                        <p className="text-xs font-medium" style={{ color: colors.primary }}>
+                          {p.price}
+                        </p>
+                      )}
+                      <p className="text-xs truncate mt-0.5" style={{ color: colors.mutedForeground }}>
+                        {p.short_benefit || p.description || '\u2014'}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <p className="text-center py-6 text-sm" style={{ color: colors.mutedForeground }}>
+                No products detected from this website.
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function ChatInput({
   value,

@@ -753,7 +753,7 @@ export const VIDEO_STYLES = [
 /**
  * Video durations
  */
-export const VIDEO_DURATIONS = [8] as const;
+export const VIDEO_DURATIONS = [8, 16] as const;
 
 /**
  * Video platforms

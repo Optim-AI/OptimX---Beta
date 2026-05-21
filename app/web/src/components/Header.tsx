@@ -136,7 +136,7 @@ const Header: React.FC = () => {
               Sign In
             </Link>
             <Link href={isSignedIn ? '/welcome' : '/auth/signup'}>
-              <Button variant="cta">Start Free</Button>
+              <Button variant="cta">Try Demo</Button>
             </Link>
           </div>
 
@@ -226,7 +226,7 @@ const Header: React.FC = () => {
                   Sign In
                 </Link>
                 <Link href={isSignedIn ? '/welcome' : '/auth/signup'} onClick={() => setIsMenuOpen(false)}>
-                  <Button variant="cta" className="justify-start w-full">Start Free</Button>
+                  <Button variant="cta" className="justify-start w-full">Try demo</Button>
                 </Link>
               </div>
             </div>

@@ -122,6 +122,12 @@ Generates a video ad using Google Veo 3.1.
 }
 ```
 
+### 10. `/api/creative-studio/generate-video-stitched` (POST)
+Generates a longer video ad by creating multiple Veo clips (typically 2× ~8 seconds) and stitching them into a single MP4.
+
+**Request:**
+Same as `generate-video`. Use `duration > 8` to trigger stitching.
+
 ## Authentication
 
 All routes require Bearer token authentication:
