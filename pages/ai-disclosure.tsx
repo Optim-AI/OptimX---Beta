@@ -129,7 +129,7 @@ const AIUseDisclosure: React.FC = () => {
               </p>
 
               <p>
-                If you opt in, you may withdraw consent at any time; we will exclude your data from future training datasets and efforts. Requests to opt-out or delete training contributions can be made via <strong>info@skalxai.app</strong>.
+                If you opt in, you may withdraw consent at any time; we will exclude your data from future training datasets and efforts. Requests to opt-out or delete training contributions can be made via <strong>info@optimx.app</strong>.
               </p>
 
               <h3 className="font-bold mt-8">5. Sensitive data &amp; prohibited uses</h3>
@@ -157,13 +157,13 @@ const AIUseDisclosure: React.FC = () => {
               <h3 className="font-bold mt-8">9. Your choices</h3>
               <ul className="list-disc ml-4">
                 <li>You can choose not to use AI features. Manual upload and publishing workflows remain available.</li>
-                <li>You can opt into the training program (explicit consent) and withdraw later via <strong>info@skalxai.app</strong>.</li>
+                <li>You can opt into the training program (explicit consent) and withdraw later via <strong>info@optimx.app</strong>.</li>
                 <li>You can request deletion of AI generation logs related to your account; contact support for assistance.</li>
               </ul>
 
               <h3 className="font-bold mt-8">10. Contact &amp; concerns</h3>
               <p>
-                If you have questions about how we use AI, want to opt-out of training, or request deletion of data used for model improvement, email us at <strong>info@skalxai.app</strong>. For urgent security concerns, contact us via the support channel in the dashboard.
+                If you have questions about how we use AI, want to opt-out of training, or request deletion of data used for model improvement, email us at <strong>info@optimx.app</strong>. For urgent security concerns, contact us via the support channel in the dashboard.
               </p>
 
             </article>

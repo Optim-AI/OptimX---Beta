@@ -2090,7 +2090,7 @@ const showAcknowledgement =
               <p className="text-sm mb-6" style={{ color: colors.mutedForeground }}>
                 It looks like your credits have reached zero. To continue creating campaigns and generating images, please purchase credits.
                 <br />
-                For help, email us at <a href="mailto:info@skalxai.app" className="underline">info@skalxai.app</a>
+                For help, email us at <a href="mailto:info@optimx.app" className="underline">info@optimx.app</a>
               </p>
               <div className="flex justify-center gap-3">
                 <Button

@@ -277,7 +277,7 @@ const PrivacyPolicy: React.FC = () => {
                   { icon: Shield, text: "We never sell your personal data." },
                   { icon: CreditCard, text: "Payment data processed by Razorpay; we do not store card details." },
                   { icon: CheckCircle2, text: "Meta and Google data used only for your campaigns." },
-                  { icon: AlertTriangle, text: "Exercise your rights at info@skalxai.app" },
+                  { icon: AlertTriangle, text: "Exercise your rights at info@optimx.app" },
                 ].map(({ icon: Icon, text }) => (
                   <li key={text} className="flex items-start gap-3">
                     <Icon className="h-5 w-5 shrink-0 mt-0.5" style={{ color: colors.primary }} />
@@ -584,7 +584,7 @@ const PrivacyPolicy: React.FC = () => {
                 <li>Request account closure</li>
               </ul>
               <p className="text-[15px] leading-[1.7]" style={{ color: colors.foreground }}>
-                To exercise these rights, contact: info@skalxai.app
+                To exercise these rights, contact: info@optimx.app
               </p>
             </SectionBlock>
 
@@ -628,7 +628,7 @@ const PrivacyPolicy: React.FC = () => {
                 14. Contact Information
               </SectionHeading>
               <p className="text-[15px] leading-[1.7]" style={{ color: colors.foreground }}>
-                Email: info@skalxai.app
+                Email: info@optimx.app
               </p>
             </SectionBlock>
 

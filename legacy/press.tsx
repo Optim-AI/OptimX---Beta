@@ -134,7 +134,7 @@ const Press: React.FC = () => {
                   <div style={{ color: colors.foreground, fontWeight: 700 }}>Press Contact</div>
                   <div style={{ color: colors.mutedForeground, fontSize: 13, marginTop: 6 }}>
                     For press inquiries, interviews, or media assets, email: <strong>press@optimx.app</strong>
-                    <br />Alternatively: info@skalxai.app
+                    <br />Alternatively: info@optimx.app
                   </div>
                 </div>
 

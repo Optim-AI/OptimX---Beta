@@ -98,7 +98,7 @@ export default function NotFound() {
 
           <div className="mt-6 text-sm" style={{ color: colors.mutedForeground }}>
             <Sparkles className="inline-block mr-2" style={{ color: colors.primary }} />
-            <span>If you need immediate assistance, email <strong>info@skalxai.app</strong> or check <a href="/status">system status</a>.</span>
+            <span>If you need immediate assistance, email <strong>info@optimx.app</strong> or check <a href="/status">system status</a>.</span>
           </div>
         </div>
       </div>

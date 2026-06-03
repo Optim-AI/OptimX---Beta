@@ -189,7 +189,7 @@ Content-Type: application/json
 
               <section>
                 <h3 style={{ color: colors.foreground }}>Support & Contact</h3>
-                <p style={{ color: colors.mutedForeground }}>If you need API access, key rotation, or have issues, contact <strong>info@skalxai.app</strong>. For urgent incidents, use the support ticketing system via the dashboard.</p>
+                <p style={{ color: colors.mutedForeground }}>If you need API access, key rotation, or have issues, contact <strong>info@optimx.app</strong>. For urgent incidents, use the support ticketing system via the dashboard.</p>
               </section>
 
             </div>

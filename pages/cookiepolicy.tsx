@@ -441,7 +441,7 @@ const CookiePolicy: React.FC = () => {
                 For questions regarding this Cookie Policy or data practices:
               </p>
               <p className="text-[15px] leading-[1.7] mt-2" style={{ color: colors.foreground }}>
-                Email: info@skalxai.app
+                Email: info@optimx.app
               </p>
             </SectionBlock>
 

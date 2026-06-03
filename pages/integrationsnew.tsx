@@ -533,7 +533,7 @@ export default function IntegrationsNew(): JSX.Element {
                 <span style={{ fontSize: 16 }}>⚠️</span>
                 <span>
                   This application is under review. For running ads or campaigns, contact us at
-                  <span style={{ color: "#0b74ff" }}> info@skalxai.app</span>.
+                  <span style={{ color: "#0b74ff" }}> info@optimx.app</span>.
                 </span>
               </div>
 
