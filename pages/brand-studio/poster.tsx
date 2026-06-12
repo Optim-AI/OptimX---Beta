@@ -77,7 +77,7 @@ function safeTrim(value: unknown): string {
 
 export default function PosterSessionPage() {
   const router = useRouter();
-  const { id: sessionId } = router.query; // Get id from query params (e.g., ?id=xxx)
+  const { id: sessionId, autoGenerate } = router.query;
   
   // Session state
   const [session, setSession] = useState<CreativeStudioSession | null>(null);
@@ -284,16 +284,30 @@ export default function PosterSessionPage() {
           const productData = loadedSession.productData;
           setProductPrompt(productData.prompt || '');
           
-          // Restore images from data URLs
+          // Restore images — only decode base64 data URLs; http URLs stay as URLs
           if (productData.imageDataUrls && productData.imageDataUrls.length > 0) {
-            const restoredImages = productData.imageDataUrls.map((dataUrl, idx) => 
-              dataUrlToFile(dataUrl, `product-${idx}.jpg`)
-            );
+            const urls = productData.imageDataUrls;
+            const restoredImages = urls
+              .map((url, idx) => {
+                if (!url.startsWith("data:")) return null;
+                try {
+                  return dataUrlToFile(url, `product-${idx}.jpg`);
+                } catch {
+                  return null;
+                }
+              })
+              .filter((f): f is File => f != null);
             setProductImages(restoredImages);
             setSavedProductData({
               prompt: productData.prompt || '',
               images: restoredImages,
-              imageDataUrls: productData.imageDataUrls,
+              imageDataUrls: urls,
+            });
+          } else if (productData.prompt) {
+            setSavedProductData({
+              prompt: productData.prompt,
+              images: [],
+              imageDataUrls: [],
             });
           }
         }
@@ -936,7 +950,9 @@ export default function PosterSessionPage() {
     setThinkingMessages(['Generating your poster variants...']);
     
     try {
-      const hasProductImage = savedProductData?.images && savedProductData.images.length > 0;
+      const hasProductImage =
+        (savedProductData?.imageDataUrls && savedProductData.imageDataUrls.length > 0) ||
+        (savedProductData?.images && savedProductData.images.length > 0);
       
       // Build base user request - use promptOverride when provided (e.g. from edited form), else posterPrompt or product data
       let userRequest = safeTrim(promptOverride) || safeTrim(posterPrompt) || safeTrim(savedProductData?.prompt) || '';
@@ -1023,10 +1039,41 @@ export default function PosterSessionPage() {
         }
       }
       
-      // Prepare product images - first image as productDataUrl, rest as refDataUrls
+      // Prepare product images — must be data URLs for generate-campaign API
+      const resolveImageForApi = async (url: string): Promise<string | undefined> => {
+        if (!url) return undefined;
+        if (url.startsWith('data:')) return url;
+        if (!url.startsWith('http')) return undefined;
+        try {
+          const imgRes = await authFetch('/api/creative-studio/fetch-image', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url, directFetch: true }),
+          });
+          const imgData = await imgRes.json();
+          if (imgData.ok && imgData.dataUrl?.startsWith('data:')) return imgData.dataUrl;
+        } catch (e) {
+          console.warn('Failed to resolve product image URL:', e);
+        }
+        return undefined;
+      };
+
       const allImageUrls = savedProductData?.imageDataUrls || [];
-      const productDataUrl = allImageUrls.length > 0 ? allImageUrls[0] : undefined;
-      const refDataUrls = allImageUrls.length > 1 ? allImageUrls.slice(1) : [];
+      let productDataUrl = allImageUrls.length > 0 ? allImageUrls[0] : undefined;
+      if (productDataUrl && !productDataUrl.startsWith('data:')) {
+        productDataUrl = await resolveImageForApi(productDataUrl);
+      }
+      const refDataUrls: string[] = [];
+      for (const ref of allImageUrls.slice(1)) {
+        const resolved = ref.startsWith('data:') ? ref : await resolveImageForApi(ref);
+        if (resolved) refDataUrls.push(resolved);
+      }
+
+      if (hasProductImage && !productDataUrl) {
+        throw new Error(
+          'Could not load the product image from Ad Studio. Please re-open this session or scan your product again in Ad Studio.'
+        );
+      }
       
       // Build base payload (same for all variants)
       const basePayload = {
@@ -1161,6 +1208,30 @@ export default function PosterSessionPage() {
       await loadCredits();
     }
   }
+
+  const autoGenerateTriggeredRef = React.useRef(false);
+
+  // Auto-generate when arriving from Creative Intelligence ranked hooks
+  useEffect(() => {
+    if (autoGenerate !== "1") return;
+    if (isLoading || !session || autoGenerateTriggeredRef.current) return;
+    if (phase !== "config") return;
+
+    const prompt = posterPrompt?.trim() || savedProductData?.prompt?.trim();
+    const hasProductRef =
+      (savedProductData?.imageDataUrls?.length ?? 0) > 0 ||
+      (session.productData as { imageDataUrls?: string[] } | undefined)?.imageDataUrls?.length;
+    if (!prompt || !hasProductRef) return;
+
+    autoGenerateTriggeredRef.current = true;
+    if (!config.theme) {
+      setConfig((c) => ({ ...c, theme: c.theme || "commercial", aspectRatio: c.aspectRatio || "9:16" }));
+    }
+    const timer = setTimeout(() => {
+      handleConfigSubmit(prompt);
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [autoGenerate, isLoading, session, phase, posterPrompt, savedProductData, config.theme]);
 
   // ============== Poster Action Handlers ==============
   

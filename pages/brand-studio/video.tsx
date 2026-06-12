@@ -26,13 +26,23 @@ import {
 } from '@/app/web/src/components/creative-studio';
 import { authFetch, safeResponseJson } from '@/lib/utils';
 
-/** Build full voiceover script from scene-by-scene storyboard (source of truth for voiceover) */
+/** Build full voiceover script from scene-by-scene storyboard lines. */
 function getVoiceoverFromStoryboard(storyboard: Array<{ voiceover_line?: string; voiceover_script?: string }> | null | undefined): string {
   if (!storyboard?.length) return '';
   return storyboard
     .map((s) => (s.voiceover_line || s.voiceover_script || '').trim())
     .filter(Boolean)
     .join(' ');
+}
+
+/** Prefer the canonical full script; fall back to joining per-scene lines. */
+function getCanonicalVoiceover(
+  voiceoverScript: string | undefined,
+  storyboard: Array<{ voiceover_line?: string; voiceover_script?: string }> | null | undefined
+): string {
+  const canonical = voiceoverScript?.trim();
+  if (canonical) return canonical;
+  return getVoiceoverFromStoryboard(storyboard);
 }
 
 /** Vercel caps request bodies at ~4.5MB; large base64 galleries exceed this before the API runs. */
@@ -151,7 +161,7 @@ type ProductData = {
 
 export default function VideoSessionPage() {
   const router = useRouter();
-  const { id: sessionId } = router.query; // Get id from query params (e.g., ?id=xxx)
+  const { id: sessionId, autoGenerate } = router.query;
 
   // Session state
   const [session, setSession] = useState<CreativeStudioSession | null>(null);
@@ -799,7 +809,7 @@ export default function VideoSessionPage() {
         ...adBuilderData,
         voiceover: {
           ...adBuilderData.voiceover,
-          script: getVoiceoverFromStoryboard(scriptData.storyboard) || scriptData.voiceover_script || '',
+          script: scriptData.voiceover_script || getVoiceoverFromStoryboard(scriptData.storyboard) || '',
         },
         onScreenText: {
           ...adBuilderData.onScreenText,
@@ -831,7 +841,7 @@ export default function VideoSessionPage() {
 
     setIsGeneratingVideo(true);
     try {
-      const voiceoverScript = getVoiceoverFromStoryboard(adBuilderData.storyboard) || adBuilderData.voiceover.script;
+      const voiceoverScript = getCanonicalVoiceover(adBuilderData.voiceover.script, adBuilderData.storyboard);
       if (!adBuilderData.storyboard?.length || (adBuilderData.voiceover.enabled && !voiceoverScript)) {
         await handleGenerateScript();
         await new Promise((resolve) => setTimeout(resolve, 500));
@@ -839,7 +849,7 @@ export default function VideoSessionPage() {
 
       const finalPrompt =
         adBuilderData.finalVideoPrompt ||
-        (getVoiceoverFromStoryboard(adBuilderData.storyboard) || adBuilderData.voiceover.script) ||
+        getCanonicalVoiceover(adBuilderData.voiceover.script, adBuilderData.storyboard) ||
         `Create a ${adBuilderData.adSetup.duration}-second ${adBuilderData.adSetup.style.toLowerCase()} video ad for ${adBuilderData.product.product_name}.`;
 
       // Prefer brand guideline logo when available so the fetched/configured logo is used in the video
@@ -859,7 +869,8 @@ export default function VideoSessionPage() {
         aspect_ratio: adBuilderData.adSetup.aspect_ratio,
         quality: adBuilderData.adSetup.quality || 'standard',
         final_video_prompt: finalPrompt,
-        voiceover_script: getVoiceoverFromStoryboard(adBuilderData.storyboard) || adBuilderData.voiceover.script,
+        voiceover_script: getCanonicalVoiceover(adBuilderData.voiceover.script, adBuilderData.storyboard),
+        storyboard: adBuilderData.storyboard,
         product_images: preparedImages.product_images,
         hero_image: preparedImages.hero_image,
         brand_logo: preparedImages.brand_logo,
@@ -907,6 +918,33 @@ export default function VideoSessionPage() {
       setIsGeneratingVideo(false);
     }
   }
+
+  const autoGenerateTriggeredRef = React.useRef(false);
+
+  // Auto-generate script + video when arriving from Creative Intelligence ranked hooks
+  useEffect(() => {
+    if (autoGenerate !== "1") return;
+    if (isLoading || !session || autoGenerateTriggeredRef.current) return;
+    if (!adBuilderData.userDescription?.trim() || !adBuilderData.product?.product_name) return;
+
+    autoGenerateTriggeredRef.current = true;
+    (async () => {
+      try {
+        setStep(2);
+        await handleGenerateScript();
+        setStep(3);
+        await handleGenerateVideo();
+      } catch {
+        // Errors surfaced inside handlers
+      }
+    })();
+  }, [
+    autoGenerate,
+    isLoading,
+    session,
+    adBuilderData.userDescription,
+    adBuilderData.product?.product_name,
+  ]);
 
   // ============== Download Video ==============
 
@@ -1154,7 +1192,7 @@ export default function VideoSessionPage() {
         <div className="border-b px-6 py-4 flex-shrink-0" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
           <div className="max-w-4xl mx-auto flex items-center justify-between">
             {[1, 2, 3].map((s) => {
-              const isStep3Blocked = s === 3 && (!adBuilderData.storyboard?.length || (adBuilderData.voiceover.enabled && !getVoiceoverFromStoryboard(adBuilderData.storyboard)));
+              const isStep3Blocked = s === 3 && (!adBuilderData.storyboard?.length || (adBuilderData.voiceover.enabled && !getCanonicalVoiceover(adBuilderData.voiceover.script, adBuilderData.storyboard)));
               return (
               <React.Fragment key={s}>
                 <button
@@ -1949,10 +1987,10 @@ export default function VideoSessionPage() {
                     </button>
                     <button
                       onClick={() => setStep(3)}
-                      disabled={!adBuilderData.storyboard?.length || (adBuilderData.voiceover.enabled && !getVoiceoverFromStoryboard(adBuilderData.storyboard))}
+                      disabled={!adBuilderData.storyboard?.length || (adBuilderData.voiceover.enabled && !getCanonicalVoiceover(adBuilderData.voiceover.script, adBuilderData.storyboard))}
                       className="px-6 py-2 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
                       style={{ backgroundColor: colors.primary }}
-                      title={!adBuilderData.storyboard?.length ? 'Generate a script first to continue' : adBuilderData.voiceover.enabled && !getVoiceoverFromStoryboard(adBuilderData.storyboard) ? 'Add voiceover to at least one scene' : undefined}
+                      title={!adBuilderData.storyboard?.length ? 'Generate a script first to continue' : adBuilderData.voiceover.enabled && !getCanonicalVoiceover(adBuilderData.voiceover.script, adBuilderData.storyboard) ? 'Add voiceover to at least one scene' : undefined}
                     >
                       Continue to Preview
                     </button>
@@ -2040,11 +2078,11 @@ export default function VideoSessionPage() {
                   </div>
 
                   {/* Script (built from scene-by-scene voiceover) */}
-                  {(getVoiceoverFromStoryboard(adBuilderData.storyboard) || adBuilderData.voiceover?.script) && (
+                  {getCanonicalVoiceover(adBuilderData.voiceover?.script, adBuilderData.storyboard) && (
                     <div className="mb-6 p-4 rounded-lg" style={{ backgroundColor: colors.muted, border: `1px solid ${colors.border}` }}>
                       <p className="text-sm font-medium mb-2" style={{ color: colors.mutedForeground }}>Voiceover script (from scenes)</p>
                       <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: colors.foreground }}>
-                        {getVoiceoverFromStoryboard(adBuilderData.storyboard) || adBuilderData.voiceover?.script}
+                        {getCanonicalVoiceover(adBuilderData.voiceover?.script, adBuilderData.storyboard)}
                       </p>
                     </div>
                   )}

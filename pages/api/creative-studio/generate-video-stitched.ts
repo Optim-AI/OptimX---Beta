@@ -14,6 +14,14 @@ import {
   isGeminiRateLimitError,
   withRetryOnGeminiRateLimit,
 } from "@/lib/gemini-retry";
+import {
+  buildVeoVideoPrompt,
+  computeVoiceoverBudget,
+  normalizeVeoDuration,
+  SEGMENT_SECONDS,
+  splitVoiceoverForStitch,
+  truncateVoiceover,
+} from "@/lib/creative-studio/video-prompt-utils";
 
 export const config = {
   api: {
@@ -27,7 +35,6 @@ export const config = {
 
 const GEMINI_VEO_API_KEY = process.env.GEMINI_VEO_API_KEY;
 const MODEL = "veo-3.1-fast-generate-preview";
-const SEGMENT_SECONDS = 8;
 const MAX_REFERENCE_IMAGES = 3;
 
 function parseDataUrl(
@@ -155,9 +162,11 @@ async function generateClipDataUrl(params: {
   prompt: string;
   aspectRatio: string;
   referenceImages: Array<{ image: { imageBytes: string; mimeType: string }; referenceType: "asset" }>;
+  clipDurationSeconds: number;
 }) {
   const generateConfig: any = {
     aspectRatio: params.aspectRatio,
+    durationSeconds: params.clipDurationSeconds,
     numberOfVideos: 1,
     safetyFilterLevel: "BLOCK_ONLY_HIGH",
   };
@@ -240,6 +249,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       product_images,
       brand_logo,
       hero_image,
+      storyboard,
     } = req.body;
 
     const allowedAspectRatios = ["9:16", "16:9", "4:5"];
@@ -248,7 +258,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const requestedDuration = Math.max(1, parseInt(duration) || SEGMENT_SECONDS);
     const segments = requestedDuration > SEGMENT_SECONDS ? 2 : 1;
-    const segmentDuration = segments === 2 ? SEGMENT_SECONDS : requestedDuration;
 
     // Build base reference images (max 3)
     const referenceImagePromises: Promise<{
@@ -273,95 +282,55 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       (r): r is NonNullable<typeof r> => r != null
     );
 
-    const realismAndEditSpec = `
-REALISM & IMAGE QUALITY (CRITICAL):
-- Photorealistic live-action footage (unless the user explicitly requested animation).
-- Bright, well-exposed image (avoid dim/underexposed scenes). Clean whites, natural skin tones, realistic contrast.
-- Natural camera physics: realistic motion blur, stable horizon, no wobble/jitter, no warping.
-- Commercial-grade color: consistent color temperature and grading across the whole video.
-- High detail without "AI sharpness": avoid over-smoothing, plastic skin, halos, painterly textures.
-
-EDITING & TRANSITIONS (CRITICAL):
-- Make it feel human-shot and professionally edited, not AI-generated.
-- Use a clear multi-shot edit WITH motivated cuts on action/beat.
-- Prefer real-world transitions: match cuts, whip-pan cut, rack-focus cut, speed-ramp cut, natural occlusion wipe (passing object), or hard cuts.
-- Avoid floaty morphing transitions, hallucinated dissolves, random camera teleports, flicker between shots, or object/label changes.
-
-NEGATIVE CONSTRAINTS:
-- No dark, muddy lighting. No flicker, strobing, frame-to-frame texture crawling.
-- No jumping logos, changing packaging text, shifting product geometry, or inconsistent branding.
-- No extra fingers/limbs, warped faces, melting objects, glitch artifacts, or watermark overlays.
-`.trim();
-
-    const styleDescriptions: Record<string, { prefix: string; details: string }> = {
-      Cinematic: { prefix: "A cinematic, high-production", details: "Film-quality cinematography with dramatic lighting and smooth camera movements." },
-      "Product Close-up": { prefix: "A premium product showcase", details: "Macro-level product cinematography with shallow depth of field, highlighting product details." },
-      Lifestyle: { prefix: "A lifestyle-focused", details: "Authentic lifestyle footage with natural lighting and relatable scenarios." },
-      Luxury: { prefix: "An elegant, luxury", details: "High-end luxury aesthetic with refined visuals and sophisticated color grading." },
-      "Stop Motion": { prefix: "A charming stop-motion animation style", details: "Tactile stop-motion aesthetic with creative transitions." },
-      "3D Animation": { prefix: "A polished 3D animated", details: "High-quality 3D CGI animation with realistic textures." },
-      "Motion Graphics": { prefix: "A sleek motion graphics", details: "Professional motion graphics with clean transitions and dynamic typography." },
-      "Bold & Energetic": { prefix: "A bold, high-energy", details: "Dynamic, fast-paced visuals with punchy edits and vibrant colors." },
-    };
-    const styleConfig = styleDescriptions[style] || { prefix: "A professional", details: "" };
+    const segmentDuration = normalizeVeoDuration(
+      segments === 2 ? SEGMENT_SECONDS : requestedDuration,
+      baseReferenceImages.length > 0
+    );
 
     const baseUserPrompt = final_video_prompt || prompt;
     if (!baseUserPrompt) {
       return res.status(400).json({ ok: false, error: "Either 'prompt' or 'final_video_prompt' is required" });
     }
 
-    // Split voiceover into two halves so each clip gets only its portion
-    let voiceoverPart1 = voiceover_script || "";
-    let voiceoverPart2 = "";
-    if (voiceover_script && segments === 2) {
-      const sentences = voiceover_script
-        .split(/(?<=[.!?।])\s+/)
-        .map((s: string) => s.trim())
-        .filter(Boolean);
+    const storyboardScenes = Array.isArray(storyboard) ? storyboard : undefined;
 
-      if (sentences.length >= 2) {
-        const midIdx = Math.ceil(sentences.length / 2);
-        voiceoverPart1 = sentences.slice(0, midIdx).join(" ");
-        voiceoverPart2 = sentences.slice(midIdx).join(" ");
-      } else {
-        // Single sentence — give it to Part 1, Part 2 gets a continuation cue
-        voiceoverPart1 = voiceover_script;
-        voiceoverPart2 = "";
-      }
-      console.log(`🎙️ Voiceover split: Part1 ${voiceoverPart1.length} chars, Part2 ${voiceoverPart2.length} chars`);
+    // Split voiceover into two halves by word budget so each 8s clip gets a finishable script
+    const fullVoBudget = computeVoiceoverBudget(requestedDuration);
+    const trimmedFullVoiceover = voiceover_script
+      ? truncateVoiceover(String(voiceover_script), fullVoBudget.maxWords)
+      : "";
+    const perClipBudget = computeVoiceoverBudget(segmentDuration);
+
+    let voiceoverPart1 = trimmedFullVoiceover;
+    let voiceoverPart2 = "";
+    if (trimmedFullVoiceover && segments === 2) {
+      const split = splitVoiceoverForStitch(trimmedFullVoiceover, perClipBudget.maxWords);
+      voiceoverPart1 = truncateVoiceover(split.part1, perClipBudget.maxWords);
+      voiceoverPart2 = truncateVoiceover(split.part2, perClipBudget.maxWords);
+      console.log(
+        `🎙️ Voiceover split: Part1 ${voiceoverPart1.split(/\s+/).length} words, Part2 ${voiceoverPart2.split(/\s+/).length} words`
+      );
+    } else if (trimmedFullVoiceover) {
+      voiceoverPart1 = truncateVoiceover(trimmedFullVoiceover, perClipBudget.maxWords);
     }
 
-    const buildClipHeader = (clipVoiceover: string) =>
-      `${styleConfig.prefix} ${requestedDuration}-second commercial video ad for ${brand_name || "the brand"} featuring ${product_name || "the product"}.
-
-${styleConfig.details}
-
-Aspect ratio: ${videoAspectRatio}
-${clipVoiceover ? `Voiceover for this clip: "${clipVoiceover}"` : "No voiceover for this clip - use music/sound effects."}
-${headline ? `Display headline: "${headline}"` : ""}
-${subtext ? `Display subtext: "${subtext}"` : ""}
-`;
-
-    const referenceBlock =
-      baseReferenceImages.length > 0
-        ? `CRITICAL — REFERENCE IMAGES: The attached reference images show the EXACT product (and/or logo). You MUST depict this product precisely: same appearance, design, colors, packaging, and branding. Do not redesign, reimagine, or alter the product.`
-        : `Create visuals based on the description above.`;
-
-    const safetyBlock = `SAFETY CONSTRAINT: This is a professional brand advertisement. All people must be fully clothed in appropriate attire. Absolutely no nudity, partial nudity, or revealing clothing. Keep all content safe for work and family-friendly.`;
-
-    const clip1Prompt = `${buildClipHeader(voiceoverPart1)}
-SEGMENT 1 of ${segments} (duration ~${segmentDuration}s):
-This is the FIRST HALF of a ${requestedDuration}-second ad. Create the opening — hook, product introduction, and setup.
-End with a clear, editable cut point (a resolved action/beat — product hero shot, a pause, or held frame), so the next segment can continue smoothly.
-The voiceover above is ONLY for this ${segmentDuration}-second clip. Pace it naturally across the full ${segmentDuration} seconds — do NOT rush or compress it.
-
-${baseUserPrompt}
-
-${realismAndEditSpec}
-
-${referenceBlock}
-
-${safetyBlock}`.trim();
+    const clip1Prompt = buildVeoVideoPrompt({
+      brandName: brand_name,
+      productName: product_name,
+      style,
+      clipDurationSeconds: segmentDuration,
+      totalDurationSeconds: requestedDuration,
+      aspectRatio: videoAspectRatio,
+      segmentIndex: segments === 2 ? 0 : undefined,
+      segmentCount: segments === 2 ? 2 : undefined,
+      finalVideoPrompt: final_video_prompt,
+      fallbackPrompt: prompt,
+      voiceoverScript: voiceoverPart1,
+      storyboard: storyboardScenes,
+      hasReferenceImages: baseReferenceImages.length > 0,
+      headline,
+      subtext,
+    });
 
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "optimx-video-"));
     const clip1Path = path.join(tmpDir, "clip1.mp4");
@@ -376,6 +345,7 @@ ${safetyBlock}`.trim();
       prompt: clip1Prompt,
       aspectRatio: videoAspectRatio,
       referenceImages: baseReferenceImages,
+      clipDurationSeconds: segmentDuration,
     });
     await writeMp4DataUrlToFile(clip1DataUrl, clip1Path);
 
@@ -399,56 +369,94 @@ ${safetyBlock}`.trim();
         clip2ReferenceImages.push(continuityAsset);
       }
 
-      const clip2Prompt = `${buildClipHeader(voiceoverPart2)}
-SEGMENT 2 of ${segments} (duration ~${segmentDuration}s):
-This is the SECOND HALF of a ${requestedDuration}-second ad. Continue the SAME story from segment 1.
-Match lighting, color grade, lens/DOF, location, wardrobe, and product placement EXACTLY. Start with a new camera angle that can match-cut from the end of segment 1.
-Cover the demonstration/story payoff, emotional climax, and closing CTA.
-${voiceoverPart2 ? `The voiceover above is ONLY for this ${segmentDuration}-second clip. Pace it naturally across the full ${segmentDuration} seconds — do NOT rush, compress, or repeat any voiceover from segment 1.` : "No voiceover for this segment — rely on visuals and music/sound design."}
-
-${baseUserPrompt}
-
-${realismAndEditSpec}
-
-${referenceBlock}
-
-${safetyBlock}`.trim();
+      const clip2Prompt = buildVeoVideoPrompt({
+        brandName: brand_name,
+        productName: product_name,
+        style,
+        clipDurationSeconds: segmentDuration,
+        totalDurationSeconds: requestedDuration,
+        aspectRatio: videoAspectRatio,
+        segmentIndex: 1,
+        segmentCount: 2,
+        finalVideoPrompt: final_video_prompt,
+        fallbackPrompt: prompt,
+        voiceoverScript: voiceoverPart2,
+        storyboard: storyboardScenes,
+        hasReferenceImages: clip2ReferenceImages.length > 0,
+        headline,
+        subtext,
+      });
 
       const clip2DataUrl = await generateClipDataUrl({
         ai,
         prompt: clip2Prompt,
         aspectRatio: videoAspectRatio,
         referenceImages: clip2ReferenceImages,
+        clipDurationSeconds: segmentDuration,
       });
       await writeMp4DataUrlToFile(clip2DataUrl, clip2Path);
 
-      // Stitch (try stream copy concat first; fallback to re-encode concat)
+      // Stitch with audio preserved; re-encode if stream-copy concat fails
       await fs.writeFile(listPath, `file '${clip1Path}'\nfile '${clip2Path}'\n`);
       try {
         await runFfmpeg(["-y", "-f", "concat", "-safe", "0", "-i", listPath, "-c", "copy", outPath], tmpDir);
       } catch {
-        // Fallback: re-encode and concatenate video only (audio may be absent/variable).
-        await runFfmpeg(
-          [
-            "-y",
-            "-i",
-            clip1Path,
-            "-i",
-            clip2Path,
-            "-filter_complex",
-            "[0:v][1:v]concat=n=2:v=1:a=0[v]",
-            "-map",
-            "[v]",
-            "-c:v",
-            "libx264",
-            "-preset",
-            "veryfast",
-            "-crf",
-            "18",
-            outPath,
-          ],
-          tmpDir
-        );
+        try {
+          await runFfmpeg(
+            [
+              "-y",
+              "-i",
+              clip1Path,
+              "-i",
+              clip2Path,
+              "-filter_complex",
+              "[0:v][0:a][1:v][1:a]concat=n=2:v=1:a=1[outv][outa]",
+              "-map",
+              "[outv]",
+              "-map",
+              "[outa]",
+              "-c:v",
+              "libx264",
+              "-preset",
+              "veryfast",
+              "-crf",
+              "18",
+              "-c:a",
+              "aac",
+              "-b:a",
+              "192k",
+              "-movflags",
+              "+faststart",
+              outPath,
+            ],
+            tmpDir
+          );
+        } catch {
+          // Last resort: video-only concat if a clip has no audio stream
+          await runFfmpeg(
+            [
+              "-y",
+              "-i",
+              clip1Path,
+              "-i",
+              clip2Path,
+              "-filter_complex",
+              "[0:v][1:v]concat=n=2:v=1:a=0[v]",
+              "-map",
+              "[v]",
+              "-c:v",
+              "libx264",
+              "-preset",
+              "veryfast",
+              "-crf",
+              "18",
+              "-movflags",
+              "+faststart",
+              outPath,
+            ],
+            tmpDir
+          );
+        }
       }
 
       stitchedDataUrl = await fileToVideoDataUrl(outPath);
@@ -460,7 +468,7 @@ ${safetyBlock}`.trim();
     return res.status(200).json({
       ok: true,
       videoUrl: stitchedDataUrl,
-      duration: segments === 2 ? SEGMENT_SECONDS * 2 : segmentDuration,
+      duration: segments === 2 ? segmentDuration * 2 : segmentDuration,
       aspectRatio: videoAspectRatio,
       referenceImagesUsed: baseReferenceImages.length,
       model: MODEL,

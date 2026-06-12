@@ -86,7 +86,7 @@ export default function OnboardingInfoPage() {
       });
       setCreated(true);
       setTimeout(() => {
-        router.push('/brand-studio');
+        router.push('/content-studio');
       }, 2000);
     } catch (e: any) {
       setError(e?.message ?? String(e));

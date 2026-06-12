@@ -50,6 +50,16 @@ import {
 import type { BrandSnapshot } from "@/app/web/src/components/creative-studio";
 import { DEFAULT_AD_BUILDER_DATA } from "@/app/web/src/components/creative-studio/utils";
 import type { Product } from "@/app/web/src/components/creative-studio/types";
+import {
+  fetchCreativeStudioContext,
+  mergeBrandSnapshots,
+  buildPosterPromptFromHook,
+  buildVideoDescriptionFromHook,
+  productToProductData,
+  productToPosterProductData,
+  mapHookTypeToVideoStyle,
+  resolvePrimaryProductImageDataUrl,
+} from "@/lib/creative-studio/hook-creative-context";
 import { Progress } from "@/app/web/src/components/ui/progress";
 import { Button } from "@/app/web/src/components/ui/button";
 import { Input } from "@/app/web/src/components/ui/input";
@@ -235,6 +245,7 @@ export default function CreativeIntelligencePage() {
   const [runData, setRunData] = useState<RunData | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [generatingCreativeHookId, setGeneratingCreativeHookId] = useState<string | null>(null);
+  const [generatingFromHook, setGeneratingFromHook] = useState<{ hookId: string; type: "poster" | "video" } | null>(null);
   const [generatedCreatives, setGeneratedCreatives] = useState<Record<string, any>>({});
 
   const [imageCredits, setImageCredits] = useState<number | null>(null);
@@ -706,37 +717,103 @@ ${strategies.market_gap_analysis?.length ? `<h3>Market Gap Analysis</h3><ul>${st
   }
   async function handleGenerateFromHook(hook: RunData["hooks"][0], type: "poster" | "video") {
     if (!runData?.brand || !runData?.run?.brandUrl) return;
-    const brandSnapshot = mapCreativeIntelligenceBrandToSnapshot(
-      runData.brand,
-      runData.run.brandUrl
-    );
-    const sessionName = `Hook: ${hook.hookStatement.slice(0, 40)}${hook.hookStatement.length > 40 ? "…" : ""}`;
 
+    setGeneratingFromHook({ hookId: hook.id, type });
     try {
-      const payload: any = {
+      const ciBrandSnapshot = mapCreativeIntelligenceBrandToSnapshot(
+        runData.brand,
+        runData.run.brandUrl
+      );
+
+      const { brandGuideline, scan, product } = await fetchCreativeStudioContext(
+        authFetch,
+        runData.run.brandUrl
+      );
+
+      const brandSnapshot = mergeBrandSnapshots(
+        brandGuideline,
+        ciBrandSnapshot,
+        scan?.brandSummary
+      );
+
+      if (!product) {
+        showError(
+          "No products found in Ad Studio. Scan your website in Ad Studio first, then try again.",
+          "Product Required"
+        );
+        return;
+      }
+
+      const hookInput = {
+        hookStatement: hook.hookStatement,
+        hookType: hook.hookType,
+        whyItWorks: hook.whyItWorks,
+        supportingReviewPhrase: hook.supportingReviewPhrase,
+      };
+
+      const sessionName = `Hook: ${hook.hookStatement.slice(0, 40)}${hook.hookStatement.length > 40 ? "…" : ""}`;
+
+      const payload: Record<string, unknown> = {
         name: sessionName,
         sessionType: type,
         brandSnapshot,
       };
 
       if (type === "poster") {
-        payload.phase = "product-input";
-        payload.posterPrompt = hook.hookStatement;
+        const heroImageUrl = product.product_images?.[0];
+        if (!heroImageUrl) {
+          showError(
+            "This product has no image in Ad Studio. Re-scan your website in Ad Studio and try again.",
+            "Product Image Required"
+          );
+          return;
+        }
+
+        const primaryImageDataUrl = await resolvePrimaryProductImageDataUrl(authFetch, product);
+        if (!primaryImageDataUrl) {
+          showError(
+            "Could not load the product image from Ad Studio. Open Ad Studio, confirm the product photo loads, then try again.",
+            "Image Load Failed"
+          );
+          return;
+        }
+
+        const posterPrompt = buildPosterPromptFromHook(hookInput, brandSnapshot, product);
+        payload.phase = "config";
+        payload.posterPrompt = posterPrompt;
+        payload.config = {
+          theme: "commercial",
+          aspectRatio: "9:16",
+          variantCount: 3,
+        };
+        payload.productData = productToPosterProductData(
+          product,
+          posterPrompt,
+          primaryImageDataUrl
+        );
       } else {
-        const raw = (runData.brand as any)?.rawAnalysis || {};
+        const videoStyle = mapHookTypeToVideoStyle(hook.hookType);
+        const userDescription = buildVideoDescriptionFromHook(hookInput, brandSnapshot, product);
+        const videoProduct = productToProductData(product, brandSnapshot);
+        const heroDataUrl = await resolvePrimaryProductImageDataUrl(authFetch, product);
+        if (heroDataUrl) {
+          videoProduct.product_images = [heroDataUrl, ...videoProduct.product_images.filter((u) => u !== product.product_images?.[0])].slice(0, 3);
+          videoProduct.hero_image = heroDataUrl;
+        }
         payload.adBuilderData = {
           ...DEFAULT_AD_BUILDER_DATA,
-          product: {
-            product_name: raw.product_name || brandSnapshot.name,
-            brand_name: brandSnapshot.name,
-            product_images: [],
-            hero_image: null,
-            brand_logo: brandSnapshot.logo || brandSnapshot.logoUrl || null,
-            category: raw.product_category || "general",
+          step: 3,
+          product: videoProduct,
+          adSetup: {
+            ...DEFAULT_AD_BUILDER_DATA.adSetup,
+            style: videoStyle,
           },
+          userDescription,
           voiceover: {
             ...DEFAULT_AD_BUILDER_DATA.voiceover,
+            enabled: true,
             key_message: hook.hookStatement,
+            cta: product?.short_benefit ? `Try ${product.product_name} today` : `Discover ${brandSnapshot.name}`,
           },
         };
       }
@@ -747,9 +824,12 @@ ${strategies.market_gap_analysis?.length ? `<h3>Market Gap Analysis</h3><ul>${st
       });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || "Failed to create session");
-      router.push(`/brand-studio/${type}?id=${data.session.id}`);
+
+      router.push(`/brand-studio/${type}?id=${data.session.id}&autoGenerate=1`);
     } catch (err: any) {
       showError(err?.message || "Failed to create session");
+    } finally {
+      setGeneratingFromHook(null);
     }
   }
 
@@ -1893,19 +1973,29 @@ ${strategies.market_gap_analysis?.length ? `<h3>Market Gap Analysis</h3><ul>${st
                             <div className="flex items-center gap-2 mt-3 flex-wrap">
                               <Button
                                 size="sm"
+                                disabled={generatingFromHook?.hookId === hook.id && generatingFromHook?.type === "poster"}
                                 onClick={() => handleGenerateFromHook(hook, "poster")}
                                 style={{ backgroundColor: colors.primary, color: colors.primaryForeground }}
                               >
-                                <Image size={14} className="mr-1.5" />
+                                {generatingFromHook?.hookId === hook.id && generatingFromHook?.type === "poster" ? (
+                                  <Loader2 size={14} className="mr-1.5 animate-spin" />
+                                ) : (
+                                  <Image size={14} className="mr-1.5" />
+                                )}
                                 Generate Poster
                               </Button>
                               <Button
                                 size="sm"
                                 variant="outline"
+                                disabled={generatingFromHook?.hookId === hook.id && generatingFromHook?.type === "video"}
                                 onClick={() => handleGenerateFromHook(hook, "video")}
                                 style={{ borderColor: colors.border, color: colors.foreground }}
                               >
-                                <Video size={14} className="mr-1.5" />
+                                {generatingFromHook?.hookId === hook.id && generatingFromHook?.type === "video" ? (
+                                  <Loader2 size={14} className="mr-1.5 animate-spin" />
+                                ) : (
+                                  <Video size={14} className="mr-1.5" />
+                                )}
                                 Generate Video
                               </Button>
                               <button

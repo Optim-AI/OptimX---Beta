@@ -65,12 +65,12 @@ const Home: React.FC = () => {
             const profileData = await profileRes.json();
             const p = profileData.success ? profileData.data : null;
             if (p && (p.business_name || p.businessName)) {
-              router.replace("/brand-studio");
+              router.replace("/content-studio");
             } else {
               router.replace("/welcome");
             }
           } catch {
-            router.replace("/brand-studio");
+            router.replace("/content-studio");
           }
         }
       } catch {

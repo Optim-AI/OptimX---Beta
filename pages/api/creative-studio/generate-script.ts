@@ -4,6 +4,11 @@ import {
   fetchWithGeminiRateLimitRetry,
   isGeminiRateLimitError,
 } from "@/lib/gemini-retry";
+import {
+  computeVoiceoverBudget,
+  redistributeVoiceoverToStoryboard,
+  truncateVoiceover,
+} from "@/lib/creative-studio/video-prompt-utils";
 
 // Configure API route to handle large payloads (product images as base64 data URLs)
 export const config = {
@@ -128,12 +133,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const durationSeconds = typeof duration === 'number' ? Math.max(5, Math.min(120, duration)) : parseInt(String(duration || '6'), 10) || 6;
     const durationSecondsClamped = Math.max(5, Math.min(120, durationSeconds));
 
-    // Voiceover budget: scales with duration but never exceeds (duration - 1)s
-    // 8s video → max 6s VO (~13 words); 16s video → max 15s VO (~33 words)
-    const maxVoiceoverSeconds = durationSecondsClamped <= 8
-      ? Math.min(Math.ceil(durationSecondsClamped * 0.75), durationSecondsClamped - 2)
-      : Math.min(durationSecondsClamped - 1, 15);
-    const maxVoiceoverWords = Math.floor(maxVoiceoverSeconds * 2.2);
+    // Voiceover budget: leave tail silence so Veo does not cut speech at the end
+    const { maxSpokenSeconds: maxVoiceoverSeconds, maxWords: maxVoiceoverWords } =
+      computeVoiceoverBudget(durationSecondsClamped);
 
     // For stitched videos (>8s), we generate two Veo clips. The script must have a natural midpoint.
     const isStitchedDuration = durationSecondsClamped > 8;
@@ -332,7 +334,7 @@ DIRECTOR REQUIREMENTS:
   - Distribute voiceover_line across ALL ${recommendedScenes} scenes. The first half of scenes (Part 1, 0–${midpointSeconds}s) gets the setup/hook voiceover; the second half (Part 2, ${midpointSeconds}–${durationSecondsClamped}s) gets the payoff/CTA voiceover.
   - voiceover_script must be the FULL narration for all ${durationSecondsClamped} seconds combined (max ${maxVoiceoverWords} words / ${maxVoiceoverSeconds}s spoken).
   - Do NOT write the same lines for both halves. Each scene's voiceover_line must be unique and progress the story.` : ` The voiceover must NOT fill the entire ${durationSecondsClamped}-second video — leave silent/music-only moments so visuals and background audio have room to breathe.`} ${key_message ? `Weave in: "${key_message}".` : ""} ${cta ? `End with CTA: "${cta}".` : ""}
-- final_video_prompt: 300–800 tokens, director-grade, describing the full ${durationSecondsClamped}-second film (cinematic lighting, movement, pacing, color, premium brand quality), aligned with the user's described vision.
+- final_video_prompt: 300–800 tokens, director-grade, describing the full ${durationSecondsClamped}-second film (cinematic lighting, movement, pacing, color, premium brand quality), aligned with the user's described vision. Include specific lens choices, lighting setup, color grade, cut types, and sound mood — write like a Tier-1 agency shoot brief.
 ${styleRequirements}
 
 Return your response as a JSON object with this exact structure. The storyboard MUST have ${recommendedScenes} scenes (minimum ${minScenes}):
@@ -440,7 +442,7 @@ Return your response as a JSON object with this exact structure. The storyboard 
   "voiceover_script": "${voiceover ? `Voiceover script in ${language === "tamil" ? "Tamil" : language === "hindi" ? "Hindi" : "English"}, MAX ${maxVoiceoverWords} words, spoken in UNDER ${maxVoiceoverSeconds} seconds. ${tone || "Energetic"} tone. Leave silent moments for visuals and music.` : "N/A - Voiceover disabled"}",
   "headline": "",
   "subtext": "",
-  "final_video_prompt": "Single cinematic prompt (300-800 tokens) for the full ${durationSecondsClamped}-second video: camera, lighting, composition, pacing, color grading, shot transitions, premium quality.${isStitchedDuration ? ' IMPORTANT: This video is rendered as two ~' + midpointSeconds + 's clips. Describe a CONSISTENT visual world across both halves. The midpoint should feel like a motivated professional edit cut, not a random jump.' : ''} CRITICAL: Do NOT describe or include any on-screen text, captions, titles, headlines, or text overlays. The video is purely visual with no written text."
+  "final_video_prompt": "Director-grade Veo production brief (400-900 tokens) for the full ${durationSecondsClamped}-second film. Write like a Tier-1 agency shoot call sheet condensed into one prompt. MUST include: (1) OVERALL VISION — one sentence emotional goal; (2) COLOR GRADE — specific LUT feel (e.g. warm Kodak 2383, cool teal-orange, high-key Apple white); (3) LENS & CAMERA — specific focal lengths and moves per act (e.g. 35mm dolly push-in, 100mm macro rack focus); (4) LIGHTING SETUP — key/fill/rim description, motivated sources; (5) SHOT SEQUENCE — timed beats with cut types (match cut, whip-pan, hard cut on action); (6) SOUND MOOD — music genre/tempo, foley texture; (7) PRODUCT HERO MOMENT — exact frame composition for the closing shot.${isStitchedDuration ? ' IMPORTANT: Two ~' + midpointSeconds + 's clips stitched. Describe ONE consistent visual world. Midpoint = motivated professional edit cut.' : ''} CRITICAL: NO on-screen text, captions, or typography. Purely visual + voiceover."
 }
 
 IMPORTANT — STORYBOARD VALIDATION:
@@ -757,6 +759,30 @@ CRITICAL — NO ON-SCREEN TEXT: Set headline, subtext, and every storyboard on_s
         ...scene,
         on_screen_text: "",
       }));
+    }
+
+    // Enforce voiceover word limits so Veo native audio finishes cleanly (prevents mid-word cutoffs)
+    if (voiceover && scriptData.voiceover_script) {
+      scriptData.voiceover_script = truncateVoiceover(
+        String(scriptData.voiceover_script),
+        maxVoiceoverWords
+      );
+      if (scriptData.storyboard?.length) {
+        scriptData.storyboard = redistributeVoiceoverToStoryboard(
+          scriptData.storyboard,
+          scriptData.voiceover_script
+        );
+      }
+    } else if (voiceover && scriptData.storyboard?.length) {
+      const joined = scriptData.storyboard
+        .map((s: any) => String(s.voiceover_line || s.voiceover_script || "").trim())
+        .filter(Boolean)
+        .join(" ");
+      scriptData.voiceover_script = truncateVoiceover(joined, maxVoiceoverWords);
+      scriptData.storyboard = redistributeVoiceoverToStoryboard(
+        scriptData.storyboard,
+        scriptData.voiceover_script
+      );
     }
 
     return res.status(200).json({

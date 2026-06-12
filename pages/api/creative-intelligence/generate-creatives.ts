@@ -9,8 +9,16 @@ import {
   creativeIntelligenceHooks,
   creativeIntelligenceCreatives,
   creativeIntelligenceBrands,
+  profiles,
 } from "@/database/schema";
 import { eq, and } from "drizzle-orm";
+import { ContentStudioScanDAO } from "@/database/models/ContentStudioScan.dao";
+import {
+  buildHookCreativeBrief,
+  mergeBrandSnapshots,
+  pickProductFromScan,
+} from "@/lib/creative-studio/hook-creative-context";
+import type { BrandSnapshot, Product } from "@/app/web/src/components/creative-studio/types";
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GEMINI_VEO_API_KEY;
 const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta";
@@ -113,14 +121,85 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const campaignGoal = run.campaignGoal || advanced.campaignGoal || "Conversions";
     const toneDir = toneEmotional > 0.6 ? "Emotional: aspiration, identity, feeling" : toneEmotional < 0.4 ? "Performance: numbers, proof, outcome, efficiency" : "Blend emotional and performance. Keep clarity.";
 
+    // Brand guideline + Ad Studio product context
+    let brandGuideline: BrandSnapshot | null = null;
+    let contentStudioProduct: Product | null = null;
+    let scanBrandSummary: Record<string, string> | null = null;
+
+    try {
+      const [profileRow] = await db
+        .select({ brandSnapshot: profiles.brandSnapshot })
+        .from(profiles)
+        .where(eq(profiles.id, userId))
+        .limit(1);
+      if (profileRow?.brandSnapshot) {
+        brandGuideline = profileRow.brandSnapshot as BrandSnapshot;
+      }
+    } catch {
+      // optional
+    }
+
+    try {
+      const scans = await ContentStudioScanDAO.listByUser(userId);
+      if (scans.length > 0) {
+        const brandUrl = run.brandUrl || "";
+        const normalizeHost = (url: string) => {
+          try {
+            const u = url.startsWith("http") ? url : `https://${url}`;
+            return new URL(u).hostname.replace(/^www\./, "").toLowerCase();
+          } catch {
+            return url.replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0].toLowerCase();
+          }
+        };
+        const host = brandUrl ? normalizeHost(brandUrl) : "";
+        const matched =
+          host && scans.find((s) => s.url && normalizeHost(s.url) === host);
+        const latest = matched || scans[0];
+        scanBrandSummary = (latest.brandSummary as Record<string, string>) || null;
+        contentStudioProduct = pickProductFromScan(
+          (latest.products as Product[]) || [],
+          brandUrl
+        );
+      }
+    } catch {
+      // optional
+    }
+
+    const ciFallback: BrandSnapshot = {
+      name: (brand?.rawAnalysis as any)?.product_name || "Brand",
+      description: brand?.productSummary || "",
+      audience: brand?.targetPersonaGuess || "",
+      offering: brand?.productSummary || "",
+      tone: brand?.emotionalTone || "professional",
+    };
+    const mergedBrand = mergeBrandSnapshots(brandGuideline, ciFallback, scanBrandSummary);
+
+    const hookBrief = buildHookCreativeBrief({
+      hookStatement: hook.hookStatement,
+      hookType: hook.hookType,
+      whyItWorks: hook.whyItWorks,
+      supportingReviewPhrase: hook.supportingReviewPhrase,
+    });
+
+    const productContext = contentStudioProduct
+      ? `PRODUCT (from Ad Studio): ${contentStudioProduct.product_name}. ${contentStudioProduct.description || ""} Benefits: ${(contentStudioProduct.key_benefits || []).slice(0, 3).join(", ")}. Short benefit: ${contentStudioProduct.short_benefit || "N/A"}.`
+      : "";
+
+    const brandContext = `BRAND (from Brand Guidelines + research):
+Name: ${mergedBrand.name}
+Description: ${mergedBrand.description || brand?.productSummary || "N/A"}
+Audience: ${mergedBrand.audience || "N/A"}
+Tone: ${mergedBrand.tone || "N/A"}
+Value prop: ${mergedBrand.coreValueProp || "N/A"}
+${mergedBrand.primaryColors?.length ? `Brand colors: ${mergedBrand.primaryColors.join(", ")}` : ""}`;
+
     const prompt = `${STEP7_SYSTEM}
 
-HOOK: ${hook.hookStatement}
-HOOK TYPE: ${hook.hookType || "functional"}
-RATIONALE: ${hook.whyItWorks || "N/A"}
-SUPPORTING EVIDENCE: ${hook.supportingReviewPhrase || "N/A"}
+${hookBrief}
 
-BRAND: ${brand?.productSummary || "N/A"}
+${brandContext}
+${productContext}
+
 CAMPAIGN GOAL: ${campaignGoal}
 THEME: ${theme}
 FONT: ${font}

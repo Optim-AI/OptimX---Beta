@@ -8,6 +8,10 @@ import {
   isGeminiRateLimitError,
   withRetryOnGeminiRateLimit,
 } from "@/lib/gemini-retry";
+import {
+  buildVeoVideoPrompt,
+  normalizeVeoDuration,
+} from "@/lib/creative-studio/video-prompt-utils";
 
 export const config = {
   api: {
@@ -157,6 +161,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       product_images,
       brand_logo,
       hero_image,
+      storyboard,
     } = req.body;
 
     console.log('🎬 Video generation request:', {
@@ -206,8 +211,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       console.log('⚠️ No valid reference images — text-to-video mode');
     }
 
-    let videoPrompt: string;
-    let videoDuration: number = parseInt(duration) || 6;
     // Support user's aspect ratio: 9:16 (vertical), 16:9 (landscape), 4:5 (portrait/social)
     const allowedAspectRatios = ["9:16", "16:9", "4:5"];
     let videoAspectRatio = typeof aspect_ratio === "string" ? aspect_ratio.trim() : "9:16";
@@ -215,77 +218,41 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       videoAspectRatio = "9:16";
     }
 
-    const styleDescriptions: Record<string, { prefix: string; details: string }> = {
-      "Cinematic": { prefix: "A cinematic, high-production", details: "Film-quality cinematography with dramatic lighting and smooth camera movements." },
-      "Product Close-up": { prefix: "A premium product showcase", details: "Macro-level product cinematography with shallow depth of field, highlighting product details." },
-      "Lifestyle": { prefix: "A lifestyle-focused", details: "Authentic lifestyle footage with natural lighting and relatable scenarios." },
-      "Luxury": { prefix: "An elegant, luxury", details: "High-end luxury aesthetic with refined visuals and sophisticated color grading." },
-      "Stop Motion": { prefix: "A charming stop-motion animation style", details: "Tactile stop-motion aesthetic with creative transitions." },
-      "3D Animation": { prefix: "A polished 3D animated", details: "High-quality 3D CGI animation with realistic textures." },
-      "Motion Graphics": { prefix: "A sleek motion graphics", details: "Professional motion graphics with clean transitions and dynamic typography." },
-      "Bold & Energetic": { prefix: "A bold, high-energy", details: "Dynamic, fast-paced visuals with punchy edits and vibrant colors." },
-    };
+    const requestedDuration = parseInt(duration) || 8;
+    const videoDuration = normalizeVeoDuration(requestedDuration, referenceImages.length > 0);
 
-    // Global realism + editing constraints to reduce "AI look"
-    // Veo responds well to explicit cinematography + post-production direction (even though it generates one clip).
-    const realismAndEditSpec = `
-REALISM & IMAGE QUALITY (CRITICAL):
-- Photorealistic live-action footage (unless the user explicitly requested animation).
-- Bright, well-exposed image (avoid dim/underexposed scenes). Clean whites, natural skin tones, realistic contrast.
-- Natural camera physics: realistic motion blur, stable horizon, no wobble/jitter, no warping.
-- Commercial-grade color: consistent color temperature and grading across the whole video.
-- High detail without "AI sharpness": avoid over-smoothing, plastic skin, halos, painterly textures.
-
-EDITING & TRANSITIONS (CRITICAL):
-- Make it feel human-shot and professionally edited, not AI-generated.
-- Use a clear multi-shot edit (3–7 shots total) WITH motivated cuts on action/beat.
-- Prefer real-world transitions: match cuts, whip-pan cut, rack-focus cut, speed-ramp cut, natural occlusion wipe (passing object), or hard cuts.
-- Avoid floaty morphing transitions, hallucinated dissolves, random camera teleports, flicker between shots, or object/label changes.
-
-NEGATIVE CONSTRAINTS:
-- No dark, muddy lighting. No flicker, strobing, frame-to-frame texture crawling.
-- No jumping logos, changing packaging text, shifting product geometry, or inconsistent branding.
-- No extra fingers/limbs, warped faces, melting objects, glitch artifacts, or watermark overlays.
-`.trim();
-
-    if (final_video_prompt) {
-      const styleConfig = styleDescriptions[style] || { prefix: "A professional", details: "" };
-      
-      videoPrompt = `${styleConfig.prefix} ${videoDuration}-second commercial video ad for ${brand_name || 'the brand'} featuring ${product_name || 'the product'}.
-
-${styleConfig.details}
-
-${final_video_prompt}
-
-${realismAndEditSpec}
-
-Aspect ratio: ${videoAspectRatio}
-${voiceover_script ? `Voiceover: "${voiceover_script}"` : "No voiceover - use music/sound effects."}
-${headline ? `Display headline: "${headline}"` : ""}
-${subtext ? `Display subtext: "${subtext}"` : ""}
-
-${referenceImages.length > 0 ? `CRITICAL — REFERENCE IMAGES: The attached reference images show the EXACT product (and/or logo) uploaded or fetched by the user. You MUST depict this product precisely in the video: same appearance, design, colors, packaging, and branding. Do not redesign, reimagine, or alter the product. The reference images are the source of truth. Generate a video ad that features this exact product.` : "Create visuals based on the description above."}
-
-SAFETY CONSTRAINT: This is a professional brand advertisement. All people must be fully clothed in appropriate attire. Absolutely no nudity, partial nudity, or revealing clothing. Keep all content safe for work and family-friendly.`;
-    } else if (prompt) {
-      videoPrompt = `Create a ${videoDuration}-second video ad (${videoAspectRatio} aspect ratio).
-
-${prompt}
-
-${realismAndEditSpec}
-
-${referenceImages.length > 0 ? `CRITICAL: The attached reference images show the EXACT product. Depict it precisely — same look, design, and branding. Do not change or redesign the product. The video ad must feature this exact product as shown in the references.` : ''}
-
-SAFETY CONSTRAINT: This is a professional brand advertisement. All people must be fully clothed in appropriate attire. Absolutely no nudity, partial nudity, or revealing clothing. Keep all content safe for work and family-friendly.`;
-    } else {
+    if (!final_video_prompt && !prompt) {
       return res.status(400).json({ ok: false, error: "Either 'prompt' or 'final_video_prompt' is required" });
     }
 
+    const videoPrompt = buildVeoVideoPrompt({
+      brandName: brand_name,
+      productName: product_name,
+      style,
+      clipDurationSeconds: videoDuration,
+      totalDurationSeconds: requestedDuration,
+      aspectRatio: videoAspectRatio,
+      finalVideoPrompt: final_video_prompt,
+      fallbackPrompt: prompt,
+      voiceoverScript: voiceover_script,
+      storyboard: Array.isArray(storyboard) ? storyboard : undefined,
+      hasReferenceImages: referenceImages.length > 0,
+      headline,
+      subtext,
+    });
+
     console.log('📝 Video prompt length:', videoPrompt.length);
-    console.log('🚀 Starting Veo 3.1 video generation...', { aspectRatio: videoAspectRatio });
+    console.log('🚀 Starting Veo 3.1 video generation...', {
+      aspectRatio: videoAspectRatio,
+      durationSeconds: videoDuration,
+      hasVoiceover: !!voiceover_script,
+      storyboardScenes: Array.isArray(storyboard) ? storyboard.length : 0,
+      style,
+    });
 
     const generateConfig: any = {
       aspectRatio: videoAspectRatio,
+      durationSeconds: videoDuration,
       numberOfVideos: 1,
       safetyFilterLevel: "BLOCK_ONLY_HIGH",
     };
@@ -411,7 +378,7 @@ SAFETY CONSTRAINT: This is a professional brand advertisement. All people must b
     if (isGeminiRateLimitError(error) || errorMessage.includes('quota') || looksLikeRateLimit) {
       return res.status(429).json({
         ok: false,
-        error: "API rate limit reached. Please wait a moment and try again.",
+        error: "too many requests. Please wait a moment and try again.",
         details: errorMessage,
       });
     }
