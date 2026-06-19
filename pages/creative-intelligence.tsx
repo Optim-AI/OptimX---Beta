@@ -7,7 +7,7 @@ import Link from "next/link";
 import Sidebar from "@/app/web/src/components/Sidebar";
 import colors from "@/lib/ui/colors";
 import { authFetch } from "@/lib/utils";
-import { showError, showSuccess } from "@/app/web/src/components/ui/AlertModal";
+import { showError, showSuccess } from "@/app/web/src/components/ui/alert-modal-api";
 import {
   Search,
   Copy,

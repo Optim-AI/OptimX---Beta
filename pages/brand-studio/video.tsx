@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/router';
-import { showAlert, showError, showConfirm } from '@/app/web/src/components/ui/AlertModal';
+import { showAlert, showError, showConfirm } from '@/app/web/src/components/ui/alert-modal-api';
 import Link from 'next/link';
 import Sidebar from '@/app/web/src/components/Sidebar';
 import colors from '@/lib/ui/colors';
@@ -20,11 +20,17 @@ import {
   SessionNameModal,
   formatTimestamp,
   DEFAULT_AD_BUILDER_DATA,
-  VIDEO_STYLES,
+  CREATIVE_FORMATS,
+  HOOK_TYPES,
+  CAMPAIGN_GOALS,
+  AUDIENCE_TYPES,
+  normalizeAdSetup,
   VIDEO_DURATIONS,
   mapFullAnalyzeToBrandSnapshot,
 } from '@/app/web/src/components/creative-studio';
 import { authFetch, safeResponseJson } from '@/lib/utils';
+import { supabase } from '@/auth/supabase/client';
+import { Check, ChevronLeft, ChevronRight } from 'lucide-react';
 
 /** Build full voiceover script from scene-by-scene storyboard lines. */
 function getVoiceoverFromStoryboard(storyboard: Array<{ voiceover_line?: string; voiceover_script?: string }> | null | undefined): string {
@@ -125,23 +131,32 @@ const ASPECT_RATIO_OPTIONS: { ratio: '9:16' | '16:9'; orientation: string }[] = 
   { ratio: '16:9', orientation: 'Landscape' },
 ];
 
-// Ad style descriptions shown when a style is selected
-const AD_STYLE_DESCRIPTIONS: Record<string, string> = {
-  'Hook': 'Conversion-focused, scroll-stopping format. Rapid cuts, emotional trigger, early product clarity, and strong visuals.',
-  'Commercial': 'Paid brand commercial feel. High-production value, emotion + aspiration driven, product as hero. Fast, punchy, visually premium. No text overlays — script-driven via voiceover only.',
-  'UGC Style': 'Real person filmed on phone. Casual, imperfect, believable. Native to Reels/Shorts/TikTok. Conversational, slightly messy but authentic. Trust over perfection.',
-  'Product Close-up': 'Detail-driven product showcase. Macro angles, tight framing, shallow depth of field, maximum product clarity and texture emphasis.',
-  'Lifestyle': 'Real-world usage in relatable scenarios. Natural lighting, human context, and emotional connection around everyday moments.',
-  'Cinematic': 'High-production, film-style visuals. Dramatic lighting, smooth camera movement, polished color grading, storytelling energy.',
-  'Luxury': 'Premium, elegant aesthetic. Refined compositions, slow confident pacing, upscale atmosphere and aspirational tone.',
-  'Minimalist': 'Clean, distraction-free presentation. Simple compositions, negative space, restrained motion, and focused product presence.',
-  'Bold & Energetic': 'High-intensity, dynamic pacing. Fast edits, strong motion, punchy camera movement, vibrant visual impact.',
-  '2D Animation': 'Illustrated, flat animated style. Clean vector visuals, expressive motion, stylized storytelling instead of live-action realism.',
-  'Motion Graphics': 'Design-forward animated composition. Typography-free visual transitions, graphic elements, and smooth animated visual flow.',
-  'Retro': 'Vintage-inspired aesthetic. Film grain, nostalgic color tones, old-school styling with classic visual energy.',
+// Creative format & hook descriptions for ad configuration
+const FORMAT_DESCRIPTIONS: Record<string, string> = {
+  UGC: 'Real person filmed on phone. Casual, believable, native to Reels/Shorts. Trust over polish.',
+  Commercial: 'Paid ad feel. High production value, product as hero, punchy pacing. Conversion-focused.',
+  Lifestyle: 'Product in real-world use. Relatable scenarios, emotional connection, natural lighting.',
+  'Product Showcase': 'Detail-driven product focus. Close-ups, texture, benefits demonstrated visually.',
+  'Motion Graphics': 'Design-forward animated composition. Graphic elements and smooth visual flow.',
+  Cinematic: 'Film-style polish when the story needs it. Emotion and message lead; cinematography supports.',
 };
-import { supabase } from '@/auth/supabase/client';
-import { Check, ChevronLeft, ChevronRight } from 'lucide-react';
+
+const HOOK_DESCRIPTIONS: Record<string, string> = {
+  Auto: 'AI picks the strongest hook for your product and campaign goal.',
+  'Curiosity Hook': 'Pattern interrupt that makes viewers need to know more.',
+  'Before & After': 'Transformation contrast — problem state vs. result state.',
+  'Social Proof': 'Reviews, results, and credibility to overcome skepticism.',
+  Contrarian: 'Challenge a common belief to stop the scroll.',
+  'Problem Agitation': 'Amplify the pain before presenting your solution.',
+  'Founder Story': 'Authentic origin story that builds trust and differentiation.',
+  Testimonial: 'Real customer voice — relatable proof that converts.',
+  'Product Demonstration': 'Show the product working — clarity drives clicks.',
+};
+
+function getSelectedConcept(data: AdBuilderData) {
+  if (!data.adConcepts?.length) return null;
+  return data.adConcepts.find((c) => c.id === data.selectedConceptId) ?? data.adConcepts[0];
+}
 
 // ============== Types ==============
 
@@ -189,6 +204,7 @@ export default function VideoSessionPage() {
   const [isScrapingProduct, setIsScrapingProduct] = useState(false);
   const [isFetchingLogo, setIsFetchingLogo] = useState(false);
   const [isGeneratingScript, setIsGeneratingScript] = useState(false);
+  const [isGeneratingStrategy, setIsGeneratingStrategy] = useState(false);
   const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
 
   // Video generation progress steps (0–5: each step completes, then next animates)
@@ -358,6 +374,7 @@ export default function VideoSessionPage() {
               brand_logo: brandLogoUrl,
             };
           }
+          savedAdBuilderData.adSetup = normalizeAdSetup(savedAdBuilderData.adSetup || {});
           setAdBuilderData(savedAdBuilderData);
           const savedStep = (savedAdBuilderData as any).step;
           const stepMap: Record<number, AdBuilderStep> = { 1: 1, 2: 1, 3: 2, 4: 3 };
@@ -771,58 +788,174 @@ export default function VideoSessionPage() {
     });
   }
 
-  // ============== Script Generation ==============
+  // ============== Creative Strategy ==============
 
-  async function handleGenerateScript() {
-    if (!adBuilderData.product) return;
-    if (!adBuilderData.userDescription?.trim()) return;
+  async function handleGenerateStrategy(): Promise<{
+    strategy: AdBuilderData['creativeStrategy'];
+    concepts: NonNullable<AdBuilderData['adConcepts']>;
+    selectedConcept: NonNullable<AdBuilderData['adConcepts']>[number] | null;
+  } | null> {
+    if (!adBuilderData.product) return null;
 
-    setIsGeneratingScript(true);
+    setIsGeneratingStrategy(true);
     try {
-      const response = await authFetch('/api/creative-studio/generate-script', {
+      const response = await authFetch('/api/creative-studio/generate-strategy', {
         method: 'POST',
         body: JSON.stringify({
           product_name: adBuilderData.product.product_name,
           brand_name: adBuilderData.product.brand_name,
           category: adBuilderData.product.category,
-          style: adBuilderData.adSetup.style,
-          duration: adBuilderData.adSetup.duration,
-          platform: adBuilderData.adSetup.platform,
-          aspect_ratio: adBuilderData.adSetup.aspect_ratio,
-          voiceover: adBuilderData.voiceover.enabled,
-          language: adBuilderData.voiceover.language ?? 'english',
-          tone: adBuilderData.voiceover.tone,
-          key_message: adBuilderData.voiceover.key_message,
-          cta: adBuilderData.voiceover.cta,
-          on_screen_text: adBuilderData.onScreenText.enabled,
+          product_description: adBuilderData.userDescription,
+          product_url: adBuilderData.product.product_url,
           user_description: adBuilderData.userDescription,
-          product_images: adBuilderData.product.product_images,
+          campaign_goal: adBuilderData.adSetup.campaignGoal,
+          audience: adBuilderData.adSetup.audience,
+          creative_format: adBuilderData.adSetup.creativeFormat,
+          hook_type: adBuilderData.adSetup.hookType,
         }),
       });
 
-      const result = await safeResponseJson<{ ok: boolean; error?: string; script?: unknown }>(response);
+      const result = await safeResponseJson<{
+        ok: boolean;
+        error?: string;
+        strategy?: AdBuilderData['creativeStrategy'];
+        concepts?: AdBuilderData['adConcepts'];
+      }>(response);
       if (!result.ok) throw new Error(result.error);
 
-      const scriptData = result.script as Record<string, any>;
+      const concepts = result.concepts || [];
+      const firstId = concepts[0]?.id;
+      const selectedId =
+        adBuilderData.selectedConceptId && concepts.some((c) => c.id === adBuilderData.selectedConceptId)
+          ? adBuilderData.selectedConceptId
+          : firstId;
+      const selectedConcept = concepts.find((c) => c.id === selectedId) ?? concepts[0] ?? null;
 
-      setAdBuilderData({
-        ...adBuilderData,
-        voiceover: {
-          ...adBuilderData.voiceover,
-          script: scriptData.voiceover_script || getVoiceoverFromStoryboard(scriptData.storyboard) || '',
-        },
-        onScreenText: {
-          ...adBuilderData.onScreenText,
-          headline: scriptData.headline,
-          subtext: scriptData.subtext,
-        },
-        finalVideoPrompt: scriptData.final_video_prompt,
-        storyboard: scriptData.storyboard,
-        visualStyleGuide: scriptData.visual_style_guide,
-        adAngle: scriptData.ad_angle,
-      });
+      setAdBuilderData((prev) => ({
+        ...prev,
+        creativeStrategy: result.strategy,
+        adConcepts: concepts,
+        selectedConceptId: selectedId,
+        voiceover: result.strategy?.cta
+          ? { ...prev.voiceover, cta: result.strategy.cta }
+          : prev.voiceover,
+      }));
+
+      if (!concepts.length) return null;
+      return { strategy: result.strategy, concepts, selectedConcept };
+    } catch (error: any) {
+      showError(`Failed to generate strategy: ${error.message}`);
+      return null;
+    } finally {
+      setIsGeneratingStrategy(false);
+    }
+  }
+
+  // ============== Script Generation ==============
+
+  async function handleGenerateScript(): Promise<Record<string, any> | null> {
+    if (!adBuilderData.product) return null;
+    if (!adBuilderData.userDescription?.trim()) return null;
+
+    let strategy = adBuilderData.creativeStrategy;
+    let selectedConcept = getSelectedConcept(adBuilderData);
+
+    if (!strategy || !selectedConcept) {
+      const strategyResult = await handleGenerateStrategy();
+      if (!strategyResult) return null;
+      strategy = strategyResult.strategy;
+      selectedConcept = strategyResult.selectedConcept;
+    }
+
+    setIsGeneratingScript(true);
+    const MAX_SCORE_ATTEMPTS = 3;
+    try {
+      let lastScriptData: Record<string, any> | null = null;
+      let lastScore: AdBuilderData['creativeScore'];
+
+      for (let attempt = 0; attempt < MAX_SCORE_ATTEMPTS; attempt++) {
+        const currentStrategy = strategy || adBuilderData.creativeStrategy;
+        const currentConcept = selectedConcept || getSelectedConcept(adBuilderData);
+
+        const response = await authFetch('/api/creative-studio/generate-script', {
+          method: 'POST',
+          body: JSON.stringify({
+            product_name: adBuilderData.product.product_name,
+            brand_name: adBuilderData.product.brand_name,
+            category: adBuilderData.product.category,
+            creative_format: adBuilderData.adSetup.creativeFormat,
+            hook_type: currentConcept?.hookType || adBuilderData.adSetup.hookType,
+            campaign_goal: adBuilderData.adSetup.campaignGoal,
+            audience: adBuilderData.adSetup.audience,
+            creative_strategy: currentStrategy,
+            selected_concept: currentConcept,
+            style: adBuilderData.adSetup.creativeFormat,
+            duration: adBuilderData.adSetup.duration,
+            platform: adBuilderData.adSetup.platform,
+            aspect_ratio: adBuilderData.adSetup.aspect_ratio,
+            voiceover: adBuilderData.voiceover.enabled,
+            language: adBuilderData.voiceover.language ?? 'english',
+            tone: adBuilderData.voiceover.tone,
+            key_message: adBuilderData.voiceover.key_message,
+            cta: adBuilderData.voiceover.cta || currentStrategy?.cta,
+            on_screen_text: adBuilderData.onScreenText.enabled,
+            user_description: adBuilderData.userDescription,
+            product_images: adBuilderData.product.product_images,
+          }),
+        });
+
+        const result = await safeResponseJson<{
+          ok: boolean;
+          error?: string;
+          script?: unknown;
+          creative_score?: AdBuilderData['creativeScore'];
+          score_passed?: boolean;
+        }>(response);
+        if (!result.ok) throw new Error(result.error);
+
+        const scriptData = result.script as Record<string, any>;
+        lastScriptData = scriptData;
+        lastScore = result.creative_score;
+
+        if (result.score_passed !== false || attempt === MAX_SCORE_ATTEMPTS - 1) {
+          setAdBuilderData((prev) => ({
+            ...prev,
+            voiceover: {
+              ...prev.voiceover,
+              script: scriptData.voiceover_script || getVoiceoverFromStoryboard(scriptData.storyboard) || '',
+              cta: prev.voiceover.cta || currentStrategy?.cta,
+            },
+            onScreenText: {
+              ...prev.onScreenText,
+              headline: scriptData.headline,
+              subtext: scriptData.subtext,
+            },
+            finalVideoPrompt: scriptData.final_video_prompt,
+            storyboard: scriptData.storyboard,
+            visualStyleGuide: scriptData.visual_style_guide,
+            adAngle: scriptData.ad_angle || currentConcept?.creativeAngle,
+            creativeScore: result.creative_score,
+          }));
+          return scriptData;
+        }
+      }
+
+      if (lastScriptData) {
+        setAdBuilderData((prev) => ({
+          ...prev,
+          voiceover: {
+            ...prev.voiceover,
+            script: lastScriptData!.voiceover_script || getVoiceoverFromStoryboard(lastScriptData!.storyboard) || '',
+          },
+          finalVideoPrompt: lastScriptData!.final_video_prompt,
+          storyboard: lastScriptData!.storyboard,
+          creativeScore: lastScore,
+        }));
+      }
+      return lastScriptData;
     } catch (error: any) {
       showError(`Failed to generate script: ${error.message}`);
+      return null;
     } finally {
       setIsGeneratingScript(false);
     }
@@ -841,16 +974,25 @@ export default function VideoSessionPage() {
 
     setIsGeneratingVideo(true);
     try {
-      const voiceoverScript = getCanonicalVoiceover(adBuilderData.voiceover.script, adBuilderData.storyboard);
-      if (!adBuilderData.storyboard?.length || (adBuilderData.voiceover.enabled && !voiceoverScript)) {
-        await handleGenerateScript();
-        await new Promise((resolve) => setTimeout(resolve, 500));
+      let storyboard = adBuilderData.storyboard;
+      let finalVideoPrompt = adBuilderData.finalVideoPrompt;
+      let voiceoverScript = getCanonicalVoiceover(adBuilderData.voiceover.script, storyboard);
+
+      if (!storyboard?.length || (adBuilderData.voiceover.enabled && !voiceoverScript)) {
+        const scriptData = await handleGenerateScript();
+        if (!scriptData?.storyboard?.length) {
+          throw new Error("Script generation did not produce a storyboard. Please try again.");
+        }
+        storyboard = scriptData.storyboard;
+        finalVideoPrompt = scriptData.final_video_prompt;
+        voiceoverScript =
+          scriptData.voiceover_script || getVoiceoverFromStoryboard(scriptData.storyboard) || "";
       }
 
       const finalPrompt =
-        adBuilderData.finalVideoPrompt ||
-        getCanonicalVoiceover(adBuilderData.voiceover.script, adBuilderData.storyboard) ||
-        `Create a ${adBuilderData.adSetup.duration}-second ${adBuilderData.adSetup.style.toLowerCase()} video ad for ${adBuilderData.product.product_name}.`;
+        finalVideoPrompt ||
+        voiceoverScript ||
+        `Create a ${adBuilderData.adSetup.duration}-second ${adBuilderData.adSetup.creativeFormat.toLowerCase()} video ad for ${adBuilderData.product.product_name}.`;
 
       // Prefer brand guideline logo when available so the fetched/configured logo is used in the video
       const brandLogo = brand?.logo ?? brand?.logoUrl ?? adBuilderData.product.brand_logo ?? null;
@@ -864,13 +1006,19 @@ export default function VideoSessionPage() {
       const videoBody = {
         product_name: adBuilderData.product.product_name,
         brand_name: adBuilderData.product.brand_name,
-        style: adBuilderData.adSetup.style,
+        category: adBuilderData.product.category,
+        user_description: adBuilderData.userDescription,
+        creative_format: adBuilderData.adSetup.creativeFormat,
+        hook_type: getSelectedConcept(adBuilderData)?.hookType || adBuilderData.adSetup.hookType,
+        campaign_goal: adBuilderData.adSetup.campaignGoal,
+        creative_strategy: adBuilderData.creativeStrategy,
+        style: adBuilderData.adSetup.creativeFormat,
         duration: adBuilderData.adSetup.duration,
         aspect_ratio: adBuilderData.adSetup.aspect_ratio,
         quality: adBuilderData.adSetup.quality || 'standard',
         final_video_prompt: finalPrompt,
-        voiceover_script: getCanonicalVoiceover(adBuilderData.voiceover.script, adBuilderData.storyboard),
-        storyboard: adBuilderData.storyboard,
+        voiceover_script: voiceoverScript,
+        storyboard,
         product_images: preparedImages.product_images,
         hero_image: preparedImages.hero_image,
         brand_logo: preparedImages.brand_logo,
@@ -1220,7 +1368,7 @@ export default function VideoSessionPage() {
                   </div>
                   <span className="hidden sm:inline">
                     {s === 1 && 'Ad Setup'}
-                    {s === 2 && 'Script'}
+                    {s === 2 && 'Strategy'}
                     {s === 3 && 'Generate'}
                   </span>
                 </button>
@@ -1360,38 +1508,128 @@ export default function VideoSessionPage() {
                 >
                   {!adBuilderData.product && (
                     <p className="text-sm mb-4 p-3 rounded-lg" style={{ backgroundColor: colors.muted, color: colors.mutedForeground }}>
-                      Add a product above (via URL or image upload) to configure your ad style, duration, and aspect ratio.
+                      Add a product above (via URL or image upload) to configure format, hook, campaign goal, and aspect ratio.
                     </p>
                   )}
                   <h3 className="text-sm font-semibold" style={{ color: colors.foreground }}>Ad Configuration</h3>
 
-                  {/* Style */}
+                  {/* Campaign Goal */}
                   <div>
-                    <label className="block text-sm font-medium mb-2" style={{ color: colors.foreground }}>Ad Style</label>
-                    {AD_STYLE_DESCRIPTIONS[adBuilderData.adSetup.style] && (
-                      <p className="text-xs mb-3 p-3 rounded-lg" style={{ backgroundColor: 'hsl(270 80% 55% / 0.12)', border: '1px solid hsl(270 80% 55% / 0.3)', color: colors.mutedForeground }}>
-                        <strong style={{ color: colors.foreground }}>{adBuilderData.adSetup.style}:</strong>{' '}
-                        {AD_STYLE_DESCRIPTIONS[adBuilderData.adSetup.style]}
-                      </p>
-                    )}
-                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                      {VIDEO_STYLES.map((style) => (
+                    <label className="block text-sm font-medium mb-2" style={{ color: colors.foreground }}>
+                      What do you want this ad to achieve?
+                    </label>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                      {CAMPAIGN_GOALS.map((goal) => (
                         <button
-                          key={style}
+                          key={goal}
                           onClick={() =>
                             setAdBuilderData({
                               ...adBuilderData,
-                              adSetup: { ...adBuilderData.adSetup, style: style as any },
+                              adSetup: { ...adBuilderData.adSetup, campaignGoal: goal },
+                            })
+                          }
+                          className="px-4 py-3 rounded-lg border-2 text-sm font-medium transition-colors text-left"
+                          style={{
+                            borderColor: adBuilderData.adSetup.campaignGoal === goal ? colors.primary : colors.border,
+                            backgroundColor: adBuilderData.adSetup.campaignGoal === goal ? 'hsl(213 100% 55% / 0.2)' : 'transparent',
+                            color: adBuilderData.adSetup.campaignGoal === goal ? colors.primary : colors.foreground,
+                          }}
+                        >
+                          {goal}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Audience (optional) */}
+                  <div>
+                    <label className="block text-sm font-medium mb-2" style={{ color: colors.foreground }}>
+                      Who is this ad for? <span className="font-normal text-xs" style={{ color: colors.mutedForeground }}>(optional)</span>
+                    </label>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                      {AUDIENCE_TYPES.map((aud) => (
+                        <button
+                          key={aud}
+                          onClick={() =>
+                            setAdBuilderData({
+                              ...adBuilderData,
+                              adSetup: { ...adBuilderData.adSetup, audience: aud },
                             })
                           }
                           className="px-4 py-3 rounded-lg border-2 text-sm font-medium transition-colors"
                           style={{
-                            borderColor: adBuilderData.adSetup.style === style ? colors.primary : colors.border,
-                            backgroundColor: adBuilderData.adSetup.style === style ? 'hsl(213 100% 55% / 0.2)' : 'transparent',
-                            color: adBuilderData.adSetup.style === style ? colors.primary : colors.foreground,
+                            borderColor: adBuilderData.adSetup.audience === aud ? colors.primary : colors.border,
+                            backgroundColor: adBuilderData.adSetup.audience === aud ? 'hsl(213 100% 55% / 0.2)' : 'transparent',
+                            color: adBuilderData.adSetup.audience === aud ? colors.primary : colors.foreground,
                           }}
                         >
-                          {style}
+                          {aud === 'Auto' ? 'Auto (Recommended)' : aud}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Creative Format */}
+                  <div>
+                    <label className="block text-sm font-medium mb-2" style={{ color: colors.foreground }}>Creative Format</label>
+                    <p className="text-xs mb-3" style={{ color: colors.mutedForeground }}>How the ad looks — visual execution.</p>
+                    {FORMAT_DESCRIPTIONS[adBuilderData.adSetup.creativeFormat] && (
+                      <p className="text-xs mb-3 p-3 rounded-lg" style={{ backgroundColor: 'hsl(270 80% 55% / 0.12)', border: '1px solid hsl(270 80% 55% / 0.3)', color: colors.mutedForeground }}>
+                        <strong style={{ color: colors.foreground }}>{adBuilderData.adSetup.creativeFormat}:</strong>{' '}
+                        {FORMAT_DESCRIPTIONS[adBuilderData.adSetup.creativeFormat]}
+                      </p>
+                    )}
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                      {CREATIVE_FORMATS.map((format) => (
+                        <button
+                          key={format}
+                          onClick={() =>
+                            setAdBuilderData({
+                              ...adBuilderData,
+                              adSetup: { ...adBuilderData.adSetup, creativeFormat: format },
+                            })
+                          }
+                          className="px-4 py-3 rounded-lg border-2 text-sm font-medium transition-colors"
+                          style={{
+                            borderColor: adBuilderData.adSetup.creativeFormat === format ? colors.primary : colors.border,
+                            backgroundColor: adBuilderData.adSetup.creativeFormat === format ? 'hsl(213 100% 55% / 0.2)' : 'transparent',
+                            color: adBuilderData.adSetup.creativeFormat === format ? colors.primary : colors.foreground,
+                          }}
+                        >
+                          {format}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Hook Type */}
+                  <div>
+                    <label className="block text-sm font-medium mb-2" style={{ color: colors.foreground }}>Hook Type</label>
+                    <p className="text-xs mb-3" style={{ color: colors.mutedForeground }}>Why people stop scrolling — marketing strategy.</p>
+                    {HOOK_DESCRIPTIONS[adBuilderData.adSetup.hookType] && (
+                      <p className="text-xs mb-3 p-3 rounded-lg" style={{ backgroundColor: 'hsl(213 100% 55% / 0.12)', border: '1px solid hsl(213 100% 55% / 0.35)', color: colors.mutedForeground }}>
+                        <strong style={{ color: colors.foreground }}>{adBuilderData.adSetup.hookType}:</strong>{' '}
+                        {HOOK_DESCRIPTIONS[adBuilderData.adSetup.hookType]}
+                      </p>
+                    )}
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                      {HOOK_TYPES.map((hook) => (
+                        <button
+                          key={hook}
+                          onClick={() =>
+                            setAdBuilderData({
+                              ...adBuilderData,
+                              adSetup: { ...adBuilderData.adSetup, hookType: hook },
+                            })
+                          }
+                          className="px-4 py-3 rounded-lg border-2 text-sm font-medium transition-colors"
+                          style={{
+                            borderColor: adBuilderData.adSetup.hookType === hook ? colors.primary : colors.border,
+                            backgroundColor: adBuilderData.adSetup.hookType === hook ? 'hsl(213 100% 55% / 0.2)' : 'transparent',
+                            color: adBuilderData.adSetup.hookType === hook ? colors.primary : colors.foreground,
+                          }}
+                        >
+                          {hook === 'Auto' ? 'Auto (Recommended)' : hook}
                         </button>
                       ))}
                     </div>
@@ -1488,7 +1726,7 @@ export default function VideoSessionPage() {
                       style={{ backgroundColor: colors.primary }}
                       title={!adBuilderData.product ? 'Add a product first' : undefined}
                     >
-                      Continue to Script
+                      Continue to Strategy & Script
                     </button>
                   </div>
                 </div>
@@ -1499,8 +1737,10 @@ export default function VideoSessionPage() {
             {step === 2 && (
               <div className="space-y-6">
                 <div>
-                  <h2 className="text-2xl font-bold mb-2" style={{ color: colors.foreground }}>Voiceover & Script</h2>
-                  <p style={{ color: colors.mutedForeground }}>Configure voiceover and generate your video script</p>
+                  <h2 className="text-2xl font-bold mb-2" style={{ color: colors.foreground }}>Creative Strategy & Script</h2>
+                  <p style={{ color: colors.mutedForeground }}>
+                    AI develops performance ad concepts, then builds a conversion-focused storyboard
+                  </p>
                 </div>
 
                 <div className="rounded-lg border p-6 space-y-6" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
@@ -1525,6 +1765,88 @@ export default function VideoSessionPage() {
                       style={{ borderColor: colors.border, backgroundColor: colors.input, color: colors.foreground }}
                       rows={4}
                     />
+                  </div>
+
+                  {/* Creative Strategy & Concepts */}
+                  <div className="pt-4 border-t space-y-4" style={{ borderColor: colors.border }}>
+                    <div className="flex items-center justify-between gap-4">
+                      <div>
+                        <label className="block text-sm font-medium" style={{ color: colors.foreground }}>
+                          Ad Concepts
+                        </label>
+                        <p className="text-xs mt-1" style={{ color: colors.mutedForeground }}>
+                          AI generates 3–5 strategic angles. Pick one before building the storyboard.
+                        </p>
+                      </div>
+                      <button
+                        onClick={handleGenerateStrategy}
+                        disabled={isGeneratingStrategy || !adBuilderData.product}
+                        className="px-4 py-2 text-sm rounded-lg border-2 font-medium disabled:opacity-50 shrink-0"
+                        style={{ borderColor: colors.primary, color: colors.primary }}
+                      >
+                        {isGeneratingStrategy ? 'Analyzing...' : adBuilderData.adConcepts?.length ? 'Refresh Concepts' : 'Generate Concepts'}
+                      </button>
+                    </div>
+
+                    {adBuilderData.creativeStrategy && (
+                      <div className="p-4 rounded-lg border text-sm space-y-2" style={{ backgroundColor: colors.muted, borderColor: colors.border }}>
+                        <p><span className="font-medium" style={{ color: colors.foreground }}>Audience:</span> {adBuilderData.creativeStrategy.targetAudience}</p>
+                        <p><span className="font-medium" style={{ color: colors.foreground }}>Pain:</span> {adBuilderData.creativeStrategy.corePainPoint}</p>
+                        <p><span className="font-medium" style={{ color: colors.foreground }}>Desire:</span> {adBuilderData.creativeStrategy.coreDesire}</p>
+                        <p><span className="font-medium" style={{ color: colors.foreground }}>Angle:</span> {adBuilderData.creativeStrategy.creativeAngle}</p>
+                      </div>
+                    )}
+
+                    {adBuilderData.adConcepts && adBuilderData.adConcepts.length > 0 && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {adBuilderData.adConcepts.map((concept) => {
+                          const isSelected = adBuilderData.selectedConceptId === concept.id;
+                          return (
+                            <button
+                              key={concept.id}
+                              type="button"
+                              onClick={() =>
+                                setAdBuilderData({
+                                  ...adBuilderData,
+                                  selectedConceptId: concept.id,
+                                  adAngle: concept.creativeAngle,
+                                })
+                              }
+                              className="p-4 rounded-lg border-2 text-left transition-colors"
+                              style={{
+                                borderColor: isSelected ? colors.primary : colors.border,
+                                backgroundColor: isSelected ? 'hsl(213 100% 55% / 0.12)' : colors.card,
+                              }}
+                            >
+                              <div className="flex items-start justify-between gap-2 mb-2">
+                                <span className="text-sm font-semibold" style={{ color: colors.foreground }}>{concept.title}</span>
+                                <span
+                                  className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase shrink-0"
+                                  style={{
+                                    backgroundColor:
+                                      concept.predictedStrength === 'high'
+                                        ? 'hsl(142 76% 36% / 0.2)'
+                                        : concept.predictedStrength === 'medium'
+                                          ? 'hsl(45 93% 47% / 0.2)'
+                                          : colors.muted,
+                                    color:
+                                      concept.predictedStrength === 'high'
+                                        ? colors.green600
+                                        : concept.predictedStrength === 'medium'
+                                          ? 'hsl(45 93% 40%)'
+                                          : colors.mutedForeground,
+                                  }}
+                                >
+                                  {concept.predictedStrength}
+                                </span>
+                              </div>
+                              <p className="text-xs mb-1" style={{ color: colors.primary }}>{concept.hookType}</p>
+                              <p className="text-xs" style={{ color: colors.mutedForeground }}>{concept.oneLinePitch || concept.rationale}</p>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
 
                   {/* Voiceover Toggle */}
@@ -1652,22 +1974,32 @@ export default function VideoSessionPage() {
                   {/* Generate Script Button - Disabled until ad vision is entered */}
                   <button
                     onClick={handleGenerateScript}
-                    disabled={isGeneratingScript || !adBuilderData.userDescription?.trim()}
+                    disabled={
+                      isGeneratingScript ||
+                      isGeneratingStrategy ||
+                      !adBuilderData.userDescription?.trim() ||
+                      (!!adBuilderData.adConcepts?.length && !adBuilderData.selectedConceptId)
+                    }
                     className="w-full px-6 py-3 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
                     style={{ backgroundColor: colors.primary }}
                   >
-                    {isGeneratingScript ? (
+                    {isGeneratingScript || isGeneratingStrategy ? (
                       <span className="flex items-center justify-center gap-2">
                         <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent" />
-                        Generating Script...
+                        {isGeneratingStrategy ? 'Developing Strategy...' : 'Generating Storyboard...'}
                       </span>
                     ) : (
-                      'Generate Script with AI'
+                      'Generate Performance Storyboard'
                     )}
                   </button>
                   {!adBuilderData.userDescription?.trim() && !isGeneratingScript && (
                     <p className="text-xs mt-1" style={{ color: colors.mutedForeground }}>
-                      Enter your ad vision above to enable script generation.
+                      Enter your ad vision above to enable storyboard generation.
+                    </p>
+                  )}
+                  {adBuilderData.adConcepts?.length && !adBuilderData.selectedConceptId && !isGeneratingScript && (
+                    <p className="text-xs mt-1" style={{ color: colors.mutedForeground }}>
+                      Select an ad concept above, or click Generate to auto-develop strategy.
                     </p>
                   )}
 
@@ -1699,6 +2031,53 @@ export default function VideoSessionPage() {
                           </div>
                         ))}
                       </div>
+                    </div>
+                  )}
+
+                  {/* Creative Score */}
+                  {!isGeneratingScript && adBuilderData.creativeScore && (
+                    <div
+                      className="p-4 rounded-lg border"
+                      style={{
+                        backgroundColor:
+                          adBuilderData.creativeScore.overallScore >= 75
+                            ? 'hsl(142 76% 36% / 0.12)'
+                            : 'hsl(45 93% 47% / 0.12)',
+                        borderColor:
+                          adBuilderData.creativeScore.overallScore >= 75
+                            ? 'hsl(142 76% 36% / 0.35)'
+                            : 'hsl(45 93% 47% / 0.35)',
+                      }}
+                    >
+                      <div className="flex items-center justify-between mb-3">
+                        <label className="text-sm font-semibold" style={{ color: colors.foreground }}>
+                          Creative Score
+                        </label>
+                        <span
+                          className="text-lg font-bold"
+                          style={{
+                            color:
+                              adBuilderData.creativeScore.overallScore >= 75 ? colors.green600 : 'hsl(45 93% 40%)',
+                          }}
+                        >
+                          {adBuilderData.creativeScore.overallScore}/100
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs" style={{ color: colors.mutedForeground }}>
+                        <span>Hook: {adBuilderData.creativeScore.hookStrength}</span>
+                        <span>Scroll-stop: {adBuilderData.creativeScore.scrollStopPotential}</span>
+                        <span>Emotion: {adBuilderData.creativeScore.emotionalImpact}</span>
+                        <span>Clarity: {adBuilderData.creativeScore.clarity}</span>
+                        <span>Trust: {adBuilderData.creativeScore.trustFactor}</span>
+                        <span>Conversion: {adBuilderData.creativeScore.conversionPotential}</span>
+                      </div>
+                      {adBuilderData.creativeScore.feedback?.length ? (
+                        <ul className="mt-2 text-xs list-disc pl-4" style={{ color: colors.mutedForeground }}>
+                          {adBuilderData.creativeScore.feedback.map((f, i) => (
+                            <li key={i}>{f}</li>
+                          ))}
+                        </ul>
+                      ) : null}
                     </div>
                   )}
 
@@ -1748,7 +2127,7 @@ export default function VideoSessionPage() {
                     <div className="pt-4 border-t" style={{ borderColor: colors.border }}>
                       <div className="flex items-center justify-between mb-4">
                         <h3 className="text-lg font-semibold" style={{ color: colors.foreground }}>
-                          Scene-by-Scene Storyboard ({adBuilderData.storyboard.length} scenes) - Editable
+                          Performance Storyboard ({adBuilderData.storyboard.length} beats) — Editable
                         </h3>
                         <div className="flex items-center gap-2">
                           <span
@@ -1805,9 +2184,16 @@ export default function VideoSessionPage() {
                           >
                             {/* Scene Header */}
                             <div className="flex items-center justify-between mb-4">
-                              <span className="text-sm font-semibold px-3 py-1 rounded-full" style={{ backgroundColor: 'hsl(270 80% 55% / 0.2)', color: colors.primary }}>
-                                Scene {scene.scene}
-                              </span>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-sm font-semibold px-3 py-1 rounded-full" style={{ backgroundColor: 'hsl(270 80% 55% / 0.2)', color: colors.primary }}>
+                                  Beat {scene.scene}
+                                </span>
+                                {scene.beat && (
+                                  <span className="text-xs font-medium px-2 py-1 rounded-full" style={{ backgroundColor: 'hsl(213 100% 55% / 0.15)', color: colors.primary }}>
+                                    {scene.beat}
+                                  </span>
+                                )}
+                              </div>
                               <button
                                 onClick={() => {
                                   const newStoryboard = adBuilderData.storyboard?.filter((_, i) => i !== idx) || [];
@@ -1840,6 +2226,25 @@ export default function VideoSessionPage() {
                               />
                             </div>
 
+                            {/* Marketing Message */}
+                            <div className="mb-3">
+                              <label className="block text-xs font-medium mb-1" style={{ color: colors.foreground }}>
+                                Marketing Message
+                              </label>
+                              <textarea
+                                value={scene.marketing_message || ''}
+                                onChange={(e) => {
+                                  const newStoryboard = [...(adBuilderData.storyboard || [])];
+                                  newStoryboard[idx] = { ...scene, marketing_message: e.target.value };
+                                  setAdBuilderData({ ...adBuilderData, storyboard: newStoryboard });
+                                }}
+                                placeholder="What this beat must communicate to sell the product..."
+                                rows={2}
+                                className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2"
+                                style={{ borderColor: colors.border, backgroundColor: colors.input, color: colors.foreground }}
+                              />
+                            </div>
+
                             {/* Visual Description */}
                             <div className="mb-3">
                               <label className="block text-xs font-medium mb-1" style={{ color: colors.foreground }}>
@@ -1852,7 +2257,7 @@ export default function VideoSessionPage() {
                                   newStoryboard[idx] = { ...scene, visual_description: e.target.value };
                                   setAdBuilderData({ ...adBuilderData, storyboard: newStoryboard });
                                 }}
-                                placeholder="Describe the visual scene with camera angles, lighting, composition..."
+                                placeholder="Visuals that support the marketing message (not the other way around)..."
                                 rows={3}
                                 className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2"
                                 style={{ borderColor: colors.border, backgroundColor: colors.input, color: colors.foreground }}
@@ -2040,12 +2445,18 @@ export default function VideoSessionPage() {
                       <p className="font-medium" style={{ color: colors.foreground }}>{adBuilderData.product?.product_name || 'N/A'}</p>
                     </div>
                     <div>
-                      <p className="text-sm" style={{ color: colors.mutedForeground }}>Style</p>
-                      <p className="font-medium" style={{ color: colors.foreground }}>{adBuilderData.adSetup.style}</p>
+                      <p className="text-sm" style={{ color: colors.mutedForeground }}>Format</p>
+                      <p className="font-medium" style={{ color: colors.foreground }}>{adBuilderData.adSetup.creativeFormat}</p>
                     </div>
                     <div>
-                      <p className="text-sm" style={{ color: colors.mutedForeground }}>Theme</p>
-                      <p className="font-medium" style={{ color: colors.foreground }}>{adBuilderData.adSetup.style}</p>
+                      <p className="text-sm" style={{ color: colors.mutedForeground }}>Hook / Concept</p>
+                      <p className="font-medium" style={{ color: colors.foreground }}>
+                        {getSelectedConcept(adBuilderData)?.hookType || adBuilderData.adSetup.hookType}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm" style={{ color: colors.mutedForeground }}>Campaign Goal</p>
+                      <p className="font-medium" style={{ color: colors.foreground }}>{adBuilderData.adSetup.campaignGoal}</p>
                     </div>
                     <div>
                       <p className="text-sm" style={{ color: colors.mutedForeground }}>Duration</p>

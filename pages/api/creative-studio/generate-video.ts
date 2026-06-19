@@ -10,7 +10,11 @@ import {
 } from "@/lib/gemini-retry";
 import {
   buildVeoVideoPrompt,
+  buildVeoGenerateSafetyConfig,
   normalizeVeoDuration,
+  auditVideoPrompt,
+  estimateVeoPromptTokens,
+  VEO_PROMPT_MAX_TOKENS,
 } from "@/lib/creative-studio/video-prompt-utils";
 
 export const config = {
@@ -150,6 +154,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       prompt,
       product_name,
       brand_name,
+      category,
+      user_description,
+      creative_format,
+      hook_type,
+      campaign_goal,
+      creative_strategy,
       style,
       duration,
       aspect_ratio,
@@ -228,7 +238,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const videoPrompt = buildVeoVideoPrompt({
       brandName: brand_name,
       productName: product_name,
-      style,
+      category,
+      userDescription: user_description,
+      creativeFormat: creative_format || style,
+      hookType: hook_type,
+      campaignGoal: campaign_goal,
+      creativeStrategy: creative_strategy,
+      style: creative_format || style,
       clipDurationSeconds: videoDuration,
       totalDurationSeconds: requestedDuration,
       aspectRatio: videoAspectRatio,
@@ -241,7 +257,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       subtext,
     });
 
-    console.log('📝 Video prompt length:', videoPrompt.length);
+    const promptAudit = auditVideoPrompt(videoPrompt);
+    const promptTokens = estimateVeoPromptTokens(videoPrompt);
+    console.log('📝 Video prompt length:', videoPrompt.length, 'chars, ~', promptTokens, 'tokens (max', VEO_PROMPT_MAX_TOKENS + ')');
+    console.log('📝 Prompt audit score:', promptAudit.score, promptAudit.issues.length ? promptAudit.issues : 'ok');
+
+    if (promptTokens > VEO_PROMPT_MAX_TOKENS) {
+      return res.status(400).json({
+        ok: false,
+        error: `Video prompt is too long for Veo (~${promptTokens} tokens, max ${VEO_PROMPT_MAX_TOKENS}). Try a shorter script or fewer storyboard scenes.`,
+      });
+    }
     console.log('🚀 Starting Veo 3.1 video generation...', {
       aspectRatio: videoAspectRatio,
       durationSeconds: videoDuration,
@@ -254,7 +280,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       aspectRatio: videoAspectRatio,
       durationSeconds: videoDuration,
       numberOfVideos: 1,
-      safetyFilterLevel: "BLOCK_ONLY_HIGH",
+      ...buildVeoGenerateSafetyConfig(),
     };
     if (referenceImages.length > 0) {
       generateConfig.referenceImages = referenceImages;
@@ -363,6 +389,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     
     const errorMessage = error.message || String(error);
     
+    if (errorMessage.includes('exceeds the length limit') || errorMessage.includes('INVALID_ARGUMENT')) {
+      return res.status(400).json({
+        ok: false,
+        error: `Video prompt exceeded Veo's length limit (max ~${VEO_PROMPT_MAX_TOKENS} tokens). The prompt was auto-compressed — please regenerate the script or try again.`,
+        details: errorMessage.slice(0, 200),
+      });
+    }
+
     if (errorMessage.includes('image')) {
       return res.status(400).json({
         ok: false,

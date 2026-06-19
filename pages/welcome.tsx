@@ -71,6 +71,8 @@ export default function Welcome(): React.ReactElement {
   }
 
   useEffect(() => {
+    if (!router.isReady) return;
+
     let mounted = true;
     (async () => {
       try {
@@ -112,7 +114,7 @@ export default function Welcome(): React.ReactElement {
     return () => {
       mounted = false;
     };
-  }, [router]);
+  }, [router.isReady]);
 
   if (loading) {
     return (

@@ -18,8 +18,8 @@ function getRetryAfterMs(headers: Headers | undefined): number | null {
 
 export function isGeminiRateLimitError(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
-  const e = error as { status?: number; message?: string; name?: string };
-  if (e.status === 429) return true;
+  const e = error as { status?: number; message?: string; name?: string; response?: { status?: number } };
+  if (e.status === 429 || e.response?.status === 429) return true;
   if (e.name === "RateLimitError") return true;
   const msg = String((e as Error).message ?? error);
   if (
@@ -30,6 +30,22 @@ export function isGeminiRateLimitError(error: unknown): boolean {
     return true;
   }
   return false;
+}
+
+/** 500/503 and INTERNAL errors from Google — often transient; safe to retry. */
+export function isGeminiTransientError(error: unknown): boolean {
+  if (isGeminiRateLimitError(error)) return true;
+  const e = error as {
+    status?: number;
+    message?: string;
+    response?: { status?: number; data?: unknown };
+  };
+  const httpStatus = e.response?.status ?? e.status;
+  if (httpStatus === 500 || httpStatus === 502 || httpStatus === 503 || httpStatus === 504) {
+    return true;
+  }
+  const blob = JSON.stringify(e.response?.data ?? e.message ?? "");
+  return /INTERNAL|UNAVAILABLE|DEADLINE_EXCEEDED|temporarily unavailable/i.test(blob);
 }
 
 export function getMsUntilRetry(error: unknown, attemptIndex: number): number {
@@ -59,6 +75,33 @@ export async function withRetryOnGeminiRateLimit<T>(
       const waitMs = getMsUntilRetry(e, attempt);
       console.warn(
         `[${label}] Rate limited (429), retry ${attempt + 1}/${maxRetries} in ${waitMs}ms`,
+        { message: (e as Error)?.message }
+      );
+      await sleep(waitMs);
+    }
+  }
+  throw lastError;
+}
+
+/** Retry on 429 rate limits and transient 5xx / INTERNAL Gemini failures. */
+export async function withRetryOnGeminiTransient<T>(
+  fn: () => Promise<T>,
+  options: { maxRetries?: number; operationLabel?: string } = {}
+): Promise<T> {
+  const maxRetries = options.maxRetries ?? 4;
+  const label = options.operationLabel ?? "gemini";
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (e) {
+      lastError = e;
+      if (!isGeminiTransientError(e) || attempt === maxRetries) {
+        throw e;
+      }
+      const waitMs = getMsUntilRetry(e, attempt);
+      console.warn(
+        `[${label}] Transient Gemini error, retry ${attempt + 1}/${maxRetries} in ${waitMs}ms`,
         { message: (e as Error)?.message }
       );
       await sleep(waitMs);

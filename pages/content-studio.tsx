@@ -7,7 +7,7 @@ import Link from "next/link";
 import Sidebar from "@/app/web/src/components/Sidebar";
 import colors from "@/lib/ui/colors";
 import { authFetch } from "@/lib/utils";
-import { showError, showAlert } from "@/app/web/src/components/ui/AlertModal";
+import { showError, showAlert } from "@/app/web/src/components/ui/alert-modal-api";
 import {
   type BrandSnapshot,
   BrandGuidelineModal,
@@ -974,6 +974,11 @@ export default function ContentStudioPage() {
         ...DEFAULT_AD_BUILDER_DATA,
         product: productData,
         userDescription: `Ad angle: ${angle.title}. ${angle.explanation}`,
+        adSetup: {
+          ...DEFAULT_AD_BUILDER_DATA.adSetup,
+          hookType: "Auto" as const,
+          campaignGoal: "Drive Sales" as const,
+        },
       };
       const brandSnapshot = brandGuideline || (brand ? {
         name: brand.name,

@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
-import { showAlert, showError } from '@/app/web/src/components/ui/AlertModal';
+import { showAlert, showError } from '@/app/web/src/components/ui/alert-modal-api';
 import Link from 'next/link';
 import Sidebar from '@/app/web/src/components/Sidebar';
 import colors from '@/lib/ui/colors';

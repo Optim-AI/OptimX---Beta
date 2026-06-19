@@ -8,7 +8,20 @@ import {
   computeVoiceoverBudget,
   redistributeVoiceoverToStoryboard,
   truncateVoiceover,
+  SCRIPT_CONTENT_SAFETY,
+  buildBodyProductSafetyBlock,
+  buildScriptGenerationPipelineInstructions,
 } from "@/lib/creative-studio/video-prompt-utils";
+import {
+  formatFrameworkForPrompt,
+  getFrameworkBeatsForDuration,
+  selectFrameworkForHook,
+} from "@/lib/creative-studio/ad-frameworks";
+import {
+  CREATIVE_SCORE_THRESHOLD,
+  meetsCreativeThreshold,
+  scoreCreativeScript,
+} from "@/lib/creative-studio/creative-score";
 
 // Configure API route to handle large payloads (product images as base64 data URLs)
 export const config = {
@@ -52,6 +65,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       brand_name,
       category,
       style,
+      creative_format,
+      hook_type,
+      campaign_goal,
+      audience,
+      creative_strategy,
+      selected_concept,
       duration,
       platform,
       aspect_ratio,
@@ -70,6 +89,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     brand_name = typeof brand_name === 'string' ? brand_name.trim() : String(brand_name || '').trim();
     category = category ? String(category).trim() : undefined;
     style = style ? String(style).trim() : undefined;
+    const visualFormat = creative_format ? String(creative_format).trim() : style || "Commercial";
+    const hookType = hook_type ? String(hook_type).trim() : "Auto";
+    const campaignGoal = campaign_goal ? String(campaign_goal).trim() : "Drive Sales";
+    const audienceType = audience ? String(audience).trim() : "Auto";
+    const strategy = creative_strategy && typeof creative_strategy === "object" ? creative_strategy : null;
+    const concept = selected_concept && typeof selected_concept === "object" ? selected_concept : null;
     user_description = user_description ? String(user_description).trim() : undefined;
     key_message = key_message ? String(key_message).trim() : undefined;
     cta = cta ? String(cta).trim() : undefined;
@@ -141,9 +166,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const isStitchedDuration = durationSecondsClamped > 8;
     const midpointSeconds = isStitchedDuration ? Math.round(durationSecondsClamped / 2) : 0;
 
-    const isHookMode = style === "Hook";
-    const isCommercialMode = style === "Commercial";
-    const isUGCMode = style === "UGC Style";
+    const isPerformanceMode = !!(strategy || concept);
+    const isHookMode = !isPerformanceMode && style === "Hook";
+    const isCommercialMode = !isPerformanceMode && (style === "Commercial" || visualFormat === "Commercial");
+    const isUGCMode = !isPerformanceMode && (style === "UGC Style" || visualFormat === "UGC");
+
+    const frameworkId =
+      concept?.frameworkId || strategy?.frameworkId || selectFrameworkForHook(hookType).id;
+    const frameworkBeats = getFrameworkBeatsForDuration(frameworkId, durationSecondsClamped);
+
+    const bodyProductSafety = buildBodyProductSafetyBlock(category, product_name, user_description);
+    const contentSafetyRules = `${SCRIPT_CONTENT_SAFETY}${bodyProductSafety}`;
+
+    const pipelineInstructions = buildScriptGenerationPipelineInstructions({
+      productName: product_name,
+      category,
+      durationSeconds: durationSecondsClamped,
+      campaignGoal,
+      creativeFormat: visualFormat,
+    });
 
     // Calculate recommended scene count based on duration
     const recommendedScenes = durationSecondsClamped <= 6 ? 3 : durationSecondsClamped <= 8 ? 4 : durationSecondsClamped <= 12 ? 5 : Math.min(8, Math.ceil(durationSecondsClamped / 2.5));
@@ -171,9 +212,33 @@ CRITICAL — MULTI-SCENE STORYBOARD REQUIREMENT:
 - Each scene should be 1–3 seconds long. Break the ${durationSecondsClamped}-second video into distinct visual beats.
 - Each scene MUST have a unique visual_description — no two scenes should describe the same thing.
 - Each scene MUST have a specific time_range like "0-2s", "2-4s", "4-6s" etc. Time ranges must be consecutive and non-overlapping.
-- The storyboard array is the MOST IMPORTANT part of the output. Put maximum creative effort into each scene's visual_description, emotion, and motion_style.${stitchedMidpointRule}`;
+- The storyboard array is the MOST IMPORTANT part of the output. Put maximum creative effort into each scene's marketing_message and visual_description.${stitchedMidpointRule}${contentSafetyRules}`;
 
-    if (isHookMode) {
+    if (isPerformanceMode) {
+      systemPrompt = `You are a senior performance marketing creative director at a top DTC agency.
+You think like a strategist FIRST and a filmmaker second. Your ads must SELL, stop scrolls, increase watch time, and convert.
+
+CREATIVE STRATEGY (source of truth — do not contradict):
+${strategy ? JSON.stringify(strategy, null, 2) : "Infer from product and campaign goal."}
+${concept ? `\nSELECTED AD CONCEPT:\n${JSON.stringify(concept, null, 2)}` : ""}
+
+AD FRAMEWORK: ${formatFrameworkForPrompt(frameworkId)}
+Required story beats in order: ${frameworkBeats.join(" → ")}
+
+PERFORMANCE RULES:
+- Each scene = ONE beat (Hook, Problem, Agitation, Solution, Proof, CTA, Demo, Benefit, etc.).
+- marketing_message is PRIMARY. Visuals support the message — never the reverse.
+- Scene 1 MUST stop the scroll within 2 seconds (pattern interrupt, curiosity, bold claim, or visual proof).
+- Show product clearly by mid-ad. Demonstrate benefit, don't just show aesthetics.
+- End with a specific CTA matched to campaign goal: ${campaignGoal}.
+- Visual execution format: ${visualFormat}. Hook type: ${concept?.hookType || hookType}.
+- Target audience: ${strategy?.targetAudience || audienceType}.
+- NO on-screen text. Voiceover carries the sell.
+- If only one product image exists: mix lifestyle usage, close-up demo, benefit proof, and hero product ending — NOT only static product shots.
+- Write like a performance agency: punchy, clear, conversion-focused.${multiSceneEnforcement}
+
+${pipelineInstructions}`;
+    } else if (isHookMode) {
       systemPrompt = `You are a performance-first ad creative director specializing in scroll-stopping, conversion-focused video ads. This is attention warfare, NOT cinematic storytelling.
 
 Your mindset for HOOK MODE:
@@ -184,7 +249,9 @@ Your mindset for HOOK MODE:
 - Product must appear clearly by mid-video (4–6s). No mysterious slow storytelling. This is ad logic, not art school.
 - NO on-screen text: no captions, headlines, subtitles, overlays, or typography. 100% visual storytelling. If voiceover exists, it carries the message.
 - Pacing: fast cuts, high motion energy, tight framing, strong contrast lighting. Hook always dominates tempo.
-- Avoid: symbolic metaphors, overly artistic ambiguity, conceptual scenes without product clarity.${multiSceneEnforcement}`;
+- Avoid: symbolic metaphors, overly artistic ambiguity, conceptual scenes without product clarity.${multiSceneEnforcement}
+
+${pipelineInstructions}`;
     } else if (isCommercialMode) {
       systemPrompt = `You are a premium brand commercial director. The output must feel like a PAID BRAND COMMERCIAL — high-production value, emotion + aspiration driven, product as hero. Fast, punchy, visually premium. A direct-response brand commercial compressed into ${durationSecondsClamped} seconds.
 
@@ -197,7 +264,9 @@ Your mindset:
 - Voiceover: confident, clear, short sentences. Max ${maxVoiceoverWords} spoken words (must fit under ${maxVoiceoverSeconds} seconds). Hook → Value → Outcome → Brand line. No filler, no overexplaining. Keep voiceover SHORT so there is breathing room for visuals and background music/audio.
 - Visual: controlled lighting, soft highlights, high contrast, studio or lifestyle premium look. Smooth camera (push-in, slider, cinematic pans). Shallow depth of field. NO handheld shaky shots, NO casual iPhone vlog style.
 - Emotional angles: Confidence, Status, Relief, Energy, Control, Simplicity, Transformation. Never default to humor unless user explicitly requests.
-- NO on-screen text, captions, subtitles, lower thirds, UI mockups, or typography. All messaging via voiceover and visual storytelling.${multiSceneEnforcement}`;
+- NO on-screen text, captions, subtitles, lower thirds, UI mockups, or typography. All messaging via voiceover and visual storytelling.${multiSceneEnforcement}
+
+${pipelineInstructions}`;
     } else if (isUGCMode) {
       systemPrompt = `You are a UGC-style ad creative director. The output must feel like a REAL PERSON filmed this — shot on phone, casual, imperfect, believable. Native to Reels/Shorts/TikTok. Trust over perfection.
 
@@ -210,7 +279,9 @@ Your mindset:
 - Visual: handheld, slight natural shake, eye-level selfie angle, casual framing. Natural light, room light. Real-world setting (bedroom, kitchen, office, car, cafe). NO studio backdrop, NO perfect product turntable shots.
 - Product: must appear within first 3 seconds OR be referenced clearly. Person holding/using/reacting to it. UGC is about the person, not product glamour.
 - Emotional bias: Surprise, Relatability, Relief, Curiosity, Honest recommendation. NOT prestige, status, or brand dominance.
-- Editing: jump cuts, natural pauses, reaction zoom, fast pacing. NO smooth cinematic transitions, NO dramatic slow motion.${multiSceneEnforcement}`;
+- Editing: jump cuts, natural pauses, reaction zoom, fast pacing. NO smooth cinematic transitions, NO dramatic slow motion.${multiSceneEnforcement}
+
+${pipelineInstructions}`;
     } else {
       const extendedDirectorNote = isStitchedDuration ? `
 - EXTENDED VIDEO (${durationSecondsClamped}s / two-clip stitch):
@@ -239,7 +310,9 @@ Rules:
 - Total duration is exactly ${durationSecondsClamped} seconds. All shots and voiceover must fit this.
 - Shot lengths and storyboard durations must sum to ${durationSecondsClamped}s. E.g. for ${durationSecondsClamped}s use ~${Math.max(2, Math.floor(durationSecondsClamped / 3))}–${Math.max(4, Math.ceil(durationSecondsClamped / 2))} shots.
 - Voiceover script must be max ${maxVoiceoverWords} words, spoken in under ${maxVoiceoverSeconds} seconds. Leave silent/music-only moments for visuals and ambient audio to breathe.
-- Avoid generic or templated lines. Reflect the user's vision and the product's story. The script should feel written for this brand, this product, and this specific vision.${multiSceneEnforcement}`;
+- Avoid generic or templated lines. Reflect the user's vision and the product's story. The script should feel written for this brand, this product, and this specific vision.${multiSceneEnforcement}
+
+${pipelineInstructions}`;
     }
 
     // Style-specific requirements appended to user prompt
@@ -323,8 +396,21 @@ ${key_message ? `- Key Message: ${key_message}` : ""}
 ${cta ? `- CTA: ${cta}` : ""}
 - On-Screen Text: DISABLED (CRITICAL: The video must NOT contain any on-screen text, captions, titles, headlines, or text overlays. Purely visual only.)
 
+CONTENT SAFETY (mandatory — every shot must comply):
+${SCRIPT_CONTENT_SAFETY.trim()}
+${bodyProductSafety.trim()}
+
 DIRECTOR REQUIREMENTS:
-- Create a shot-by-shot plan with EXACTLY ${recommendedScenes} shots (minimum ${minScenes}). NEVER use a single shot for the entire duration.
+${isPerformanceMode ? `- BEAT-BASED STORYBOARD (NOT scene-only): Plan beats first — Hook → Problem → Discovery → Product → Transformation → Payoff — then place shots under each beat.
+- Each scene MUST include: beat, marketing_message, visual_description, shot_purpose, emotional_zone, transition_to_next, product_state, container_state, voiceover_line, dialogue_direction.
+- PERFORMANCE STORYBOARD: Each scene MUST include "beat" (${frameworkBeats.join(", ")}) and "marketing_message" (the sell — PRIMARY). Visuals support the message.
+- Scene 1 beat MUST be Hook. Final scene beat MUST be CTA/Payoff.
+- Include proof_element on Proof/Social Proof beats when applicable.
+- EDITOR BRAIN: Delete any shot whose only purpose is "looks cool". Every shot must advance story, reveal product, build emotion, create proof, or deliver payoff.
+- PRODUCT INTERACTION: Track container/product/liquid/food state — no oil from closed bottles, no powder from sealed packets.
+- DIALOGUE: Hook in first 2s, natural pauses, specific benefits, proof lines, clear CTA — never generic AI ad copy.
+` : `- BEAT-BASED STORYBOARD: Hook → Problem → Discovery → Product → Transformation → Payoff. Each scene needs beat, shot_purpose, emotional_zone, transition_to_next, product_state, container_state, dialogue_direction.
+`}- Create a shot-by-shot plan with EXACTLY ${recommendedScenes} shots (minimum ${minScenes}). NEVER use a single shot for the entire duration.
 - Each shot: 1–3 seconds. Time ranges must be consecutive like "0-2s", "2-4s", "4-6s", "6-8s". They must sum to ${durationSecondsClamped}s.
 - Each shot MUST have a unique, specific visual description — not generic. Describe exact camera angle, subject position, lighting setup, and composition.
 - Specify camera (angle, movement), lighting, and composition for each shot.
@@ -353,13 +439,21 @@ Return your response as a JSON object with this exact structure. The storyboard 
   "storyboard": [
     {
       "scene": 1,
+      "beat": "Hook",
       "duration": "2s",
       "time_range": "0-2s",
+      "marketing_message": "Scroll-stopping hook — the core pain or curiosity",
       "visual_description": "SPECIFIC director-grade visual: camera angle, subject, lighting, composition. NOT generic.",
+      "shot_purpose": "Stop scroll / open loop",
+      "emotional_zone": "Curiosity (0-20%)",
+      "transition_to_next": "Match Cut or Object Continuity into next beat",
+      "product_state": "Not yet introduced OR idle on surface",
+      "container_state": "Sealed / Closed",
       "on_screen_text": "",
-      "emotion": "Specific emotion (e.g., Curiosity, Excitement, Trust)",
+      "emotion": "Curiosity",
       "motion_style": "Specific camera move (e.g., Slow push-in, Rack focus, Static wide)",
-      "voiceover_line": "Voiceover for this 2-second scene only"
+      "voiceover_line": "Hook line — punchy, spoken within 2s, pattern interrupt",
+      "dialogue_direction": "Confident, direct, slightly urgent — not robotic"
     },
     {
       "scene": 2,
@@ -442,7 +536,7 @@ Return your response as a JSON object with this exact structure. The storyboard 
   "voiceover_script": "${voiceover ? `Voiceover script in ${language === "tamil" ? "Tamil" : language === "hindi" ? "Hindi" : "English"}, MAX ${maxVoiceoverWords} words, spoken in UNDER ${maxVoiceoverSeconds} seconds. ${tone || "Energetic"} tone. Leave silent moments for visuals and music.` : "N/A - Voiceover disabled"}",
   "headline": "",
   "subtext": "",
-  "final_video_prompt": "Director-grade Veo production brief (400-900 tokens) for the full ${durationSecondsClamped}-second film. Write like a Tier-1 agency shoot call sheet condensed into one prompt. MUST include: (1) OVERALL VISION — one sentence emotional goal; (2) COLOR GRADE — specific LUT feel (e.g. warm Kodak 2383, cool teal-orange, high-key Apple white); (3) LENS & CAMERA — specific focal lengths and moves per act (e.g. 35mm dolly push-in, 100mm macro rack focus); (4) LIGHTING SETUP — key/fill/rim description, motivated sources; (5) SHOT SEQUENCE — timed beats with cut types (match cut, whip-pan, hard cut on action); (6) SOUND MOOD — music genre/tempo, foley texture; (7) PRODUCT HERO MOMENT — exact frame composition for the closing shot.${isStitchedDuration ? ' IMPORTANT: Two ~' + midpointSeconds + 's clips stitched. Describe ONE consistent visual world. Midpoint = motivated professional edit cut.' : ''} CRITICAL: NO on-screen text, captions, or typography. Purely visual + voiceover."
+  "final_video_prompt": "Director-grade Veo production brief (400-900 tokens) for the full ${durationSecondsClamped}-second film. Write like a Tier-1 agency shoot call sheet condensed into one prompt. MUST include: (1) OVERALL VISION — one sentence emotional goal; (2) COLOR GRADE — specific LUT feel (e.g. warm Kodak 2383, cool teal-orange, high-key Apple white); (3) LENS & CAMERA — specific focal lengths and moves per act (e.g. 35mm dolly push-in, 100mm macro rack focus); (4) LIGHTING SETUP — key/fill/rim description, motivated sources; (5) SHOT SEQUENCE — timed beats with cut types (match cut, whip-pan, hard cut on action); (6) SOUND MOOD — music genre/tempo, foley texture; (7) PRODUCT HERO MOMENT — exact frame composition for the closing shot; (8) CONTENT SAFETY — all people fully clothed, modest mainstream brand ad (no nudity, no revealing attire, no bare chest).${isStitchedDuration ? ' IMPORTANT: Two ~' + midpointSeconds + 's clips stitched. Describe ONE consistent visual world. Midpoint = motivated professional edit cut.' : ''} CRITICAL: NO on-screen text, captions, or typography. Purely visual + voiceover."
 }
 
 IMPORTANT — STORYBOARD VALIDATION:
@@ -785,9 +879,19 @@ CRITICAL — NO ON-SCREEN TEXT: Set headline, subtext, and every storyboard on_s
       );
     }
 
+    const creativeScore = scoreCreativeScript({
+      strategy,
+      storyboard: scriptData.storyboard,
+      voiceoverScript: scriptData.voiceover_script,
+      adAngle: scriptData.ad_angle,
+    });
+
     return res.status(200).json({
       ok: true,
       script: scriptData,
+      creative_score: creativeScore,
+      score_passed: meetsCreativeThreshold(creativeScore),
+      score_threshold: CREATIVE_SCORE_THRESHOLD,
     });
   } catch (error: any) {
     console.error("Script generation error:", error);

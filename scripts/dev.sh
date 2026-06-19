@@ -127,5 +127,15 @@ sleep 1
 # ============================================================
 # 4. Start Next.js Dev Server
 # ============================================================
+# Only one dev server may run.
+# Multiple instances fight over .next and can cause reload loops.
+for PORT in 3000 3001; do
+  if PIDS=$(lsof -ti :"$PORT" 2>/dev/null); then
+    echo -e "${YELLOW}Stopping existing process on port ${PORT}...${NC}"
+    echo "$PIDS" | xargs kill -9 2>/dev/null || true
+  fi
+done
+sleep 1
+
 # Run Next.js directly (not npm run dev to avoid recursion)
 npx next dev

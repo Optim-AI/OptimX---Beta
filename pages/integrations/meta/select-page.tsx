@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import dynamic from "next/dynamic";
 import type { FacebookPage } from '@/integrations/meta/oauth-session';
-import { showError } from '@/app/web/src/components/ui/AlertModal';
+import { showError } from '@/app/web/src/components/ui/alert-modal-api';
 
 function SelectFacebookPageComponent() {
   const router = useRouter();

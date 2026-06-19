@@ -4,6 +4,7 @@ import sharp from "sharp";
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from '@/auth/supabase/client'; // adjust path if necessary
 import { CreditsDAO } from '@/database/models/Credits.dao';
+import { withRetryOnGeminiTransient } from '@/lib/gemini-retry';
 
 /* Gemini supports: image/jpeg, image/png, image/gif, image/webp. NOT image/svg+xml. */
 const GEMINI_UNSUPPORTED_MIMES = ["image/svg+xml", "image/vnd.microsoft.icon", "image/x-icon", "image/ico"];
@@ -19,20 +20,35 @@ async function normalizeImageForGemini(dataUrl: string): Promise<{ mimeType: str
   const mimeType = m[1].toLowerCase().split(";")[0].trim();
   const base64Data = m[2];
 
-  if (!isUnsupportedMime(mimeType)) {
-    return { mimeType, base64Data };
-  }
+  const maxDim = 1600;
+  const maxBytes = 4 * 1024 * 1024;
 
   try {
-    const buffer = Buffer.from(base64Data, "base64");
-    // SVG: use density for proper rasterization; Sharp may fail on complex SVGs (external refs, bad XML)
+    const inputBuffer = Buffer.from(base64Data, "base64");
     const sharpInput = mimeType.includes("svg") ? { density: 144 } : undefined;
-    const converted = await sharp(buffer, sharpInput).png().toBuffer();
-    return { mimeType: "image/png", base64Data: converted.toString("base64") };
+    const meta = await sharp(inputBuffer, sharpInput).metadata();
+    const tooLarge =
+      inputBuffer.length > maxBytes ||
+      (meta.width != null && meta.width > maxDim) ||
+      (meta.height != null && meta.height > maxDim);
+
+    if (isUnsupportedMime(mimeType) || tooLarge) {
+      const optimized = await sharp(inputBuffer, sharpInput)
+        .resize({ width: maxDim, height: maxDim, fit: "inside", withoutEnlargement: true })
+        .jpeg({ quality: 88 })
+        .toBuffer();
+      return { mimeType: "image/jpeg", base64Data: optimized.toString("base64") };
+    }
+
+    if (!isUnsupportedMime(mimeType)) {
+      return { mimeType, base64Data };
+    }
   } catch (e) {
-    console.warn("Failed to convert unsupported image for Gemini (SVG/ICO etc.):", e);
+    console.warn("Failed to normalize image for Gemini:", e);
     return null;
   }
+
+  return null;
 }
 
 const NANO_API_KEY = process.env.NANO_API_KEY || process.env.GEMINI_API_KEY || process.env.GEMINI_VEO_API_KEY;
@@ -685,11 +701,10 @@ export async function POST(request: Request) {
       "x-goog-api-key": NANO_API_KEY,
     };
 
-    const createResp = await axios.post(url, payload, { headers }).catch((err) => {
-      const r = err.response?.data ?? err.message;
-      console.error("Gemini create error", r);
-      throw new Error(`Gemini create failed: ${JSON.stringify(r)}`);
-    });
+    const createResp = await withRetryOnGeminiTransient(
+      () => axios.post(url, payload, { headers }),
+      { maxRetries: 4, operationLabel: "gemini-poster-generate" }
+    );
 
     const createJson = createResp.data;
 
@@ -849,11 +864,28 @@ export async function POST(request: Request) {
     );
   } catch (err: any) {
     console.error("Generation endpoint error:", err);
-    const message = err?.message || String(err);
-    const extra = err?.response?.data ? { raw: err.response.data } : {};
+    const geminiData = err?.response?.data;
+    const geminiStatus = err?.response?.status ?? err?.status;
+    const geminiMessage =
+      typeof geminiData?.error?.message === "string" ? geminiData.error.message : null;
+
+    let userMessage = err?.message || "Image generation failed. Please try again.";
+    if (
+      geminiStatus === 500 ||
+      geminiMessage?.toLowerCase().includes("internal error")
+    ) {
+      userMessage =
+        "Google AI had a temporary error while generating your poster. Please wait a few seconds and try again.";
+    } else if (geminiStatus === 429 || /rate limit|quota/i.test(userMessage)) {
+      userMessage = "Too many requests to the AI service. Please wait a moment and try again.";
+    } else if (geminiMessage) {
+      userMessage = `Image generation failed: ${geminiMessage}`;
+    }
+
+    const extra = geminiData ? { raw: geminiData } : {};
     return NextResponse.json(
-      { ok: false, error: message, ...extra },
-      { status: 500 }
+      { ok: false, error: userMessage, ...extra },
+      { status: geminiStatus && geminiStatus >= 400 && geminiStatus < 600 ? geminiStatus : 500 }
     );
   }
 }

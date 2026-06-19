@@ -1,7 +1,7 @@
 // Brand Studio Shared Utilities
 // Extracted from pages/creative-studio.tsx for modularity
 
-import type { BrandSnapshot, PosterConfig } from './types';
+import type { BrandSnapshot, PosterConfig, AdSetup, CreativeFormat, HookType } from './types';
 import { authFetch } from '@/lib/utils';
 
 /** Save brand snapshot to DB via API */
@@ -613,7 +613,10 @@ export const DEFAULT_AD_BUILDER_DATA = {
   step: 1 as const,
   product: null,
   adSetup: {
-    style: "Cinematic" as const,
+    creativeFormat: "Commercial" as const,
+    hookType: "Auto" as const,
+    campaignGoal: "Drive Sales" as const,
+    audience: "Auto" as const,
     duration: 8 as const,
     platform: "Instagram Reels / TikTok" as const,
     aspect_ratio: "9:16" as const,
@@ -733,22 +736,99 @@ export const ASPECT_RATIOS = [
 ] as const;
 
 /**
- * Video styles for Ad Builder
+ * Creative formats — visual execution (how the ad looks)
  */
-export const VIDEO_STYLES = [
-  "Product Close-up",
-  "Hook",
+export const CREATIVE_FORMATS = [
+  "UGC",
   "Commercial",
-  "UGC Style",
   "Lifestyle",
-  "Cinematic",
-  "Luxury",
-  "Minimalist",
-  "Bold & Energetic",
-  "2D Animation",
+  "Product Showcase",
   "Motion Graphics",
-  "Retro",
+  "Cinematic",
 ] as const;
+
+/**
+ * Hook types — marketing mechanism (why people stop scrolling)
+ */
+export const HOOK_TYPES = [
+  "Auto",
+  "Curiosity Hook",
+  "Before & After",
+  "Social Proof",
+  "Contrarian",
+  "Problem Agitation",
+  "Founder Story",
+  "Testimonial",
+  "Product Demonstration",
+] as const;
+
+export const CAMPAIGN_GOALS = [
+  "Drive Sales",
+  "Generate Leads",
+  "Product Launch",
+  "Build Awareness",
+  "Retarget Visitors",
+] as const;
+
+export const AUDIENCE_TYPES = [
+  "Auto",
+  "Consumers",
+  "Businesses",
+  "Startup Founders",
+  "Enterprise Teams",
+  "Marketers",
+] as const;
+
+/** Map legacy visual style values to new creative formats */
+const LEGACY_STYLE_TO_FORMAT: Record<string, CreativeFormat> = {
+  Hook: "Commercial",
+  "UGC Style": "UGC",
+  "Product Close-up": "Product Showcase",
+  Commercial: "Commercial",
+  Lifestyle: "Lifestyle",
+  Cinematic: "Cinematic",
+  Luxury: "Cinematic",
+  Minimalist: "Product Showcase",
+  "Bold & Energetic": "Commercial",
+  "2D Animation": "Motion Graphics",
+  "Motion Graphics": "Motion Graphics",
+  Retro: "Cinematic",
+  UGC: "UGC",
+  "Product Showcase": "Product Showcase",
+};
+
+/** Normalize ad setup from saved sessions (legacy `style` field) */
+export function normalizeAdSetup(
+  adSetup: Partial<AdSetup> & { style?: string }
+): AdSetup {
+  const legacyStyle = adSetup.style?.trim();
+  const fromLegacy = legacyStyle ? LEGACY_STYLE_TO_FORMAT[legacyStyle] : undefined;
+  const fromField =
+    adSetup.creativeFormat &&
+    (CREATIVE_FORMATS as readonly string[]).includes(adSetup.creativeFormat)
+      ? adSetup.creativeFormat
+      : undefined;
+  const creativeFormat: CreativeFormat = fromField || fromLegacy || "Commercial";
+
+  let hookType: HookType = adSetup.hookType || "Auto";
+  if (legacyStyle === "Hook" && hookType === "Auto") {
+    hookType = "Curiosity Hook";
+  }
+
+  return {
+    creativeFormat,
+    hookType,
+    campaignGoal: adSetup.campaignGoal || "Drive Sales",
+    audience: adSetup.audience || "Auto",
+    duration: adSetup.duration === 16 ? 16 : 8,
+    platform: adSetup.platform || "Instagram Reels / TikTok",
+    aspect_ratio: adSetup.aspect_ratio || "9:16",
+    quality: adSetup.quality,
+  };
+}
+
+/** @deprecated Use CREATIVE_FORMATS */
+export const VIDEO_STYLES = CREATIVE_FORMATS;
 
 /**
  * Video durations

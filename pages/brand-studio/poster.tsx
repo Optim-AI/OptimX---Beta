@@ -3,7 +3,7 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/router';
-import { showAlert, showError, showSuccess } from '@/app/web/src/components/ui/AlertModal';
+import { showAlert, showError, showSuccess } from '@/app/web/src/components/ui/alert-modal-api';
 import { supabase } from '@/auth/supabase/client';
 import Sidebar from '@/app/web/src/components/Sidebar';
 import colors from '@/lib/ui/colors';

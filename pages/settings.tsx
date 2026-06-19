@@ -106,7 +106,7 @@ const HEARD_FROM_OPTIONS = [
 
 import colors from '@/lib/ui/colors';
 import { authFetch } from '@/lib/utils';
-import { showError, showConfirm } from '@/app/web/src/components/ui/AlertModal';
+import { showError, showConfirm } from '@/app/web/src/components/ui/alert-modal-api';
 
 /** Normalize a Drizzle camelCase profile response to snake_case ProfilePayload */
 function normalizeProfile(data: any): ProfilePayload {

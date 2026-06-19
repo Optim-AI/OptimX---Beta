@@ -5,10 +5,12 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { GoogleGenAI } from "@google/genai";
 import sharp from "sharp";
 import ffmpegPath from "ffmpeg-static";
+import { randomUUID } from "crypto";
 import { spawn } from "node:child_process";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { supabaseAdmin } from "@/auth/supabase/client";
 import {
   fetchWithGeminiRateLimitRetry,
   isGeminiRateLimitError,
@@ -16,6 +18,7 @@ import {
 } from "@/lib/gemini-retry";
 import {
   buildVeoVideoPrompt,
+  buildVeoGenerateSafetyConfig,
   computeVoiceoverBudget,
   normalizeVeoDuration,
   SEGMENT_SECONDS,
@@ -30,8 +33,11 @@ export const config = {
       sizeLimit: "25mb",
     },
   },
-  maxDuration: 300,
+  maxDuration: 600, // 16s = 2× Veo clips + stitch; needs extended runtime (Vercel Pro)
 };
+
+/** Inline base64 responses above this size often fail on serverless (4.5 MB response cap). */
+const MAX_INLINE_VIDEO_BYTES = 3 * 1024 * 1024;
 
 const GEMINI_VEO_API_KEY = process.env.GEMINI_VEO_API_KEY;
 const MODEL = "veo-3.1-fast-generate-preview";
@@ -154,7 +160,40 @@ async function fileToVideoDataUrl(filePath: string) {
 
 async function extractLastFrameJpeg(mp4Path: string, jpgPath: string) {
   // Take a frame from the tail of clip 1 to anchor continuity for clip 2.
-  await runFfmpeg(["-y", "-sseof", "-0.2", "-i", mp4Path, "-vframes", "1", "-q:v", "2", jpgPath]);
+  try {
+    await runFfmpeg(["-y", "-sseof", "-0.2", "-i", mp4Path, "-vframes", "1", "-q:v", "2", jpgPath]);
+  } catch {
+    await runFfmpeg(["-y", "-sseof", "-1", "-i", mp4Path, "-vframes", "1", "-q:v", "2", jpgPath]);
+  }
+}
+
+async function uploadVideoBuffer(buf: Buffer): Promise<string | null> {
+  const storagePath = `generated/videos/${randomUUID()}_${Date.now()}.mp4`;
+  const { error } = await supabaseAdmin.storage.from("campaign-assets").upload(storagePath, buf, {
+    contentType: "video/mp4",
+    cacheControl: "3600",
+    upsert: true,
+  });
+  if (error) {
+    console.warn("Stitched video storage upload failed:", error.message);
+    return null;
+  }
+  const { data } = supabaseAdmin.storage.from("campaign-assets").getPublicUrl(storagePath);
+  return (data as { publicUrl?: string })?.publicUrl ?? null;
+}
+
+/** Prefer a storage URL for large stitched MP4s so the JSON response stays under serverless limits. */
+async function resolveVideoDeliveryUrl(dataUrl: string, preferUpload: boolean): Promise<string> {
+  const parsed = parseDataUrl(dataUrl);
+  if (!parsed?.mimeType.includes("video")) return dataUrl;
+
+  const buf = Buffer.from(parsed.imageBytes, "base64");
+  if (!preferUpload && buf.length <= MAX_INLINE_VIDEO_BYTES) {
+    return dataUrl;
+  }
+
+  const publicUrl = await uploadVideoBuffer(buf);
+  return publicUrl ?? dataUrl;
 }
 
 async function generateClipDataUrl(params: {
@@ -168,7 +207,7 @@ async function generateClipDataUrl(params: {
     aspectRatio: params.aspectRatio,
     durationSeconds: params.clipDurationSeconds,
     numberOfVideos: 1,
-    safetyFilterLevel: "BLOCK_ONLY_HIGH",
+    ...buildVeoGenerateSafetyConfig(),
   };
   if (params.referenceImages.length > 0) {
     generateConfig.referenceImages = params.referenceImages.slice(0, MAX_REFERENCE_IMAGES);
@@ -185,8 +224,8 @@ async function generateClipDataUrl(params: {
     { maxRetries: 6, operationLabel: "veo-generateVideos" }
   );
 
-  const pollIntervalMs = 12_000;
-  const maxAttempts = 60;
+  const pollIntervalMs = 10_000;
+  const maxAttempts = 55;
   let attempts = 0;
   while (!operation.done && attempts < maxAttempts) {
     attempts++;
@@ -197,7 +236,11 @@ async function generateClipDataUrl(params: {
     );
   }
 
-  if (!operation.done) throw new Error("Video generation timed out. Please try again.");
+  if (!operation.done) {
+    throw new Error(
+      "Video generation timed out while waiting for AI. Extended (16s) videos take longer — please try again."
+    );
+  }
   if (operation.error) {
     const errMsg = (operation.error as any).message || JSON.stringify(operation.error);
     throw new Error(`Video generation failed: ${errMsg}`);
@@ -238,6 +281,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       prompt,
       product_name,
       brand_name,
+      category,
+      user_description,
+      creative_format,
+      hook_type,
+      campaign_goal,
+      creative_strategy,
       style,
       duration,
       aspect_ratio,
@@ -317,7 +366,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const clip1Prompt = buildVeoVideoPrompt({
       brandName: brand_name,
       productName: product_name,
-      style,
+      category,
+      userDescription: user_description,
+      creativeFormat: creative_format || style,
+      hookType: hook_type,
+      campaignGoal: campaign_goal,
+      creativeStrategy: creative_strategy,
+      style: creative_format || style,
       clipDurationSeconds: segmentDuration,
       totalDurationSeconds: requestedDuration,
       aspectRatio: videoAspectRatio,
@@ -372,7 +427,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const clip2Prompt = buildVeoVideoPrompt({
         brandName: brand_name,
         productName: product_name,
-        style,
+        category,
+        userDescription: user_description,
+        creativeFormat: creative_format || style,
+        hookType: hook_type,
+        campaignGoal: campaign_goal,
+        creativeStrategy: creative_strategy,
+        style: creative_format || style,
         clipDurationSeconds: segmentDuration,
         totalDurationSeconds: requestedDuration,
         aspectRatio: videoAspectRatio,
@@ -462,12 +523,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       stitchedDataUrl = await fileToVideoDataUrl(outPath);
     }
 
+    const videoUrl = await resolveVideoDeliveryUrl(stitchedDataUrl, segments === 2);
+
     // Cleanup best-effort
     fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
 
     return res.status(200).json({
       ok: true,
-      videoUrl: stitchedDataUrl,
+      videoUrl,
       duration: segments === 2 ? segmentDuration * 2 : segmentDuration,
       aspectRatio: videoAspectRatio,
       referenceImagesUsed: baseReferenceImages.length,

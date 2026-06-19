@@ -2,21 +2,12 @@
 
 import React, { useEffect, useCallback, useState, useRef } from 'react';
 import colors from '@/lib/ui/colors';
+import {
+  registerAlertModal,
+  type AlertModalState,
+} from './alert-modal-api';
 
-// ── Types ──────────────────────────────────────────────
-
-type AlertType = 'info' | 'success' | 'error' | 'confirm';
-
-interface AlertModalState {
-  open: boolean;
-  type: AlertType;
-  title: string;
-  message: string;
-  confirmLabel?: string;
-  cancelLabel?: string;
-  onConfirm?: () => void;
-  onCancel?: () => void;
-}
+type AlertType = AlertModalState['type'];
 
 const INITIAL: AlertModalState = {
   open: false,
@@ -24,56 +15,6 @@ const INITIAL: AlertModalState = {
   title: '',
   message: '',
 };
-
-// ── Global state (singleton) ───────────────────────────
-
-let _setState: React.Dispatch<React.SetStateAction<AlertModalState>> | null = null;
-
-function show(opts: Omit<AlertModalState, 'open'>) {
-  _setState?.({ ...opts, open: true });
-}
-
-/**
- * Show a themed alert modal (replaces window.alert).
- */
-export function showAlert(message: string, title?: string) {
-  show({ type: 'info', title: title || 'Notice', message });
-}
-
-/**
- * Show a themed success modal.
- */
-export function showSuccess(message: string, title?: string) {
-  show({ type: 'success', title: title || 'Success', message });
-}
-
-/**
- * Show a themed error modal.
- */
-export function showError(message: string, title?: string) {
-  show({ type: 'error', title: title || 'Error', message });
-}
-
-/**
- * Show a themed confirm modal (replaces window.confirm).
- * Returns a promise that resolves to true (confirm) or false (cancel).
- */
-export function showConfirm(
-  message: string,
-  opts?: { title?: string; confirmLabel?: string; cancelLabel?: string }
-): Promise<boolean> {
-  return new Promise((resolve) => {
-    show({
-      type: 'confirm',
-      title: opts?.title || 'Confirm',
-      message,
-      confirmLabel: opts?.confirmLabel || 'Confirm',
-      cancelLabel: opts?.cancelLabel || 'Cancel',
-      onConfirm: () => resolve(true),
-      onCancel: () => resolve(false),
-    });
-  });
-}
 
 // ── Icons ──────────────────────────────────────────────
 
@@ -150,9 +91,9 @@ export default function AlertModal() {
   const [state, setState] = useState<AlertModalState>(INITIAL);
 
   useEffect(() => {
-    _setState = setState;
+    registerAlertModal(setState);
     return () => {
-      _setState = null;
+      registerAlertModal(null);
     };
   }, []);
 
