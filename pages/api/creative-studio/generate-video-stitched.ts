@@ -33,7 +33,7 @@ export const config = {
       sizeLimit: "25mb",
     },
   },
-  maxDuration: 600, // 16s = 2× Veo clips + stitch; needs extended runtime (Vercel Pro)
+  maxDuration: 300, // Vercel hobby plan max (5 min); 16s = 2× Veo clips + stitch
 };
 
 /** Inline base64 responses above this size often fail on serverless (4.5 MB response cap). */
