@@ -235,9 +235,10 @@ export function splitVoiceoverForStitch(
   };
 }
 
-export function redistributeVoiceoverToStoryboard<
-  T extends { voiceover_line?: string; voiceover_script?: string }
->(storyboard: T[], voiceoverScript: string): T[] {
+export function redistributeVoiceoverToStoryboard(
+  storyboard: StoryboardScene[],
+  voiceoverScript: string
+): StoryboardScene[] {
   const script = voiceoverScript.trim();
   if (!storyboard.length) return storyboard;
 
