@@ -11,6 +11,8 @@ import {
   SCRIPT_CONTENT_SAFETY,
   buildBodyProductSafetyBlock,
   buildScriptGenerationPipelineInstructions,
+  AD_VOICEOVER_COPY_RULES,
+  ensurePerformanceAdVoiceover,
 } from "@/lib/creative-studio/video-prompt-utils";
 import {
   formatFrameworkForPrompt,
@@ -234,6 +236,7 @@ PERFORMANCE RULES:
 - Visual execution format: ${visualFormat}. Hook type: ${concept?.hookType || hookType}.
 - Target audience: ${strategy?.targetAudience || audienceType}.
 - NO on-screen text. Voiceover carries the sell.
+${voiceover ? `\n${AD_VOICEOVER_COPY_RULES}` : ""}
 - If only one product image exists: mix lifestyle usage, close-up demo, benefit proof, and hero product ending — NOT only static product shots.
 - Write like a performance agency: punchy, clear, conversion-focused.${multiSceneEnforcement}
 
@@ -261,7 +264,8 @@ This IS: A paid brand commercial. Script-driven via voiceover only. NO text over
 Your mindset:
 - Product as hero: show product clearly within first 3 seconds. Product must appear in at least 60% of total frames.
 - ${durationSecondsClamped}-second formula: 0–2s Pattern Interrupt (strong hook visual, movement, contrast) → 2–${Math.floor(durationSecondsClamped * 0.6)}s Product as Hero (clean product shots, close-ups, premium lighting) → ${Math.floor(durationSecondsClamped * 0.6)}–${durationSecondsClamped - 1}s Emotional Payoff (outcome, transformation) → ${durationSecondsClamped - 1}–${durationSecondsClamped}s Brand Lock-In (product hero frame, logo via environment, strong closing VO).
-- Voiceover: confident, clear, short sentences. Max ${maxVoiceoverWords} spoken words (must fit under ${maxVoiceoverSeconds} seconds). Hook → Value → Outcome → Brand line. No filler, no overexplaining. Keep voiceover SHORT so there is breathing room for visuals and background music/audio.
+${voiceover ? `\n${AD_VOICEOVER_COPY_RULES}` : ""}
+- Voiceover: confident, clear, short sentences.
 - Visual: controlled lighting, soft highlights, high contrast, studio or lifestyle premium look. Smooth camera (push-in, slider, cinematic pans). Shallow depth of field. NO handheld shaky shots, NO casual iPhone vlog style.
 - Emotional angles: Confidence, Status, Relief, Energy, Control, Simplicity, Transformation. Never default to humor unless user explicitly requests.
 - NO on-screen text, captions, subtitles, lower thirds, UI mockups, or typography. All messaging via voiceover and visual storytelling.${multiSceneEnforcement}
@@ -275,6 +279,7 @@ This IS: A real person sharing an honest recommendation. Conversational, slightl
 
 Your mindset:
 - ${durationSecondsClamped}-second formula: 0–2s Hook (spoken, direct, attention-grabbing, feels spontaneous — e.g. "Wait, why is nobody talking about this?") → 2–${durationSecondsClamped - 2}s Experience/Reaction (demonstration, personal comment, showing product casually, honest tone) → ${durationSecondsClamped - 2}–${durationSecondsClamped}s Soft CTA ("You should try this." "Link's right there." No hard sales pitch).
+${voiceover ? `\n${AD_VOICEOVER_COPY_RULES}` : ""}
 - Voiceover: casual, real, slightly imperfect. Max 20–30 words. First person: "I tried this", "This saved me". Everyday language. No marketing buzzwords. No scripted feel.
 - Visual: handheld, slight natural shake, eye-level selfie angle, casual framing. Natural light, room light. Real-world setting (bedroom, kitchen, office, car, cafe). NO studio backdrop, NO perfect product turntable shots.
 - Product: must appear within first 3 seconds OR be referenced clearly. Person holding/using/reacting to it. UGC is about the person, not product glamour.
@@ -420,7 +425,7 @@ ${isPerformanceMode ? `- BEAT-BASED STORYBOARD (NOT scene-only): Plan beats firs
   - Distribute voiceover_line across ALL ${recommendedScenes} scenes. The first half of scenes (Part 1, 0–${midpointSeconds}s) gets the setup/hook voiceover; the second half (Part 2, ${midpointSeconds}–${durationSecondsClamped}s) gets the payoff/CTA voiceover.
   - voiceover_script must be the FULL narration for all ${durationSecondsClamped} seconds combined (max ${maxVoiceoverWords} words / ${maxVoiceoverSeconds}s spoken).
   - Do NOT write the same lines for both halves. Each scene's voiceover_line must be unique and progress the story.` : ` The voiceover must NOT fill the entire ${durationSecondsClamped}-second video — leave silent/music-only moments so visuals and background audio have room to breathe.`} ${key_message ? `Weave in: "${key_message}".` : ""} ${cta ? `End with CTA: "${cta}".` : ""}
-- final_video_prompt: 300–800 tokens, director-grade, describing the full ${durationSecondsClamped}-second film (cinematic lighting, movement, pacing, color, premium brand quality), aligned with the user's described vision. Include specific lens choices, lighting setup, color grade, cut types, and sound mood — write like a Tier-1 agency shoot brief.
+- final_video_prompt: 300–800 tokens, director-grade, describing the full ${durationSecondsClamped}-second film (cinematic lighting, movement, pacing, color, premium brand quality), aligned with the user's described vision. Include specific lens choices, lighting setup, color grade, cut types, and sound mood — write like a Tier-1 agency shoot brief.${voiceover ? " MUST include a SPOKEN_DIALOGUE section listing the exact words the narrator/talent says (brand name, product name, benefit, CTA)." : ""}
 ${styleRequirements}
 
 Return your response as a JSON object with this exact structure. The storyboard MUST have ${recommendedScenes} scenes (minimum ${minScenes}):
@@ -533,7 +538,7 @@ Return your response as a JSON object with this exact structure. The storyboard 
     "motion_style": "Overall motion",
     "brand_polish": "Brand polish (e.g. Apple/Stripe quality)"
   },
-  "voiceover_script": "${voiceover ? `Voiceover script in ${language === "tamil" ? "Tamil" : language === "hindi" ? "Hindi" : "English"}, MAX ${maxVoiceoverWords} words, spoken in UNDER ${maxVoiceoverSeconds} seconds. ${tone || "Energetic"} tone. Leave silent moments for visuals and music.` : "N/A - Voiceover disabled"}",
+  "voiceover_script": "${voiceover ? `Full ad script in ${language === "tamil" ? "Tamil" : language === "hindi" ? "Hindi" : "English"}. MUST name ${brand_name} and ${product_name}, state one specific benefit, end with CTA. MAX ${maxVoiceoverWords} words / ${maxVoiceoverSeconds}s spoken. ${tone || "Energetic"} tone. Example shape: Hook? Brand Product — benefit. CTA.` : "N/A - Voiceover disabled"}",
   "headline": "",
   "subtext": "",
   "final_video_prompt": "Director-grade Veo production brief (400-900 tokens) for the full ${durationSecondsClamped}-second film. Write like a Tier-1 agency shoot call sheet condensed into one prompt. MUST include: (1) OVERALL VISION — one sentence emotional goal; (2) COLOR GRADE — specific LUT feel (e.g. warm Kodak 2383, cool teal-orange, high-key Apple white); (3) LENS & CAMERA — specific focal lengths and moves per act (e.g. 35mm dolly push-in, 100mm macro rack focus); (4) LIGHTING SETUP — key/fill/rim description, motivated sources; (5) SHOT SEQUENCE — timed beats with cut types (match cut, whip-pan, hard cut on action); (6) SOUND MOOD — music genre/tempo, foley texture; (7) PRODUCT HERO MOMENT — exact frame composition for the closing shot; (8) CONTENT SAFETY — all people fully clothed, modest mainstream brand ad (no nudity, no revealing attire, no bare chest).${isStitchedDuration ? ' IMPORTANT: Two ~' + midpointSeconds + 's clips stitched. Describe ONE consistent visual world. Midpoint = motivated professional edit cut.' : ''} CRITICAL: NO on-screen text, captions, or typography. Purely visual + voiceover."
@@ -791,7 +796,22 @@ CRITICAL — NO ON-SCREEN TEXT: Set headline, subtext, and every storyboard on_s
       const finalPrompt = extractField(generatedText, "final_video_prompt") || "";
       
       // Fallback: create a structured multi-scene response
-      const fallbackVo = voiceoverText || (voiceover ? "Discover the premium quality that sets us apart." : "");
+      const fallbackVo =
+        voiceoverText ||
+        (voiceover
+          ? ensurePerformanceAdVoiceover(
+              {
+                brandName: brand_name,
+                productName: product_name,
+                keyMessage: key_message,
+                cta,
+                creativeStrategy: strategy || undefined,
+                userDescription: user_description,
+              },
+              "",
+              maxVoiceoverWords
+            )
+          : "");
       const fallbackPrompt = finalPrompt || `Create a ${durationSecondsClamped}-second professional product video showcasing ${product_name || "the product"} by ${brand_name || "the brand"} with cinematic quality and engaging visuals.`;
 
       const sceneCount = recommendedScenes;
@@ -856,27 +876,38 @@ CRITICAL — NO ON-SCREEN TEXT: Set headline, subtext, and every storyboard on_s
     }
 
     // Enforce voiceover word limits so Veo native audio finishes cleanly (prevents mid-word cutoffs)
-    if (voiceover && scriptData.voiceover_script) {
-      scriptData.voiceover_script = truncateVoiceover(
-        String(scriptData.voiceover_script),
-        maxVoiceoverWords
-      );
+    if (voiceover) {
+      const adVoInput = {
+        brandName: brand_name,
+        productName: product_name,
+        keyMessage: key_message,
+        cta: cta || strategy?.cta,
+        creativeStrategy: strategy || undefined,
+        userDescription: user_description,
+      };
+
+      if (scriptData.voiceover_script) {
+        scriptData.voiceover_script = ensurePerformanceAdVoiceover(
+          adVoInput,
+          String(scriptData.voiceover_script),
+          maxVoiceoverWords
+        );
+      } else if (scriptData.storyboard?.length) {
+        const joined = scriptData.storyboard
+          .map((s: any) => String(s.voiceover_line || s.voiceover_script || "").trim())
+          .filter(Boolean)
+          .join(" ");
+        scriptData.voiceover_script = ensurePerformanceAdVoiceover(adVoInput, joined, maxVoiceoverWords);
+      } else {
+        scriptData.voiceover_script = ensurePerformanceAdVoiceover(adVoInput, "", maxVoiceoverWords);
+      }
+
       if (scriptData.storyboard?.length) {
         scriptData.storyboard = redistributeVoiceoverToStoryboard(
           scriptData.storyboard,
           scriptData.voiceover_script
         );
       }
-    } else if (voiceover && scriptData.storyboard?.length) {
-      const joined = scriptData.storyboard
-        .map((s: any) => String(s.voiceover_line || s.voiceover_script || "").trim())
-        .filter(Boolean)
-        .join(" ");
-      scriptData.voiceover_script = truncateVoiceover(joined, maxVoiceoverWords);
-      scriptData.storyboard = redistributeVoiceoverToStoryboard(
-        scriptData.storyboard,
-        scriptData.voiceover_script
-      );
     }
 
     const creativeScore = scoreCreativeScript({

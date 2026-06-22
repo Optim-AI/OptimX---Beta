@@ -4,13 +4,12 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { GoogleGenAI } from "@google/genai";
 import sharp from "sharp";
-import ffmpegPath from "ffmpeg-static";
-import { randomUUID } from "crypto";
 import { spawn } from "node:child_process";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { supabaseAdmin } from "@/auth/supabase/client";
+import { getFfmpegExecutable } from "@/lib/creative-studio/ffmpeg-server";
+import { resolveVideoDeliveryUrl } from "@/lib/creative-studio/video-delivery";
 import {
   fetchWithGeminiRateLimitRetry,
   isGeminiRateLimitError,
@@ -33,11 +32,8 @@ export const config = {
       sizeLimit: "25mb",
     },
   },
-  maxDuration: 300, // Vercel hobby plan max (5 min); 16s = 2× Veo clips + stitch
+  maxDuration: 300, // Requires Vercel Pro (up to 300s). Hobby plan max is 60s — 16s videos may timeout.
 };
-
-/** Inline base64 responses above this size often fail on serverless (4.5 MB response cap). */
-const MAX_INLINE_VIDEO_BYTES = 3 * 1024 * 1024;
 
 const GEMINI_VEO_API_KEY = process.env.GEMINI_VEO_API_KEY;
 const MODEL = "veo-3.1-fast-generate-preview";
@@ -132,8 +128,8 @@ async function createReferenceAsset(imageSource: string): Promise<{
 
 function runFfmpeg(args: string[], cwd?: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    if (!ffmpegPath) return reject(new Error("ffmpeg binary not available (ffmpeg-static)."));
-    const proc = spawn(ffmpegPath, args, { cwd });
+    const executable = getFfmpegExecutable();
+    const proc = spawn(executable, args, { cwd });
     let stderr = "";
     proc.stderr.on("data", (d) => (stderr += String(d)));
     proc.on("error", reject);
@@ -165,35 +161,6 @@ async function extractLastFrameJpeg(mp4Path: string, jpgPath: string) {
   } catch {
     await runFfmpeg(["-y", "-sseof", "-1", "-i", mp4Path, "-vframes", "1", "-q:v", "2", jpgPath]);
   }
-}
-
-async function uploadVideoBuffer(buf: Buffer): Promise<string | null> {
-  const storagePath = `generated/videos/${randomUUID()}_${Date.now()}.mp4`;
-  const { error } = await supabaseAdmin.storage.from("campaign-assets").upload(storagePath, buf, {
-    contentType: "video/mp4",
-    cacheControl: "3600",
-    upsert: true,
-  });
-  if (error) {
-    console.warn("Stitched video storage upload failed:", error.message);
-    return null;
-  }
-  const { data } = supabaseAdmin.storage.from("campaign-assets").getPublicUrl(storagePath);
-  return (data as { publicUrl?: string })?.publicUrl ?? null;
-}
-
-/** Prefer a storage URL for large stitched MP4s so the JSON response stays under serverless limits. */
-async function resolveVideoDeliveryUrl(dataUrl: string, preferUpload: boolean): Promise<string> {
-  const parsed = parseDataUrl(dataUrl);
-  if (!parsed?.mimeType.includes("video")) return dataUrl;
-
-  const buf = Buffer.from(parsed.imageBytes, "base64");
-  if (!preferUpload && buf.length <= MAX_INLINE_VIDEO_BYTES) {
-    return dataUrl;
-  }
-
-  const publicUrl = await uploadVideoBuffer(buf);
-  return publicUrl ?? dataUrl;
 }
 
 async function generateClipDataUrl(params: {
@@ -271,7 +238,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!GEMINI_VEO_API_KEY) {
     return res.status(500).json({ ok: false, error: "GEMINI_VEO_API_KEY is not configured" });
   }
-  if (!ffmpegPath) {
+  try {
+    getFfmpegExecutable();
+  } catch {
     return res.status(500).json({ ok: false, error: "ffmpeg is not available in this runtime" });
   }
 
@@ -295,6 +264,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       voiceover_script,
       headline,
       subtext,
+      key_message,
+      cta,
       product_images,
       brand_logo,
       hero_image,
@@ -385,6 +356,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       hasReferenceImages: baseReferenceImages.length > 0,
       headline,
       subtext,
+      keyMessage: key_message,
+      cta,
     });
 
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "optimx-video-"));
@@ -446,6 +419,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         hasReferenceImages: clip2ReferenceImages.length > 0,
         headline,
         subtext,
+        keyMessage: key_message,
+        cta,
       });
 
       const clip2DataUrl = await generateClipDataUrl({
@@ -458,7 +433,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       await writeMp4DataUrlToFile(clip2DataUrl, clip2Path);
 
       // Stitch with audio preserved; re-encode if stream-copy concat fails
-      await fs.writeFile(listPath, `file '${clip1Path}'\nfile '${clip2Path}'\n`);
+      await fs.writeFile(listPath, "file 'clip1.mp4'\nfile 'clip2.mp4'\n");
       try {
         await runFfmpeg(["-y", "-f", "concat", "-safe", "0", "-i", listPath, "-c", "copy", outPath], tmpDir);
       } catch {
@@ -523,14 +498,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       stitchedDataUrl = await fileToVideoDataUrl(outPath);
     }
 
-    const videoUrl = await resolveVideoDeliveryUrl(stitchedDataUrl, segments === 2);
+    const delivery = await resolveVideoDeliveryUrl(stitchedDataUrl, {
+      forceUpload: segments === 2,
+    });
+    console.log(
+      `✅ Stitched video ready: ${delivery.delivery}, ${Math.round(delivery.bytes / 1024)}KB, segments=${segments}`
+    );
 
     // Cleanup best-effort
     fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
 
     return res.status(200).json({
       ok: true,
-      videoUrl,
+      videoUrl: delivery.videoUrl,
+      delivery: delivery.delivery,
+      videoBytes: delivery.bytes,
       duration: segments === 2 ? segmentDuration * 2 : segmentDuration,
       aspectRatio: videoAspectRatio,
       referenceImagesUsed: baseReferenceImages.length,
@@ -548,6 +530,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(429).json({
         ok: false,
         error: "API rate limit reached. Please wait a moment and try again.",
+        details: errorMessage,
+      });
+    }
+
+    const looksLikeTimeout =
+      /timed out|timeout|FUNCTION_INVOCATION_TIMEOUT|504|deadline exceeded/i.test(errorMessage);
+    if (looksLikeTimeout) {
+      return res.status(504).json({
+        ok: false,
+        error:
+          "Extended video generation timed out on the server. 16s videos need ~3–5 minutes (2 AI clips + stitch). Ensure Vercel Pro (300s function limit) and try again.",
         details: errorMessage,
       });
     }

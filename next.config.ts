@@ -8,7 +8,7 @@ const nextConfig = {
       { source: '/cookiepolicy', destination: '/cpolicy', permanent: true },
     ];
   },
-  serverExternalPackages: ['playwright'],
+  serverExternalPackages: ['playwright', 'ffmpeg-static', 'sharp'],
   webpack: (config: any, { isServer }: { isServer: boolean }) => {
     if (isServer) {
       config.externals = config.externals || [];

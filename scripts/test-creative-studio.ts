@@ -128,7 +128,7 @@ const prompt = buildVeoVideoPrompt({
 });
 assert(prompt.includes("TestBrand") || prompt.includes("TestProduct"), "prompt includes brand or product");
 assert(prompt.includes("reference images"), "prompt includes reference instruction when refs present");
-assert(/VO \(|VOICEOVER|AUDIO:/i.test(prompt), "prompt includes voiceover pacing");
+assert(/SPOKEN AD|VO \(|VOICEOVER|AUDIO:/i.test(prompt), "prompt includes voiceover pacing");
 assert(/BEAT-BASED STORYBOARD|CREATIVE TREATMENT|STORYBOARD/i.test(prompt), "prompt includes storyboard or treatment");
 assert(estimateVeoPromptTokens(prompt) <= VEO_PROMPT_MAX_TOKENS, `prompt within Veo token limit (${estimateVeoPromptTokens(prompt)} tokens)`);
 

@@ -131,6 +131,8 @@ export type VeoPromptInput = {
   hasReferenceImages: boolean;
   headline?: string;
   subtext?: string;
+  keyMessage?: string;
+  cta?: string;
 };
 
 /** Alias for cinematic prompt builder options */
@@ -195,6 +197,103 @@ export function truncateVoiceover(text: string, maxWords: number): string {
     if (result) return result;
   }
 
+  return words.slice(0, maxWords).join(" ");
+}
+
+/** Instructions for LLM script generation — spoken ad, not silent montage. */
+export const AD_VOICEOVER_COPY_RULES = `
+VOICEOVER AD COPY (MANDATORY when voiceover is enabled):
+This must sound like a real TV/social ad — a person SELLING the product out loud.
+
+REQUIRED in voiceover_script AND each voiceover_line:
+1. HOOK (first 2s): pain, curiosity, or bold claim — stop the scroll
+2. BRAND + PRODUCT: say the brand name and product name explicitly (not "this product")
+3. BENEFIT / WHY IT'S BEST: one specific reason to buy (ingredient, result, proof, transformation)
+4. CTA: clear action ("Shop now", "Try it today", etc.)
+
+GOOD example: "Dull mornings? Deyga Organics Vitamin C Foaming Facewash brightens skin in days. Vitamin C + gentle foam. Shop now."
+BAD (reject): "Discover premium quality." / "Transform your routine." / silent product montage with no sell.
+
+Rules:
+- Short punchy sentences. Conversational but confident.
+- Name the brand at least once. Name the product at least once.
+- Include a concrete benefit — not vague marketing fluff.
+- UGC: first person ("I love…", "This fixed…"). Commercial: third person narrator is fine.
+- Distribute lines across scenes; voiceover_script = full script joined.
+`.trim();
+
+function isWeakAdVoiceover(
+  script: string,
+  brandName?: string,
+  productName?: string
+): boolean {
+  const trimmed = script.trim();
+  if (!trimmed) return true;
+  const words = trimmed.split(/\s+/).filter(Boolean);
+  if (words.length < 6) return true;
+
+  const haystack = trimmed.toLowerCase();
+  const generic =
+    /^(discover|experience|transform|elevate|unlock|premium quality|sets us apart|the difference)/i.test(
+      trimmed
+    ) || /\b(premium quality|sets us apart|transform your)\b/i.test(haystack);
+  if (generic) return true;
+
+  const product = productName?.trim().toLowerCase() || "";
+  const brand = brandName?.trim().toLowerCase() || "";
+  const hasProduct =
+    !product ||
+    haystack.includes(product) ||
+    product.split(/\s+/).some((w) => w.length > 3 && haystack.includes(w));
+  const hasBrand = !brand || haystack.includes(brand);
+
+  return !hasProduct || !hasBrand;
+}
+
+/** Ensure VO includes brand, product, benefit, and CTA — required for ad-like Veo native audio. */
+export function ensurePerformanceAdVoiceover(
+  input: {
+    brandName?: string;
+    productName?: string;
+    keyMessage?: string;
+    cta?: string;
+    creativeStrategy?: VeoPromptInput["creativeStrategy"];
+    userDescription?: string;
+  },
+  script: string,
+  maxWords: number
+): string {
+  const brand = input.brandName?.trim() || "";
+  const product = input.productName?.trim() || "this product";
+  const trimmed = script.trim();
+
+  if (trimmed && !isWeakAdVoiceover(trimmed, brand, product)) {
+    return truncateVoiceover(trimmed, maxWords);
+  }
+
+  const pain =
+    input.creativeStrategy?.corePainPoint?.replace(/\.$/, "") || "everyday struggles";
+  const benefit =
+    input.keyMessage ||
+    input.creativeStrategy?.coreDesire?.replace(/\.$/, "") ||
+    input.userDescription?.replace(/\.$/, "") ||
+    `real results from ${product}`;
+  const cta = input.cta || input.creativeStrategy?.cta || "Shop now";
+  const brandPrefix = brand ? `${brand} ` : "";
+
+  const existingHook = trimmed.split(/[.!]/)[0]?.trim() || "";
+  const hook =
+    existingHook.length > 4 && /[?]/.test(existingHook)
+      ? existingHook
+      : /tired|dull|struggle|wait|nobody|finally|still|why/i.test(pain)
+        ? `${pain.charAt(0).toUpperCase() + pain.slice(1)}${pain.endsWith("?") ? "" : "?"}`
+        : `Still dealing with ${pain.toLowerCase()}?`;
+
+  const built = `${hook} ${brandPrefix}${product} — ${benefit}. ${cta}${cta.endsWith(".") ? "" : "."}`
+    .replace(/\s+/g, " ")
+    .trim();
+  const words = built.split(/\s+/).filter(Boolean);
+  if (words.length <= maxWords) return built;
   return words.slice(0, maxWords).join(" ");
 }
 
@@ -1255,20 +1354,49 @@ function buildCompactSafetyForVeo(
   return block;
 }
 
+function buildSpokenAdCopyBlock(
+  input: Pick<
+    VeoPromptInput,
+    | "brandName"
+    | "productName"
+    | "keyMessage"
+    | "cta"
+    | "creativeStrategy"
+    | "userDescription"
+    | "clipDurationSeconds"
+  >,
+  script: string
+): string {
+  const budget = computeVoiceoverBudget(input.clipDurationSeconds);
+  const adScript = ensurePerformanceAdVoiceover(input, script, budget.maxWords);
+  const finishBy = Math.max(1, input.clipDurationSeconds - budget.tailSilenceSeconds);
+  const brand = input.brandName?.trim() || "";
+  const product = input.productName?.trim() || "the product";
+  const cta = input.cta || input.creativeStrategy?.cta || "Shop now";
+  const benefit =
+    input.keyMessage ||
+    input.creativeStrategy?.coreDesire ||
+    input.userDescription ||
+    "the key benefit";
+
+  return `
+SPOKEN AD — NATIVE AUDIO REQUIRED (this is a paid commercial, NOT a silent product video):
+A narrator or on-camera talent MUST speak the sell out loud. Generate audible dialogue.
+
+Say EXACTLY word-for-word:
+"${adScript}"
+
+Ad structure in speech: Hook → ${brand ? `${brand} ` : ""}${product} → why it's best (${benefit}) → CTA ("${cta}").
+Delivery: confident commercial VO or talent speaking to camera — clear, natural, not whispered.
+If talent is on camera: lip-sync the lines; react while speaking.
+Audio mix: voice forward; music ducked under speech. All words finish by ${finishBy}s.
+Last ${budget.tailSilenceSeconds}s: no speech — music swell + product hero frame.
+`.trim();
+}
+
 function buildCompactCraftForVeo(clipDurationSeconds: number): string {
   const hold = Math.max(0, clipDurationSeconds - 1);
   return `Craft: photorealistic 24fps, unified color grade, motivated match cuts, stable product label. Hook in first second. Hero product hold ${hold}-${clipDurationSeconds}s.`;
-}
-
-function buildCompactVoiceoverForVeo(
-  voiceoverScript: string | undefined,
-  clipDurationSeconds: number
-): string {
-  if (!voiceoverScript?.trim()) return "";
-  const budget = computeVoiceoverBudget(clipDurationSeconds);
-  const script = truncateVoiceover(voiceoverScript, budget.maxWords);
-  const finishBy = Math.max(1, clipDurationSeconds - budget.tailSilenceSeconds);
-  return `VO (finish by ${finishBy}s): "${script}". Natural conversational delivery with breath pauses; lip sync if on camera. Silent hero last ${budget.tailSilenceSeconds}s.`;
 }
 
 function buildCompactSegmentContext(input: VeoPromptInput): string {
@@ -1315,6 +1443,8 @@ function buildVeoCompactPrompt(input: VeoPromptInput): string {
     subtext,
     campaignGoal,
     hookType,
+    keyMessage,
+    cta,
   } = input;
 
   const visualStyle = input.creativeFormat || style;
@@ -1327,11 +1457,29 @@ function buildVeoCompactPrompt(input: VeoPromptInput): string {
     ? truncateVoiceover(voiceoverScript, computeVoiceoverBudget(clipDurationSeconds).maxWords)
     : "";
   const creativeTreatment = finalVideoPrompt?.trim() || fallbackPrompt?.trim() || "";
+  const hasVoiceover = Boolean(trimmedVoiceover);
+  const treatmentTokenBudget = hasVoiceover ? 260 : 420;
+
+  const adCopyInput = {
+    brandName,
+    productName,
+    keyMessage,
+    cta,
+    creativeStrategy,
+    userDescription,
+    clipDurationSeconds,
+  };
 
   const sections: string[] = [];
 
+  if (hasVoiceover) {
+    sections.push(buildSpokenAdCopyBlock(adCopyInput, trimmedVoiceover));
+  }
+
   if (creativeTreatment.length > 40) {
-    sections.push(`CREATIVE TREATMENT:\n${creativeTreatment}`);
+    sections.push(
+      `VISUAL DIRECTION (support the spoken ad — visuals follow the sell):\n${truncateToTokenBudget(creativeTreatment, treatmentTokenBudget)}`
+    );
   } else {
     const cine = getCinematicStyle(visualStyle);
     const subject = productName || "the product";
@@ -1359,12 +1507,13 @@ function buildVeoCompactPrompt(input: VeoPromptInput): string {
   if (scopedStoryboard?.length) {
     const mode = creativeStrategy ? "performance" : "cinematic";
     sections.push(
-      `STORYBOARD:\n${buildCompactStoryboardLines(scopedStoryboard as ExtendedStoryboardScene[], mode)}`
+      `STORYBOARD (talent speaks lines in VO field where present):\n${buildCompactStoryboardLines(scopedStoryboard as ExtendedStoryboardScene[], mode)}`
+    );
+  } else if (hasVoiceover) {
+    sections.push(
+      `ON-CAMERA: talent demonstrates ${productName || "product"} while speaking the ad script above.`
     );
   }
-
-  const voBlock = buildCompactVoiceoverForVeo(trimmedVoiceover, clipDurationSeconds);
-  if (voBlock) sections.push(voBlock);
 
   const marketing = buildMarketingOneLiner(input);
   if (marketing) sections.push(marketing);
@@ -1415,6 +1564,12 @@ function buildVeoCompactPrompt(input: VeoPromptInput): string {
 
   sections.push(buildCompactCraftForVeo(clipDurationSeconds));
   sections.push(buildCompactSafetyForVeo(category, productName, userDescription));
+
+  if (!hasVoiceover) {
+    sections.unshift(
+      `COMMERCIAL AD: Even without a script, imply a clear product sell — show ${brandName ? `${brandName} ` : ""}${productName || "product"} benefit and transformation, not a silent beauty montage.`
+    );
+  }
 
   return joinWithinVeoTokenBudget(sections, VEO_PROMPT_MAX_TOKENS);
 }

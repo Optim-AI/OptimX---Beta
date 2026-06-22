@@ -16,6 +16,7 @@ import {
   estimateVeoPromptTokens,
   VEO_PROMPT_MAX_TOKENS,
 } from "@/lib/creative-studio/video-prompt-utils";
+import { resolveVideoDeliveryUrl } from "@/lib/creative-studio/video-delivery";
 
 export const config = {
   api: {
@@ -168,6 +169,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       voiceover_script,
       headline,
       subtext,
+      key_message,
+      cta,
       product_images,
       brand_logo,
       hero_image,
@@ -255,6 +258,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       hasReferenceImages: referenceImages.length > 0,
       headline,
       subtext,
+      keyMessage: key_message,
+      cta,
     });
 
     const promptAudit = auditVideoPrompt(videoPrompt);
@@ -376,9 +381,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(500).json({ ok: false, error: "No video data available in response" });
     }
 
+    const delivery = await resolveVideoDeliveryUrl(videoUrl);
+    console.log(`📹 Delivery: ${delivery.delivery}, ${Math.round(delivery.bytes / 1024)}KB`);
+
     return res.status(200).json({
       ok: true,
-      videoUrl,
+      videoUrl: delivery.videoUrl,
+      delivery: delivery.delivery,
+      videoBytes: delivery.bytes,
       duration: videoDuration,
       aspectRatio: videoAspectRatio,
       referenceImagesUsed: referenceImages.length,

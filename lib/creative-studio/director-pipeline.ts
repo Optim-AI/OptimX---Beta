@@ -689,7 +689,7 @@ ${template.map((s, i) => `${i + 1}. ${s}`).join("\n")}
 JSON storyboard fields REQUIRED per scene:
 beat, marketing_message, visual_description, shot_purpose, emotional_zone, transition_to_next, product_state, container_state, voiceover_line, dialogue_direction, time_range, emotion, motion_style
 
-Voiceover must improve: conversational hooks, specific benefits, proof lines, clear CTA — never generic filler.
+Voiceover must name brand + product, state one specific benefit, end with CTA — never generic filler like "Discover premium quality."
 `.trim();
 }
 

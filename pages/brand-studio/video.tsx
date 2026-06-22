@@ -1018,6 +1018,8 @@ export default function VideoSessionPage() {
         quality: adBuilderData.adSetup.quality || 'standard',
         final_video_prompt: finalPrompt,
         voiceover_script: voiceoverScript,
+        key_message: adBuilderData.voiceover.key_message,
+        cta: adBuilderData.voiceover.cta || adBuilderData.creativeStrategy?.cta,
         storyboard,
         product_images: preparedImages.product_images,
         hero_image: preparedImages.hero_image,
@@ -1043,13 +1045,41 @@ export default function VideoSessionPage() {
         body: bodyString,
       });
 
-      const result = await safeResponseJson<{ ok: boolean; error?: string; videoUrl?: string }>(response);
-      if (!result.ok) throw new Error(result.error);
+      if (!response.ok) {
+        let errMsg = `Server error (${response.status})`;
+        try {
+          const errBody = await safeResponseJson<{ error?: string }>(response);
+          if (errBody?.error) errMsg = errBody.error;
+        } catch {
+          if (response.status === 504) {
+            errMsg =
+              'Extended video timed out on the server. 16s videos need Vercel Pro (300s limit) and ~3–5 minutes. Try again or use 8s.';
+          }
+        }
+        throw new Error(errMsg);
+      }
+
+      const result = await safeResponseJson<{
+        ok: boolean;
+        error?: string;
+        videoUrl?: string;
+        delivery?: string;
+      }>(response);
+      if (!result.ok) throw new Error(result.error || 'Video generation failed');
+
+      const videoUrl = result.videoUrl?.trim();
+      if (!videoUrl || (!videoUrl.startsWith('data:') && !videoUrl.startsWith('http'))) {
+        throw new Error(
+          'Video generated but no playable URL was returned. Check SUPABASE_SERVICE_ROLE_KEY is set in production for 16s videos.'
+        );
+      }
+
+      console.log('Video ready:', { delivery: result.delivery, urlPrefix: videoUrl.slice(0, 48) });
 
       const videoId = `video_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       const newVideo = {
         id: videoId,
-        url: result.videoUrl || '',
+        url: videoUrl,
         prompt: finalPrompt,
         timestamp: Date.now(),
       };
@@ -2627,8 +2657,15 @@ export default function VideoSessionPage() {
                               key={primary.id}
                               src={primary.url}
                               controls
+                              crossOrigin="anonymous"
+                              playsInline
                               className="w-full rounded-lg"
                               style={{ maxHeight: '420px' }}
+                              onError={() => {
+                                showError(
+                                  'Video file could not be played. If this is a 16s video, confirm SUPABASE_SERVICE_ROLE_KEY is set in production and the campaign-assets bucket allows video/mp4.'
+                                );
+                              }}
                             />
                           </div>
                           <div className="mt-3 flex justify-between items-center">
