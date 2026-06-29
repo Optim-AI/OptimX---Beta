@@ -16,6 +16,14 @@ function getRetryAfterMs(headers: Headers | undefined): number | null {
   return Math.min(sec * 1000, 120_000);
 }
 
+/** Billing/plan quota exhausted — retrying will not help until quota resets or billing is updated. */
+export function isGeminiQuotaExhaustedError(error: unknown): boolean {
+  const msg = String((error as Error)?.message ?? error);
+  return /exceeded your current quota|check your plan and billing|billing details|quota exceeded/i.test(
+    msg
+  );
+}
+
 export function isGeminiRateLimitError(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
   const e = error as { status?: number; message?: string; name?: string; response?: { status?: number } };
@@ -69,6 +77,9 @@ export async function withRetryOnGeminiRateLimit<T>(
       return await fn();
     } catch (e) {
       lastError = e;
+      if (isGeminiQuotaExhaustedError(e)) {
+        throw e;
+      }
       if (!isGeminiRateLimitError(e) || attempt === maxRetries) {
         throw e;
       }
@@ -96,6 +107,9 @@ export async function withRetryOnGeminiTransient<T>(
       return await fn();
     } catch (e) {
       lastError = e;
+      if (isGeminiQuotaExhaustedError(e)) {
+        throw e;
+      }
       if (!isGeminiTransientError(e) || attempt === maxRetries) {
         throw e;
       }

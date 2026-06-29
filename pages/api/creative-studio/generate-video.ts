@@ -5,11 +5,11 @@ import { GoogleGenAI } from "@google/genai";
 import sharp from "sharp";
 import {
   fetchWithGeminiRateLimitRetry,
+  isGeminiQuotaExhaustedError,
   isGeminiRateLimitError,
   withRetryOnGeminiRateLimit,
 } from "@/lib/gemini-retry";
 import {
-  buildVeoVideoPrompt,
   buildVeoGenerateSafetyConfig,
   normalizeVeoDuration,
   auditVideoPrompt,
@@ -17,6 +17,12 @@ import {
   VEO_PROMPT_MAX_TOKENS,
 } from "@/lib/creative-studio/video-prompt-utils";
 import { resolveVideoDeliveryUrl } from "@/lib/creative-studio/video-delivery";
+import {
+  resolveRequestFromApiBody,
+  resolveVeoPrompt,
+} from "@/lib/creative-studio/resolve-veo-prompt";
+import { enforceVeoPromptBudget } from "@/lib/creative-studio/video-prompt-utils";
+import { getVeoApiKey, VEO_API_KEY_SETUP_MESSAGE } from "@/lib/gemini-config";
 
 export const config = {
   api: {
@@ -27,8 +33,6 @@ export const config = {
   },
   maxDuration: 300, // 5 minutes max (Vercel hobby plan limit)
 };
-
-const GEMINI_VEO_API_KEY = process.env.GEMINI_VEO_API_KEY;
 
 // Parse data URL to get image bytes and mime type
 function parseDataUrl(dataUrl: string): { imageBytes: string; mimeType: string } | null {
@@ -144,12 +148,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ ok: false, error: "Method not allowed" });
   }
 
-  if (!GEMINI_VEO_API_KEY) {
-    return res.status(500).json({ ok: false, error: "GEMINI_VEO_API_KEY is not configured" });
+  const veoApiKey = getVeoApiKey();
+  if (!veoApiKey) {
+    return res.status(503).json({
+      ok: false,
+      error: VEO_API_KEY_SETUP_MESSAGE,
+      code: "VEO_API_KEY_MISSING",
+    });
   }
 
   try {
-    const ai = new GoogleGenAI({ apiKey: GEMINI_VEO_API_KEY });
+    const ai = new GoogleGenAI({ apiKey: veoApiKey });
     
     const { 
       prompt,
@@ -238,41 +247,33 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ ok: false, error: "Either 'prompt' or 'final_video_prompt' is required" });
     }
 
-    const videoPrompt = buildVeoVideoPrompt({
-      brandName: brand_name,
-      productName: product_name,
-      category,
-      userDescription: user_description,
-      creativeFormat: creative_format || style,
-      hookType: hook_type,
-      campaignGoal: campaign_goal,
-      creativeStrategy: creative_strategy,
-      style: creative_format || style,
-      clipDurationSeconds: videoDuration,
-      totalDurationSeconds: requestedDuration,
-      aspectRatio: videoAspectRatio,
-      finalVideoPrompt: final_video_prompt,
-      fallbackPrompt: prompt,
-      voiceoverScript: voiceover_script,
-      storyboard: Array.isArray(storyboard) ? storyboard : undefined,
-      hasReferenceImages: referenceImages.length > 0,
-      headline,
-      subtext,
-      keyMessage: key_message,
-      cta,
-    });
+    const resolved = resolveVeoPrompt(
+      resolveRequestFromApiBody(req.body, {
+        clipDurationSeconds: videoDuration,
+        totalDurationSeconds: requestedDuration,
+        aspectRatio: videoAspectRatio,
+        hasReferenceImages: referenceImages.length > 0,
+        voiceoverScript: voiceover_script,
+      })
+    );
+    const rawPrompt = resolved.prompt;
+    const videoPrompt = enforceVeoPromptBudget(rawPrompt);
+
+    if (resolved.source === "film-engine") {
+      console.log("🎛️ Film Engine v2:", resolved.filmSummary);
+      console.log("🎛️ Using Film Engine prompt (~", resolved.estimatedTokens, "tokens)");
+    }
 
     const promptAudit = auditVideoPrompt(videoPrompt);
     const promptTokens = estimateVeoPromptTokens(videoPrompt);
+    const rawTokens = estimateVeoPromptTokens(rawPrompt);
+    if (rawTokens > VEO_PROMPT_MAX_TOKENS) {
+      console.warn(
+        `📝 Prompt compressed for Veo: ~${rawTokens} → ~${promptTokens} tokens (max ${VEO_PROMPT_MAX_TOKENS})`
+      );
+    }
     console.log('📝 Video prompt length:', videoPrompt.length, 'chars, ~', promptTokens, 'tokens (max', VEO_PROMPT_MAX_TOKENS + ')');
     console.log('📝 Prompt audit score:', promptAudit.score, promptAudit.issues.length ? promptAudit.issues : 'ok');
-
-    if (promptTokens > VEO_PROMPT_MAX_TOKENS) {
-      return res.status(400).json({
-        ok: false,
-        error: `Video prompt is too long for Veo (~${promptTokens} tokens, max ${VEO_PROMPT_MAX_TOKENS}). Try a shorter script or fewer storyboard scenes.`,
-      });
-    }
     console.log('🚀 Starting Veo 3.1 video generation...', {
       aspectRatio: videoAspectRatio,
       durationSeconds: videoDuration,
@@ -366,7 +367,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const videoResponse = await fetchWithGeminiRateLimitRetry(
         generatedVideo.video.uri,
         {
-          headers: { "x-goog-api-key": GEMINI_VEO_API_KEY },
+          headers: { "x-goog-api-key": veoApiKey },
         },
         { maxRetries: 6, operationLabel: "veo-download-video" }
       );
@@ -415,6 +416,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
     
+    if (isGeminiQuotaExhaustedError(error)) {
+      return res.status(429).json({
+        ok: false,
+        error:
+          "Google Veo API quota exhausted for this API key. Enable billing or raise your quota at https://ai.google.dev/gemini-api/docs/rate-limits, then try again.",
+        details: errorMessage,
+        quotaExhausted: true,
+      });
+    }
+
     const looksLikeRateLimit =
       /\brate limit\b|rate-limit|too many requests|requests per|RESOURCE_EXHAUSTED/i.test(
         errorMessage
@@ -422,7 +433,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (isGeminiRateLimitError(error) || errorMessage.includes('quota') || looksLikeRateLimit) {
       return res.status(429).json({
         ok: false,
-        error: "too many requests. Please wait a moment and try again.",
+        error: "Veo rate limit hit. Please wait a minute and try again.",
         details: errorMessage,
       });
     }

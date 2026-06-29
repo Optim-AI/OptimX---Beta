@@ -14,6 +14,7 @@ import {
   AD_VOICEOVER_COPY_RULES,
   ensurePerformanceAdVoiceover,
 } from "@/lib/creative-studio/video-prompt-utils";
+import { buildEnvatoCommercialDirective } from "@/lib/creative-studio/envato-prompt";
 import {
   formatFrameworkForPrompt,
   getFrameworkBeatsForDuration,
@@ -24,6 +25,7 @@ import {
   meetsCreativeThreshold,
   scoreCreativeScript,
 } from "@/lib/creative-studio/creative-score";
+import { getGeminiApiKey } from "@/lib/gemini-config";
 
 // Configure API route to handle large payloads (product images as base64 data URLs)
 export const config = {
@@ -38,8 +40,6 @@ export const config = {
 
 // Using Gemini as the "Creative Director Brain" to expand prompts
 // This implements the "Mini Gemini Studio" approach
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GEMINI_VEO_API_KEY;
-// Use v1beta API for text generation (REST API uses snake_case field names)
 const GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -141,14 +141,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
 
-    if (!GEMINI_API_KEY) {
-      console.error("GEMINI_API_KEY and GEMINI_VEO_API_KEY are not configured in this environment");
-      return res.status(500).json({
-        ok: false,
-        error: "AI service not configured. Please add GEMINI_API_KEY or GEMINI_VEO_API_KEY to your deployment environment variables (e.g. Vercel Project Settings > Environment Variables), then redeploy.",
-      });
-    }
-
     // ========================================
     // MINI GEMINI STUDIO APPROACH
     // ========================================
@@ -187,10 +179,112 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       campaignGoal,
       creativeFormat: visualFormat,
     });
+    const envatoFormula = buildEnvatoCommercialDirective({
+      tone: tone ? String(tone) : "Energetic",
+      hookType,
+      creativeFormat: visualFormat,
+      keyMessage: key_message,
+    });
+    const directorPipeline = `${pipelineInstructions}\n\n${envatoFormula}`;
 
     // Calculate recommended scene count based on duration
     const recommendedScenes = durationSecondsClamped <= 6 ? 3 : durationSecondsClamped <= 8 ? 4 : durationSecondsClamped <= 12 ? 5 : Math.min(8, Math.ceil(durationSecondsClamped / 2.5));
     const minScenes = Math.max(3, recommendedScenes - 1);
+
+    const geminiKey = getGeminiApiKey();
+    if (!geminiKey) {
+      console.warn(
+        "[creative-studio] GEMINI_API_KEY not set — using template script (add GEMINI_API_KEY for AI scripts)"
+      );
+
+      const adVoInput = {
+        brandName: brand_name,
+        productName: product_name,
+        keyMessage: key_message,
+        cta: cta || strategy?.cta,
+        creativeStrategy: strategy || undefined,
+        userDescription: user_description,
+      };
+
+      const templateVo = voiceover
+        ? ensurePerformanceAdVoiceover(adVoInput, "", maxVoiceoverWords)
+        : "";
+
+      const sceneCount = recommendedScenes;
+      const sceneDur = Math.round((durationSecondsClamped / sceneCount) * 10) / 10;
+      const sceneDescriptions = [
+        `Opening hook — close-up of ${product_name} with cinematic lighting, shallow depth of field, camera push-in`,
+        `Product in context — medium shot showing ${product_name} in use, smooth dolly movement`,
+        `Detail reveal — close-up of key product features, rack focus, premium lighting`,
+        `Hero moment — ${product_name} centered with brand-defining composition, slow pull-out`,
+        `Emotional payoff — outcome/transformation moment, warm tones, satisfying camera settle`,
+        `Brand close — final hero frame on ${product_name}, aspirational atmosphere`,
+      ];
+      const emotions = ["Curiosity", "Interest", "Desire", "Aspiration", "Trust", "Satisfaction"];
+      const motions = ["Slow push-in", "Smooth dolly right", "Rack focus pull", "Static hero frame", "Slow pull-out", "Gentle pan"];
+
+      const voWords = templateVo ? templateVo.split(/\s+/) : [];
+      const wordsPerScene = voWords.length > 0 ? Math.ceil(voWords.length / sceneCount) : 0;
+
+      const storyboard = Array.from({ length: sceneCount }, (_, i) => {
+        const startTime = Math.round(i * sceneDur * 10) / 10;
+        const endTime = i === sceneCount - 1 ? durationSecondsClamped : Math.round((i + 1) * sceneDur * 10) / 10;
+        return {
+          scene: i + 1,
+          duration: `${endTime - startTime}s`,
+          time_range: `${startTime}-${endTime}s`,
+          visual_description: sceneDescriptions[i % sceneDescriptions.length],
+          on_screen_text: "",
+          emotion: emotions[i % emotions.length],
+          motion_style: motions[i % motions.length],
+          voiceover_line:
+            voWords.length > 0
+              ? voWords.slice(i * wordsPerScene, (i + 1) * wordsPerScene).join(" ")
+              : "",
+        };
+      });
+
+      let voiceoverScript = templateVo;
+      if (voiceover && storyboard.length) {
+        voiceoverScript = ensurePerformanceAdVoiceover(adVoInput, templateVo, maxVoiceoverWords);
+        redistributeVoiceoverToStoryboard(storyboard, voiceoverScript);
+      }
+
+      const scriptData = {
+        ad_angle:
+          strategy?.creativeAngle ||
+          concept?.creativeAngle ||
+          `Performance ad for ${product_name}`,
+        storyboard,
+        visual_style_guide: {
+          color_palette: "Modern, premium",
+          lighting_mood: "Cinematic",
+          typography: "Modern sans-serif",
+          motion_style: visualFormat === "UGC" ? "Handheld, natural" : "Smooth, minimal",
+          brand_polish: "Premium brand quality",
+        },
+        voiceover_script: voiceoverScript,
+        headline: "",
+        subtext: "",
+        final_video_prompt: `Create a ${durationSecondsClamped}-second ${visualFormat} product video for ${product_name} by ${brand_name}. ${user_description || key_message || "Showcase the product with cinematic quality, clear hero shots, and an emotional payoff."} No on-screen text. Fully clothed people only.`,
+      };
+
+      const creativeScore = scoreCreativeScript({
+        strategy,
+        storyboard: scriptData.storyboard,
+        voiceoverScript: scriptData.voiceover_script,
+        adAngle: scriptData.ad_angle,
+      });
+
+      return res.status(200).json({
+        ok: true,
+        script: scriptData,
+        creative_score: creativeScore,
+        score_passed: meetsCreativeThreshold(creativeScore),
+        score_threshold: CREATIVE_SCORE_THRESHOLD,
+        ai_enriched: false,
+      });
+    }
 
     // System prompt: Creative Ad Film Director — interprets user vision, duration, and needs to write the best script
     let systemPrompt: string;
@@ -235,12 +329,12 @@ PERFORMANCE RULES:
 - End with a specific CTA matched to campaign goal: ${campaignGoal}.
 - Visual execution format: ${visualFormat}. Hook type: ${concept?.hookType || hookType}.
 - Target audience: ${strategy?.targetAudience || audienceType}.
-- NO on-screen text. Voiceover carries the sell.
+- NO on-screen text. Voiceover carries the sell — say brand + product together (e.g. "${brand_name} ${product_name}").
 ${voiceover ? `\n${AD_VOICEOVER_COPY_RULES}` : ""}
 - If only one product image exists: mix lifestyle usage, close-up demo, benefit proof, and hero product ending — NOT only static product shots.
 - Write like a performance agency: punchy, clear, conversion-focused.${multiSceneEnforcement}
 
-${pipelineInstructions}`;
+${directorPipeline}`;
     } else if (isHookMode) {
       systemPrompt = `You are a performance-first ad creative director specializing in scroll-stopping, conversion-focused video ads. This is attention warfare, NOT cinematic storytelling.
 
@@ -254,7 +348,7 @@ Your mindset for HOOK MODE:
 - Pacing: fast cuts, high motion energy, tight framing, strong contrast lighting. Hook always dominates tempo.
 - Avoid: symbolic metaphors, overly artistic ambiguity, conceptual scenes without product clarity.${multiSceneEnforcement}
 
-${pipelineInstructions}`;
+${directorPipeline}`;
     } else if (isCommercialMode) {
       systemPrompt = `You are a premium brand commercial director. The output must feel like a PAID BRAND COMMERCIAL — high-production value, emotion + aspiration driven, product as hero. Fast, punchy, visually premium. A direct-response brand commercial compressed into ${durationSecondsClamped} seconds.
 
@@ -263,14 +357,14 @@ This IS: A paid brand commercial. Script-driven via voiceover only. NO text over
 
 Your mindset:
 - Product as hero: show product clearly within first 3 seconds. Product must appear in at least 60% of total frames.
-- ${durationSecondsClamped}-second formula: 0–2s Pattern Interrupt (strong hook visual, movement, contrast) → 2–${Math.floor(durationSecondsClamped * 0.6)}s Product as Hero (clean product shots, close-ups, premium lighting) → ${Math.floor(durationSecondsClamped * 0.6)}–${durationSecondsClamped - 1}s Emotional Payoff (outcome, transformation) → ${durationSecondsClamped - 1}–${durationSecondsClamped}s Brand Lock-In (product hero frame, logo via environment, strong closing VO).
+- ${durationSecondsClamped}-second formula: 0–2s Pattern Interrupt (strong hook visual, movement, contrast) → 2–${Math.floor(durationSecondsClamped * 0.6)}s Product as Hero (clean product shots, close-ups, premium lighting) → ${Math.floor(durationSecondsClamped * 0.6)}–${durationSecondsClamped - 1}s Emotional Payoff (outcome, transformation) → ${durationSecondsClamped - 1}–${durationSecondsClamped}s Product hero close — NO on-screen text, strong closing VO.
 ${voiceover ? `\n${AD_VOICEOVER_COPY_RULES}` : ""}
 - Voiceover: confident, clear, short sentences.
 - Visual: controlled lighting, soft highlights, high contrast, studio or lifestyle premium look. Smooth camera (push-in, slider, cinematic pans). Shallow depth of field. NO handheld shaky shots, NO casual iPhone vlog style.
 - Emotional angles: Confidence, Status, Relief, Energy, Control, Simplicity, Transformation. Never default to humor unless user explicitly requests.
-- NO on-screen text, captions, subtitles, lower thirds, UI mockups, or typography. All messaging via voiceover and visual storytelling.${multiSceneEnforcement}
+- NO on-screen text, captions, subtitles, lower thirds, UI mockups, or typography. All messaging via voiceover only.${multiSceneEnforcement}
 
-${pipelineInstructions}`;
+${directorPipeline}`;
     } else if (isUGCMode) {
       systemPrompt = `You are a UGC-style ad creative director. The output must feel like a REAL PERSON filmed this — shot on phone, casual, imperfect, believable. Native to Reels/Shorts/TikTok. Trust over perfection.
 
@@ -286,7 +380,7 @@ ${voiceover ? `\n${AD_VOICEOVER_COPY_RULES}` : ""}
 - Emotional bias: Surprise, Relatability, Relief, Curiosity, Honest recommendation. NOT prestige, status, or brand dominance.
 - Editing: jump cuts, natural pauses, reaction zoom, fast pacing. NO smooth cinematic transitions, NO dramatic slow motion.${multiSceneEnforcement}
 
-${pipelineInstructions}`;
+${directorPipeline}`;
     } else {
       const extendedDirectorNote = isStitchedDuration ? `
 - EXTENDED VIDEO (${durationSecondsClamped}s / two-clip stitch):
@@ -317,7 +411,7 @@ Rules:
 - Voiceover script must be max ${maxVoiceoverWords} words, spoken in under ${maxVoiceoverSeconds} seconds. Leave silent/music-only moments for visuals and ambient audio to breathe.
 - Avoid generic or templated lines. Reflect the user's vision and the product's story. The script should feel written for this brand, this product, and this specific vision.${multiSceneEnforcement}
 
-${pipelineInstructions}`;
+${directorPipeline}`;
     }
 
     // Style-specific requirements appended to user prompt
@@ -524,7 +618,7 @@ Return your response as a JSON object with this exact structure. The storyboard 
       "scene": 8,
       "duration": "2s",
       "time_range": "${durationSecondsClamped - 2}-${durationSecondsClamped}s",
-      "visual_description": "Brand CTA — product hero final frame, logo visible in environment, strong closing composition",
+      "visual_description": "Product hero final frame on clean background — NO text, NO typography, strong closing composition",
       "on_screen_text": "",
       "emotion": "Trust / confidence",
       "motion_style": "Slow settle or static hero frame",
@@ -536,12 +630,12 @@ Return your response as a JSON object with this exact structure. The storyboard 
     "lighting_mood": "Lighting mood",
     "typography": "Typography",
     "motion_style": "Overall motion",
-    "brand_polish": "Brand polish (e.g. Apple/Stripe quality)"
+    "brand_polish": "Brand polish (premium category-leading quality)"
   },
-  "voiceover_script": "${voiceover ? `Full ad script in ${language === "tamil" ? "Tamil" : language === "hindi" ? "Hindi" : "English"}. MUST name ${brand_name} and ${product_name}, state one specific benefit, end with CTA. MAX ${maxVoiceoverWords} words / ${maxVoiceoverSeconds}s spoken. ${tone || "Energetic"} tone. Example shape: Hook? Brand Product — benefit. CTA.` : "N/A - Voiceover disabled"}",
+  "voiceover_script": "${voiceover ? `Full ad script in ${language === "tamil" ? "Tamil" : language === "hindi" ? "Hindi" : "English"}. MUST say brand + product together as one phrase (e.g. "${brand_name} ${product_name}"), state one specific benefit, end with CTA. MAX ${maxVoiceoverWords} words / ${maxVoiceoverSeconds}s spoken. ${tone || "Energetic"} tone. Example: Hook? ${brand_name} ${product_name} — benefit. CTA.` : "N/A - Voiceover disabled"}",
   "headline": "",
   "subtext": "",
-  "final_video_prompt": "Director-grade Veo production brief (400-900 tokens) for the full ${durationSecondsClamped}-second film. Write like a Tier-1 agency shoot call sheet condensed into one prompt. MUST include: (1) OVERALL VISION — one sentence emotional goal; (2) COLOR GRADE — specific LUT feel (e.g. warm Kodak 2383, cool teal-orange, high-key Apple white); (3) LENS & CAMERA — specific focal lengths and moves per act (e.g. 35mm dolly push-in, 100mm macro rack focus); (4) LIGHTING SETUP — key/fill/rim description, motivated sources; (5) SHOT SEQUENCE — timed beats with cut types (match cut, whip-pan, hard cut on action); (6) SOUND MOOD — music genre/tempo, foley texture; (7) PRODUCT HERO MOMENT — exact frame composition for the closing shot; (8) CONTENT SAFETY — all people fully clothed, modest mainstream brand ad (no nudity, no revealing attire, no bare chest).${isStitchedDuration ? ' IMPORTANT: Two ~' + midpointSeconds + 's clips stitched. Describe ONE consistent visual world. Midpoint = motivated professional edit cut.' : ''} CRITICAL: NO on-screen text, captions, or typography. Purely visual + voiceover."
+  "final_video_prompt": "Director-grade Veo production brief (400-900 tokens) for the full ${durationSecondsClamped}-second film. Write like a premium agency shoot call sheet condensed into one prompt. MUST include: (1) OVERALL VISION — one sentence emotional goal; (2) COLOR GRADE — specific film-grade look (e.g. warm premium print-film feel, cool high-contrast studio look, bright high-key white); (3) LENS & CAMERA — specific focal lengths and moves per act (e.g. 35mm dolly push-in, 100mm macro rack focus); (4) LIGHTING SETUP — key/fill/rim description, motivated sources; (5) SHOT SEQUENCE — timed beats with cut types (match cut, whip-pan, hard cut on action); (6) SOUND MOOD — music genre/tempo, foley texture; (7) PRODUCT HERO MOMENT — exact frame composition for the closing shot; (8) CONTENT SAFETY — all people fully clothed, modest mainstream brand ad (no nudity, no revealing attire, no bare chest).${isStitchedDuration ? ' IMPORTANT: Two ~' + midpointSeconds + 's clips stitched. Describe ONE consistent visual world. Midpoint = motivated professional edit cut.' : ''} CRITICAL: STRICT ZERO on-screen text — no captions, slogans, floating brand typography, flavor callouts, or end-card words. Brand and product names in voiceover ONLY. Purely visual product shots + spoken ad."
 }
 
 IMPORTANT — STORYBOARD VALIDATION:
@@ -597,7 +691,7 @@ CRITICAL — NO ON-SCREEN TEXT: Set headline, subtext, and every storyboard on_s
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-goog-api-key": GEMINI_API_KEY,
+          "x-goog-api-key": geminiKey,
         },
         body: requestBodyStr,
       },

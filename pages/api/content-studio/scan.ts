@@ -6,14 +6,31 @@ import { JSDOM } from "jsdom";
 import { Readability } from "@mozilla/readability";
 import { getUserIdFromRequest } from "@/auth/request";
 import { ContentStudioScanDAO } from "@/database/models/ContentStudioScan.dao";
+import { GEMINI_REST_BASE, getGeminiApiKey } from "@/lib/gemini-config";
+import { fetchWithGeminiRateLimitRetry } from "@/lib/gemini-retry";
 // Playwright is dynamically imported to avoid webpack bundling issues
 // when the package isn't installed (falls back to fetch+JSDOM)
 
-const GEMINI_API_KEY =
-  process.env.GEMINI_API_KEY ||
-  process.env.GEMINI_VEO_API_KEY ||
-  process.env.NANO_API_KEY;
-const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta";
+type RawScannedProduct = {
+  product_name: string;
+  price: string | null;
+  description: string;
+  images: string[];
+  url: string;
+  benefits?: string[];
+};
+
+type StructuredProduct = {
+  product_name: string;
+  price: string | null;
+  description: string;
+  key_benefits: string[];
+  product_images: string[];
+  target_audience: string;
+  emotional_angles: string[];
+  use_cases: string[];
+  short_benefit: string;
+};
 
 const MAX_CATEGORY_PAGES = 20;
 const MAX_PRODUCTS = 300;
@@ -61,13 +78,52 @@ function normalizeProductUrl(url: string): string {
   }
 }
 
+function mapRawProductsToStructured(rawProducts: RawScannedProduct[]): StructuredProduct[] {
+  return rawProducts
+    .filter((p) => p.product_name?.trim())
+    .map((p) => ({
+      product_name: p.product_name.trim(),
+      price: p.price,
+      description: p.description?.trim() || "",
+      key_benefits: p.benefits || [],
+      product_images: p.images || [],
+      target_audience: "",
+      emotional_angles: [] as string[],
+      use_cases: [] as string[],
+      short_benefit: (p.description || p.product_name).trim().slice(0, 80),
+    }));
+}
+
+function extractBrandHeuristic(
+  title: string,
+  metaDesc: string,
+  pageUrl: string
+): Record<string, string> {
+  let hostname = "";
+  try {
+    hostname = new URL(pageUrl).hostname.replace(/^www\./, "");
+  } catch {
+    hostname = "";
+  }
+  const brandFromTitle = title.split(/[|\-–—]/)[0]?.trim() || "";
+  return {
+    brand_name: brandFromTitle || hostname || "Unknown",
+    brand_tone: "",
+    industry: "",
+    target_audience: "",
+    primary_value_proposition: metaDesc.trim(),
+  };
+}
+
 async function callGemini(prompt: string, systemInstruction?: string): Promise<string> {
-  if (!GEMINI_API_KEY)
+  const geminiKey = getGeminiApiKey();
+  if (!geminiKey) {
     throw new Error(
       "GEMINI_API_KEY, GEMINI_VEO_API_KEY, or NANO_API_KEY not configured"
     );
-  const res = await fetch(
-    `${GEMINI_BASE}/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+  }
+  const res = await fetchWithGeminiRateLimitRetry(
+    `${GEMINI_REST_BASE}/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -861,25 +917,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(400).json({ ok: false, error: "Invalid URL format" });
   }
 
-  if (!GEMINI_API_KEY) {
-    return res.status(500).json({
-      ok: false,
-      error: "GEMINI_API_KEY, GEMINI_VEO_API_KEY, or NANO_API_KEY not configured",
-    });
-  }
-
   const baseOrigin = new URL(url).origin;
 
   let productUrls: string[] = [];
   let homepageHtml = "";
-  let rawProducts: Array<{
-    product_name: string;
-    price: string | null;
-    description: string;
-    images: string[];
-    url: string;
-    benefits?: string[];
-  }> = [];
+  let rawProducts: RawScannedProduct[] = [];
 
   try {
     // Platform API detection: fetch homepage first to detect Shopify
@@ -956,7 +998,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     dom.window.document.querySelector('meta[name="description"]')?.getAttribute("content") || "";
   const contentSnippet = (title + " " + metaDesc + " " + articleText).slice(0, 6000);
 
-  const brandPrompt = `From this website content, extract brand intelligence. Return JSON:
+  const geminiKey = getGeminiApiKey();
+  let brand: Record<string, string> = {};
+  let products: StructuredProduct[] = [];
+
+  if (geminiKey) {
+    const brandPrompt = `From this website content, extract brand intelligence. Return JSON:
 {
   "brand_name": "string",
   "brand_tone": "string - e.g. Healthy, modern, natural",
@@ -968,21 +1015,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 CONTENT:
 ${contentSnippet}`;
 
-  const brandRaw = await callGemini(brandPrompt, "Return ONLY valid JSON.");
-  let brand: Record<string, string> = {};
-  try {
-    brand = JSON.parse(brandRaw);
-  } catch {
-    brand = {
-      brand_name: "Unknown",
-      brand_tone: "",
-      industry: "",
-      target_audience: "",
-      primary_value_proposition: "",
-    };
-  }
+    const brandRaw = await callGemini(brandPrompt, "Return ONLY valid JSON.");
+    try {
+      brand = JSON.parse(brandRaw);
+    } catch {
+      brand = extractBrandHeuristic(title, metaDesc, url);
+    }
 
-  const productsPrompt = `Convert this product data into structured format. Return JSON array:
+    const productsPrompt = `Convert this product data into structured format. Return JSON array:
 [
   {
     "product_name": "string",
@@ -1001,34 +1041,27 @@ Use benefits from input when available. Skip products with no name.
 RAW PRODUCTS:
 ${JSON.stringify(rawProducts)}`;
 
-  const productsRaw = await callGemini(productsPrompt, "Return ONLY a valid JSON array.");
-  let products: Array<{
-    product_name: string;
-    price: string | null;
-    description: string;
-    key_benefits: string[];
-    product_images: string[];
-    target_audience: string;
-    emotional_angles: string[];
-    use_cases: string[];
-    short_benefit: string;
-  }> = [];
+    const productsRaw = await callGemini(productsPrompt, "Return ONLY a valid JSON array.");
+    try {
+      const parsed = JSON.parse(productsRaw);
+      products = Array.isArray(parsed) ? parsed : [parsed];
+    } catch {
+      products = mapRawProductsToStructured(rawProducts);
+    }
+  } else {
+    console.warn(
+      "[Content Studio] GEMINI_API_KEY not set — using crawl-only extraction (add GEMINI_API_KEY to .env.local for AI brand enrichment)"
+    );
+    brand = extractBrandHeuristic(title, metaDesc, url);
+    products = mapRawProductsToStructured(rawProducts);
+  }
 
-  try {
-    const parsed = JSON.parse(productsRaw);
-    products = Array.isArray(parsed) ? parsed : [parsed];
-  } catch {
-    products = rawProducts.map((p) => ({
-      product_name: p.product_name,
-      price: p.price,
-      description: p.description,
-      key_benefits: p.benefits || [],
-      product_images: p.images,
-      target_audience: "",
-      emotional_angles: [] as string[],
-      use_cases: [] as string[],
-      short_benefit: p.description.slice(0, 80) || "",
-    }));
+  if (products.length === 0) {
+    return res.status(422).json({
+      ok: false,
+      error:
+        "No products found on this website. Try a store URL with a product catalog, or add GEMINI_API_KEY for harder sites.",
+    });
   }
 
     const brandResult = {

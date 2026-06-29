@@ -13,6 +13,7 @@ import {
   productIntelligenceToPromptBlock,
 } from "@/lib/creative-studio/product-intelligence";
 import type { AdConcept, CampaignGoal, CreativeStrategy, HookType } from "@/lib/creative-studio/strategy-types";
+import { getGeminiApiKey } from "@/lib/gemini-config";
 
 export const config = {
   api: {
@@ -22,7 +23,6 @@ export const config = {
   maxDuration: 60,
 };
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GEMINI_VEO_API_KEY;
 const GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
 
 function buildFallbackConcepts(
@@ -54,10 +54,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const { getUserIdFromRequest } = await import("@/auth/request");
   const userId = await getUserIdFromRequest(req);
   if (!userId) return res.status(401).json({ ok: false, error: "Authentication required" });
-
-  if (!GEMINI_API_KEY) {
-    return res.status(500).json({ ok: false, error: "GEMINI_API_KEY is not configured" });
-  }
 
   try {
     const {
@@ -160,33 +156,40 @@ Generate exactly 5 distinct concepts with different hookTypes. Concepts 1-2 shou
     };
 
     let parsed: { strategy?: CreativeStrategy; concepts?: AdConcept[] } = {};
+    const geminiKey = getGeminiApiKey();
 
-    try {
-      const response = await fetchWithGeminiRateLimitRetry(
-        `${GEMINI_BASE_URL}/models/gemini-2.5-flash:generateContent`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-goog-api-key": GEMINI_API_KEY,
+    if (geminiKey) {
+      try {
+        const response = await fetchWithGeminiRateLimitRetry(
+          `${GEMINI_BASE_URL}/models/gemini-2.5-flash:generateContent`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-goog-api-key": geminiKey,
+            },
+            body: JSON.stringify(requestBody),
           },
-          body: JSON.stringify(requestBody),
-        },
-        { operationLabel: "creative-strategy", maxRetries: 4 }
-      );
+          { operationLabel: "creative-strategy", maxRetries: 4 }
+        );
 
-      if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(`Strategy API error ${response.status}: ${errText.slice(0, 300)}`);
+        if (!response.ok) {
+          const errText = await response.text();
+          throw new Error(`Strategy API error ${response.status}: ${errText.slice(0, 300)}`);
+        }
+
+        const json = await response.json();
+        const text =
+          json?.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text).join("") || "";
+        const cleaned = text.replace(/^```json\s*/i, "").replace(/```\s*$/i, "").trim();
+        parsed = JSON.parse(cleaned);
+      } catch (e) {
+        console.warn("Strategy LLM parse failed, using heuristic fallback:", e);
       }
-
-      const json = await response.json();
-      const text =
-        json?.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text).join("") || "";
-      const cleaned = text.replace(/^```json\s*/i, "").replace(/```\s*$/i, "").trim();
-      parsed = JSON.parse(cleaned);
-    } catch (e) {
-      console.warn("Strategy LLM parse failed, using heuristic fallback:", e);
+    } else {
+      console.warn(
+        "[creative-strategy] GEMINI_API_KEY not set — using heuristic strategy (add GEMINI_API_KEY for AI concepts)"
+      );
     }
 
     const strategy: CreativeStrategy = {

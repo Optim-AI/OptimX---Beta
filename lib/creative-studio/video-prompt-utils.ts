@@ -1,5 +1,18 @@
 /** Shared helpers for Veo video generation prompts and voiceover pacing. */
 
+import type { BrandPromptContext } from "./brand-context";
+import { buildBrandContextBlock } from "./brand-context";
+import {
+  applicationSiteDirective,
+  resolveApplicationSite,
+} from "./film-engine/application-site";
+import { anatomyLockDirective } from "./film-engine/prompt-compressor";
+import type { ReferenceImageSlots } from "./reference-labels";
+import { buildLabeledReferenceBlock } from "./reference-labels";
+import {
+  buildSpokenBrandedProductPhrase,
+  VEO_STRICT_NO_TEXT_BLOCK,
+} from "./veo-output-rules";
 import {
   buildBeatBasedStoryboardSection,
   buildCompactPipelineDigest,
@@ -19,6 +32,8 @@ export {
   AD_BEAT_SEQUENCE,
   FILM_GRAMMAR_BLOCK,
 } from "./director-pipeline";
+
+export { buildSpokenBrandedProductPhrase, VEO_STRICT_NO_TEXT_BLOCK } from "./veo-output-rules";
 
 export const VEO_SEGMENT_SECONDS = 8;
 export const SEGMENT_SECONDS = VEO_SEGMENT_SECONDS;
@@ -63,6 +78,20 @@ function joinWithinVeoTokenBudget(parts: string[], maxTokens = VEO_PROMPT_MAX_TO
   }
 
   return result;
+}
+
+/** Clamp any prompt to Veo's token limit (section-aware when double-newline blocks exist). */
+export function enforceVeoPromptBudget(
+  prompt: string,
+  maxTokens = VEO_PROMPT_MAX_TOKENS
+): string {
+  const trimmed = prompt.trim();
+  if (!trimmed || estimateVeoPromptTokens(trimmed) <= maxTokens) return trimmed;
+  const sections = trimmed.split(/\n\n+/).map((s) => s.trim()).filter(Boolean);
+  if (sections.length > 1) {
+    return joinWithinVeoTokenBudget(sections, maxTokens);
+  }
+  return truncateToTokenBudget(trimmed, maxTokens);
 }
 
 export type StoryboardScene = {
@@ -133,6 +162,11 @@ export type VeoPromptInput = {
   subtext?: string;
   keyMessage?: string;
   cta?: string;
+  brandContext?: BrandPromptContext;
+  referenceSlots?: ReferenceImageSlots;
+  filmStyleId?: string;
+  /** Voiceover / ad tone (Energetic, Calm, Premium, Fun) — Envato formula. */
+  adTone?: string;
 };
 
 /** Alias for cinematic prompt builder options */
@@ -150,18 +184,21 @@ export function normalizeVeoDuration(
   return 8;
 }
 
-/** Voiceover budget: leave ~2s at the end for music + hero frame so speech is not cut off. */
+/** Voiceover budget: leave tail silence at the end for music + hero frame so speech is not cut off. */
 export function computeVoiceoverBudget(durationSeconds: number): {
   maxSpokenSeconds: number;
   maxWords: number;
   tailSilenceSeconds: number;
 } {
   const duration = Math.max(4, Math.min(120, durationSeconds));
-  const tailSilenceSeconds = duration <= 8 ? 2 : 1.5;
-  const maxSpokenSeconds = Math.max(
-    3,
-    Math.min(Math.floor(duration - tailSilenceSeconds), duration <= 8 ? 6 : 15)
-  );
+  if (duration <= 8) {
+    const tailSilenceSeconds = 2;
+    const maxSpokenSeconds = 5;
+    const maxWords = 10;
+    return { maxSpokenSeconds, maxWords, tailSilenceSeconds };
+  }
+  const tailSilenceSeconds = 1.5;
+  const maxSpokenSeconds = Math.max(3, Math.min(Math.floor(duration - tailSilenceSeconds), 15));
   const maxWords = Math.floor(maxSpokenSeconds * 2.2);
   return { maxSpokenSeconds, maxWords, tailSilenceSeconds };
 }
@@ -207,16 +244,20 @@ This must sound like a real TV/social ad — a person SELLING the product out lo
 
 REQUIRED in voiceover_script AND each voiceover_line:
 1. HOOK (first 2s): pain, curiosity, or bold claim — stop the scroll
-2. BRAND + PRODUCT: say the brand name and product name explicitly (not "this product")
+2. BRAND + PRODUCT TOGETHER: say the full brand name AND product as one spoken phrase (e.g. "Yoga Bar protein mango shake") — never "this product", never flavor-only, never brand-only
 3. BENEFIT / WHY IT'S BEST: one specific reason to buy (ingredient, result, proof, transformation)
 4. CTA: clear action ("Shop now", "Try it today", etc.)
 
-GOOD example: "Dull mornings? Deyga Organics Vitamin C Foaming Facewash brightens skin in days. Vitamin C + gentle foam. Shop now."
-BAD (reject): "Discover premium quality." / "Transform your routine." / silent product montage with no sell.
+GOOD 8s example (~10 words): "Craving mango? Yoga Bar protein mango shake. Try it today."
+GOOD 15s+ example: "Craving mango? Yoga Bar protein mango shake — 26g protein, no added sugar. Try it today."
+BAD (reject): "Mango Rizz is amazing." / "Discover premium quality." / "Yoga Bar." without the product / silent product montage.
+For 8s clips: max 10 words spoken in ~5s — one hook, brand+product phrase, CTA. No long benefit lists.
 
 Rules:
 - Short punchy sentences. Conversational but confident.
 - Name the brand at least once. Name the product at least once.
+- Say brand + product together as one natural phrase (e.g. "Yoga Bar protein mango shake").
+- Do NOT say only the flavor, SKU, or a generic substitute without the brand.
 - Include a concrete benefit — not vague marketing fluff.
 - UGC: first person ("I love…", "This fixed…"). Commercial: third person narrator is fine.
 - Distribute lines across scenes; voiceover_script = full script joined.
@@ -241,13 +282,24 @@ function isWeakAdVoiceover(
 
   const product = productName?.trim().toLowerCase() || "";
   const brand = brandName?.trim().toLowerCase() || "";
-  const hasProduct =
-    !product ||
-    haystack.includes(product) ||
-    product.split(/\s+/).some((w) => w.length > 3 && haystack.includes(w));
-  const hasBrand = !brand || haystack.includes(brand);
+  const normalizedHaystack = haystack.replace(/[^\w\s]/g, " ");
+  const normalizedProduct = product.replace(/[^\w\s]/g, " ");
+  const normalizedBrand = brand.replace(/[^\w\s]/g, " ");
+  const brandedPhrase = buildSpokenBrandedProductPhrase(brandName, productName)
+    .toLowerCase()
+    .replace(/[^\w\s]/g, " ");
+  const hasBrandedPhrase =
+    !brand || !product || normalizedHaystack.includes(brandedPhrase);
+  const hasExactProduct = !normalizedProduct || normalizedHaystack.includes(normalizedProduct);
+  const hasExactBrand = !normalizedBrand || normalizedHaystack.includes(normalizedBrand);
+  const hasProductWords =
+    hasExactProduct ||
+    normalizedProduct
+      .split(/\s+/)
+      .filter((w) => w.length > 3)
+      .every((w) => normalizedHaystack.includes(w));
 
-  return !hasProduct || !hasBrand;
+  return !hasExactBrand || !hasProductWords || !hasBrandedPhrase;
 }
 
 /** Ensure VO includes brand, product, benefit, and CTA — required for ad-like Veo native audio. */
@@ -265,6 +317,7 @@ export function ensurePerformanceAdVoiceover(
 ): string {
   const brand = input.brandName?.trim() || "";
   const product = input.productName?.trim() || "this product";
+  const brandedProduct = buildSpokenBrandedProductPhrase(brand, product);
   const trimmed = script.trim();
 
   if (trimmed && !isWeakAdVoiceover(trimmed, brand, product)) {
@@ -279,7 +332,6 @@ export function ensurePerformanceAdVoiceover(
     input.userDescription?.replace(/\.$/, "") ||
     `real results from ${product}`;
   const cta = input.cta || input.creativeStrategy?.cta || "Shop now";
-  const brandPrefix = brand ? `${brand} ` : "";
 
   const existingHook = trimmed.split(/[.!]/)[0]?.trim() || "";
   const hook =
@@ -289,7 +341,27 @@ export function ensurePerformanceAdVoiceover(
         ? `${pain.charAt(0).toUpperCase() + pain.slice(1)}${pain.endsWith("?") ? "" : "?"}`
         : `Still dealing with ${pain.toLowerCase()}?`;
 
-  const built = `${hook} ${brandPrefix}${product} — ${benefit}. ${cta}${cta.endsWith(".") ? "" : "."}`
+  if (maxWords <= 12) {
+    const shortBenefit = benefit
+      .split(/[.!,—–-]/)[0]
+      .trim()
+      .split(/\s+/)
+      .slice(0, 3)
+      .join(" ");
+    const ctaClean = cta.replace(/\.$/, "");
+    const compactAttempts = [
+      `${hook} ${brandedProduct}. ${ctaClean}.`,
+      `${brandedProduct} — ${shortBenefit}. ${ctaClean}.`,
+      `${brandedProduct}. ${ctaClean}.`,
+    ];
+    for (const attempt of compactAttempts) {
+      const normalized = attempt.replace(/\s+/g, " ").trim();
+      if (countWords(normalized) <= maxWords) return normalized;
+    }
+    return truncateVoiceover(compactAttempts[compactAttempts.length - 1], maxWords);
+  }
+
+  const built = `${hook} ${brandedProduct} — ${benefit}. ${cta}${cta.endsWith(".") ? "" : "."}`
     .replace(/\s+/g, " ")
     .trim();
   const words = built.split(/\s+/).filter(Boolean);
@@ -395,7 +467,7 @@ export const VIDEO_STYLE_DIRECTOR_SPECS: Record<string, StyleDirectorSpec> = {
     lighting: "Hard key light, strong rim, high contrast, bold shadows — never flat or ambient",
     pacing: "Fast cuts every 1–2s. Zero dead air. Hook in frame 1.",
     lensFeel: "35mm wide for impact shots, 85mm macro for product detail",
-    references: "TikTok performance ads, DTC scroll-stoppers, high-CTR social commerce",
+    references: "high-energy short-form commerce ads, direct-response social, scroll-stopping product promos",
   },
   Commercial: {
     role: "Premium brand film director — broadcast-quality paid media",
@@ -404,7 +476,7 @@ export const VIDEO_STYLE_DIRECTOR_SPECS: Record<string, StyleDirectorSpec> = {
     lighting: "Three-point studio lighting, soft highlights, controlled specular on product, clean whites",
     pacing: "Confident rhythm: hook → demo → payoff → brand lock. Motivated cuts on beats.",
     lensFeel: "50mm natural perspective for lifestyle, 100mm macro for product texture, shallow T1.8 DOF",
-    references: "Apple product films, Nike brand spots, premium DTC broadcast ads",
+    references: "premium minimalist product films, kinetic brand spots, polished broadcast-style commerce ads",
   },
   "UGC Style": {
     role: "Native social creator director — authentic, not polished",
@@ -413,7 +485,7 @@ export const VIDEO_STYLE_DIRECTOR_SPECS: Record<string, StyleDirectorSpec> = {
     lighting: "Natural window light or room light — never studio-polished",
     pacing: "Conversational rhythm with jump-cut energy. Feels unscripted.",
     lensFeel: "Phone camera wide (~24mm equivalent), eye-level, arm's length",
-    references: "TikTok creator reviews, authentic Reels testimonials",
+    references: "authentic short-form creator reviews, natural handheld testimonials",
   },
   "Product Close-up": {
     role: "Product cinematographer — texture, detail, craft",
@@ -422,7 +494,7 @@ export const VIDEO_STYLE_DIRECTOR_SPECS: Record<string, StyleDirectorSpec> = {
     lighting: "Soft box key, gradient backdrop, controlled reflections, highlight roll-off on edges",
     pacing: "Deliberate, luxurious. Let each detail breathe 1–2s before cut.",
     lensFeel: "100mm macro, T2.8 shallow DOF, creamy bokeh background",
-    references: "Luxury watch/jewelry commercials, Apple product macro films",
+    references: "luxury macro product films, premium detail-driven commercials",
   },
   Lifestyle: {
     role: "Lifestyle film director — human stories around the product",
@@ -431,7 +503,7 @@ export const VIDEO_STYLE_DIRECTOR_SPECS: Record<string, StyleDirectorSpec> = {
     lighting: "Natural golden hour or soft window light, warm color temperature (~4800K)",
     pacing: "Flowing narrative arc. Emotional build to product moment.",
     lensFeel: "35mm documentary feel, natural depth, gentle movement",
-    references: "Aspirational lifestyle brand films, Patagonia-style human stories",
+    references: "aspirational lifestyle brand films, warm human-centered storytelling",
   },
   Cinematic: {
     role: "Cinematic film director — narrative-driven visual poetry",
@@ -440,7 +512,7 @@ export const VIDEO_STYLE_DIRECTOR_SPECS: Record<string, StyleDirectorSpec> = {
     lighting: "Motivated cinematic lighting, volumetric rays, chiaroscuro contrast, color-motivated gels",
     pacing: "Deliberate build with emotional crescendo. Cuts serve story beats.",
     lensFeel: "Anamorphic 2.39:1 feel, 35mm/50mm spherical, lens flare on highlights",
-    references: "Tier-1 brand films, Ridley Scott aesthetic, high-end automotive spots",
+    references: "cinematic premium brand films, dramatic narrative lighting, high-end automotive-style visuals",
   },
   Luxury: {
     role: "Luxury brand director — exclusivity, refinement, desire",
@@ -449,7 +521,7 @@ export const VIDEO_STYLE_DIRECTOR_SPECS: Record<string, StyleDirectorSpec> = {
     lighting: "Low-key elegant lighting, warm gold accents, deep shadows, silk-smooth gradients",
     pacing: "Slow, deliberate. Minimum 2s per shot. Never rushed.",
     lensFeel: "85mm portrait compression, T1.4 ultra-shallow DOF, creamy falloff",
-    references: "Chanel, Rolex, high-fashion brand films",
+    references: "high-fashion luxury brand films, understated prestige visuals",
   },
   Minimalist: {
     role: "Minimal design director — restraint as power",
@@ -458,7 +530,7 @@ export const VIDEO_STYLE_DIRECTOR_SPECS: Record<string, StyleDirectorSpec> = {
     lighting: "High-key soft light, white/neutral backgrounds, single soft shadow",
     pacing: "Calm, measured. Long holds. Breathing room between beats.",
     lensFeel: "50mm straight-on, deep focus, clinical precision",
-    references: "Muji, Apple minimal product films, Scandinavian design ads",
+    references: "minimal design-led product films, Scandinavian-style clean composition",
   },
   "Bold & Energetic": {
     role: "High-energy sports/ad director — maximum visual impact",
@@ -467,7 +539,7 @@ export const VIDEO_STYLE_DIRECTOR_SPECS: Record<string, StyleDirectorSpec> = {
     lighting: "Saturated colors, bold gel accents, high energy contrast",
     pacing: "Sub-1.5s cuts. Relentless forward momentum. Beat-synced editing.",
     lensFeel: "24mm wide for impact, fast shutter for crisp motion",
-    references: "Red Bull, energy drink spots, festival/event promos",
+    references: "high-energy drink spots, festival-style motion, adrenaline-led promos",
   },
   "2D Animation": {
     role: "Animation director — illustrated brand storytelling",
@@ -476,7 +548,7 @@ export const VIDEO_STYLE_DIRECTOR_SPECS: Record<string, StyleDirectorSpec> = {
     lighting: "Illustrated light/shadow, gradient backgrounds, stylized highlights",
     pacing: "Snappy animated beats. Squash-and-stretch on transitions.",
     lensFeel: "N/A — flat/2.5D illustrated perspective",
-    references: "Premium motion design reels, animated explainer spots",
+    references: "premium motion design reels, polished animated explainer spots",
   },
   "Motion Graphics": {
     role: "Motion design director — design-forward kinetic visuals",
@@ -485,7 +557,7 @@ export const VIDEO_STYLE_DIRECTOR_SPECS: Record<string, StyleDirectorSpec> = {
     lighting: "Neon accents, gradient backgrounds, glow effects",
     pacing: "Rhythmic, design-synced. Every transition is intentional.",
     lensFeel: "N/A — graphic/3D camera space",
-    references: "Tech brand launch videos, SaaS product motion reels",
+    references: "modern tech launch videos, design-forward product motion reels",
   },
   Retro: {
     role: "Vintage film director — nostalgic analog warmth",
@@ -494,7 +566,7 @@ export const VIDEO_STYLE_DIRECTOR_SPECS: Record<string, StyleDirectorSpec> = {
     lighting: "Warm tungsten, soft halation, lifted blacks, faded highlights",
     pacing: "Relaxed vintage rhythm. Longer holds with grain texture.",
     lensFeel: "Vintage 50mm soft focus, slight vignette, chromatic aberration",
-    references: "80s/90s commercial aesthetic, analog film nostalgia ads",
+    references: "retro broadcast-commercial aesthetic, analog film nostalgia",
   },
   "Stop Motion": {
     role: "Stop-motion animation director — tactile craft",
@@ -503,7 +575,7 @@ export const VIDEO_STYLE_DIRECTOR_SPECS: Record<string, StyleDirectorSpec> = {
     lighting: "Even studio lighting, soft shadows, craft-table aesthetic",
     pacing: "Playful stop-motion rhythm. Satisfying object transitions.",
     lensFeel: "50mm tabletop macro perspective",
-    references: "Premium stop-motion product ads, handcrafted brand films",
+    references: "premium stop-motion product ads, handcrafted tactile brand films",
   },
   "3D Animation": {
     role: "CGI director — photoreal or stylized 3D product world",
@@ -512,7 +584,7 @@ export const VIDEO_STYLE_DIRECTOR_SPECS: Record<string, StyleDirectorSpec> = {
     lighting: "HDRI studio lighting, caustics, realistic material shaders",
     pacing: "Cinematic CGI reveal sequence with build-up.",
     lensFeel: "Virtual 35mm with depth of field pass",
-    references: "Premium 3D product renders, tech launch CGI films",
+    references: "premium 3D product renders, polished CGI launch films",
   },
 };
 
@@ -523,7 +595,7 @@ const DEFAULT_STYLE_SPEC: StyleDirectorSpec = {
   lighting: "Controlled three-point or motivated natural light, consistent color grade",
   pacing: "Clear narrative arc: hook → product → payoff → brand lock-in",
   lensFeel: "35mm/50mm cinematic perspective, shallow DOF on product hero moments",
-  references: "Tier-1 agency brand films, premium DTC commercials",
+  references: "premium agency-grade brand films, polished direct-to-consumer commercials",
 };
 
 export function getStyleDirectorSpec(style?: string): StyleDirectorSpec {
@@ -662,8 +734,12 @@ OBJECT STATE TRACKING:
 
 Every product must maintain logical state. Never jump between states.
 
-Bottle:
+Bottle (pour):
 Closed → Opened → Pouring → Empty
+
+RTD protein shake bottle (screw cap):
+Cap on → Cap unscrewed → Cap removed → At lips → Sipping
+(Never sip while cap is still on the neck.)
 
 Food Packet:
 Sealed → Torn Open → Open → Pouring
@@ -694,6 +770,8 @@ If not, regenerate the action.
 
 Reject:
 • Liquids leaving closed bottles
+• Drinking or sipping from a bottle while the screw cap is still on
+• Mouth on bottle neck before cap is visibly removed
 • Food exiting unopened packages
 • Floating products
 • Teleporting objects
@@ -731,6 +809,20 @@ const PRODUCT_INTERACTION_PROFILES: ProductInteractionProfile[] = [
       "Apply to beard/skin",
     ],
     match: /beard oil|face oil|hair oil|serum|dropper|essential oil/i,
+  },
+  {
+    id: "protein_shake_rtd",
+    label: "Ready-to-drink protein shake (screw-cap bottle)",
+    states: ["Cap on", "Cap unscrewed", "Cap removed", "At lips", "Sipping"],
+    sequence: [
+      "Hand picks up sealed bottle",
+      "Unscrew and remove cap completely",
+      "Open neck visible — cap off bottle",
+      "Raise open bottle to lips",
+      "Take a visible sip",
+    ],
+    match:
+      /protein\s*shake|ready[\s-]?to[\s-]?drink|\brtd\b|\b(protein|vitamin)\s+(shake|drink)\b|\bshake\s+bottle/i,
   },
   {
     id: "bottle_liquid",
@@ -884,10 +976,15 @@ Example — instant noodles:
   Object: noodle packet | State: Sealed | Action: noodles in bowl | Can noodles leave? NO (packet sealed)
   Required: hold packet → tear open → opening visible → pour noodles → add water → stir → serve.
 
+Example — protein shake bottle:
+  Object: shake bottle | State: Cap on | Action: sip from bottle | Can she drink? NO (cap still on)
+  Required: pick up → unscrew cap → remove cap → open neck visible → raise to lips → sip.
+
 ${sceneChecklist.length ? `Per-scene validation checklist:\n${sceneChecklist.join("\n")}` : "No storyboard scenes — still enforce full mechanical sequences for any product use shown."}
 
 REJECT and revise any visual that shows:
 - Liquids leaving closed containers
+- Drinking through a sealed screw cap
 - Food/powder exiting unopened packages
 - Contents with no visible source
 - Skipped steps (cap removal, seal tear, pump press, lid open)
@@ -1039,7 +1136,9 @@ EDITING GRAMMAR (professional ad cut):
 - Forbidden: morphing transitions, random teleports, flicker, object geometry shifts, label changes.
 
 NEGATIVE CONSTRAINTS:
-- No on-screen text, captions, subtitles, watermarks, or UI overlays.
+- STRICT ZERO-TEXT: no captions, titles, subtitles, slogans, flavor callouts, brand typography overlays, floating logos, end-card words, or any readable lettering in the frame.
+- Product pack may show only its intrinsic factory label from the reference — never duplicate branding elsewhere in the scene.
+- Brand and product names are VOICEOVER ONLY — never rendered as on-screen text.
 - No extra limbs, warped faces, melting objects, plastic skin, AI halos, or texture crawling.
 - No voiceover cut off mid-word. No abrupt ending before script completes.
 - No impossible physics: liquids from closed containers, food from sealed packets, teleporting objects, or magical product appearance.
@@ -1060,7 +1159,8 @@ CONTENT SAFETY (MANDATORY — mainstream TV brand advertisement standard):
 - NO nudity, partial nudity, topless, bare chest, exposed breasts, nipples, areola, lingerie, underwear-only, see-through or sheer clothing, or revealing swimwear.
 - Modest necklines only — no cleavage focus. No intimate body areas in frame.
 - NO shower, bath, spa, or towel-drop scenes with exposed skin. NO bedroom intimacy vibes.
-- For skincare, body lotion, soap, beauty, and personal-care products: show product applied to HANDS, FOREARMS, or LOWER LEGS only — NEVER on chest, torso, back, or intimate areas.
+- Apply each product to its CORRECT site: FACE products (serum, facewash, cleanser, face cream, moisturizer, vitamin C, sunscreen, eye cream) on the FACE (cheeks, forehead, jawline, under-eye); HAIR products on hair/scalp; HAND products on hands; BEARD oil on the beard/jawline; BODY lotion on FOREARMS or LOWER LEGS only. NEVER rub a face product on the arm/elbow/leg.
+- Regardless of site: model stays fully clothed; NEVER show application on chest, torso, back, or intimate areas.
 - Model wears modest everyday clothing (full shirt, closed robe, athletic wear). Think Dove/Nivea/Olay TV commercials — professional, modest, family-friendly, safe for work.
 - DO NOT DEPICT: ${VEO_NEGATIVE_SAFETY_PROMPT}.
 `.trim();
@@ -1072,7 +1172,8 @@ CONTENT SAFETY (MANDATORY — every visual_description and final_video_prompt MU
 - People are allowed, but MUST be fully clothed in every scene. NO nudity or partial nudity.
 - NO bare chest, exposed breasts, nipples, lingerie, underwear-only, see-through clothing, or revealing swimwear.
 - NO shower/bath/spa scenes with exposed skin. NO suggestive poses or intimate framing.
-- For body lotion, skincare, soap, beauty, and personal-care products: application shots on HANDS, FOREARMS, or LOWER LEGS only — model wears a modest fully closed top. NEVER bare-torso or chest application.
+- Apply each product to its CORRECT site: FACE products (serum, facewash, cleanser, face cream, moisturizer, vitamin C, sunscreen, eye cream) on the FACE; HAIR products on hair/scalp; HAND products on hands; beard oil on the beard; BODY lotion on forearms/lower legs only. NEVER apply a face product to the arm, elbow, or leg.
+- Model wears a modest fully closed top in every shot. NEVER bare-torso or chest application.
 - Safe alternatives: product bottle hero, cream texture on palm, smiling face portrait, lifestyle in casual modest outfit.
 - If the user vision implies revealing content, reinterpret it as a modest mainstream brand commercial.`;
 
@@ -1102,9 +1203,10 @@ export function buildBodyProductSafetyBlock(
   return `
 
 BODY & SKINCARE PRODUCT RULES (this product category):
-- Show lotion/cream applied to hands, forearms, or lower legs ONLY — never chest, torso, back, or intimate areas.
+- APPLY TO THE CORRECT SITE: face products (serum, facewash, cleanser, face cream, moisturizer, vitamin C, sunscreen, eye cream) go on the FACE — cheeks, forehead, jawline, under-eye. Hair products on hair/scalp. Hand products on hands. Beard oil on the beard. ONLY body lotions/butters go on forearms or lower legs. NEVER rub a face product on the arm, elbow, or leg.
+- Anatomy must be correct: exactly one person, two arms, two hands, five fingers each — no extra or duplicated limbs, no warped hands, no morphing bodies (especially across cuts/transitions).
 - Model wears a fully closed modest top (t-shirt, sweater, robe tied shut). Neckline must not reveal cleavage.
-- Preferred shots: product bottle hero, cream texture on palm, face close-up with modest clothing visible, casual lifestyle in everyday outfit.
+- Preferred shots: product bottle hero, texture on fingertips/palm, application on the correct site, smiling face close-up, casual lifestyle in everyday outfit.
 - FORBIDDEN: post-shower bare shoulders, towel scenes, spa robes open at chest, body-wide application on exposed skin.`;
 }
 
@@ -1115,7 +1217,8 @@ export function buildReferenceImagesBlock(hasReferenceImages: boolean): string {
   return `REFERENCE IMAGES (CRITICAL — source of truth):
 The attached reference images show the EXACT product and/or logo. Depict with pixel-level fidelity:
 same shape, colors, packaging, label text, proportions, and branding. Do NOT redesign, reimagine, or alter the product.
-The product must be recognizable in every shot where it appears.`;
+The product must be recognizable in every shot where it appears.
+${VEO_STRICT_NO_TEXT_BLOCK}`;
 }
 
 function buildSegmentContext(input: VeoPromptInput): string {
@@ -1347,10 +1450,16 @@ function buildCompactSafetyForVeo(
   userDescription?: string
 ): string {
   let block =
-    "Safety: fully clothed talent, modest family-friendly TV commercial, no nudity or revealing attire. Photorealistic. No watermarks or burned-in text.";
-  if (isBodyOrBeautyProduct(category, productName, userDescription)) {
-    block += " Skincare on face/hands only; model wears modest closed top.";
+    `Safety: fully clothed talent, modest family-friendly TV commercial, no nudity or revealing attire. Photorealistic. ${VEO_STRICT_NO_TEXT_BLOCK}`;
+  const appSpec = resolveApplicationSite(productName, category, userDescription);
+  if (appSpec.site !== "none") {
+    block += ` ${applicationSiteDirective(appSpec)}`;
+    if (isBodyOrBeautyProduct(category, productName, userDescription)) {
+      block += " Model wears a modest closed top.";
+    }
   }
+  // Anatomy lock — prevents extra/duplicate limbs and morphing, worst at cuts.
+  block += ` ${anatomyLockDirective()}`;
   return block;
 }
 
@@ -1372,6 +1481,7 @@ function buildSpokenAdCopyBlock(
   const finishBy = Math.max(1, input.clipDurationSeconds - budget.tailSilenceSeconds);
   const brand = input.brandName?.trim() || "";
   const product = input.productName?.trim() || "the product";
+  const brandedProduct = buildSpokenBrandedProductPhrase(brand, product);
   const cta = input.cta || input.creativeStrategy?.cta || "Shop now";
   const benefit =
     input.keyMessage ||
@@ -1386,7 +1496,7 @@ A narrator or on-camera talent MUST speak the sell out loud. Generate audible di
 Say EXACTLY word-for-word:
 "${adScript}"
 
-Ad structure in speech: Hook → ${brand ? `${brand} ` : ""}${product} → why it's best (${benefit}) → CTA ("${cta}").
+Ad structure in speech: Hook → say "${brandedProduct}" (brand + product together) → why it's best (${benefit}) → CTA ("${cta}").
 Delivery: confident commercial VO or talent speaking to camera — clear, natural, not whispered.
 If talent is on camera: lip-sync the lines; react while speaking.
 Audio mix: voice forward; music ducked under speech. All words finish by ${finishBy}s.
@@ -1413,8 +1523,13 @@ function buildCompactProductPhysicsLine(
   input: Pick<VeoPromptInput, "category" | "productName" | "userDescription">
 ): string {
   const profile = detectProductInteractionProfile(input);
-  const steps = profile.sequence.slice(0, 4).join(" → ");
-  return `Product physics (${profile.label}): ${steps}. No skipping mechanical steps.`;
+  const steps = profile.sequence.slice(0, 5).join(" → ");
+  let line = `Product physics (${profile.label}): ${steps}. No skipping mechanical steps.`;
+  if (profile.id === "protein_shake_rtd") {
+    line +=
+      " CRITICAL: unscrew and remove cap before any sip — never drink with cap on the bottle neck.";
+  }
+  return line;
 }
 
 /**
@@ -1472,8 +1587,21 @@ function buildVeoCompactPrompt(input: VeoPromptInput): string {
 
   const sections: string[] = [];
 
+  sections.push(VEO_STRICT_NO_TEXT_BLOCK);
+
   if (hasVoiceover) {
     sections.push(buildSpokenAdCopyBlock(adCopyInput, trimmedVoiceover));
+  }
+
+  const brandBlock = buildBrandContextBlock(input.brandContext, brandName);
+  if (brandBlock) sections.push(brandBlock);
+
+  if (input.referenceSlots) {
+    const refBlock = buildLabeledReferenceBlock(input.referenceSlots);
+    if (refBlock) sections.push(refBlock);
+  } else if (hasReferenceImages) {
+    const refLegacy = getReferenceImageInstruction(true, productName);
+    if (refLegacy) sections.push(refLegacy);
   }
 
   if (creativeTreatment.length > 40) {
@@ -1501,8 +1629,12 @@ function buildVeoCompactPrompt(input: VeoPromptInput): string {
     `FRAME: ${clipDurationSeconds}s clip (${totalLabel}s ad). ${aspectRatio}. ${getCompositionGuidance(aspectRatio)}`
   );
 
-  const refInstruction = getReferenceImageInstruction(hasReferenceImages, productName);
-  if (refInstruction) sections.push(refInstruction);
+  if (input.referenceSlots) {
+    // Labeled refs already injected above.
+  } else {
+    const refInstruction = getReferenceImageInstruction(hasReferenceImages, productName);
+    if (refInstruction) sections.push(refInstruction);
+  }
 
   if (scopedStoryboard?.length) {
     const mode = creativeStrategy ? "performance" : "cinematic";

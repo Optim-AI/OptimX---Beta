@@ -1535,10 +1535,9 @@ export default function ContentStudioPage() {
                 <div className="w-full max-w-6xl mt-6 flex items-center gap-1 pb-2" style={{ borderBottom: `1px solid ${colors.border}` }}>
                   <div className="flex items-center gap-1 overflow-x-auto flex-1 min-w-0">
                     {sessions.map((s) => (
-                      <button
+                      <div
                         key={s.id}
-                        onClick={() => setActiveSessionId(s.id)}
-                        className="flex items-center gap-2 px-4 py-2.5 rounded-t-lg text-sm font-medium shrink-0 transition-colors"
+                        className="flex items-center gap-1 px-1 rounded-t-lg text-sm font-medium shrink-0 transition-colors"
                         style={{
                           background: activeSessionId === s.id ? colors.card : "transparent",
                           color: activeSessionId === s.id ? colors.foreground : colors.mutedForeground,
@@ -1546,15 +1545,23 @@ export default function ContentStudioPage() {
                           borderBottom: activeSessionId === s.id ? `1px solid ${colors.card}` : "none",
                         }}
                       >
-                        <span className="truncate max-w-[140px]">{s.product.product_name}</span>
                         <button
-                          onClick={(e) => { e.stopPropagation(); closeSession(s.id); }}
+                          type="button"
+                          onClick={() => setActiveSessionId(s.id)}
+                          className="flex items-center gap-2 px-3 py-2 rounded-md hover:opacity-90"
+                        >
+                          <span className="truncate max-w-[140px]">{s.product.product_name}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => closeSession(s.id)}
+                          aria-label={`Close ${s.product.product_name}`}
                           className="p-0.5 rounded hover:bg-black/10"
                           style={{ color: colors.mutedForeground }}
                         >
                           <X className="w-3.5 h-3.5" />
                         </button>
-                      </button>
+                      </div>
                     ))}
                   </div>
 

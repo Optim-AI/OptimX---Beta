@@ -12,18 +12,27 @@ import { getFfmpegExecutable } from "@/lib/creative-studio/ffmpeg-server";
 import { resolveVideoDeliveryUrl } from "@/lib/creative-studio/video-delivery";
 import {
   fetchWithGeminiRateLimitRetry,
+  isGeminiQuotaExhaustedError,
   isGeminiRateLimitError,
   withRetryOnGeminiRateLimit,
 } from "@/lib/gemini-retry";
 import {
-  buildVeoVideoPrompt,
   buildVeoGenerateSafetyConfig,
   computeVoiceoverBudget,
   normalizeVeoDuration,
   SEGMENT_SECONDS,
   splitVoiceoverForStitch,
   truncateVoiceover,
+  estimateVeoPromptTokens,
+  VEO_PROMPT_MAX_TOKENS,
 } from "@/lib/creative-studio/video-prompt-utils";
+import {
+  assertPromptWithinBudget,
+  resolveRequestFromApiBody,
+  resolveVeoPrompt,
+} from "@/lib/creative-studio/resolve-veo-prompt";
+import { referenceSlotsFromRequest } from "@/lib/creative-studio/reference-labels";
+import { getVeoApiKey, VEO_API_KEY_SETUP_MESSAGE } from "@/lib/gemini-config";
 
 export const config = {
   api: {
@@ -35,7 +44,6 @@ export const config = {
   maxDuration: 300, // Requires Vercel Pro (up to 300s). Hobby plan max is 60s — 16s videos may timeout.
 };
 
-const GEMINI_VEO_API_KEY = process.env.GEMINI_VEO_API_KEY;
 const MODEL = "veo-3.1-fast-generate-preview";
 const MAX_REFERENCE_IMAGES = 3;
 
@@ -219,9 +227,10 @@ async function generateClipDataUrl(params: {
     return `data:video/mp4;base64,${generatedVideo.video.videoBytes}`;
   }
   if (generatedVideo.video.uri) {
+    const veoApiKey = getVeoApiKey();
     const videoResponse = await fetchWithGeminiRateLimitRetry(
       generatedVideo.video.uri,
-      { headers: { "x-goog-api-key": GEMINI_VEO_API_KEY! } },
+      { headers: { "x-goog-api-key": veoApiKey! } },
       { maxRetries: 6, operationLabel: "veo-download-video" }
     );
     if (!videoResponse.ok) throw new Error("Failed to download generated video");
@@ -235,8 +244,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (req.method !== "POST") {
     return res.status(405).json({ ok: false, error: "Method not allowed" });
   }
-  if (!GEMINI_VEO_API_KEY) {
-    return res.status(500).json({ ok: false, error: "GEMINI_VEO_API_KEY is not configured" });
+  const veoApiKey = getVeoApiKey();
+  if (!veoApiKey) {
+    return res.status(503).json({
+      ok: false,
+      error: VEO_API_KEY_SETUP_MESSAGE,
+      code: "VEO_API_KEY_MISSING",
+    });
   }
   try {
     getFfmpegExecutable();
@@ -245,7 +259,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    const ai = new GoogleGenAI({ apiKey: GEMINI_VEO_API_KEY });
+    const ai = new GoogleGenAI({ apiKey: veoApiKey });
     const {
       prompt,
       product_name,
@@ -334,31 +348,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       voiceoverPart1 = truncateVoiceover(trimmedFullVoiceover, perClipBudget.maxWords);
     }
 
-    const clip1Prompt = buildVeoVideoPrompt({
-      brandName: brand_name,
-      productName: product_name,
-      category,
-      userDescription: user_description,
-      creativeFormat: creative_format || style,
-      hookType: hook_type,
-      campaignGoal: campaign_goal,
-      creativeStrategy: creative_strategy,
-      style: creative_format || style,
-      clipDurationSeconds: segmentDuration,
-      totalDurationSeconds: requestedDuration,
-      aspectRatio: videoAspectRatio,
-      segmentIndex: segments === 2 ? 0 : undefined,
-      segmentCount: segments === 2 ? 2 : undefined,
-      finalVideoPrompt: final_video_prompt,
-      fallbackPrompt: prompt,
-      voiceoverScript: voiceoverPart1,
-      storyboard: storyboardScenes,
-      hasReferenceImages: baseReferenceImages.length > 0,
-      headline,
-      subtext,
-      keyMessage: key_message,
-      cta,
-    });
+    const clip1Resolved = resolveVeoPrompt(
+      resolveRequestFromApiBody(req.body, {
+        clipDurationSeconds: segmentDuration,
+        totalDurationSeconds: requestedDuration,
+        aspectRatio: videoAspectRatio,
+        hasReferenceImages: baseReferenceImages.length > 0,
+        voiceoverScript: voiceoverPart1,
+        segmentIndex: segments === 2 ? 0 : undefined,
+        segmentCount: segments === 2 ? 2 : undefined,
+      })
+    );
+    const clip1Prompt = assertPromptWithinBudget(clip1Resolved.prompt);
+    console.log(`📝 Clip 1 prompt (${clip1Resolved.source}, ~${estimateVeoPromptTokens(clip1Prompt)} tokens)`);
 
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "optimx-video-"));
     const clip1Path = path.join(tmpDir, "clip1.mp4");
@@ -397,31 +399,29 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         clip2ReferenceImages.push(continuityAsset);
       }
 
-      const clip2Prompt = buildVeoVideoPrompt({
-        brandName: brand_name,
-        productName: product_name,
-        category,
-        userDescription: user_description,
-        creativeFormat: creative_format || style,
-        hookType: hook_type,
-        campaignGoal: campaign_goal,
-        creativeStrategy: creative_strategy,
-        style: creative_format || style,
-        clipDurationSeconds: segmentDuration,
-        totalDurationSeconds: requestedDuration,
-        aspectRatio: videoAspectRatio,
-        segmentIndex: 1,
-        segmentCount: 2,
-        finalVideoPrompt: final_video_prompt,
-        fallbackPrompt: prompt,
-        voiceoverScript: voiceoverPart2,
-        storyboard: storyboardScenes,
-        hasReferenceImages: clip2ReferenceImages.length > 0,
-        headline,
-        subtext,
-        keyMessage: key_message,
-        cta,
+      const clip2RefSlots = referenceSlotsFromRequest({
+        hero_image,
+        brand_logo,
+        product_images,
+        segment_has_continuity_frame: true,
+        product_name,
+        brand_name,
       });
+
+      const clip2Resolved = resolveVeoPrompt(
+        resolveRequestFromApiBody(req.body, {
+          clipDurationSeconds: segmentDuration,
+          totalDurationSeconds: requestedDuration,
+          aspectRatio: videoAspectRatio,
+          hasReferenceImages: clip2ReferenceImages.length > 0,
+          voiceoverScript: voiceoverPart2,
+          segmentIndex: 1,
+          segmentCount: 2,
+          referenceSlots: clip2RefSlots,
+        })
+      );
+      const clip2Prompt = assertPromptWithinBudget(clip2Resolved.prompt);
+      console.log(`📝 Clip 2 prompt (${clip2Resolved.source}, ~${estimateVeoPromptTokens(clip2Prompt)} tokens, continuity frame attached)`);
 
       const clip2DataUrl = await generateClipDataUrl({
         ai,
@@ -524,12 +524,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   } catch (error: any) {
     const errorMessage = error?.message || String(error);
 
+    if (isGeminiQuotaExhaustedError(error)) {
+      return res.status(429).json({
+        ok: false,
+        error:
+          "Google Veo API quota exhausted for this API key. Enable billing or raise your quota at https://ai.google.dev/gemini-api/docs/rate-limits, then try again.",
+        details: errorMessage,
+        quotaExhausted: true,
+      });
+    }
+
     const looksLikeRateLimit =
       /\brate limit\b|rate-limit|too many requests|requests per|RESOURCE_EXHAUSTED/i.test(errorMessage);
     if (isGeminiRateLimitError(error) || errorMessage.includes("quota") || looksLikeRateLimit) {
       return res.status(429).json({
         ok: false,
-        error: "API rate limit reached. Please wait a moment and try again.",
+        error: "Veo rate limit hit. Please wait a minute and try again.",
         details: errorMessage,
       });
     }

@@ -138,6 +138,14 @@ const PRODUCT_SHOT_TEMPLATES: Record<string, string[]> = {
     "Taste reaction",
     "Pack hero shot",
   ],
+  protein_shake_rtd: [
+    "Craving / post-workout hook",
+    "Pick up sealed bottle",
+    "Unscrew and remove cap",
+    "Open bottle to lips",
+    "Visible sip + satisfaction",
+    "Hero bottle shot",
+  ],
   bottle_liquid: [
     "Problem moment",
     "Reach for bottle",
@@ -183,6 +191,8 @@ function detectShotTemplateKey(
   if (/\b(facewash|face wash|cleanser|foaming)\b/i.test(haystack)) return "pump_dispenser";
   if (/\b(noodle|packet|snack|chips)\b/i.test(haystack) || /\binstant\s+(food|meal|noodle|ramen|snack)/i.test(haystack))
     return "instant_food";
+  if (/protein\s*shake|ready[\s-]?to[\s-]?drink|\b(protein|vitamin)\s+(shake|drink)\b/i.test(haystack))
+    return "protein_shake_rtd";
   if (/coffee|protein powder|jar|canister/i.test(haystack)) return "coffee_jar";
   if (/pump|soap|sanitizer|dispenser|facewash/i.test(haystack)) return "pump_dispenser";
   if (/bottle|shampoo|lotion|juice/i.test(haystack)) return "bottle_liquid";
