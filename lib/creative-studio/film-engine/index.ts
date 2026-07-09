@@ -100,7 +100,9 @@ export function runFilmEngineVariants(
     const result = runFilmEngine({ ...input, filmStyleId }, renderer);
     const style = getFilmStyleById(filmStyleId);
     let prompt = result.segments[0]?.prompt ?? "";
-    const brandBlock = buildBrandContextBlock(input.brandContext, input.brandName);
+    const brandBlock = buildBrandContextBlock(input.brandContext, input.brandName, {
+      videoGeneration: true,
+    });
     if (brandBlock) prompt = `${brandBlock}\n${prompt}`;
     return {
       filmStyleId,

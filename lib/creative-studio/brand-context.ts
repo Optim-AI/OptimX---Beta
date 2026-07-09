@@ -44,13 +44,24 @@ export function brandContextFromBody(body: Record<string, unknown>): BrandPrompt
 }
 
 /** Compact brand block for Veo prompts (front-loaded after ad copy). */
-export function buildBrandContextBlock(ctx?: BrandPromptContext, brandName?: string): string {
+export function buildBrandContextBlock(
+  ctx?: BrandPromptContext,
+  brandName?: string,
+  opts?: { videoGeneration?: boolean }
+): string {
   if (!ctx) return "";
+  const forVideo = opts?.videoGeneration === true;
 
   const parts: string[] = [];
   if (brandName?.trim()) parts.push(`Brand: ${brandName.trim()}.`);
   if (ctx.websiteUrl?.trim()) parts.push(`Brand site: ${ctx.websiteUrl.trim()}.`);
-  if (ctx.tagline?.trim()) parts.push(`Tagline: "${ctx.tagline.trim()}".`);
+  if (ctx.tagline?.trim()) {
+    parts.push(
+      forVideo
+        ? `Brand tagline (voiceover only — never on-screen text): ${ctx.tagline.trim()}.`
+        : `Tagline: "${ctx.tagline.trim()}".`
+    );
+  }
   if (ctx.brandVoice?.trim()) parts.push(`Brand voice: ${ctx.brandVoice.trim()}.`);
   if (ctx.tone?.trim()) parts.push(`Tone: ${ctx.tone.trim()}.`);
 
@@ -68,8 +79,13 @@ export function buildBrandContextBlock(ctx?: BrandPromptContext, brandName?: str
       v.lighting_mood ? `lighting: ${v.lighting_mood}` : "",
       v.motion_style ? `motion: ${v.motion_style}` : "",
       v.brand_polish ? `polish: ${v.brand_polish}` : "",
+      !forVideo && v.typography ? `typography: ${v.typography}` : "",
     ].filter(Boolean);
     if (styleBits.length) parts.push(`Visual style: ${styleBits.join("; ")}.`);
+  }
+
+  if (forVideo) {
+    parts.push("ZERO on-screen text — brand identity via product pack and voiceover only.");
   }
 
   return parts.join(" ");

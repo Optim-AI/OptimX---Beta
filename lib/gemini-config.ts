@@ -8,6 +8,13 @@ export function getGeminiApiKey(): string | undefined {
   return trimmed || undefined;
 }
 
+export function getGeminiApiKeySource(): string | undefined {
+  if (process.env.GEMINI_API_KEY?.trim()) return "GEMINI_API_KEY";
+  if (process.env.GEMINI_VEO_API_KEY?.trim()) return "GEMINI_VEO_API_KEY";
+  if (process.env.NANO_API_KEY?.trim()) return "NANO_API_KEY";
+  return undefined;
+}
+
 /** Veo video generation — prefers dedicated Veo key, falls back to general Gemini key. */
 export function getVeoApiKey(): string | undefined {
   const key =
@@ -16,6 +23,13 @@ export function getVeoApiKey(): string | undefined {
     process.env.NANO_API_KEY;
   const trimmed = key?.trim();
   return trimmed || undefined;
+}
+
+export function getVeoApiKeySource(): string | undefined {
+  if (process.env.GEMINI_VEO_API_KEY?.trim()) return "GEMINI_VEO_API_KEY";
+  if (process.env.GEMINI_API_KEY?.trim()) return "GEMINI_API_KEY";
+  if (process.env.NANO_API_KEY?.trim()) return "NANO_API_KEY";
+  return undefined;
 }
 
 export const VEO_API_KEY_SETUP_MESSAGE =

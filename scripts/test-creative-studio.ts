@@ -7,15 +7,25 @@ import {
   computeVoiceoverBudget,
   countWords,
   truncateVoiceover,
+  finalizeVoiceoverForClip,
+  ensurePerformanceAdVoiceover,
+  compressVoiceoverPreservingStructure,
+  validateVoiceoverCommercial,
   splitVoiceoverForStitch,
   redistributeVoiceoverToStoryboard,
   filterStoryboardForSegment,
   getStyleDirectorSpec,
   buildVeoVideoPrompt,
   estimateVeoPromptTokens,
+  stripEmbeddedDialogueDirections,
+  sanitizeVisualTreatmentForVeo,
+  stripStoryboardDialogue,
   VEO_PROMPT_MAX_TOKENS,
   buildShotByShotBlock,
 } from "../lib/creative-studio/video-prompt-utils";
+import { resolveRequestFromApiBody } from "../lib/creative-studio/resolve-veo-prompt";
+import { buildCompactStoryboardLines } from "../lib/creative-studio/director-pipeline";
+import { parseVideoDataUrl } from "../lib/creative-studio/parse-video-data-url";
 
 import {
   buildHookCreativeBrief,
@@ -64,9 +74,16 @@ assertEqual(normalizeVeoDuration(16), 8, "duration 16s → 8s (single clip)");
 assertEqual(normalizeVeoDuration(6, true), 8, "with refs → always 8s");
 
 const budget8 = computeVoiceoverBudget(8);
-assert(budget8.maxSpokenSeconds === 6, "8s clip: max spoken 6s");
-assert(budget8.tailSilenceSeconds === 2, "8s clip: 2s tail silence");
-assert(budget8.maxWords === 13, "8s clip: ~13 max words");
+assert(budget8.maxSpokenSeconds === 6.5, "8s clip: max spoken 6.5s");
+assert(budget8.finishBySecond === 6.5, "8s clip: finish by 6.5s");
+assert(budget8.minWords === 16, "8s clip: min 16 words");
+assert(budget8.maxWords === 20, "8s clip: max 20 words");
+
+const budget16 = computeVoiceoverBudget(16);
+assert(budget16.maxSpokenSeconds === 14, "16s clip: max spoken 14s");
+assert(budget16.finishBySecond === 14, "16s clip: finish by 14s");
+assert(budget16.minWords === 32, "16s clip: min 32 words");
+assert(budget16.maxWords === 40, "16s clip: max 40 words");
 
 assertEqual(countWords("one two three"), 3, "countWords basic");
 assertEqual(
@@ -77,17 +94,78 @@ assertEqual(
 
 const longScript =
   "Discover the secret to radiant skin with our new serum. It works in just seven days. Try it today and see the difference.";
-const truncated = truncateVoiceover(longScript, 10);
-assert(countWords(truncated) <= 10, "truncateVoiceover respects max words");
-
-const split = splitVoiceoverForStitch(longScript, 8);
-assert(split.part1.length > 0, "splitVoiceover part1 non-empty");
-assert(split.part1.length + split.part2.length > 0, "splitVoiceover produces content");
-assert(
-  countWords(`${split.part1} ${split.part2}`.trim()) >= countWords(longScript) - 2,
-  "splitVoiceover preserves most of the script"
+const truncated = truncateVoiceover(
+  longScript,
+  18,
+  { brandName: "Serum Co", productName: "radiant serum", cta: "Try it today", keyMessage: "glowing skin in seven days" }
 );
+assert(countWords(truncated) <= 18, "truncateVoiceover respects max words");
+assert(/[.!?]$/.test(truncated), "truncateVoiceover ends on complete sentence");
+assert(/try it/i.test(truncated), "truncateVoiceover keeps CTA when compressing");
 
+const split = splitVoiceoverForStitch(longScript, 20);
+assert(split.part1.length > 0, "splitVoiceover part1 non-empty");
+assert(/[.!?]$/.test(split.part1) || countWords(split.part1) <= 20, "split part1 is sentence-safe");
+assert(countWords(split.part1) <= 20, "split part1 within per-clip budget");
+if (split.part2) assert(countWords(split.part2) <= 20, "split part2 within per-clip budget");
+
+const finalized8 = finalizeVoiceoverForClip(
+  "Craving mango? Yoga Bar protein mango shake — 26g protein, no added sugar. Try it today.",
+  8,
+  { brandName: "Yoga Bar", productName: "protein mango shake" }
+);
+assert(countWords(finalized8) <= 20, "finalizeVoiceoverForClip caps 8s script at max");
+assert(countWords(finalized8) >= budget8.minWords, "finalizeVoiceoverForClip keeps full ad sentences");
+
+const fragmented = validateVoiceoverCommercial("Still skipping breakfast?", {
+  brandName: "Yoga Bar",
+  productName: "protein shake",
+  minWords: 16,
+});
+assert(!fragmented.valid, "problem-only hook fails validation");
+assert(fragmented.missing.includes("cta"), "problem-only hook missing CTA");
+
+const expandedShort = ensurePerformanceAdVoiceover(
+  { brandName: "Yoga Bar", productName: "protein shake", keyMessage: "26g protein" },
+  "Try it.",
+  budget8.maxWords,
+  budget8.minWords
+);
+assert(countWords(expandedShort) >= budget8.minWords, "ensurePerformanceAdVoiceover expands too-short scripts");
+const expandedValidation = validateVoiceoverCommercial(expandedShort, {
+  brandName: "Yoga Bar",
+  productName: "protein shake",
+  keyMessage: "26g protein",
+  minWords: budget8.minWords,
+  maxWords: budget8.maxWords,
+});
+assert(expandedValidation.valid, "expanded voiceover passes completion validation");
+
+const longVo =
+  "Still skipping breakfast every single morning and feeling drained? Yoga Bar protein mango shake fuels your day with 26g protein, no added sugar, real results you can actually feel. Grab yours and try it today.";
+const compressed = compressVoiceoverPreservingStructure(
+  longVo,
+  budget8.maxWords,
+  { brandName: "Yoga Bar", productName: "protein mango shake", keyMessage: "26g protein", cta: "Try it today" },
+  budget8.minWords
+);
+assert(countWords(compressed) <= budget8.maxWords, "compressVoiceover fits 8s max words");
+assert(compressed.length > 0, "compressVoiceover returns non-empty script");
+
+const full16 =
+  "Craving mango? Yoga Bar protein mango shake fuels your morning. Real results after every workout. Grab yours and try it today.";
+const split16 = splitVoiceoverForStitch(
+  truncateVoiceover(full16, budget16.maxWords),
+  budget8.maxWords
+);
+const clip2Vo = finalizeVoiceoverForClip(split16.part2, 8, {
+  totalDurationSeconds: 16,
+  segmentIndex: 1,
+  segmentCount: 2,
+});
+assert(countWords(clip2Vo) > 0, "clip 2 keeps pre-split voiceover (no empty wipe)");
+assert(countWords(clip2Vo) <= 20, "clip 2 within per-clip budget");
+2
 const storyboard = [
   { scene: 1, visual_description: "Hook shot" },
   { scene: 2, visual_description: "Product hero" },
@@ -129,8 +207,74 @@ const prompt = buildVeoVideoPrompt({
 assert(prompt.includes("TestBrand") || prompt.includes("TestProduct"), "prompt includes brand or product");
 assert(prompt.includes("reference images"), "prompt includes reference instruction when refs present");
 assert(/SPOKEN AD|VO \(|VOICEOVER|AUDIO:/i.test(prompt), "prompt includes voiceover pacing");
+assert(prompt.includes("STRICT ZERO-TEXT") || /zero on-screen text/i.test(prompt), "prompt includes zero-text rule");
 assert(/BEAT-BASED STORYBOARD|CREATIVE TREATMENT|STORYBOARD/i.test(prompt), "prompt includes storyboard or treatment");
 assert(estimateVeoPromptTokens(prompt) <= VEO_PROMPT_MAX_TOKENS, `prompt within Veo token limit (${estimateVeoPromptTokens(prompt)} tokens)`);
+
+const sanitizedTreatment = sanitizeVisualTreatmentForVeo(`OVERALL VISION: clean ad
+SPOKEN_DIALOGUE:
+This old line should be removed.
+HEADLINE: Yoga Bar Mango
+COLOR GRADE: warm`);
+assert(!sanitizedTreatment.includes("old line should be removed"), "sanitizeVisualTreatment removes embedded dialogue");
+assert(!sanitizedTreatment.includes("Yoga Bar Mango"), "sanitizeVisualTreatment removes headline blocks");
+
+const strippedStoryboard = stripStoryboardDialogue([
+  {
+    scene: 1,
+    visual_description: "Close-up product",
+    voiceover_line: "Old line",
+    voiceover_script: "Old line",
+    on_screen_text: "Buy now",
+    marketing_message: "Shop Yoga Bar today",
+    proof_element: "26g protein",
+  },
+]);
+assert(strippedStoryboard?.[0]?.voiceover_line === "", "stripStoryboardDialogue clears voiceover_line");
+assert(strippedStoryboard?.[0]?.on_screen_text === "", "stripStoryboardDialogue clears on_screen_text");
+assert(strippedStoryboard?.[0]?.marketing_message === "", "stripStoryboardDialogue clears marketing_message");
+
+const perfBoard = [
+  {
+    scene: 1,
+    beat: "Hook",
+    marketing_message: "This headline must not appear in Veo prompt",
+    visual_description: "Woman opens protein shake bottle",
+  },
+];
+const veoStoryboardLines = buildCompactStoryboardLines(perfBoard as any, "veo");
+assert(!veoStoryboardLines.includes("This headline must not appear"), "veo storyboard mode is visual-only");
+assert(veoStoryboardLines.includes("opens protein shake"), "veo storyboard keeps visual description");
+
+const resolvedReq = resolveRequestFromApiBody(
+  {
+    product_name: "TestProduct",
+    brand_name: "TestBrand",
+    final_video_prompt: "OVERALL VISION: premium.\nSPOKEN_DIALOGUE:\nToo long old copy.\nCOLOR GRADE: warm.",
+    storyboard: [{ scene: 1, visual_description: "Shot", voiceover_line: "Leaked line" }],
+  },
+  {
+    clipDurationSeconds: 8,
+    totalDurationSeconds: 8,
+    aspectRatio: "9:16",
+    hasReferenceImages: false,
+    voiceoverScript: "Fresh canonical line.",
+  }
+);
+assert(
+  !String(resolvedReq.veoInput.finalVideoPrompt || "").includes("Too long old copy"),
+  "resolveRequestFromApiBody strips embedded dialogue from final prompt"
+);
+assert(
+  resolvedReq.veoInput.storyboard?.every((scene) => !scene.voiceover_line && !scene.voiceover_script),
+  "resolveRequestFromApiBody strips storyboard dialogue"
+);
+assert(resolvedReq.veoInput.headline == null && resolvedReq.veoInput.subtext == null, "resolveRequestFromApiBody drops headline/subtext");
+
+const largeBase64 = "A".repeat(512_000);
+const parsedLarge = parseVideoDataUrl(`data:video/mp4;base64,${largeBase64}`);
+assert(parsedLarge != null && parsedLarge.length > 0, "parseVideoDataUrl handles large base64 without stack overflow");
+assert(parseVideoDataUrl("not-a-data-url") == null, "parseVideoDataUrl rejects non-data URLs");
 
 const promptNoRefs = buildVeoVideoPrompt({
   brandName: "B",

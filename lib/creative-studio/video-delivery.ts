@@ -1,14 +1,11 @@
 import { randomUUID } from "crypto";
 import { supabaseAdmin } from "@/auth/supabase/client";
+import { parseVideoDataUrl } from "./parse-video-data-url";
+
+export { parseVideoDataUrl } from "./parse-video-data-url";
 
 /** Inline base64 responses above this size often fail on serverless (~4.5 MB response cap). */
 export const MAX_INLINE_VIDEO_BYTES = 3 * 1024 * 1024;
-
-function parseVideoDataUrl(dataUrl: string): Buffer | null {
-  const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
-  if (!match || !match[1].includes("video")) return null;
-  return Buffer.from(match[2], "base64");
-}
 
 export async function uploadVideoBuffer(buf: Buffer): Promise<string> {
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY && !process.env.SUPABASE_SERVICE_ROLE) {

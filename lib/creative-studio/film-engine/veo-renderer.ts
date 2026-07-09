@@ -9,6 +9,8 @@
 import { editorPromptDigest } from "./editor-engine";
 import { physicsPromptDigest } from "./physics-engine";
 import { buildPromptSections, compressToBudget } from "./prompt-compressor";
+import { finalizeVoiceoverForClip } from "../video-prompt-utils";
+import { VEO_STRICT_NO_TEXT_BLOCK } from "../veo-output-rules";
 import type {
   CompressedShotPlan,
   RenderRequest,
@@ -34,7 +36,12 @@ export class VeoRenderer implements VideoRenderer {
     const { direction, sceneGraph, aspectRatio } = request;
     const segmentCount = resolveSegmentCount(request);
 
-    const voiceover = voiceoverForSegment(request.voiceoverScript, segmentIndex, segmentCount);
+    const voiceover = voiceoverForSegment(
+      request.voiceoverScript,
+      segmentIndex,
+      segmentCount,
+      request.clipDurationSeconds
+    );
 
     const sections = buildPromptSections({
       direction,
@@ -43,13 +50,15 @@ export class VeoRenderer implements VideoRenderer {
       physicsDigest: physicsPromptDigest(sceneGraph, direction),
       editorDigest: editorPromptDigest(direction),
       aspectRatio,
+      clipDurationSeconds: request.clipDurationSeconds,
       segmentIndex,
       segmentCount,
     });
 
     // Reserve headroom for audio/native-VO instruction overhead Veo adds.
     const budget = Math.floor(this.capabilities.maxPromptTokens * 0.92);
-    const { prompt, estimatedTokens } = compressToBudget(sections, budget);
+    const { prompt: compressed, estimatedTokens } = compressToBudget(sections, budget);
+    const prompt = `${VEO_STRICT_NO_TEXT_BLOCK}\n\n${compressed}`.trim();
 
     return {
       prompt,
@@ -69,26 +78,23 @@ function resolveSegmentCount(request: RenderRequest): number {
   return Math.max(1, Math.round(request.totalDurationSeconds / clip));
 }
 
-/** Distribute the full voiceover script across segments (rough sentence split). */
+/** Distribute and hard-cap voiceover per clip so native audio never exceeds clip length. */
 function voiceoverForSegment(
   script: string | undefined,
   segmentIndex?: number,
-  segmentCount?: number
+  segmentCount?: number,
+  clipDurationSeconds = 8
 ): string | undefined {
   if (!script?.trim()) return undefined;
-  if (!segmentCount || segmentCount <= 1 || segmentIndex == null) return script.trim();
 
-  const sentences = script
-    .trim()
-    .split(/(?<=[.!?।])\s+/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-  if (sentences.length <= 1) return script.trim();
+  const totalDuration =
+    segmentCount && segmentCount > 1 ? clipDurationSeconds * segmentCount : clipDurationSeconds;
 
-  const per = Math.ceil(sentences.length / segmentCount);
-  const start = segmentIndex * per;
-  const slice = sentences.slice(start, start + per);
-  return (slice.length ? slice : sentences).join(" ");
+  return finalizeVoiceoverForClip(script, clipDurationSeconds, {
+    totalDurationSeconds: totalDuration,
+    segmentIndex,
+    segmentCount,
+  });
 }
 
 export const veoRenderer = new VeoRenderer();

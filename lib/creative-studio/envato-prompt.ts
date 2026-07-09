@@ -52,6 +52,6 @@ export function buildEnvatoCommercialDirective(opts: {
     `Hook: ${hook}`,
     `Camera & pacing: ${pacing}`,
     emotion,
-    "Payoff: End on a clean product hero reveal with space for brand lock-in and CTA.",
+    "Payoff: End on a clean product hero reveal — silent hold, zero on-screen text; CTA is voiceover only.",
   ].join(" ");
 }

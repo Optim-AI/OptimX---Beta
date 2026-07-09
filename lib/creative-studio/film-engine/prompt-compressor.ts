@@ -13,6 +13,12 @@ import {
 } from "./application-site";
 import type { BrandPromptContext } from "../brand-context";
 import { buildBrandContextBlock } from "../brand-context";
+import { VEO_STRICT_NO_TEXT_BLOCK } from "../veo-output-rules";
+import {
+  computeVoiceoverBudget,
+  countWords,
+  VOICEOVER_WORDS_PER_SECOND,
+} from "../video-prompt-utils";
 import type { CreativeDirection, SceneGraph, Shot } from "./types";
 import { flattenShots } from "./types";
 
@@ -52,6 +58,7 @@ export function buildPromptSections(args: {
   physicsDigest?: string;
   editorDigest?: string;
   aspectRatio: string;
+  clipDurationSeconds?: number;
   segmentIndex?: number;
   segmentCount?: number;
   brandContext?: BrandPromptContext;
@@ -70,10 +77,20 @@ export function buildPromptSections(args: {
 
   // P0 — the spoken ad (most important for "feels like an ad").
   if (voiceover?.trim()) {
+    const budget = computeVoiceoverBudget(args.clipDurationSeconds ?? 8);
+    const words = countWords(voiceover);
+    const paceWps = Math.min(
+      VOICEOVER_WORDS_PER_SECOND + 0.3,
+      Math.max(1.8, words / Math.max(1, budget.maxSpokenSeconds))
+    ).toFixed(1);
     sections.push({
       priority: 0,
       label: "Voiceover",
-      text: `Spoken ad (natural delivery, lip-synced if on camera): "${voiceover.trim()}"`,
+      text:
+        `CLIP ${args.clipDurationSeconds ?? 8}s — complete commercial (${words} words), finish by ${budget.finishBySecond}s: ` +
+        `"${voiceover.trim()}". Natural pace ~${paceWps} words/sec. ` +
+        `Hook → brand → product → benefit → CTA → complete ending. ` +
+        `Last ${budget.tailSilenceSeconds}s silent. Never stop after the hook.`,
     });
   }
 
@@ -83,10 +100,12 @@ export function buildPromptSections(args: {
     label: "Brief",
     text: `${direction.filmStyle.label} ${direction.totalDurationSeconds}s ad for ${
       direction.brandName ? direction.brandName + " " : ""
-    }${direction.productName}. ${direction.coreMessage}. CTA: ${direction.cta}.`,
+    }${direction.productName}. ${direction.coreMessage}. CTA (voiceover only, never on-screen): ${direction.cta}.`,
   });
 
-  const brandBlock = buildBrandContextBlock(brandContext, direction.brandName);
+  const brandBlock = buildBrandContextBlock(brandContext, direction.brandName, {
+    videoGeneration: true,
+  });
   if (brandBlock) {
     sections.push({ priority: 1, label: "Brand", text: brandBlock });
   }
@@ -112,7 +131,7 @@ export function buildPromptSections(args: {
   sections.push({
     priority: 2,
     label: "Constraints",
-    text: `${applicationSiteDirective(appSpec)} ${anatomyLockDirective()}`,
+    text: `${VEO_STRICT_NO_TEXT_BLOCK} ${applicationSiteDirective(appSpec)} ${anatomyLockDirective()}`,
   });
 
   // P3 — shot-by-shot action (the actual film).

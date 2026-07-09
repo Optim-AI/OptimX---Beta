@@ -11,6 +11,8 @@ import {
 } from "@/lib/gemini-retry";
 import {
   buildVeoGenerateSafetyConfig,
+  computeVoiceoverBudget,
+  finalizeVoiceoverForClip,
   normalizeVeoDuration,
   auditVideoPrompt,
   estimateVeoPromptTokens,
@@ -22,7 +24,11 @@ import {
   resolveVeoPrompt,
 } from "@/lib/creative-studio/resolve-veo-prompt";
 import { enforceVeoPromptBudget } from "@/lib/creative-studio/video-prompt-utils";
-import { getVeoApiKey, VEO_API_KEY_SETUP_MESSAGE } from "@/lib/gemini-config";
+import {
+  getVeoApiKey,
+  getVeoApiKeySource,
+  VEO_API_KEY_SETUP_MESSAGE,
+} from "@/lib/gemini-config";
 
 export const config = {
   api: {
@@ -156,6 +162,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       code: "VEO_API_KEY_MISSING",
     });
   }
+  const veoApiKeySource = getVeoApiKeySource();
 
   try {
     const ai = new GoogleGenAI({ apiKey: veoApiKey });
@@ -197,6 +204,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       hasHeroImage: !!hero_image,
       hasBrandLogo: !!brand_logo,
       productImagesCount: product_images?.length || 0,
+      veoApiKeySource,
     });
 
     // Build reference images array (Veo 3.1: max 3 reference images)
@@ -247,13 +255,31 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ ok: false, error: "Either 'prompt' or 'final_video_prompt' is required" });
     }
 
+    const finalizedVoiceover = voiceover_script
+      ? finalizeVoiceoverForClip(String(voiceover_script), videoDuration, {
+          totalDurationSeconds: requestedDuration,
+          brandName: brand_name,
+          productName: product_name,
+          keyMessage: key_message,
+          cta: cta || creative_strategy?.cta,
+          creativeStrategy: creative_strategy,
+          userDescription: user_description,
+        })
+      : "";
+    if (finalizedVoiceover) {
+      const voBudget = computeVoiceoverBudget(videoDuration);
+      console.log(
+        `🎙️ Voiceover finalized: ${finalizedVoiceover.split(/\s+/).length} words (${voBudget.minWords}–${voBudget.maxWords} target, finish by ${voBudget.finishBySecond}s / ${videoDuration}s clip)`
+      );
+    }
+
     const resolved = resolveVeoPrompt(
       resolveRequestFromApiBody(req.body, {
         clipDurationSeconds: videoDuration,
         totalDurationSeconds: requestedDuration,
         aspectRatio: videoAspectRatio,
         hasReferenceImages: referenceImages.length > 0,
-        voiceoverScript: voiceover_script,
+        voiceoverScript: finalizedVoiceover || voiceover_script,
       })
     );
     const rawPrompt = resolved.prompt;
@@ -305,7 +331,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       { maxRetries: 6, operationLabel: "veo-generateVideos" }
     );
 
-    console.log('⏳ Video generation started, polling for completion...');
+    console.log('⏳ Video generation started, polling for completion...', {
+      operationName: operation?.name || "(missing)",
+      veoApiKeySource,
+    });
 
     // Poll until complete (12s between polls to reduce sustained RPM on operations API)
     const pollIntervalMs = 12_000;
@@ -316,10 +345,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       attempts++;
       console.log(`⏳ Polling attempt ${attempts}/${maxAttempts}...`);
       await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
-      operation = await withRetryOnGeminiRateLimit(
-        () => ai.operations.getVideosOperation({ operation }),
-        { maxRetries: 8, operationLabel: "veo-getVideosOperation" }
-      );
+      try {
+        operation = await withRetryOnGeminiRateLimit(
+          () => ai.operations.getVideosOperation({ operation }),
+          { maxRetries: 8, operationLabel: "veo-getVideosOperation" }
+        );
+      } catch (pollError: any) {
+        console.error("❌ Veo polling failed", {
+          operationName: operation?.name || "(missing)",
+          veoApiKeySource,
+          status: pollError?.status,
+          message: pollError?.message || String(pollError),
+        });
+        throw pollError;
+      }
     }
 
     if (!operation.done) {

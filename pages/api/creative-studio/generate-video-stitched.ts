@@ -19,10 +19,9 @@ import {
 import {
   buildVeoGenerateSafetyConfig,
   computeVoiceoverBudget,
+  finalizeVoiceoverForClip,
   normalizeVeoDuration,
   SEGMENT_SECONDS,
-  splitVoiceoverForStitch,
-  truncateVoiceover,
   estimateVeoPromptTokens,
   VEO_PROMPT_MAX_TOKENS,
 } from "@/lib/creative-studio/video-prompt-utils";
@@ -32,7 +31,11 @@ import {
   resolveVeoPrompt,
 } from "@/lib/creative-studio/resolve-veo-prompt";
 import { referenceSlotsFromRequest } from "@/lib/creative-studio/reference-labels";
-import { getVeoApiKey, VEO_API_KEY_SETUP_MESSAGE } from "@/lib/gemini-config";
+import {
+  getVeoApiKey,
+  getVeoApiKeySource,
+  VEO_API_KEY_SETUP_MESSAGE,
+} from "@/lib/gemini-config";
 
 export const config = {
   api: {
@@ -178,6 +181,7 @@ async function generateClipDataUrl(params: {
   referenceImages: Array<{ image: { imageBytes: string; mimeType: string }; referenceType: "asset" }>;
   clipDurationSeconds: number;
 }) {
+  const veoApiKeySource = getVeoApiKeySource();
   const generateConfig: any = {
     aspectRatio: params.aspectRatio,
     durationSeconds: params.clipDurationSeconds,
@@ -199,16 +203,32 @@ async function generateClipDataUrl(params: {
     { maxRetries: 6, operationLabel: "veo-generateVideos" }
   );
 
+  console.log("⏳ Segment video generation started", {
+    operationName: operation?.name || "(missing)",
+    veoApiKeySource,
+    clipDurationSeconds: params.clipDurationSeconds,
+  });
+
   const pollIntervalMs = 10_000;
   const maxAttempts = 55;
   let attempts = 0;
   while (!operation.done && attempts < maxAttempts) {
     attempts++;
     await new Promise((r) => setTimeout(r, pollIntervalMs));
-    operation = await withRetryOnGeminiRateLimit(
-      () => params.ai.operations.getVideosOperation({ operation }),
-      { maxRetries: 8, operationLabel: "veo-getVideosOperation" }
-    );
+    try {
+      operation = await withRetryOnGeminiRateLimit(
+        () => params.ai.operations.getVideosOperation({ operation }),
+        { maxRetries: 8, operationLabel: "veo-getVideosOperation" }
+      );
+    } catch (pollError: any) {
+      console.error("❌ Veo segment polling failed", {
+        operationName: operation?.name || "(missing)",
+        veoApiKeySource,
+        status: pollError?.status,
+        message: pollError?.message || String(pollError),
+      });
+      throw pollError;
+    }
   }
 
   if (!operation.done) {
@@ -252,6 +272,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       code: "VEO_API_KEY_MISSING",
     });
   }
+  const veoApiKeySource = getVeoApiKeySource();
   try {
     getFfmpegExecutable();
   } catch {
@@ -285,6 +306,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       hero_image,
       storyboard,
     } = req.body;
+
+    console.log("🎬 Stitched video request", {
+      productName: product_name,
+      brandName: brand_name,
+      duration,
+      style,
+      veoApiKeySource,
+    });
 
     const allowedAspectRatios = ["9:16", "16:9", "4:5"];
     let videoAspectRatio = typeof aspect_ratio === "string" ? aspect_ratio.trim() : "9:16";
@@ -328,24 +357,42 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const storyboardScenes = Array.isArray(storyboard) ? storyboard : undefined;
 
-    // Split voiceover into two halves by word budget so each 8s clip gets a finishable script
-    const fullVoBudget = computeVoiceoverBudget(requestedDuration);
-    const trimmedFullVoiceover = voiceover_script
-      ? truncateVoiceover(String(voiceover_script), fullVoBudget.maxWords)
-      : "";
     const perClipBudget = computeVoiceoverBudget(segmentDuration);
+    const voFinalizeOpts = {
+      totalDurationSeconds: requestedDuration,
+      brandName: brand_name as string | undefined,
+      productName: product_name as string | undefined,
+      keyMessage: key_message as string | undefined,
+      cta: cta as string | undefined,
+      creativeStrategy: creative_strategy as import("@/lib/creative-studio/video-prompt-utils").VeoPromptInput["creativeStrategy"],
+      userDescription: user_description as string | undefined,
+    };
 
-    let voiceoverPart1 = trimmedFullVoiceover;
-    let voiceoverPart2 = "";
-    if (trimmedFullVoiceover && segments === 2) {
-      const split = splitVoiceoverForStitch(trimmedFullVoiceover, perClipBudget.maxWords);
-      voiceoverPart1 = truncateVoiceover(split.part1, perClipBudget.maxWords);
-      voiceoverPart2 = truncateVoiceover(split.part2, perClipBudget.maxWords);
+    let voiceoverPart1 = voiceover_script
+      ? finalizeVoiceoverForClip(String(voiceover_script), segmentDuration, {
+          ...voFinalizeOpts,
+          segmentIndex: segments === 2 ? 0 : undefined,
+          segmentCount: segments === 2 ? 2 : undefined,
+        })
+      : "";
+    let voiceoverPart2 =
+      segments === 2 && voiceover_script
+        ? finalizeVoiceoverForClip(String(voiceover_script), segmentDuration, {
+            ...voFinalizeOpts,
+            segmentIndex: 1,
+            segmentCount: 2,
+          })
+        : "";
+
+    if (voiceoverPart1) {
       console.log(
-        `🎙️ Voiceover split: Part1 ${voiceoverPart1.split(/\s+/).length} words, Part2 ${voiceoverPart2.split(/\s+/).length} words`
+        `🎙️ Voiceover clip 1: ${voiceoverPart1.split(/\s+/).length} words (${perClipBudget.minWords}–${perClipBudget.maxWords}, finish by ${perClipBudget.finishBySecond}s)`
       );
-    } else if (trimmedFullVoiceover) {
-      voiceoverPart1 = truncateVoiceover(trimmedFullVoiceover, perClipBudget.maxWords);
+    }
+    if (voiceoverPart2) {
+      console.log(
+        `🎙️ Voiceover clip 2: ${voiceoverPart2.split(/\s+/).length} words (${perClipBudget.minWords}–${perClipBudget.maxWords}, finish by ${perClipBudget.finishBySecond}s)`
+      );
     }
 
     const clip1Resolved = resolveVeoPrompt(

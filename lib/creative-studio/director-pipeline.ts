@@ -314,7 +314,7 @@ export function buildDirectorLayerCompact(input: DirectorPipelineInput): string 
 /** Compact per-shot lines for Veo prompts. */
 export function buildCompactStoryboardLines(
   scenes: ExtendedStoryboardScene[],
-  mode: "performance" | "cinematic" = "cinematic"
+  mode: "performance" | "cinematic" | "veo" = "cinematic"
 ): string {
   return scenes
     .map((s, idx) => {
@@ -324,26 +324,28 @@ export function buildCompactStoryboardLines(
       const vis = (s.visual_description || s.description || "").replace(/\s+/g, " ").trim();
       const shortVis = vis.length > 100 ? `${vis.slice(0, 97)}…` : vis;
       const emo = s.emotion || s.emotional_zone || "";
-      const vo = (s.voiceover_line || s.voiceover_script || "").trim();
       const transition = s.transition_to_next ? ` Cut→${s.transition_to_next}.` : "";
       const state =
         s.product_state && s.container_state ? ` [${s.container_state}]` : "";
+
+      if (mode === "veo" || mode === "cinematic") {
+        const cam = s.motion_style || s.camera;
+        return (
+          `${n}${tr ? ` [${tr}]` : ""} (${beat}): ${shortVis}${state}.` +
+          `${cam ? ` Cam: ${cam}.` : ""}${emo ? ` Emotion: ${emo}.` : ""}${transition}`
+        );
+      }
 
       if (mode === "performance") {
         const msg = (s.marketing_message || "").replace(/\s+/g, " ").trim();
         const purpose = s.shot_purpose ? ` Why: ${s.shot_purpose}.` : "";
         return (
           `${n}${tr ? ` [${tr}]` : ""} (${beat}): ${msg || shortVis}. ${shortVis}${state}.${purpose}` +
-          `${emo ? ` Emotion: ${emo}.` : ""}${vo ? ` VO: "${vo}".` : ""}${transition}`
+          `${emo ? ` Emotion: ${emo}.` : ""}${transition}`
         );
       }
 
-      const cam = s.motion_style || s.camera;
-      return (
-        `${n}${tr ? ` [${tr}]` : ""} (${beat}): ${shortVis}${state}.` +
-        `${cam ? ` Cam: ${cam}.` : ""}${emo ? ` Emotion: ${emo}.` : ""}` +
-        `${vo ? ` VO: "${vo}".` : ""}${transition}`
-      );
+      return `${n}${tr ? ` [${tr}]` : ""} (${beat}): ${shortVis}${state}.`;
     })
     .join("\n");
 }

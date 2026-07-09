@@ -18,6 +18,10 @@ import {
   buildVeoVideoPrompt,
   enforceVeoPromptBudget,
   estimateVeoPromptTokens,
+  finalizeVoiceoverForClip,
+  sanitizeVisualTreatmentForVeo,
+  stripStoryboardDialogue,
+  VEO_STRICT_NO_TEXT_BLOCK,
   type StoryboardScene,
   type VeoPromptInput,
   VEO_PROMPT_MAX_TOKENS,
@@ -42,11 +46,13 @@ export interface ResolvedVeoPrompt {
   filmSummary?: string;
 }
 
-/** Prepend Envato formula only — brand/refs are already inside buildVeoVideoPrompt / Film Engine. */
+/** Prepend zero-text guard + Envato; sanitize treatment so stale script text cannot leak. */
 function finalizeVeoPrompt(base: string, envatoBlock?: string): string {
-  const trimmed = base.trim();
-  if (!envatoBlock?.trim()) return enforceVeoPromptBudget(trimmed);
-  return enforceVeoPromptBudget(`${envatoBlock.trim()}\n${trimmed}`);
+  const trimmed = sanitizeVisualTreatmentForVeo(base.trim());
+  const parts: string[] = [VEO_STRICT_NO_TEXT_BLOCK];
+  if (envatoBlock?.trim()) parts.push(sanitizeVisualTreatmentForVeo(envatoBlock.trim()));
+  parts.push(trimmed);
+  return enforceVeoPromptBudget(parts.filter(Boolean).join("\n\n"));
 }
 
 /**
@@ -106,8 +112,8 @@ export function resolveVeoPrompt(req: ResolveVeoPromptRequest): ResolvedVeoPromp
       aspectRatio: veoInput.aspectRatio,
       voiceoverScript: veoInput.voiceoverScript,
       hasReferenceImages: veoInput.hasReferenceImages,
-      headline: veoInput.headline,
-      subtext: veoInput.subtext,
+      headline: undefined,
+      subtext: undefined,
     });
 
     const segIdx = segmentIndex ?? 0;
@@ -172,6 +178,27 @@ export function resolveRequestFromApiBody(
       product_name: body.product_name as string | undefined,
       brand_name: body.brand_name as string | undefined,
     });
+  const sanitizedStoryboard = stripStoryboardDialogue(
+    Array.isArray(body.storyboard) ? (body.storyboard as StoryboardScene[]) : undefined
+  );
+  const sanitizedFinalVideoPrompt = sanitizeVisualTreatmentForVeo(
+    (body.final_video_prompt as string | undefined) ||
+      (body.prompt as string | undefined) ||
+      ""
+  );
+  const finalizedVoiceover = opts.voiceoverScript
+    ? finalizeVoiceoverForClip(String(opts.voiceoverScript), opts.clipDurationSeconds, {
+        totalDurationSeconds: opts.totalDurationSeconds,
+        segmentIndex: opts.segmentIndex,
+        segmentCount: opts.segmentCount,
+        brandName: body.brand_name as string | undefined,
+        productName: body.product_name as string | undefined,
+        keyMessage: body.key_message as string | undefined,
+        cta: body.cta as string | undefined,
+        creativeStrategy: body.creative_strategy as VeoPromptInput["creativeStrategy"],
+        userDescription: body.user_description as string | undefined,
+      })
+    : undefined;
 
   const veoInput: VeoPromptInput = {
     brandName: body.brand_name as string | undefined,
@@ -188,13 +215,13 @@ export function resolveRequestFromApiBody(
     aspectRatio: opts.aspectRatio,
     segmentIndex: opts.segmentIndex,
     segmentCount: opts.segmentCount,
-    finalVideoPrompt: body.final_video_prompt as string | undefined,
-    fallbackPrompt: body.prompt as string | undefined,
-    voiceoverScript: opts.voiceoverScript,
-    storyboard: Array.isArray(body.storyboard) ? body.storyboard : undefined,
+    finalVideoPrompt: sanitizedFinalVideoPrompt || undefined,
+    fallbackPrompt: sanitizeVisualTreatmentForVeo((body.prompt as string | undefined) || ""),
+    voiceoverScript: finalizedVoiceover,
+    storyboard: sanitizedStoryboard,
     hasReferenceImages: opts.hasReferenceImages,
-    headline: body.headline as string | undefined,
-    subtext: body.subtext as string | undefined,
+    headline: undefined,
+    subtext: undefined,
     keyMessage: body.key_message as string | undefined,
     cta: body.cta as string | undefined,
     brandContext,
