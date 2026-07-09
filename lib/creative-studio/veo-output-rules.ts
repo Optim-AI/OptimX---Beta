@@ -13,6 +13,16 @@ STRICT ZERO-TEXT VIDEO (NON-NEGOTIABLE — 8s, 16s, 9:16, 16:9, 4:5):
 - Closing shot (every duration): product hero on clean background — silent hold, NO text, NO logo graphic overlay, NO end-card words.
 `.trim();
 
+/** Product pack must match attached reference photos — never redesign or substitute. */
+export const VEO_PRODUCT_REFERENCE_FIDELITY_BLOCK = `
+PRODUCT REFERENCE FIDELITY (NON-NEGOTIABLE):
+The attached reference photo(s) show the EXACT product pack — they are the source of truth.
+- Reproduce the same packaging, label, colors, cap, shape, and proportions in every frame.
+- Do NOT redesign, reimagine, simplify, substitute, or hallucinate a different SKU or generic pack.
+- Do NOT alter factory label printing, logo placement, flavor text on the pack, or brand colors.
+- Scene, background, lighting, and talent may change — the physical product must match the reference.
+`.trim();
+
 /** Spoken phrase: brand + product together, e.g. "Yoga Bar protein mango shake". */
 export function buildSpokenBrandedProductPhrase(
   brandName?: string,

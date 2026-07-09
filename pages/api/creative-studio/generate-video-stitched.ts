@@ -3,13 +3,18 @@
 // Reference: https://ai.google.dev/gemini-api/docs/video
 import type { NextApiRequest, NextApiResponse } from "next";
 import { GoogleGenAI } from "@google/genai";
-import sharp from "sharp";
 import { spawn } from "node:child_process";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { getFfmpegExecutable } from "@/lib/creative-studio/ffmpeg-server";
 import { resolveVideoDeliveryUrl } from "@/lib/creative-studio/video-delivery";
+import { parseVideoDataUrl } from "@/lib/creative-studio/parse-video-data-url";
+import {
+  buildVeoReferenceAssets,
+  createVeoReferenceAsset,
+  VEO_MAX_REFERENCE_IMAGES,
+} from "@/lib/creative-studio/veo-reference-images";
 import {
   fetchWithGeminiRateLimitRetry,
   isGeminiQuotaExhaustedError,
@@ -48,94 +53,7 @@ export const config = {
 };
 
 const MODEL = "veo-3.1-fast-generate-preview";
-const MAX_REFERENCE_IMAGES = 3;
-
-function parseDataUrl(
-  dataUrl: string
-): { imageBytes: string; mimeType: string } | null {
-  if (!dataUrl || typeof dataUrl !== "string") return null;
-  const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
-  if (!match) return null;
-  return { mimeType: match[1], imageBytes: match[2] };
-}
-
-async function convertToSupportedFormat(
-  buffer: Buffer,
-  inputMime: string
-): Promise<{ imageBytes: string; mimeType: string }> {
-  const mime = inputMime.toLowerCase().split(";")[0].trim();
-  if (mime === "image/jpeg" || mime === "image/png") {
-    return { imageBytes: buffer.toString("base64"), mimeType: mime };
-  }
-  try {
-    const sharpInput = mime.includes("svg") ? { density: 144 } : undefined;
-    const converted = await sharp(buffer, sharpInput).jpeg({ quality: 92 }).toBuffer();
-    return { imageBytes: converted.toString("base64"), mimeType: "image/jpeg" };
-  } catch {
-    return { imageBytes: buffer.toString("base64"), mimeType: mime };
-  }
-}
-
-async function fetchImageAsBase64(
-  url: string
-): Promise<{ imageBytes: string; mimeType: string } | null> {
-  try {
-    if (url.startsWith("data:")) {
-      const parsed = parseDataUrl(url);
-      if (!parsed) return null;
-      const buffer = Buffer.from(parsed.imageBytes, "base64");
-      return convertToSupportedFormat(buffer, parsed.mimeType);
-    }
-
-    const response = await fetch(url, {
-      headers: {
-        Accept: "image/*",
-        "User-Agent": "Mozilla/5.0 (compatible; OptimX-VideoGenerator/1.0)",
-      },
-    });
-    if (!response.ok) return null;
-
-    const contentType = response.headers.get("content-type") || "image/jpeg";
-    const mimeType = contentType.split(";")[0].trim();
-    const allowed = ["image/jpeg", "image/png", "image/webp", "image/gif"];
-    if (!allowed.includes(mimeType)) return null;
-
-    const arrayBuffer = await response.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-    const result = await convertToSupportedFormat(buffer, mimeType);
-    if (result.imageBytes.length > 14_000_000) return null;
-    return result;
-  } catch {
-    return null;
-  }
-}
-
-async function getImageData(
-  imageSource: string
-): Promise<{ imageBytes: string; mimeType: string } | null> {
-  if (imageSource.startsWith("data:")) {
-    const parsed = parseDataUrl(imageSource);
-    if (!parsed) return null;
-    const buffer = Buffer.from(parsed.imageBytes, "base64");
-    return convertToSupportedFormat(buffer, parsed.mimeType);
-  }
-  if (imageSource.startsWith("http://") || imageSource.startsWith("https://")) {
-    return await fetchImageAsBase64(imageSource);
-  }
-  return null;
-}
-
-async function createReferenceAsset(imageSource: string): Promise<{
-  image: { imageBytes: string; mimeType: string };
-  referenceType: "asset";
-} | null> {
-  const imageData = await getImageData(imageSource);
-  if (!imageData) return null;
-  return {
-    image: { imageBytes: imageData.imageBytes, mimeType: imageData.mimeType },
-    referenceType: "asset",
-  };
-}
+const MAX_REFERENCE_IMAGES = VEO_MAX_REFERENCE_IMAGES;
 
 function runFfmpeg(args: string[], cwd?: string): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -152,11 +70,8 @@ function runFfmpeg(args: string[], cwd?: string): Promise<void> {
 }
 
 async function writeMp4DataUrlToFile(dataUrl: string, outPath: string) {
-  const parsed = parseDataUrl(dataUrl);
-  if (!parsed || !parsed.mimeType.includes("video")) {
-    throw new Error("Expected a video data URL");
-  }
-  const buf = Buffer.from(parsed.imageBytes, "base64");
+  const buf = parseVideoDataUrl(dataUrl);
+  if (!buf) throw new Error("Expected a video data URL");
   await fs.writeFile(outPath, buf);
 }
 
@@ -322,28 +237,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const requestedDuration = Math.max(1, parseInt(duration) || SEGMENT_SECONDS);
     const segments = requestedDuration > SEGMENT_SECONDS ? 2 : 1;
 
-    // Build base reference images (max 3)
-    const referenceImagePromises: Promise<{
-      image: { imageBytes: string; mimeType: string };
-      referenceType: "asset";
-    } | null>[] = [];
-    if (hero_image && referenceImagePromises.length < MAX_REFERENCE_IMAGES) {
-      referenceImagePromises.push(createReferenceAsset(hero_image));
-    }
-    if (brand_logo && referenceImagePromises.length < MAX_REFERENCE_IMAGES) {
-      referenceImagePromises.push(createReferenceAsset(brand_logo));
-    }
-    if (product_images && Array.isArray(product_images) && referenceImagePromises.length < MAX_REFERENCE_IMAGES) {
-      const slotsLeft = MAX_REFERENCE_IMAGES - referenceImagePromises.length;
-      const productImgs = product_images
-        .filter((img: string) => img && img !== hero_image && img !== brand_logo)
-        .slice(0, slotsLeft);
-      for (const img of productImgs) referenceImagePromises.push(createReferenceAsset(img));
-    }
-    const referenceImageResults = await Promise.all(referenceImagePromises);
-    const baseReferenceImages = referenceImageResults.filter(
-      (r): r is NonNullable<typeof r> => r != null
-    );
+    const baseReferenceImages = await buildVeoReferenceAssets({
+      hero_image,
+      product_images,
+      brand_logo,
+    });
 
     const segmentDuration = normalizeVeoDuration(
       segments === 2 ? SEGMENT_SECONDS : requestedDuration,
@@ -429,19 +327,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Continuity frame from end of clip 1
     await extractLastFrameJpeg(clip1Path, framePath);
     const frameBuf = await fs.readFile(framePath);
-    const continuityAsset = await createReferenceAsset(
+    const continuityAsset = await createVeoReferenceAsset(
       `data:image/jpeg;base64,${frameBuf.toString("base64")}`
     );
 
     // Clip 2 (only if requested)
     let stitchedDataUrl = clip1DataUrl;
     if (segments === 2) {
-      // Prefer keeping hero + product refs; if slots full, drop brand logo (middle slot) to make room for continuity.
+      // Keep hero + product refs; drop last slot (logo or extra product angle) to make room for continuity.
       const clip2ReferenceImages = [...baseReferenceImages];
       if (continuityAsset) {
-        if (clip2ReferenceImages.length >= MAX_REFERENCE_IMAGES) {
-          // base order is: hero, brand_logo, product_image
-          if (clip2ReferenceImages.length >= 2) clip2ReferenceImages.splice(1, 1);
+        while (clip2ReferenceImages.length >= MAX_REFERENCE_IMAGES) {
+          clip2ReferenceImages.pop();
         }
         clip2ReferenceImages.push(continuityAsset);
       }

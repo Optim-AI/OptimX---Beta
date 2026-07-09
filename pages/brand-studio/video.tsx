@@ -103,24 +103,22 @@ async function prepareVideoGenerateImages(args: {
   product_images: string[];
 }): Promise<{ hero_image: string | null; brand_logo: string | null; product_images: string[] }> {
   const { hero_image, brand_logo, product_images } = args;
+  const max = MAX_VIDEO_API_REF_IMAGES;
   const slotsForProducts = Math.max(
     0,
-    MAX_VIDEO_API_REF_IMAGES - (hero_image ? 1 : 0) - (brand_logo ? 1 : 0)
+    max - (hero_image ? 1 : 0) - (brand_logo ? 1 : 0)
   );
   const productSlice = product_images
     .filter((img) => img && img !== hero_image && img !== brand_logo)
     .slice(0, slotsForProducts);
 
-  const [h, l, ...rest] = await Promise.all([
-    hero_image ? compressDataUrlForVideoApi(hero_image) : Promise.resolve(null),
-    brand_logo ? compressDataUrlForVideoApi(brand_logo) : Promise.resolve(null),
-    ...productSlice.map((u) => compressDataUrlForVideoApi(u)),
-  ]);
+  // Fetched product photos are sent unchanged — server passes JPEG/PNG bytes through to Veo.
+  const compressedLogo = brand_logo ? await compressDataUrlForVideoApi(brand_logo) : null;
 
   return {
-    hero_image: h,
-    brand_logo: l,
-    product_images: rest,
+    hero_image: hero_image,
+    brand_logo: compressedLogo,
+    product_images: productSlice,
   };
 }
 

@@ -2,7 +2,7 @@
  * Labeled reference images for Veo (InVideo guide: attach images with clear roles).
  */
 
-import { VEO_STRICT_NO_TEXT_BLOCK } from "./veo-output-rules";
+import { VEO_PRODUCT_REFERENCE_FIDELITY_BLOCK, VEO_STRICT_NO_TEXT_BLOCK } from "./veo-output-rules";
 
 export interface ReferenceImageSlots {
   hasHero?: boolean;
@@ -16,8 +16,8 @@ export interface ReferenceImageSlots {
 
 /**
  * Human-readable slot map so Veo knows which attachment is which.
- * Order must match how referenceImages are attached in generate-video*.ts:
- *   1 hero → 2 logo → 3+ product → (optional) continuity frame last on segment 2.
+ * Order must match collectProductReferenceSources / buildVeoReferenceAssets:
+ *   1 hero product → 2+ product angles → brand logo (only if a slot remains).
  */
 export function buildLabeledReferenceBlock(slots: ReferenceImageSlots): string {
   const {
@@ -37,24 +37,27 @@ export function buildLabeledReferenceBlock(slots: ReferenceImageSlots): string {
   const brand = brandName || "the brand";
   const lines: string[] = [
     "REFERENCE IMAGES (match each attachment to its role — pixel fidelity required):",
+    VEO_PRODUCT_REFERENCE_FIDELITY_BLOCK,
   ];
 
   let slot = 1;
   if (hasHero) {
     lines.push(
-      `Image ${slot} = HERO PRODUCT (${product}): exact packaging, label, color, shape, proportions. Do not redesign.`
-    );
-    slot++;
-  }
-  if (hasBrandLogo) {
-    lines.push(
-      `Image ${slot} = BRAND LOGO REFERENCE (${brand}): use ONLY as identity guide for the physical pack — do NOT render as floating on-screen typography.`
+      `Image ${slot} = HERO PRODUCT (${product}): exact pack from the user's selected product photo — packaging, label, color, shape, proportions. Do not redesign.`
     );
     slot++;
   }
   for (let i = 0; i < productImageCount; i++) {
     lines.push(
-      `Image ${slot} = PRODUCT REFERENCE ${i + 1} (${product}): same SKU as hero — label and pack must match.`
+      `Image ${slot} = PRODUCT REFERENCE ${i + 1} (${product}): exact pack from fetched product photo — same SKU, label, and colors. Do not change the product.`
+    );
+    slot++;
+  }
+  const logoIncluded =
+    hasBrandLogo && slot <= 3 && (hasHero ? 1 : 0) + productImageCount < 3;
+  if (logoIncluded) {
+    lines.push(
+      `Image ${slot} = BRAND LOGO REFERENCE (${brand}): identity guide only — do NOT render as floating on-screen typography.`
     );
     slot++;
   }

@@ -266,7 +266,9 @@ assert(
   "resolveRequestFromApiBody strips embedded dialogue from final prompt"
 );
 assert(
-  resolvedReq.veoInput.storyboard?.every((scene) => !scene.voiceover_line && !scene.voiceover_script),
+  (resolvedReq.veoInput.storyboard?.every(
+    (scene) => !scene.voiceover_line && !scene.voiceover_script
+  ) ?? false),
   "resolveRequestFromApiBody strips storyboard dialogue"
 );
 assert(resolvedReq.veoInput.headline == null && resolvedReq.veoInput.subtext == null, "resolveRequestFromApiBody drops headline/subtext");
