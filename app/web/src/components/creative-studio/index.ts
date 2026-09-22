@@ -9,7 +9,7 @@ export {
   mapFullAnalyzeToBrandSnapshot,
   THEME_CONFIG,
   getCompositionRules,
-  generateProductionPrompt,
+  getThemeForBrand,
   buildPosterPrompt,
   formatTimestamp,
   fileToDataUrl,
@@ -30,7 +30,9 @@ export {
   VIDEO_ASPECT_RATIOS,
   VIDEO_TEXT_STYLES,
   VIDEO_TEXT_POSITIONS,
+  fetchPosterCreativeDirectorVariants,
 } from './utils';
+export type { PosterDirectorVariantClient } from './utils';
 
 // Components
 export { default as SessionNameModal } from './SessionNameModal';
@@ -38,4 +40,5 @@ export { default as BackButton } from './BackButton';
 export { default as BrandCard } from './BrandCard';
 export { default as BrandOnboarding } from './BrandOnboarding';
 export { default as BrandGuidelineModal } from './BrandGuidelineModal';
+export { default as PosterCreativeWorkspace } from './PosterCreativeWorkspace';
 export { SystemBubble, UserBubble } from './ChatBubbles';

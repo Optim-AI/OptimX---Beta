@@ -8,6 +8,7 @@ import { type FilmEngineInput } from "@/lib/creative-studio/film-engine";
 import { referenceSlotsFromRequest } from "@/lib/creative-studio/reference-labels";
 import { buildLabeledReferenceBlock } from "@/lib/creative-studio/reference-labels";
 import { buildBrandContextBlock } from "@/lib/creative-studio/brand-context";
+import { normalizeCampaignDuration } from "@/lib/creative-studio/commercial-production/campaign/campaign-duration";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") {
@@ -38,8 +39,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       product_images,
     } = body;
 
-    const totalDuration = Math.max(4, parseInt(String(duration)) || 8);
-    const clipDuration = totalDuration > 8 ? 8 : totalDuration;
+    const totalDuration = normalizeCampaignDuration(
+      duration as string | number | null | undefined
+    );
+    const clipDuration = totalDuration;
     const aspectRatio = typeof aspect_ratio === "string" ? aspect_ratio : "9:16";
 
     const brandContext = brandContextFromBody(body);

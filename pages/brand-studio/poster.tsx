@@ -16,14 +16,12 @@ import {
   type PosterConfig,
   type CreativeStudioSession,
   type SessionListItem,
-  BackButton,
   BrandCard,
   BrandOnboarding,
   BrandGuidelineModal,
   SessionNameModal,
-  SystemBubble,
-  UserBubble,
   buildPosterPrompt,
+  fetchPosterCreativeDirectorVariants,
   formatTimestamp,
   fileToDataUrl,
   dataUrlToFile,
@@ -33,6 +31,7 @@ import {
   ASPECT_RATIOS,
   mapFullAnalyzeToBrandSnapshot,
 } from '@/app/web/src/components/creative-studio';
+import PosterCreativeWorkspace from '@/app/web/src/components/creative-studio/PosterCreativeWorkspace';
 import type { Product } from '@/app/web/src/components/creative-studio/types';
 import { authFetch, safeResponseJson } from '@/lib/utils';
 import PosterEditModal from '@/app/web/src/components/content-studio/PosterEditModal';
@@ -111,6 +110,7 @@ export default function PosterSessionPage() {
     prompt: string;
     images: File[];
     imageDataUrls?: string[];
+    productName?: string;
   } | null>(null);
   
   // Poster generation state
@@ -123,6 +123,7 @@ export default function PosterSessionPage() {
   const [showRegeneratePrompt, setShowRegeneratePrompt] = useState(false);
   const [pendingUseAsReference, setPendingUseAsReference] = useState<{ url: string; index: number } | null>(null);
   const [regeneratePrompt, setRegeneratePrompt] = useState('');
+  const referencePosterInputRef = useRef<HTMLInputElement>(null);
   
   // New session modal state
   const [showNewSessionModal, setShowNewSessionModal] = useState(false);
@@ -143,6 +144,8 @@ export default function PosterSessionPage() {
   const [productsCollapsed, setProductsCollapsed] = useState(false);
   const [scannedUrl, setScannedUrl] = useState<string>('');
   const [isScanningProducts, setIsScanningProducts] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [isEnhancingPrompt, setIsEnhancingPrompt] = useState(false);
 
   // Initial greeting - picked once per session for conversational variety
   const [initialGreeting] = useState(() =>
@@ -302,12 +305,14 @@ export default function PosterSessionPage() {
               prompt: productData.prompt || '',
               images: restoredImages,
               imageDataUrls: urls,
+              productName: (productData as { productName?: string }).productName,
             });
           } else if (productData.prompt) {
             setSavedProductData({
               prompt: productData.prompt,
               images: [],
               imageDataUrls: [],
+              productName: (productData as { productName?: string }).productName,
             });
           }
         }
@@ -573,7 +578,7 @@ export default function PosterSessionPage() {
         method: 'POST',
         body: JSON.stringify({ url: website }),
       });
-      const data = await response.json();
+      const data = await safeResponseJson<{ result?: unknown; error?: string }>(response);
       if (!data.result) {
         showError(data.error || 'Could not analyze website. Please try manual setup.');
         return null;
@@ -752,8 +757,11 @@ export default function PosterSessionPage() {
 
   // ============== Product Scan / Selection Handlers ==============
 
-  async function scanWebsiteForProducts(websiteUrl: string) {
-    setIsScanningProducts(true);
+  async function scanWebsiteForProducts(
+    websiteUrl: string,
+    opts?: { silent?: boolean }
+  ): Promise<Product[]> {
+    if (!opts?.silent) setIsScanningProducts(true);
     setScannedUrl(websiteUrl);
     try {
       const res = await authFetch('/api/content-studio/scan', {
@@ -769,13 +777,16 @@ export default function PosterSessionPage() {
           `Fetched ${data.products.length} products. Pick one to use, or describe your poster idea.`,
           `${data.products.length} products detected. Click any product to use it, or type your own description.`,
         ]));
+        return data.products as Product[];
       } else {
         setFetchedProducts([]);
+        return [];
       }
     } catch (err: any) {
       console.error('Product scan error:', err);
+      return [];
     } finally {
-      setIsScanningProducts(false);
+      if (!opts?.silent) setIsScanningProducts(false);
     }
   }
 
@@ -809,6 +820,7 @@ export default function PosterSessionPage() {
 
     const promptText = `${product.product_name}${product.short_benefit ? ' - ' + product.short_benefit : ''}${product.description ? '. ' + product.description : ''}`;
     setProductPrompt(promptText);
+    setSelectedProduct(product);
 
     if (productImageFile && productImageDataUrl) {
       setProductImages([productImageFile]);
@@ -816,30 +828,31 @@ export default function PosterSessionPage() {
         prompt: promptText,
         images: [productImageFile],
         imageDataUrls: [productImageDataUrl],
+        productName: product.product_name,
       });
 
       const storageUrls = await uploadDataUrlsToStorage([productImageDataUrl]);
       addMessage('user', `Selected: ${product.product_name}`, [productImageFile], storageUrls.length > 0 ? storageUrls : undefined);
 
       addMessage('system', pickMessage([
-        `Great choice! "${product.product_name}" — what style are you going for?`,
-        `${product.product_name} selected! Describe the poster style — bold, minimal, playful?`,
-        `Using ${product.product_name}. What kind of poster do you want?`,
+        `Great choice! "${product.product_name}" — describe the poster you want on the right.`,
+        `${product.product_name} selected! Add creative direction and generate when ready.`,
+        `Using ${product.product_name}. What should this poster communicate?`,
       ]));
-      setPhase('poster-prompt');
+      setPhase('config');
     } else {
       setSavedProductData({
         prompt: promptText,
         images: [],
         imageDataUrls: [],
+        productName: product.product_name,
       });
-      setPosterPrompt(promptText);
       addMessage('user', `Selected: ${product.product_name}`);
       const echo = product.product_name.length > 50 ? product.product_name.slice(0, 50) + '...' : product.product_name;
       addMessage('system', pickMessage([
-        `${echo} — nice! Pick a vibe and format below.`,
-        `Got it! "${echo}" — what theme and aspect ratio work for you?`,
-        `Love it. Pick a theme and format for your poster.`,
+        `${echo} — describe your creative direction and generate when ready.`,
+        `Got it! "${echo}" — add a prompt on the right to continue.`,
+        `Love it. Describe the poster idea, then generate.`,
       ]));
       setPhase('config');
     }
@@ -865,6 +878,285 @@ export default function PosterSessionPage() {
 
   function removeProductImage(index: number) {
     setProductImages(prev => prev.filter((_, i) => i !== index));
+  }
+
+  function handleWorkspaceProductImagesChange(files: File[]) {
+    setSelectedProduct(null);
+    setProductImages(files);
+    // Persist asynchronously so Generate can run without Continue
+    void (async () => {
+      if (files.length === 0) {
+        setSavedProductData(null);
+        return;
+      }
+      const imageDataUrls: string[] = [];
+      for (const img of files) {
+        imageDataUrls.push(await fileToDataUrl(img));
+      }
+      setSavedProductData({
+        prompt: productPrompt || files[0]?.name || 'Uploaded product',
+        images: files,
+        imageDataUrls,
+      });
+      setPhase('config');
+    })();
+  }
+
+  function handleClearProduct() {
+    setSelectedProduct(null);
+    setProductImages([]);
+    setSavedProductData(null);
+    setProductPrompt('');
+  }
+
+  function handleBrowseCatalog() {
+    const website =
+      brand?.website_url ||
+      scannedUrl ||
+      '';
+    if (website) {
+      void scanWebsiteForProducts(website);
+      return;
+    }
+    // No known website — open empty catalog; user can Import URL
+    setProductsCollapsed(false);
+  }
+
+  async function handleImportProductUrl(url: string) {
+    let trimmed = safeTrim(url);
+    if (!trimmed) {
+      showError('Paste a product URL first.');
+      return;
+    }
+    // Match scan API — accept URLs without protocol
+    if (!/^https?:\/\//i.test(trimmed)) {
+      trimmed = `https://${trimmed}`;
+    }
+    try {
+      // Validate early so we never hit the API with an empty/invalid URL
+      // eslint-disable-next-line no-new
+      new URL(trimmed);
+    } catch {
+      showError('That does not look like a valid URL.');
+      return;
+    }
+
+    addMessage('user', trimmed);
+    setThinkingMessages(['Fetching product from URL…']);
+    setIsScanningProducts(true);
+
+    // Catalog scan in parallel — product pages often yield selectable products
+    const scanPromise = scanWebsiteForProducts(trimmed, { silent: true });
+
+    try {
+      const response = await authFetch('/api/creative-studio/fetch-image', {
+        method: 'POST',
+        body: JSON.stringify({ url: trimmed }),
+      });
+      const result = await response.json();
+
+      if (response.ok && result.ok && result.dataUrl) {
+        const dataUrl = result.dataUrl as string;
+        const contentType = result.contentType || 'image/jpeg';
+        const base64Data = dataUrl.split(',')[1];
+        const binaryString = atob(base64Data);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        const blob = new Blob([bytes], { type: contentType });
+        let extension = 'jpg';
+        if (contentType.includes('png')) extension = 'png';
+        else if (contentType.includes('webp')) extension = 'webp';
+        const file = new File([blob], `product_${Date.now()}.${extension}`, { type: contentType });
+
+        setSelectedProduct(null);
+        setProductImages([file]);
+        setSavedProductData({
+          prompt: trimmed,
+          images: [file],
+          imageDataUrls: [dataUrl],
+        });
+        setPhase('config');
+        setThinkingMessages([]);
+        addMessage('system', 'Product imported. Add creative direction on the right, then generate.');
+        return;
+      }
+
+      // Image scrape failed — fall back to catalog results when available
+      const products = await scanPromise;
+      setThinkingMessages([]);
+      if (products.length > 0) {
+        setProductsCollapsed(false);
+        addMessage(
+          'system',
+          'Opened the catalog from that URL. Select a product to continue.'
+        );
+      } else {
+        showError(
+          result?.error ||
+            'Could not import that URL. Try uploading a product image instead.'
+        );
+      }
+    } catch (err: any) {
+      console.error('Import product URL error:', err);
+      setThinkingMessages([]);
+      showError(err?.message || 'Failed to import product URL');
+    } finally {
+      setIsScanningProducts(false);
+    }
+  }
+
+  async function handleEnhancePrompt() {
+    const current = safeTrim(posterPrompt);
+    if (!current) return;
+    setIsEnhancingPrompt(true);
+    try {
+      const resp = await authFetch('/api/enhancePrompt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: current, mode: 'poster' }),
+      });
+      const data = await resp.json();
+      if (data?.caption || data?.enhanced || data?.prompt || data?.text) {
+        setPosterPrompt(data.caption || data.enhanced || data.prompt || data.text);
+      } else if (typeof data === 'string') {
+        setPosterPrompt(data);
+      } else {
+        showError(data?.error || 'Could not enhance the idea. Try again.');
+      }
+    } catch (err: any) {
+      console.error('enhancePrompt error', err);
+      showError(err?.message || 'Could not enhance the idea.');
+    } finally {
+      setIsEnhancingPrompt(false);
+    }
+  }
+
+  async function handleWorkspaceGenerate() {
+    if (hasInsufficientCredits) {
+      showError('You have no credits remaining. Purchase more to generate posters.');
+      return;
+    }
+
+    const hasSavedProduct =
+      (savedProductData?.imageDataUrls && savedProductData.imageDataUrls.length > 0) ||
+      (savedProductData?.images && savedProductData.images.length > 0) ||
+      productImages.length > 0;
+
+    if (!hasSavedProduct) {
+      showError('Add a product to generate');
+      return;
+    }
+
+    if (!safeTrim(posterPrompt)) {
+      showError('Describe what you want to create');
+      return;
+    }
+
+    let productOverride = savedProductData;
+    if (
+      (!(savedProductData?.imageDataUrls && savedProductData.imageDataUrls.length > 0) ||
+        !(savedProductData?.images && savedProductData.images.length > 0)) &&
+      productImages.length > 0
+    ) {
+      const imageDataUrls: string[] = [];
+      for (const img of productImages) {
+        imageDataUrls.push(await fileToDataUrl(img));
+      }
+      productOverride = {
+        prompt: selectedProduct?.product_name || productPrompt || 'Selected product',
+        images: [...productImages],
+        imageDataUrls,
+        productName: selectedProduct?.product_name,
+      };
+      setSavedProductData(productOverride);
+    }
+
+    if (!config.theme) {
+      setConfig((c) => ({ ...c, theme: 'commercial' }));
+    }
+
+    setPhase('config');
+    await handleConfigSubmit(undefined, productOverride);
+  }
+
+  // ============== Reference Poster (Design Inspiration) ==============
+
+  async function handleReferencePosterSelect(files: FileList | null) {
+    const file = files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      showError("Please upload an image (PNG, JPG, or WEBP).");
+      return;
+    }
+    if (GEMINI_UNSUPPORTED_IMAGE_TYPES.some((t) => file.type.toLowerCase().includes(t))) {
+      showError("SVG and ICO are not supported. Please use JPEG, PNG, GIF, or WebP.");
+      return;
+    }
+
+    try {
+      const dataUrl = await fileToDataUrl(file);
+      setConfig((c) => ({
+        ...c,
+        referencePoster: {
+          dataUrl,
+          imageUrl: dataUrl,
+          source: "upload",
+          analyzing: true,
+          analysis: null,
+          influence: "balanced",
+        },
+      }));
+
+      const res = await authFetch("/api/creative-studio/analyze-reference-poster", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dataUrl }),
+      });
+      const data = await res.json();
+      if (data?.ok && data.analysis) {
+        setConfig((c) => ({
+          ...c,
+          referencePoster: {
+            ...(c.referencePoster || {}),
+            dataUrl,
+            imageUrl: dataUrl,
+            source: "upload",
+            analyzing: false,
+            analysis: data.analysis,
+            contentHash: data.contentHash,
+            analyzedAt: new Date().toISOString(),
+            influence: "balanced",
+          },
+        }));
+      } else {
+        setConfig((c) => ({
+          ...c,
+          referencePoster: {
+            ...(c.referencePoster || { dataUrl, imageUrl: dataUrl, source: "upload" }),
+            analyzing: false,
+            analysis: null,
+          },
+        }));
+        showError(data?.error || "Could not analyze design inspiration. You can still generate.");
+      }
+    } catch (err) {
+      console.error("Reference poster upload failed", err);
+      setConfig((c) => ({
+        ...c,
+        referencePoster: c.referencePoster
+          ? { ...c.referencePoster, analyzing: false }
+          : null,
+      }));
+      showError("Failed to add design inspiration");
+    } finally {
+      if (referencePosterInputRef.current) referencePosterInputRef.current.value = "";
+    }
+  }
+
+  function handleRemoveReferencePoster() {
+    setConfig((c) => ({ ...c, referencePoster: null }));
   }
 
   async function handleProductSubmit(e?: React.FormEvent) {
@@ -931,7 +1223,15 @@ export default function PosterSessionPage() {
     setPhase('config');
   }
 
-  async function handleConfigSubmit(promptOverride?: string) {
+  async function handleConfigSubmit(
+    promptOverride?: string,
+    productOverride?: {
+      prompt: string;
+      images: File[];
+      imageDataUrls?: string[];
+      productName?: string;
+    } | null
+  ) {
     if (hasInsufficientCredits) {
       addMessage('system', pickMessage([
         "You're out of credits — grab more to keep creating.",
@@ -940,32 +1240,35 @@ export default function PosterSessionPage() {
       return;
     }
 
+    const effectiveTheme = config.theme || 'commercial';
     if (!config.theme) {
-      showAlert('Please select a theme before generating.', 'Theme Required');
-      return;
+      setConfig((c) => ({ ...c, theme: 'commercial' }));
     }
+
+    const effectiveProduct = productOverride ?? savedProductData;
     
     setPhase('generating');
     setIsGenerating(true);
-    setThinkingMessages(['Generating your poster variants...']);
+    setThinkingMessages(['Understanding your campaign…']);
     
     try {
       const hasProductImage =
-        (savedProductData?.imageDataUrls && savedProductData.imageDataUrls.length > 0) ||
-        (savedProductData?.images && savedProductData.images.length > 0);
+        (effectiveProduct?.imageDataUrls && effectiveProduct.imageDataUrls.length > 0) ||
+        (effectiveProduct?.images && effectiveProduct.images.length > 0);
       
       // Build base user request - use promptOverride when provided (e.g. from edited form), else posterPrompt or product data
-      let userRequest = safeTrim(promptOverride) || safeTrim(posterPrompt) || safeTrim(savedProductData?.prompt) || '';
+      // Keep this CLEAN — do not pollute with brand guidelines (those go separately to the API).
+      let userRequest = safeTrim(promptOverride) || safeTrim(posterPrompt) || safeTrim(effectiveProduct?.prompt) || '';
       if (!userRequest) {
         // Fallback: build from brand
         const promptParts: string[] = [];
         if (brand?.name) promptParts.push(`Create a marketing poster for ${brand.name}`);
         if (brand?.description) promptParts.push(brand.description);
-        if (config.theme) promptParts.push(`Theme: ${config.theme}`);
+        promptParts.push(`Theme: ${effectiveTheme}`);
         userRequest = promptParts.length > 0 ? promptParts.join('. ') : 'Create a professional marketing poster';
       }
-      
-      // CRITICAL: Enhance prompt with comprehensive brand context (from revised branch)
+
+      // Brand context is appended only for legacy / generate-campaign — NOT as the director's userRequest
       let finalPrompt = userRequest;
       if (brand) {
         const brandContext: string[] = [];
@@ -1016,7 +1319,34 @@ export default function PosterSessionPage() {
       const target = aspectDimensions[config.aspectRatio] || { width: 1080, height: 1080 };
       
       // Prepare logo data URL from brand guideline (check both logo and logoUrl)
-      const logoSource = brand?.logo ?? brand?.logoUrl;
+      // Skip when brand name conflicts with product name (e.g. boAt brand + Yoga Bar pack)
+      const productName =
+        effectiveProduct?.productName ||
+        selectedProduct?.product_name ||
+        (() => {
+          // Infer from user prompt when catalog name missing (e.g. "Yoga Bar 26g High Protein Oats…")
+          const m = userRequest.match(
+            /\b((?:Yoga\s+Bar|[\w&]+)(?:\s+[\w&%/]+){0,6}?(?:\s+(?:Oats|Bar|Serum|Cream|Drink|Bottle|Pouch))?)\b/i
+          );
+          return m?.[1]?.trim() || undefined;
+        })();
+      const brandProductConflict = (() => {
+        const b = (brand?.name || "").toLowerCase().replace(/[^a-z0-9\s]/g, " ").trim();
+        const p = (productName || "").toLowerCase().replace(/[^a-z0-9\s]/g, " ").trim();
+        if (!b || !p) return false;
+        if (p.includes(b) || b.includes(p)) return false;
+        const bTokens = b.split(/\s+/).filter((t) => t.length > 2);
+        const pTokens = p.split(/\s+/).filter((t) => t.length > 2);
+        if (bTokens.some((t) => pTokens.includes(t))) return false;
+        // Also conflict if user prompt names a different brand than brand snapshot
+        const promptLower = userRequest.toLowerCase();
+        if (b.length >= 3 && !promptLower.includes(b) && /yoga\s*bar|protein\s*oats/i.test(userRequest)) {
+          return true;
+        }
+        return true;
+      })();
+
+      const logoSource = brandProductConflict ? null : (brand?.logo ?? brand?.logoUrl);
       let logoDataUrl: string | undefined;
       if (logoSource) {
         if (logoSource.startsWith('data:')) {
@@ -1038,6 +1368,12 @@ export default function PosterSessionPage() {
           }
         }
       }
+      if (brandProductConflict) {
+        console.warn(
+          '[poster] Skipping brand logo — brand name conflicts with product identity',
+          { brand: brand?.name, product: productName }
+        );
+      }
       
       // Prepare product images — must be data URLs for generate-campaign API
       const resolveImageForApi = async (url: string): Promise<string | undefined> => {
@@ -1058,7 +1394,7 @@ export default function PosterSessionPage() {
         return undefined;
       };
 
-      const allImageUrls = savedProductData?.imageDataUrls || [];
+      const allImageUrls = effectiveProduct?.imageDataUrls || [];
       let productDataUrl = allImageUrls.length > 0 ? allImageUrls[0] : undefined;
       if (productDataUrl && !productDataUrl.startsWith('data:')) {
         productDataUrl = await resolveImageForApi(productDataUrl);
@@ -1067,6 +1403,16 @@ export default function PosterSessionPage() {
       for (const ref of allImageUrls.slice(1)) {
         const resolved = ref.startsWith('data:') ? ref : await resolveImageForApi(ref);
         if (resolved) refDataUrls.push(resolved);
+      }
+
+      // Design inspiration — separate role from product refs
+      let referencePosterDataUrl: string | undefined;
+      const rp = config.referencePoster;
+      if (rp?.dataUrl || rp?.imageUrl) {
+        const raw = rp.dataUrl || rp.imageUrl || '';
+        referencePosterDataUrl = raw.startsWith('data:')
+          ? raw
+          : await resolveImageForApi(raw);
       }
 
       if (hasProductImage && !productDataUrl) {
@@ -1078,15 +1424,26 @@ export default function PosterSessionPage() {
       // Build base payload (same for all variants)
       const basePayload = {
         mode: 'generate',
-        theme: config.theme,
+        theme: effectiveTheme,
         target,
         aspectLabel: config.aspectRatio,
-        brandName: brand?.name || '',
-        brandSnapshot: brand,
-        tone: brand?.brandVoice || config.theme,
+        brandName: brandProductConflict
+          ? productName || brand?.name || ''
+          : brand?.name || '',
+        brandSnapshot: brandProductConflict
+          ? {
+              ...(brand || {}),
+              name: productName || brand?.name,
+              // Avoid forcing mismatched brand colors/logo when product is clearly different
+            }
+          : brand,
+        tone: brand?.brandVoice || effectiveTheme,
+        productName: productName || undefined,
         productDataUrl,
         productProvided: !!productDataUrl,
         refDataUrls,
+        referencePosterDataUrl,
+        referencePosterProvided: !!referencePosterDataUrl,
         logoDataUrl,
         logoProvided: !!logoDataUrl,
         // Pass logo placement for proper positioning (default: bottom-right when logo exists)
@@ -1094,20 +1451,79 @@ export default function PosterSessionPage() {
       };
 
       // Generate variants in parallel for faster results
-      const variantCount = config.variantCount || 3;
-      setThinkingMessages([`Generating ${variantCount} poster ${variantCount === 1 ? 'variant' : 'variants'} in parallel...`]);
+      const variantCount = (config.variantCount || 3) as 1 | 2 | 3;
+      setThinkingMessages([`Building creative direction for ${variantCount} ${variantCount === 1 ? 'variant' : 'variants'}…`]);
 
-      // Use PosterGenerator utility to create professional, theme-aware variant prompts
-      const variantPrompts = Array.from({ length: variantCount }, (_, i) => i + 1).map(variantNum =>
-        buildPosterPrompt({
-          userRequest: finalPrompt,
-          theme: config.theme,
-          aspectRatio: config.aspectRatio,
-          brand,
-          hasProductImage: !!hasProductImage,
-          variant: variantNum,
-        })
-      );
+      // Poster Engine V1 — plan + compile (engine fallback if plan API unreachable)
+      // Pass CLEAN userRequest so the planner executes the written brief — not brand boilerplate.
+      const directorResult = await fetchPosterCreativeDirectorVariants({
+        authFetch,
+        userRequest,
+        theme: effectiveTheme,
+        aspectRatio: config.aspectRatio,
+        brand: brandProductConflict
+          ? ({ ...(brand || {}), name: productName || brand?.name } as BrandSnapshot)
+          : brand,
+        variantCount,
+        hasProductImage: !!hasProductImage,
+        hasLogo: !!logoDataUrl,
+        productName,
+        productDescription:
+          selectedProduct?.description ||
+          effectiveProduct?.prompt ||
+          undefined,
+        productBenefits: selectedProduct?.key_benefits || undefined,
+        audience: brand?.audience,
+        campaignObjective: 'Drive engagement and conversion',
+        creativeBrief: userRequest,
+        platform:
+          config.aspectRatio === '9:16'
+            ? 'Instagram story / Reels'
+            : config.aspectRatio === '4:5'
+              ? 'Instagram / Meta feed'
+              : config.aspectRatio === '1.91:1'
+                ? 'Landscape social'
+                : 'Square social poster',
+        hasReferencePoster: !!referencePosterDataUrl,
+        referencePosterAnalysis: (config.referencePoster?.analysis as any) || null,
+        referenceInfluence: config.referencePoster?.influence || 'balanced',
+      });
+
+      let variantPrompts: string[];
+
+      if (directorResult.usedDirector && directorResult.prompts.length > 0) {
+        variantPrompts = directorResult.prompts.slice(0, variantCount);
+        while (variantPrompts.length < variantCount) {
+          const n = variantPrompts.length + 1;
+          variantPrompts.push(
+            buildPosterPrompt({
+              userRequest: finalPrompt,
+              theme: effectiveTheme,
+              aspectRatio: config.aspectRatio,
+              brand,
+              hasProductImage: !!hasProductImage,
+              variant: n,
+            })
+          );
+        }
+        setThinkingMessages([
+          directorResult.selectedConcept
+            ? `Concept: ${String(directorResult.selectedConcept).slice(0, 80)}… Designing composition…`
+            : `Designing the composition for ${variantCount} ${variantCount === 1 ? 'variant' : 'variants'}…`,
+        ]);
+      } else {
+        variantPrompts = Array.from({ length: variantCount }, (_, i) => i + 1).map((variantNum) =>
+          buildPosterPrompt({
+            userRequest: finalPrompt,
+            theme: effectiveTheme,
+            aspectRatio: config.aspectRatio,
+            brand,
+            hasProductImage: !!hasProductImage,
+            variant: variantNum,
+          })
+        );
+        setThinkingMessages([`Generating artwork for ${variantCount} ${variantCount === 1 ? 'variant' : 'variants'}…`]);
+      }
 
       // Create promises for all variants
       const variantPromises = variantPrompts.map(async (variantPrompt, idx) => {
@@ -1123,13 +1539,13 @@ export default function PosterSessionPage() {
         });
 
         const data = await response.json();
-        return { variantNum, response, data };
+        return { variantNum, response, data, variantPrompt };
       });
       
       // Wait for all to complete (don't fail fast - collect all results)
       const results = await Promise.allSettled(variantPromises);
       
-      // Process results
+      // Process results — no automatic QC / correction loops (Poster Engine V1)
       const posters: string[] = [];
       const storagePaths: string[] = [];
       let creditError = false;
@@ -1141,16 +1557,14 @@ export default function PosterSessionPage() {
           const { variantNum, response, data } = result.value;
           
           if (data.ok && data.image) {
-            posters.push(data.image);
+            posters.push(data.image as string);
             storagePaths.push(data.imageStoragePath || '');
-            // Track latest credits value
             if (data.creditsRemaining !== undefined) {
               latestCredits = data.creditsRemaining;
             }
           } else if (data.error) {
             console.error(`Poster variant ${variantNum} failed:`, data.error);
             lastError = data.error;
-            // Check for credit-related errors
             if (data.error.toLowerCase().includes('credit') || response.status === 402) {
               creditError = true;
               latestCredits = 0;
@@ -1161,8 +1575,8 @@ export default function PosterSessionPage() {
           lastError = result.reason?.message || 'Unknown error';
         }
       }
-      
-      // Update credits once with the latest value
+
+      setThinkingMessages(['Reviewing the result…']);
       if (latestCredits !== undefined) {
         setCredits(latestCredits);
         if (latestCredits <= 0) {
@@ -1633,7 +2047,27 @@ export default function PosterSessionPage() {
   }
 
   function handleNewSession() {
-    setShowNewSessionModal(true);
+    void handleCreateNewSession("Untitled Poster");
+  }
+
+  async function handleRenameSession(name: string) {
+    if (!sessionId || sessionId === "new") return;
+    const trimmed = name.trim() || "Untitled Poster";
+    try {
+      const response = await authFetch(`/api/creative-studio/sessions?id=${sessionId}`, {
+        method: "PUT",
+        body: JSON.stringify({ name: trimmed }),
+      });
+      const data = await response.json();
+      if (data.ok) {
+        setSession((prev) => (prev ? { ...prev, name: trimmed } : prev));
+        setPosterSessions((prev) =>
+          prev.map((s) => (s.id === sessionId ? { ...s, name: trimmed } : s))
+        );
+      }
+    } catch (err) {
+      console.error("Rename session failed", err);
+    }
   }
 
   async function handleCreateNewSession(name: string) {
@@ -1647,9 +2081,10 @@ export default function PosterSessionPage() {
       const response = await authFetch('/api/creative-studio/sessions', {
         method: 'POST',
         body: JSON.stringify({
-          name,
+          name: name.trim() || 'Untitled Poster',
           sessionType: 'poster',
           brandSnapshot: brand,
+          phase: 'input',
         }),
       });
       
@@ -1760,208 +2195,120 @@ export default function PosterSessionPage() {
         />
       </div>
 
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col h-full overflow-hidden" style={{ backgroundColor: colors.card, borderLeft: `1px solid ${colors.border}` }}>
-        {/* Header */}
-        <div className="border-b flex-shrink-0" style={{ borderColor: colors.border, backgroundColor: colors.card }}>
-          <div className="max-w-4xl mx-auto px-6 py-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <BackButton />
-                <div>
-                  <h1 className="text-xl font-semibold" style={{ color: colors.foreground }}>
-                    {session?.name || 'New Poster Session'}
-                  </h1>
-                  <p className="text-sm" style={{ color: colors.mutedForeground }}>
-                    {isSaving ? 'Saving...' : 'Create poster-ready creatives by talking to AI'}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-4">
-                {credits !== null && (
-                  <div className="flex items-center gap-2 px-4 py-2 rounded-xl" style={{ backgroundColor: 'hsl(213 30% 18%)', border: `1px solid ${colors.primary}`, boxShadow: `0 0 12px ${colors.primary}20` }}>
-                    <svg className="w-5 h-5" style={{ color: colors.primary }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                    <span className="font-semibold text-sm" style={{ color: colors.primary }}>{credits}</span>
-                    <span className="text-sm" style={{ color: 'hsl(213 100% 70%)' }}>images</span>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Chat Container */}
-        <div className="flex-1 overflow-y-auto overflow-x-hidden">
-          <div className="max-w-4xl mx-auto px-6 py-8 overflow-hidden">
-            <div className="space-y-6">
-              {/* Initial AI message - conversational prompt */}
-              {messages.length === 0 && (phase === 'input' || phase === 'product-input') && (
-                <SystemBubble>
-                  {initialGreeting}
-                </SystemBubble>
-              )}
-
-              {/* Message history */}
-              {messages.map((msg, msgIndex) => {
-                // Check if this is the latest message with generated posters
-                // If so, and we're in 'ready' phase, don't show imageUrls (PosterGrid shows them)
-                const isLatestPosterMessage = msg.imageUrls && msg.imageUrls.length > 0 && 
-                  msgIndex === messages.findLastIndex(m => m.imageUrls && m.imageUrls.length > 0);
-                const hideImageUrls = isLatestPosterMessage && phase === 'ready';
-                
-                return (
-                  <div key={msg.id}>
-                    {msg.role === 'user' ? (
-                      <UserBubble message={msg} />
-                    ) : (
-                      <SystemBubble
-                        images={msg.images}
-                        imageUrls={hideImageUrls ? undefined : msg.imageUrls}
-                        expiredImageCount={msg.expiredImageCount}
-                        imageThumbnail={msg.imageThumbnail}
-                        onImageClick={(url) => setPreviewImageUrl(url)}
-                        onUseAsReference={hasInsufficientCredits ? undefined : (url) => handleUseAsReference(url, 0)}
-                        onDownload={(url) => downloadImageToLocal(url, `poster-${Date.now()}.png`)}
-                      >
-                        {msg.content}
-                      </SystemBubble>
-                    )}
-                  </div>
-                );
-              })}
-
-              {/* Thinking messages */}
-              {thinkingMessages.length > 0 && (
-                <div className="space-y-2">
-                  {thinkingMessages.map((msg, idx) => (
-                    <SystemBubble key={idx}>
-                      <div className="flex items-center gap-2">
-                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-t-transparent" style={{ borderColor: colors.border, borderTopColor: colors.primary }} />
-                        <span>{msg}</span>
-                      </div>
-                    </SystemBubble>
-                  ))}
-                </div>
-              )}
-
-              {/* Fetched Products Grid (from website scan) */}
-              {(fetchedProducts.length > 0 || isScanningProducts) && (
-                <FetchedProductsPanel
-                  products={fetchedProducts}
-                  scannedUrl={scannedUrl}
-                  isScanning={isScanningProducts}
-                  collapsed={productsCollapsed}
-                  onToggleCollapsed={() => setProductsCollapsed(prev => !prev)}
-                  onSelectProduct={handleFetchedProductSelect}
-                />
-              )}
-
-              {/* Insufficient Credits Alert */}
-              {hasInsufficientCredits && (
-                <InsufficientCreditsAlert
-                  type="image"
-                />
-              )}
-
-              {/* Brand Review Card */}
-              {phase === 'brand-review' && brand && (
-                <BrandCard
-                  brand={brand}
-                  editing={editing}
-                  onEdit={() => setEditing(true)}
-                  onChange={setBrand}
-                  onDone={() => setEditing(false)}
-                  onConfirm={handleBrandConfirm}
-                />
-              )}
-
-              {/* Poster Prompt Input */}
-              {phase === 'poster-prompt' && (
-                <PosterPromptInput
-                  prompt={posterPrompt}
-                  onPromptChange={setPosterPrompt}
-                  onSubmit={handlePosterPromptSubmit}
-                />
-              )}
-
-              {/* Configuration Input - hide when insufficient credits */}
-              {phase === 'config' && !hasInsufficientCredits && (
-                <ConfigInput
-                  config={config}
-                  onConfigChange={setConfig}
-                  onSubmit={handleConfigSubmit}
-                  referenceImages={savedProductData?.imageDataUrls || []}
-                  onRemoveReferenceImage={(index) => {
-                    if (savedProductData) {
-                      const newImages = savedProductData.images.filter((_, i) => i !== index);
-                      const newDataUrls = savedProductData.imageDataUrls?.filter((_, i) => i !== index) || [];
-                      setSavedProductData({
-                        ...savedProductData,
-                        images: newImages,
-                        imageDataUrls: newDataUrls,
-                      });
-                    }
-                  }}
-                />
-              )}
-
-              {/* Generated Posters */}
-              {phase === 'ready' && generatedPosters.length > 0 && (
-                <PosterGrid
-                  posters={generatedPosters}
-                  posterPrompt={posterPrompt}
-                  config={config}
-                  onConfigChange={setConfig}
-                  onSavePoster={savePoster}
-                  onCreateCampaign={createCampaignFromPoster}
-                  onRegenerate={hasInsufficientCredits ? undefined : handleRegenerateClick}
-                  onUseAsReference={hasInsufficientCredits ? undefined : handleUseAsReference}
-                  onUseAsReferenceRequest={hasInsufficientCredits ? undefined : handleUseAsReferenceRequest}
-                  onUseAsReferenceConfirm={handleUseAsReferenceConfirm}
-                  onEditPoster={(idx) => setEditingPosterIndex(idx)}
-                  pendingUseAsReference={pendingUseAsReference}
-                  savingPoster={savingPoster}
-                  creatingCampaign={creatingCampaign}
-                  showRegeneratePrompt={showRegeneratePrompt}
-                  regeneratePrompt={regeneratePrompt}
-                  onRegeneratePromptChange={setRegeneratePrompt}
-                  onRegenerateSubmit={handleRegenerateSubmit}
-                  onRegenerateCancel={() => {
-                    setShowRegeneratePrompt(false);
-                    setPendingUseAsReference(null);
-                    setRegeneratePrompt('');
-                  }}
-                  canCreateCampaigns={canCreateCampaigns}
-                />
-              )}
-
-              <div ref={messagesEndRef} />
-            </div>
-          </div>
-        </div>
-
-        {/* Input Area - persistent conversational input for input and product-input phases */}
-        {(phase === 'input' || phase === 'product-input') && (
-          <div className="border-t flex-shrink-0 w-full" style={{ borderColor: colors.border, backgroundColor: colors.card }}>
-            <div className="max-w-4xl w-full mx-auto px-6 py-4">
-              <ChatInput
-                value={phase === 'input' ? inputValue : productPrompt}
-                images={phase === 'input' ? inputImages : productImages}
-                onChange={phase === 'input' ? setInputValue : setProductPrompt}
-                onImageSelect={phase === 'input' ? handleImageSelect : handleProductImageSelect}
-                onRemoveImage={phase === 'input' ? removeImage : removeProductImage}
-                onSubmit={phase === 'input' ? handleSubmit : (e) => { e?.preventDefault(); handleProductSubmit(e); }}
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onDrop={handleDrop}
-                isDragging={isDragging}
-                fileInputRef={fileInputRef}
+      {/* Main Content — Creative Workspace V2 */}
+      <PosterCreativeWorkspace
+        brand={brand}
+        sessionName={session?.name || 'Untitled Poster'}
+        creditsAvailable={credits}
+        onOpenBrandGuidelines={() => setShowBrandGuidelineModal(true)}
+        onBackToBrandStudio={() => router.push('/brand-studio')}
+        selectedProduct={selectedProduct}
+        productImages={productImages}
+        productImageUrls={savedProductData?.imageDataUrls || []}
+        onProductImagesChange={handleWorkspaceProductImagesChange}
+        onClearProduct={handleClearProduct}
+        fetchedProducts={fetchedProducts}
+        isScanningProducts={isScanningProducts}
+        onSelectCatalogProduct={handleFetchedProductSelect}
+        onBrowseCatalog={handleBrowseCatalog}
+        onImportProductUrl={handleImportProductUrl}
+        creativePrompt={posterPrompt}
+        onCreativePromptChange={setPosterPrompt}
+        onEnhancePrompt={() => void handleEnhancePrompt()}
+        isEnhancingPrompt={isEnhancingPrompt}
+        referencePosterPreviewUrl={
+          config.referencePoster?.dataUrl ||
+          config.referencePoster?.imageUrl ||
+          null
+        }
+        isAnalyzingReferencePoster={!!config.referencePoster?.analyzing}
+        onReferencePosterFile={(file) => {
+          if (!file) return;
+          const dt = new DataTransfer();
+          dt.items.add(file);
+          void handleReferencePosterSelect(dt.files);
+        }}
+        onClearReferencePoster={handleRemoveReferencePoster}
+        theme={config.theme || ''}
+        onThemeChange={(t) => setConfig((c) => ({ ...c, theme: t }))}
+        aspectRatio={config.aspectRatio}
+        onAspectRatioChange={(r) => setConfig((c) => ({ ...c, aspectRatio: r }))}
+        numVariants={(config.variantCount || 3) as 1 | 2 | 3}
+        onNumVariantsChange={(n) => setConfig((c) => ({ ...c, variantCount: n }))}
+        canGenerate={
+          !hasInsufficientCredits &&
+          !!safeTrim(posterPrompt) &&
+          (!!selectedProduct ||
+            productImages.length > 0 ||
+            (savedProductData?.imageDataUrls?.length ?? 0) > 0 ||
+            (savedProductData?.images?.length ?? 0) > 0)
+        }
+        generateBlockedReason={
+          hasInsufficientCredits
+            ? 'Purchase credits to generate posters'
+            : !(
+                  selectedProduct ||
+                  productImages.length > 0 ||
+                  (savedProductData?.imageDataUrls?.length ?? 0) > 0 ||
+                  (savedProductData?.images?.length ?? 0) > 0
+                )
+              ? 'Add a product to generate'
+              : !safeTrim(posterPrompt)
+                ? 'Describe what you want to create'
+                : null
+        }
+        onGenerate={() => void handleWorkspaceGenerate()}
+        isGenerating={isGenerating || phase === 'generating'}
+        thinkingMessages={thinkingMessages}
+        creditsAlertSlot={
+          hasInsufficientCredits ? <InsufficientCreditsAlert type="image" /> : null
+        }
+        brandReviewSlot={
+          phase === 'brand-review' && brand ? (
+            <div className="mb-8">
+              <BrandCard
+                brand={brand}
+                editing={editing}
+                onEdit={() => setEditing(true)}
+                onChange={setBrand}
+                onDone={() => setEditing(false)}
+                onConfirm={handleBrandConfirm}
               />
             </div>
-          </div>
-        )}
+          ) : null
+        }
+        resultsSlot={
+          phase === 'ready' && generatedPosters.length > 0 ? (
+            <PosterGrid
+              posters={generatedPosters}
+              posterPrompt={posterPrompt}
+              config={config}
+              onConfigChange={setConfig}
+              onSavePoster={savePoster}
+              onCreateCampaign={createCampaignFromPoster}
+              onRegenerate={hasInsufficientCredits ? undefined : handleRegenerateClick}
+              onUseAsReference={hasInsufficientCredits ? undefined : handleUseAsReference}
+              onUseAsReferenceRequest={hasInsufficientCredits ? undefined : handleUseAsReferenceRequest}
+              onUseAsReferenceConfirm={handleUseAsReferenceConfirm}
+              onEditPoster={(idx) => setEditingPosterIndex(idx)}
+              pendingUseAsReference={pendingUseAsReference}
+              savingPoster={savingPoster}
+              creatingCampaign={creatingCampaign}
+              showRegeneratePrompt={showRegeneratePrompt}
+              regeneratePrompt={regeneratePrompt}
+              onRegeneratePromptChange={setRegeneratePrompt}
+              onRegenerateSubmit={handleRegenerateSubmit}
+              onRegenerateCancel={() => {
+                setShowRegeneratePrompt(false);
+                setPendingUseAsReference(null);
+                setRegeneratePrompt('');
+              }}
+              canCreateCampaigns={canCreateCampaigns}
+            />
+          ) : null
+        }
+        onBackToCompose={() => setPhase('config')}
+      />
 
         {/* Brand Onboarding Modal */}
         {showBrandOnboarding && !brand && (
@@ -1985,7 +2332,7 @@ export default function PosterSessionPage() {
           />
         )}
 
-        {/* New Session Modal */}
+        {/* New Session Modal (fallback — primary path auto-creates Untitled Poster) */}
         <SessionNameModal
           isOpen={showNewSessionModal}
           sessionType="poster"
@@ -2048,7 +2395,6 @@ export default function PosterSessionPage() {
             className="fixed inset-0 bg-black/90 flex items-center justify-center z-50"
             onClick={() => setPreviewImageUrl(null)}
           >
-            {/* Close button */}
             <button
               onClick={() => setPreviewImageUrl(null)}
               className="fixed top-4 right-4 z-50 p-2 bg-white/10 hover:bg-white/20 rounded-full text-white transition-colors"
@@ -2058,7 +2404,6 @@ export default function PosterSessionPage() {
               </svg>
             </button>
             
-            {/* Image container */}
             <div 
               className="relative w-full h-full flex items-center justify-center p-8"
               onClick={(e) => e.stopPropagation()}
@@ -2067,74 +2412,7 @@ export default function PosterSessionPage() {
                 src={previewImageUrl}
                 alt="Preview"
                 className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
-                style={{ imageRendering: 'auto' }}
               />
-            </div>
-            
-            {/* Action buttons */}
-            <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 flex gap-3 z-50">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  downloadImageToLocal(previewImageUrl, `poster-${Date.now()}.png`);
-                }}
-                className="px-5 py-2.5 rounded-lg text-sm font-medium shadow-lg transition-colors flex items-center gap-2"
-                style={{ backgroundColor: colors.card, color: colors.foreground, border: `1px solid ${colors.border}` }}
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                </svg>
-                Download
-              </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  // For data URLs, create a blob and open it
-                  if (previewImageUrl.startsWith('data:')) {
-                    try {
-                      const [header, base64Data] = previewImageUrl.split(',');
-                      const mimeMatch = header.match(/data:([^;]+)/);
-                      const mimeType = mimeMatch ? mimeMatch[1] : 'image/png';
-                      const binaryString = atob(base64Data);
-                      const bytes = new Uint8Array(binaryString.length);
-                      for (let i = 0; i < binaryString.length; i++) {
-                        bytes[i] = binaryString.charCodeAt(i);
-                      }
-                      const blob = new Blob([bytes], { type: mimeType });
-                      const blobUrl = URL.createObjectURL(blob);
-                      window.open(blobUrl, '_blank');
-                    } catch (err) {
-                      console.error('Error opening image:', err);
-                      window.open(previewImageUrl, '_blank');
-                    }
-                  } else {
-                    window.open(previewImageUrl, '_blank');
-                  }
-                }}
-                className="px-5 py-2.5 rounded-lg text-sm font-medium shadow-lg transition-colors flex items-center gap-2"
-                style={{ backgroundColor: colors.card, color: colors.foreground, border: `1px solid ${colors.border}` }}
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                </svg>
-                Open in New Tab
-              </button>
-              {!hasInsufficientCredits && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleUseAsReferenceRequest(previewImageUrl, 0);
-                  setPreviewImageUrl(null);
-                }}
-                className="px-5 py-2.5 rounded-lg text-sm font-medium shadow-lg transition-colors flex items-center gap-2"
-                style={{ backgroundColor: colors.card, color: colors.foreground, border: `1px solid ${colors.border}` }}
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-                Use as Reference
-              </button>
-              )}
             </div>
           </div>
         )}
@@ -2154,583 +2432,10 @@ export default function PosterSessionPage() {
             }
           />
         )}
-      </div>
     </div>
   );
 }
-
-// ============== Sub-components (simplified versions for this page) ==============
-
-function FetchedProductsPanel({
-  products,
-  scannedUrl,
-  isScanning,
-  collapsed,
-  onToggleCollapsed,
-  onSelectProduct,
-}: {
-  products: Product[];
-  scannedUrl: string;
-  isScanning: boolean;
-  collapsed: boolean;
-  onToggleCollapsed: () => void;
-  onSelectProduct: (product: Product) => void;
-}) {
-  const hostname = scannedUrl ? scannedUrl.replace(/^https?:\/\//, '').split('/')[0] : 'website';
-
-  return (
-    <div className="w-full max-w-4xl">
-      <div
-        className="rounded-xl border overflow-hidden"
-        style={{ borderColor: colors.border, background: colors.card }}
-      >
-        {/* Collapsible Header */}
-        <button
-          onClick={onToggleCollapsed}
-          className="flex items-center justify-between w-full px-5 py-3.5 text-left hover:opacity-90 transition-opacity"
-          style={{ background: colors.card, borderBottom: collapsed ? 'none' : `1px solid ${colors.border}` }}
-        >
-          <span className="font-semibold text-sm truncate mr-2" style={{ color: colors.foreground }}>
-            {isScanning ? 'Scanning products...' : (
-              <>
-                Fetched products from {hostname}
-                {products.length > 0 && ` \u2022 ${products.length} products`}
-              </>
-            )}
-          </span>
-          <svg
-            className={`w-5 h-5 shrink-0 transition-transform duration-200 ${collapsed ? '' : 'rotate-180'}`}
-            style={{ color: colors.mutedForeground }}
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </svg>
-        </button>
-
-        {/* Collapsible Content */}
-        {!collapsed && (
-          <div className="p-5" style={{ background: colors.background }}>
-            {isScanning ? (
-              <div className="flex items-center justify-center py-8 gap-3" style={{ color: colors.mutedForeground }}>
-                <div
-                  className="animate-spin rounded-full h-5 w-5 border-2 border-t-transparent"
-                  style={{ borderColor: colors.border, borderTopColor: colors.primary }}
-                />
-                <span className="text-sm">Scanning website for products...</span>
-              </div>
-            ) : products.length > 0 ? (
-              <>
-                <p className="text-xs mb-4" style={{ color: colors.mutedForeground }}>
-                  Click a product to use it for your poster
-                </p>
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-                  {products.map((p, i) => (
-                    <button
-                      key={i}
-                      onClick={() => onSelectProduct(p)}
-                      className="text-left rounded-lg p-3 border transition-all hover:shadow-md hover:border-[hsl(213_100%_55%)] group"
-                      style={{ background: colors.card, borderColor: colors.border }}
-                    >
-                      <div
-                        className="aspect-square rounded-md mb-2 overflow-hidden"
-                        style={{ background: 'hsl(0 0% 15%)' }}
-                      >
-                        {p.product_images?.[0] ? (
-                          <img
-                            src={p.product_images[0]}
-                            alt={p.product_name}
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center" style={{ color: colors.mutedForeground }}>
-                            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                            </svg>
-                          </div>
-                        )}
-                      </div>
-                      <h4 className="text-xs font-semibold truncate" style={{ color: colors.foreground }}>
-                        {p.product_name}
-                      </h4>
-                      {p.price && (
-                        <p className="text-xs font-medium" style={{ color: colors.primary }}>
-                          {p.price}
-                        </p>
-                      )}
-                      <p className="text-xs truncate mt-0.5" style={{ color: colors.mutedForeground }}>
-                        {p.short_benefit || p.description || '\u2014'}
-                      </p>
-                    </button>
-                  ))}
-                </div>
-              </>
-            ) : (
-              <p className="text-center py-6 text-sm" style={{ color: colors.mutedForeground }}>
-                No products detected from this website.
-              </p>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function ChatInput({
-  value,
-  images,
-  onChange,
-  onImageSelect,
-  onRemoveImage,
-  onSubmit,
-  onDragOver,
-  onDragLeave,
-  onDrop,
-  isDragging,
-  fileInputRef,
-}: {
-  value: string;
-  images: File[];
-  onChange: (value: string) => void;
-  onImageSelect: (files: FileList | null) => void;
-  onRemoveImage: (index: number) => void;
-  onSubmit: (e?: React.FormEvent) => void;
-  onDragOver: (e: React.DragEvent) => void;
-  onDragLeave: () => void;
-  onDrop: (e: React.DragEvent) => void;
-  isDragging: boolean;
-  fileInputRef: React.RefObject<HTMLInputElement | null>;
-}) {
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  useEffect(() => {
-    const el = textareaRef.current;
-    if (!el) return;
-    el.style.height = 'auto';
-    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
-  }, [value]);
-
-  return (
-    <form onSubmit={onSubmit}>
-      <div
-        className="border-2 rounded-xl p-4 transition-all duration-200"
-        style={isDragging ? { borderColor: colors.primary, backgroundColor: 'hsl(213 100% 55% / 0.1)' } : { borderColor: colors.border, backgroundColor: colors.card }}
-        onDragOver={onDragOver}
-        onDragLeave={onDragLeave}
-        onDrop={onDrop}
-      >
-        {images.length > 0 && (
-          <div className="flex flex-wrap gap-2 mb-3">
-            {images.map((img, idx) => (
-              <div key={idx} className="relative group">
-                <img
-                  src={URL.createObjectURL(img)}
-                  alt={`Preview ${idx + 1}`}
-                  className="w-16 h-16 object-cover rounded-lg shadow-sm"
-                  style={{ border: `1px solid ${colors.border}` }}
-                />
-                <button
-                  type="button"
-                  onClick={() => onRemoveImage(idx)}
-                  className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white rounded-full text-xs opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center hover:bg-red-600 shadow-sm"
-                >
-                  ×
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-
-        <div className="flex gap-3 items-end">
-          <div className="flex-1">
-            <textarea
-              ref={textareaRef}
-              value={value}
-              onChange={(e) => onChange(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  onSubmit();
-                }
-              }}
-              placeholder="Paste website URL, describe what you want, or drag images here..."
-              rows={1}
-              className="w-full resize-none border-0 focus:outline-none text-sm bg-transparent"
-              style={{ minHeight: '24px', maxHeight: '200px', color: colors.foreground }}
-            />
-          </div>
-
-          <div className="flex gap-2 flex-shrink-0">
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="p-2 rounded-lg transition-all duration-200"
-              style={{ color: colors.mutedForeground }}
-              title="Upload images"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-            </button>
-
-            <button
-              type="submit"
-              disabled={!safeTrim(value) && images.length === 0}
-              className="px-4 py-2 text-white rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
-              style={{ backgroundColor: colors.primary }}
-            >
-              Send
-            </button>
-          </div>
-        </div>
-
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          multiple
-          onChange={(e) => onImageSelect(e.target.files)}
-          className="hidden"
-        />
-      </div>
-    </form>
-  );
-}
-
-function ProductInput({
-  prompt,
-  images,
-  onPromptChange,
-  onImageSelect,
-  onRemoveImage,
-  onSubmit,
-  fileInputRef,
-}: {
-  prompt: string;
-  images: File[];
-  onPromptChange: (value: string) => void;
-  onImageSelect: (files: FileList | null) => void;
-  onRemoveImage: (index: number) => void;
-  onSubmit: (e?: React.FormEvent) => void;
-  fileInputRef: React.RefObject<HTMLInputElement | null>;
-}) {
-  const [isDragging, setIsDragging] = useState(false);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  useEffect(() => {
-    const el = textareaRef.current;
-    if (!el) return;
-    el.style.height = 'auto';
-    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
-  }, [prompt]);
-
-  return (
-    <div className="flex gap-4 max-w-4xl">
-      <div className="flex-shrink-0 w-8" />
-      <form onSubmit={onSubmit} className="flex-1">
-        <div
-          className="border-2 rounded-xl p-4 transition-all duration-200 flex flex-col gap-3"
-          style={isDragging ? { borderColor: colors.primary, backgroundColor: 'hsl(213 100% 55% / 0.1)' } : { borderColor: colors.border, backgroundColor: colors.card }}
-          onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-          onDragLeave={() => setIsDragging(false)}
-          onDrop={(e) => { e.preventDefault(); setIsDragging(false); onImageSelect(e.dataTransfer.files); }}
-        >
-          {images.length > 0 && (
-            <div className="flex flex-wrap gap-2 mb-1">
-              {images.map((img, idx) => (
-                <div key={idx} className="relative group">
-                  <img
-                    src={URL.createObjectURL(img)}
-                    alt={`Preview ${idx + 1}`}
-                    className="w-16 h-16 object-cover rounded-lg shadow-sm"
-                    style={{ border: `1px solid ${colors.border}` }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => onRemoveImage(idx)}
-                    className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white rounded-full text-xs opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center hover:bg-red-600"
-                  >
-                    ×
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div className="flex gap-3 items-end">
-            <textarea
-              ref={textareaRef}
-              value={prompt}
-              onChange={(e) => onPromptChange(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSubmit(); } }}
-              placeholder="Describe what you want to promote or upload product images..."
-              rows={1}
-              className="flex-1 resize-none border-0 focus:outline-none text-sm bg-transparent"
-              style={{ minHeight: '24px', maxHeight: '200px', color: colors.foreground }}
-            />
-
-            <div className="flex gap-2 flex-shrink-0">
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="p-2 rounded-lg transition-all"
-                style={{ color: colors.mutedForeground }}
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-              </button>
-
-              <button
-                type="submit"
-                disabled={!safeTrim(prompt) && images.length === 0}
-                className="px-4 py-2 text-white rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                style={{ backgroundColor: colors.primary }}
-              >
-                Continue
-              </button>
-            </div>
-          </div>
-
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            multiple
-            onChange={(e) => onImageSelect(e.target.files)}
-            className="hidden"
-          />
-        </div>
-      </form>
-      <div className="flex-shrink-0 w-8" />
-    </div>
-  );
-}
-
-function PosterPromptInput({
-  prompt,
-  onPromptChange,
-  onSubmit,
-}: {
-  prompt: string;
-  onPromptChange: (value: string) => void;
-  onSubmit: () => void;
-}) {
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  useEffect(() => {
-    const el = textareaRef.current;
-    if (!el) return;
-    el.style.height = 'auto';
-    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
-  }, [prompt]);
-
-  return (
-    <div className="flex gap-4 max-w-4xl">
-      <div className="flex-shrink-0 w-8" />
-      <form onSubmit={(e) => { e.preventDefault(); onSubmit(); }} className="flex-1">
-        <div className="border-2 rounded-xl p-6 shadow-sm" style={{ borderColor: colors.border, backgroundColor: colors.card }}>
-          <label className="block text-sm font-medium mb-3" style={{ color: colors.foreground }}>
-            Describe the poster you want
-          </label>
-          <textarea
-            ref={textareaRef}
-            value={prompt}
-            onChange={(e) => onPromptChange(e.target.value)}
-            placeholder="e.g., A vibrant poster highlighting the product with bold text and modern design..."
-            className="w-full border rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 resize-none placeholder:opacity-70"
-            style={{ minHeight: '60px', maxHeight: '200px', borderColor: colors.border, backgroundColor: colors.input, color: colors.foreground }}
-            rows={1}
-            onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { onSubmit(); } }}
-          />
-          <div className="flex justify-end mt-4">
-            <button
-              type="submit"
-              disabled={!safeTrim(prompt)}
-              className="px-6 py-2.5 text-white rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-              style={{ backgroundColor: colors.primary }}
-            >
-              Continue →
-            </button>
-          </div>
-        </div>
-      </form>
-      <div className="flex-shrink-0 w-8" />
-    </div>
-  );
-}
-
-function ConfigInput({
-  config,
-  onConfigChange,
-  onSubmit,
-  referenceImages = [],
-  onRemoveReferenceImage,
-}: {
-  config: PosterConfig;
-  onConfigChange: (config: PosterConfig) => void;
-  onSubmit: () => void;
-  referenceImages?: string[];
-  onRemoveReferenceImage?: (index: number) => void;
-}) {
-  const themes = POSTER_THEMES;
-  const aspectRatios = ASPECT_RATIOS;
-
-  return (
-    <div className="flex gap-4 max-w-4xl">
-      <div className="flex-shrink-0 w-8" />
-      <div className="flex-1">
-        <div className="border-2 rounded-xl p-6 space-y-6 shadow-sm" style={{ borderColor: colors.border, backgroundColor: colors.card }}>
-          {/* Reference Images Display */}
-          {referenceImages.length > 0 && (
-            <div>
-              <label className="block text-sm font-medium mb-3" style={{ color: colors.foreground }}>
-                Reference Images ({referenceImages.length})
-              </label>
-              <div className="flex flex-wrap gap-3">
-                {referenceImages.map((imageUrl, idx) => (
-                  <div key={idx} className="relative group">
-                    <img
-                      src={imageUrl}
-                      alt={`Reference ${idx + 1}`}
-                      className="w-20 h-20 object-cover rounded-lg shadow-sm"
-                      style={{ border: `1px solid ${colors.border}` }}
-                    />
-                    {onRemoveReferenceImage && (
-                      <button
-                        type="button"
-                        onClick={() => onRemoveReferenceImage(idx)}
-                        className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full text-xs opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center hover:bg-red-600 shadow-sm"
-                        title="Remove reference"
-                      >
-                        ×
-                      </button>
-                    )}
-                    <span className="absolute bottom-1 left-1 bg-black/60 text-white text-xs px-1.5 py-0.5 rounded">
-                      {idx + 1}
-                    </span>
-                  </div>
-                ))}
-              </div>
-              <p className="text-xs mt-2" style={{ color: colors.mutedForeground }}>
-                These images will be used as style references for your new posters
-              </p>
-            </div>
-          )}
-
-          {/* Theme Selection */}
-          <div>
-            <label className="block text-sm font-medium mb-3" style={{ color: colors.foreground }}>
-              Theme Selection
-            </label>
-            <div className="grid grid-cols-3 gap-2">
-              {themes.map((theme) => (
-                <button
-                  key={theme.id}
-                  type="button"
-                  onClick={() => onConfigChange({ ...config, theme: theme.id })}
-                  title={theme.note}
-                  className="px-3 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2"
-                  style={config.theme === theme.id ? { backgroundColor: colors.primary, color: 'white' } : { backgroundColor: colors.muted, color: colors.foreground }}
-                >
-                  {theme.exampleImage ? (
-                    <img src={theme.exampleImage} alt="" className="w-8 h-8 rounded object-cover flex-shrink-0" />
-                  ) : theme.previewStyle ? (
-                    <span className="w-8 h-8 rounded flex-shrink-0" style={{ background: theme.previewStyle, border: '1px solid rgba(0,0,0,0.1)' }} aria-hidden />
-                  ) : null}
-                  {theme.label}
-                </button>
-              ))}
-            </div>
-            {config.theme && (() => {
-              const selected = themes.find((t) => t.id === config.theme);
-              if (!selected?.note) return null;
-              return (
-                <div className="mt-3 p-3 rounded-lg flex gap-3" style={{ backgroundColor: colors.muted, border: `1px solid ${colors.border}` }}>
-                  {selected.exampleImage ? (
-                    <img src={selected.exampleImage} alt={`${selected.label} example`} className="w-20 h-20 rounded-lg object-cover flex-shrink-0" style={{ border: `1px solid ${colors.border}` }} />
-                  ) : selected.previewStyle ? (
-                    <div className="w-20 h-20 rounded-lg flex-shrink-0" style={{ background: selected.previewStyle, border: `1px solid ${colors.border}` }} />
-                  ) : null}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium mb-1" style={{ color: colors.foreground }}>{selected.label} — what to expect</p>
-                    <p className="text-xs" style={{ color: colors.mutedForeground }}>{selected.note}</p>
-                  </div>
-                </div>
-              );
-            })()}
-          </div>
-
-          {/* Aspect Ratio */}
-          <div>
-            <label className="block text-sm font-medium mb-3" style={{ color: colors.foreground }}>
-              Aspect Ratio
-            </label>
-            <div className="flex gap-4 flex-wrap">
-              {aspectRatios.map((ar) => (
-                <button
-                  key={ar.id}
-                  type="button"
-                  title={ar.description}
-                  onClick={() => onConfigChange({ ...config, aspectRatio: ar.id as PosterConfig['aspectRatio'] })}
-                  className="flex flex-col items-center gap-1.5 px-3 py-2.5 rounded-lg text-xs font-medium transition-all"
-                  style={config.aspectRatio === ar.id ? { backgroundColor: colors.primary, color: 'white' } : { backgroundColor: colors.muted, color: colors.foreground }}
-                >
-                  <span
-                    className="rounded-sm border-2 flex-shrink-0"
-                    style={{
-                      width: ar.width >= ar.height ? 36 : (36 * ar.width) / ar.height,
-                      height: ar.width >= ar.height ? (36 * ar.height) / ar.width : 36,
-                      borderColor: 'currentColor',
-                      opacity: 0.9,
-                    }}
-                  />
-                  <span>{ar.label}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Variant Count */}
-          <div>
-            <label className="block text-sm font-medium mb-3" style={{ color: colors.foreground }}>
-              Number of Variants
-            </label>
-            <div className="flex gap-2">
-              {[1, 2, 3].map((count) => (
-                <button
-                  key={count}
-                  type="button"
-                  onClick={() => onConfigChange({ ...config, variantCount: count as PosterConfig['variantCount'] })}
-                  className="flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-all"
-                  style={config.variantCount === count ? { backgroundColor: colors.primary, color: 'white' } : { backgroundColor: colors.muted, color: colors.foreground }}
-                >
-                  {count} {count === 1 ? 'Variant' : 'Variants'}
-                </button>
-              ))}
-            </div>
-            <p className="text-xs mt-2" style={{ color: colors.mutedForeground }}>
-              Generate {config.variantCount} different {config.variantCount === 1 ? 'version' : 'versions'} of your poster ({config.variantCount} {config.variantCount === 1 ? 'credit' : 'credits'} will be deducted)
-            </p>
-          </div>
-
-          {/* Submit */}
-          <div className="flex justify-end pt-2">
-            <button
-              type="button"
-              onClick={onSubmit}
-              disabled={!config.theme}
-              className="px-6 py-2.5 text-white rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-              style={{ backgroundColor: colors.primary }}
-            >
-              Generate {config.variantCount} {config.variantCount === 1 ? 'Variant' : 'Variants'}
-            </button>
-          </div>
-        </div>
-      </div>
-      <div className="flex-shrink-0 w-8" />
-    </div>
-  );
-}
+// ============== Results gallery ==============
 
 function PosterGrid({
   posters,
@@ -2776,7 +2481,7 @@ function PosterGrid({
   canCreateCampaigns: boolean;
 }) {
   const [openMenuIndex, setOpenMenuIndex] = useState<number | null>(null);
-  const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const regenerateTextareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -2803,6 +2508,21 @@ function PosterGrid({
     }
   }, [openMenuIndex]);
 
+  useEffect(() => {
+    if (previewIndex === null) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setPreviewIndex(null);
+      if (e.key === 'ArrowLeft') {
+        setPreviewIndex((i) => (i === null ? i : (i - 1 + posters.length) % posters.length));
+      }
+      if (e.key === 'ArrowRight') {
+        setPreviewIndex((i) => (i === null ? i : (i + 1) % posters.length));
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [previewIndex, posters.length]);
+
   // Handle download - use blob-based approach so data URLs and remote URLs actually download
   const handleDownload = async (poster: string, idx: number) => {
     try {
@@ -2818,25 +2538,53 @@ function PosterGrid({
     setOpenMenuIndex(null);
   };
 
+  const previewImage = previewIndex !== null ? posters[previewIndex] : null;
+
   return (
     <>
       {/* Image Preview Modal */}
-      {previewImage && (
+      {previewImage && previewIndex !== null && (
         <div
           className="fixed inset-0 bg-black/90 flex items-center justify-center z-50"
-          onClick={() => setPreviewImage(null)}
+          onClick={() => setPreviewIndex(null)}
         >
-          {/* Close button - fixed position in viewport */}
           <button
-            onClick={() => setPreviewImage(null)}
+            onClick={() => setPreviewIndex(null)}
             className="fixed top-4 right-4 z-50 p-2 bg-white/10 hover:bg-white/20 rounded-full text-white transition-colors"
+            aria-label="Close preview"
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
+
+          {posters.length > 1 && (
+            <>
+              <button
+                type="button"
+                aria-label="Previous poster"
+                className="fixed left-4 top-1/2 -translate-y-1/2 z-50 p-3 rounded-full bg-white/10 hover:bg-white/20 text-white"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setPreviewIndex((previewIndex - 1 + posters.length) % posters.length);
+                }}
+              >
+                ←
+              </button>
+              <button
+                type="button"
+                aria-label="Next poster"
+                className="fixed right-4 top-1/2 -translate-y-1/2 z-50 p-3 rounded-full bg-white/10 hover:bg-white/20 text-white"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setPreviewIndex((previewIndex + 1) % posters.length);
+                }}
+              >
+                →
+              </button>
+            </>
+          )}
           
-          {/* Image container with proper aspect ratio */}
           <div 
             className="relative w-full h-full flex items-center justify-center p-8"
             onClick={(e) => e.stopPropagation()}
@@ -2849,69 +2597,83 @@ function PosterGrid({
             />
           </div>
           
-          {/* Action buttons - fixed position at bottom */}
-          <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 flex gap-3 z-50">
+          <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 flex flex-wrap justify-center gap-2 z-50 px-4">
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                const idx = posters.findIndex(p => p === previewImage);
-                if (idx >= 0) handleDownload(previewImage, idx);
+                void handleDownload(previewImage, previewIndex);
               }}
-              className="px-5 py-2.5 rounded-lg text-sm font-medium shadow-lg transition-colors flex items-center gap-2"
+              className="px-4 py-2 rounded-lg text-sm font-medium shadow-lg transition-colors"
               style={{ backgroundColor: colors.card, color: colors.foreground, border: `1px solid ${colors.border}` }}
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-              </svg>
               Download
             </button>
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                // For data URLs, create a blob and open it
-                if (previewImage.startsWith('data:')) {
-                  try {
-                    const [header, base64Data] = previewImage.split(',');
-                    const mimeMatch = header.match(/data:([^;]+)/);
-                    const mimeType = mimeMatch ? mimeMatch[1] : 'image/png';
-                    const binaryString = atob(base64Data);
-                    const bytes = new Uint8Array(binaryString.length);
-                    for (let i = 0; i < binaryString.length; i++) {
-                      bytes[i] = binaryString.charCodeAt(i);
-                    }
-                    const blob = new Blob([bytes], { type: mimeType });
-                    const blobUrl = URL.createObjectURL(blob);
-                    window.open(blobUrl, '_blank');
-                  } catch (err) {
-                    console.error('Error opening image:', err);
-                    // Fallback: try direct open
-                    window.open(previewImage, '_blank');
-                  }
-                } else {
-                  window.open(previewImage, '_blank');
-                }
+                void onSavePoster(previewImage, previewIndex);
               }}
-              className="px-5 py-2.5 rounded-lg text-sm font-medium shadow-lg transition-colors flex items-center gap-2"
+              disabled={savingPoster === previewIndex}
+              className="px-4 py-2 rounded-lg text-sm font-medium shadow-lg transition-colors disabled:opacity-50"
               style={{ backgroundColor: colors.card, color: colors.foreground, border: `1px solid ${colors.border}` }}
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-              </svg>
-              Open in New Tab
+              {savingPoster === previewIndex ? 'Saving…' : 'Save'}
             </button>
+            {onEditPoster && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onEditPoster(previewIndex);
+                  setPreviewIndex(null);
+                }}
+                className="px-4 py-2 rounded-lg text-sm font-medium shadow-lg transition-colors"
+                style={{ backgroundColor: colors.card, color: colors.foreground, border: `1px solid ${colors.border}` }}
+              >
+                Edit
+              </button>
+            )}
+            {onUseAsReferenceRequest && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onUseAsReferenceRequest(previewImage, previewIndex);
+                  setPreviewIndex(null);
+                }}
+                className="px-4 py-2 rounded-lg text-sm font-medium shadow-lg transition-colors"
+                style={{ backgroundColor: colors.card, color: colors.foreground, border: `1px solid ${colors.border}` }}
+              >
+                Use as reference
+              </button>
+            )}
+            {canCreateCampaigns && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void onCreateCampaign(previewImage, previewIndex);
+                }}
+                disabled={creatingCampaign === previewIndex}
+                className="px-4 py-2 rounded-lg text-sm font-medium shadow-lg text-white transition-colors disabled:opacity-50"
+                style={{ backgroundColor: colors.primary }}
+              >
+                {creatingCampaign === previewIndex ? 'Creating…' : 'Create campaign'}
+              </button>
+            )}
           </div>
         </div>
       )}
 
-      <div className="flex gap-4 max-w-4xl ml-auto">
-        <div className="flex-shrink-0 w-8" />
-        <div className="flex-1 space-y-8">
+      <div className="w-full space-y-8">
           {/* Regeneration / Use as Reference Config Form - theme, prompt, aspect ratio, variants */}
           {(showRegeneratePrompt || pendingUseAsReference) && (
-            <div className="rounded-lg p-6 space-y-6" style={{ border: `2px solid ${colors.border}`, backgroundColor: colors.card }}>
+            <div className="rounded-2xl p-5 sm:p-6 space-y-5" style={{ border: `1px solid ${colors.border}`, backgroundColor: colors.background }}>
               <h3 className="text-base font-semibold" style={{ color: colors.foreground }}>
-                {pendingUseAsReference ? 'Edit settings before using as reference' : 'Edit settings for new variants'}
+                {pendingUseAsReference ? 'Use as design reference' : 'Regenerate'}
               </h3>
+              {!pendingUseAsReference && (
+                <p className="text-sm -mt-3" style={{ color: colors.mutedForeground }}>
+                  Create a new creative direction / variant. To change this specific poster, use Edit instead.
+                </p>
+              )}
 
               {/* Theme */}
               <div>
@@ -2956,12 +2718,14 @@ function PosterGrid({
 
               {/* Prompt */}
               <div>
-                <label className="block text-sm font-medium mb-2" style={{ color: colors.foreground }}>Prompt</label>
+                <label className="block text-sm font-medium mb-2" style={{ color: colors.foreground }}>
+                  {pendingUseAsReference ? 'Prompt' : 'What should we change?'}
+                </label>
                 <textarea
                   ref={regenerateTextareaRef}
                   value={regeneratePrompt}
                   onChange={(e) => onRegeneratePromptChange(e.target.value)}
-                  placeholder="e.g., Make it more colorful, Add more text, Change the background to dark..."
+                  placeholder="Make the headline more premium and give the product more visual focus…"
                   className="w-full px-3 py-2 rounded-lg text-sm focus:outline-none focus:ring-2 resize-none"
                   style={{ minHeight: '60px', maxHeight: '200px', border: `1px solid ${colors.border}`, backgroundColor: colors.input, color: colors.foreground }}
                   rows={1}
@@ -3037,7 +2801,7 @@ function PosterGrid({
                     className="px-5 py-2.5 text-white rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2"
                     style={{ backgroundColor: colors.primary }}
                   >
-                    Generate {config.variantCount} {config.variantCount === 1 ? 'Variant' : 'Variants'}
+                    Refine · {config.variantCount} {config.variantCount === 1 ? 'poster' : 'posters'}
                   </button>
                 )}
                 <button
@@ -3052,18 +2816,21 @@ function PosterGrid({
           )}
 
           {/* Gallery-style poster grid */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
             {posters.map((poster, idx) => (
               <div
                 key={idx}
                 className="group"
               >
+                <p className="text-[11px] tracking-[0.14em] uppercase mb-2" style={{ color: colors.mutedForeground }}>
+                  Poster {String(idx + 1).padStart(2, '0')}
+                </p>
                 {/* Poster - Clickable for preview, with menu overlay */}
                 <div
-                  className="rounded-lg overflow-visible cursor-pointer relative"
-                  style={{ backgroundColor: colors.muted, border: `1px solid ${colors.border}` }}
+                  className="rounded-xl overflow-visible cursor-pointer relative"
+                  style={{ backgroundColor: 'hsl(0 0% 12%)', border: `1px solid hsl(0 0% 22%)` }}
                 >
-                  <div onClick={() => setPreviewImage(poster)}>
+                  <div onClick={() => setPreviewIndex(idx)}>
                     <img
                       src={poster}
                       alt={`Generated poster ${idx + 1}`}
@@ -3073,7 +2840,7 @@ function PosterGrid({
                     {/* Hover overlay */}
                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center rounded-lg pointer-events-none">
                       <span className="opacity-0 group-hover:opacity-100 transition-opacity text-white bg-black/50 px-3 py-1.5 rounded-lg text-sm font-medium">
-                        Click to preview
+                        Preview
                       </span>
                     </div>
                   </div>
@@ -3217,14 +2984,18 @@ function PosterGrid({
 
                 {/* Action Button below image */}
                 {canCreateCampaigns && (
-                  <div className="mt-3">
+                  <div className="mt-2.5 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button
                       onClick={() => onCreateCampaign(poster, idx)}
                       disabled={creatingCampaign === idx}
-                      className="w-full px-4 py-2.5 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      style={{ backgroundColor: colors.primary }}
+                      className="w-full px-3 py-2 rounded-lg text-[12px] font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      style={{
+                        backgroundColor: 'transparent',
+                        color: colors.primary,
+                        border: `1px solid hsl(213 100% 55% / 0.35)`,
+                      }}
                     >
-                      {creatingCampaign === idx ? 'Creating...' : 'Use in Campaign'}
+                      {creatingCampaign === idx ? 'Creating…' : 'Use in campaign'}
                     </button>
                   </div>
                 )}
@@ -3232,37 +3003,28 @@ function PosterGrid({
             ))}
           </div>
 
-          {/* Regenerate Button - Improved UX */}
-          {!showRegeneratePrompt && !pendingUseAsReference && (
-            <div className="pt-4 border-t flex justify-center" style={{ borderColor: colors.border }}>
+          {/* Regenerate — refine composer */}
+          {!showRegeneratePrompt && !pendingUseAsReference && onRegenerate && (
+            <div className="pt-6 border-t space-y-3" style={{ borderColor: colors.border }}>
+              <p className="text-sm font-medium" style={{ color: colors.foreground }}>
+                Want to change something?
+              </p>
+              <p className="text-sm" style={{ color: colors.mutedForeground }}>
+                Refine the creative direction or generate new variants from your brief.
+              </p>
               <button
                 onClick={onRegenerate}
-                className="px-6 py-2.5 border-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2"
+                className="px-5 py-2.5 rounded-xl text-sm font-semibold transition-all"
                 style={{
-                  borderColor: colors.border,
                   backgroundColor: colors.muted,
                   color: colors.foreground,
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = colors.primary;
-                  e.currentTarget.style.backgroundColor = 'hsl(213 100% 55% / 0.15)';
-                  e.currentTarget.style.color = colors.primary;
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = colors.border;
-                  e.currentTarget.style.backgroundColor = colors.muted;
-                  e.currentTarget.style.color = colors.foreground;
+                  border: `1px solid ${colors.border}`,
                 }}
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-                Generate New Variants
+                Refine poster
               </button>
             </div>
           )}
-        </div>
-        <div className="flex-shrink-0 w-8" />
       </div>
     </>
   );

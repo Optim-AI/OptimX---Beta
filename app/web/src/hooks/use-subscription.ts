@@ -154,6 +154,9 @@ export const useSubscription = create<SubscriptionState>()(
     }),
     {
       name: 'optimx-subscription',
+      // Avoid SSR/client persist mismatches that mark hadRuntimeError and
+      // force Fast Refresh into a full-reload loop on every HMR tick.
+      skipHydration: true,
       partialize: (state) => ({
         subscription: state.subscription,
         credits: state.credits,

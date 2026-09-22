@@ -6,13 +6,16 @@ import { useRouter } from "next/router";
 import Link from "next/link";
 import Sidebar from "@/app/web/src/components/Sidebar";
 import colors from "@/lib/ui/colors";
-import { authFetch } from "@/lib/utils";
+import { authFetch, safeResponseJson } from "@/lib/utils";
 import { showError, showAlert } from "@/app/web/src/components/ui/alert-modal-api";
 import {
   type BrandSnapshot,
   BrandGuidelineModal,
   BrandOnboarding,
   mapFullAnalyzeToBrandSnapshot,
+  fetchPosterCreativeDirectorVariants,
+  buildPosterPrompt,
+  getThemeForBrand,
 } from "@/app/web/src/components/creative-studio";
 import { DEFAULT_AD_BUILDER_DATA, saveBrandSnapshot } from "@/app/web/src/components/creative-studio/utils";
 import type { Product } from "@/app/web/src/components/creative-studio/types";
@@ -116,67 +119,6 @@ const SCAN_MESSAGES = [
   { text: "Extracting product data...", detail: "Pulling images, prices & descriptions" },
   { text: "Understanding brand identity...", detail: "Analyzing tone, audience & value proposition" },
 ];
-
-/**
- * Build a poster prompt thinking like a graphic designer.
- * Understands brand + theme + product, no rigid rules from Brand Studio.
- */
-function buildContentStudioPosterPrompt(options: {
-  productName: string;
-  angleText: string;
-  benefits: string[];
-  brand: BrandSnapshot | null;
-  theme: "commercial" | "professional";
-  variant: 1 | 2 | 3;
-}): string {
-  const { productName, angleText, benefits, brand, theme, variant } = options;
-
-  const parts: string[] = [];
-
-  parts.push("You are a senior graphic designer creating a scroll-stopping ad poster.");
-  parts.push("");
-  parts.push(`Product: ${productName}`);
-  parts.push(`Ad angle: ${angleText}`);
-  if (benefits.length > 0) {
-    parts.push(`Key benefits: ${benefits.join("; ")}`);
-  }
-  parts.push("");
-
-  if (brand) {
-    parts.push("Brand context:");
-    parts.push(`- Brand: ${brand.name}`);
-    if (brand.tone || brand.personality) parts.push(`- Tone: ${brand.tone || brand.personality}`);
-    if (brand.audience) parts.push(`- Audience: ${brand.audience}`);
-    if (brand.coreValueProp || brand.description)
-      parts.push(`- Value: ${brand.coreValueProp || brand.description}`);
-    if (brand.primaryColors?.length)
-      parts.push(`- Colors: ${brand.primaryColors.join(", ")}`);
-    else if (brand.colors?.primary)
-      parts.push(`- Colors: ${brand.colors.primary}${brand.colors.secondary ? `, ${brand.colors.secondary}` : ""}${brand.colors.accent ? `, ${brand.colors.accent}` : ""}`);
-    parts.push("");
-  }
-
-  if (theme === "professional") {
-    parts.push("Visual direction: Clean, credible, premium. Trust-building. Subtle gradients, refined typography, clinical or performance-focused mood.");
-  } else {
-    parts.push("Visual direction: Energetic, aspirational, emotionally engaging. Bold typography, strong contrast, lifestyle or product-in-use feel.");
-  }
-  parts.push("");
-
-  const variantHints: Record<number, string> = {
-    1: "Design approach: On-brand, safe, familiar. Maximum clarity.",
-    2: "Design approach: Bolder typography, stronger visual impact. Still brand-aligned.",
-    3: "Design approach: Creative composition, different layout. Fresh but commercial.",
-  };
-  parts.push(variantHints[variant] || variantHints[1]);
-  parts.push("");
-
-  parts.push("Create a single marketing poster. Clear hierarchy: hero visual, headline space, CTA area. No overlapping text and graphics. High-quality, 8K, commercial finish.");
-  parts.push("");
-  parts.push("CRITICAL: Never use asterisks (*) in any text. No * between words or sentences (e.g. no *and* or *bold*). Plain text only for headlines, body copy, and CTAs.");
-
-  return parts.join("\n");
-}
 
 export default function ContentStudioPage() {
   const router = useRouter();
@@ -817,23 +759,76 @@ export default function ContentStudioPage() {
         : selectedProduct.short_benefit || selectedProduct.description;
       const benefits = selectedProduct.key_benefits || [];
 
+      const themeHint = getThemeForBrand(brandSnapshot, angle);
       const theme: "commercial" | "professional" =
         angle && /clinical|proven|science|lab|performance/i.test(angle.title)
           ? "professional"
-          : "commercial";
+          : themeHint === "professional" || themeHint === "minimal"
+            ? "professional"
+            : "commercial";
       const aspectRatio: "1:1" | "4:5" | "9:16" | "1.91:1" = "4:5";
       const target = { width: 1080, height: 1350 };
 
-      const variantPrompts = ([1, 2, 3] as const).map((variantNum) =>
-        buildContentStudioPosterPrompt({
-          productName: selectedProduct.product_name,
-          angleText,
-          benefits,
-          brand: brandSnapshot,
-          theme,
-          variant: variantNum,
-        })
-      );
+      const userRequest = [
+        `Create a marketing poster for ${selectedProduct.product_name}.`,
+        `Ad angle / creative brief: ${angleText}`,
+        benefits.length ? `Key benefits: ${benefits.join("; ")}` : null,
+      ]
+        .filter(Boolean)
+        .join("\n");
+
+      const directorResult = await fetchPosterCreativeDirectorVariants({
+        authFetch,
+        userRequest,
+        theme,
+        aspectRatio,
+        brand: brandSnapshot,
+        variantCount: 3,
+        hasProductImage: !!productDataUrl,
+        hasLogo: !!(brandSnapshot?.logo || brandSnapshot?.logoUrl),
+        productName: selectedProduct.product_name,
+        productDescription: selectedProduct.description,
+        productBenefits: benefits,
+        audience: brandSnapshot?.audience || selectedProduct.target_audience,
+        campaignObjective: "Drive sales and product consideration",
+        creativeBrief: angleText,
+        platform: "Instagram / Meta feed",
+      });
+
+      const variantPrompts: string[] =
+        directorResult.usedDirector && directorResult.prompts.length > 0
+          ? directorResult.prompts.slice(0, 3)
+          : ([1, 2, 3] as const).map((variantNum) =>
+              buildPosterPrompt({
+                userRequest,
+                theme,
+                aspectRatio,
+                brand: brandSnapshot,
+                hasProductImage: !!productDataUrl,
+                variant: variantNum,
+                productName: selectedProduct.product_name,
+                productDescription: selectedProduct.description,
+                productBenefits: benefits,
+              })
+            );
+
+      // Pad if needed
+      while (variantPrompts.length < 3) {
+        const n = (variantPrompts.length + 1) as 1 | 2 | 3;
+        variantPrompts.push(
+          buildPosterPrompt({
+            userRequest,
+            theme,
+            aspectRatio,
+            brand: brandSnapshot,
+            hasProductImage: !!productDataUrl,
+            variant: n,
+            productName: selectedProduct.product_name,
+            productDescription: selectedProduct.description,
+            productBenefits: benefits,
+          })
+        );
+      }
 
       const basePayload = {
         mode: "generate" as const,
@@ -857,6 +852,9 @@ export default function ContentStudioPage() {
               prompt,
               description: prompt,
             }),
+          }).then(async (response) => {
+            const data = await response.json();
+            return { data };
           })
         )
       );
@@ -865,9 +863,10 @@ export default function ContentStudioPage() {
       let lastError = "";
       for (const result of results) {
         if (result.status === "fulfilled") {
-          const data = await result.value.json();
-          if (data.ok && data.image) posters.push(data.image);
-          else if (data.error) lastError = data.error;
+          const { data } = result.value;
+          if (data.ok && data.image) {
+            posters.push(data.image as string);
+          } else if (data.error) lastError = data.error;
         } else {
           lastError = result.reason?.message || "Unknown error";
         }
@@ -1092,7 +1091,7 @@ export default function ContentStudioPage() {
         method: "POST",
         body: JSON.stringify({ url: website }),
       });
-      const data = await response.json();
+      const data = await safeResponseJson<{ result?: unknown; error?: string }>(response);
       if (!data.result) {
         showError(data.error || "Could not analyze website. Please try manual setup.");
         return null;
@@ -1111,7 +1110,7 @@ export default function ContentStudioPage() {
         method: "POST",
         body: JSON.stringify({ url: website }),
       });
-      const data = await response.json();
+      const data = await safeResponseJson<{ result?: unknown; error?: string }>(response);
       if (data.result) {
         const brandSnapshot = mapFullAnalyzeToBrandSnapshot(data.result);
         setBrandGuideline(brandSnapshot);

@@ -17,7 +17,7 @@ import {
   formatTimestamp,
   mapFullAnalyzeToBrandSnapshot,
 } from '@/app/web/src/components/creative-studio';
-import { authFetch } from '@/lib/utils';
+import { authFetch, safeResponseJson } from '@/lib/utils';
 import { saveBrandSnapshot } from '@/app/web/src/components/creative-studio/utils';
 
 export default function BrandStudioLanding() {
@@ -136,7 +136,7 @@ export default function BrandStudioLanding() {
       return;
     }
     setNewSessionType('poster');
-    setShowNameModal(true);
+    void handleCreateSession('Untitled Poster', 'poster');
   }
 
   function handleStartVideoSession() {
@@ -149,22 +149,23 @@ export default function BrandStudioLanding() {
     setShowNameModal(true);
   }
 
-  async function handleCreateSession(name: string) {
+  async function handleCreateSession(name: string, sessionTypeOverride?: 'poster' | 'video') {
     if (!brand) {
       showAlert('Please set up your brand first.', 'Brand Required');
       return;
     }
 
+    const sessionType = sessionTypeOverride || newSessionType || 'poster';
     setIsCreatingSession(true);
 
     try {
       const response = await authFetch('/api/creative-studio/sessions', {
         method: 'POST',
         body: JSON.stringify({
-          name,
-          sessionType: newSessionType,
+          name: name.trim() || (sessionType === 'poster' ? 'Untitled Poster' : 'Untitled Video'),
+          sessionType,
           brandSnapshot: brand,
-          phase: newSessionType === 'poster' ? 'input' : undefined,
+          phase: sessionType === 'poster' ? 'input' : undefined,
         }),
       });
 
@@ -172,8 +173,7 @@ export default function BrandStudioLanding() {
 
       if (data.ok && data.session) {
         setShowNameModal(false);
-        // Navigate to the session page
-        if (newSessionType === 'poster') {
+        if (sessionType === 'poster') {
           router.push(`/brand-studio/poster?id=${data.session.id}`);
         } else {
           router.push(`/brand-studio/video?id=${data.session.id}`);
@@ -233,9 +233,9 @@ export default function BrandStudioLanding() {
         method: 'POST',
         body: JSON.stringify({ url: website }),
       });
-      const data = await response.json();
+      const data = await safeResponseJson<{ result?: unknown; error?: string; details?: string }>(response);
       if (!data.result) {
-        showError(data.error || 'Could not analyze website. Please try manual setup.');
+        showError(data.error || data.details || 'Could not analyze website. Please try manual setup.');
         return null;
       }
       return mapFullAnalyzeToBrandSnapshot(data.result);
@@ -255,7 +255,7 @@ export default function BrandStudioLanding() {
         body: JSON.stringify({ url: website }),
       });
 
-      const data = await response.json();
+      const data = await safeResponseJson<{ result?: unknown; error?: string; details?: string }>(response);
 
       // API returns { result: {...} } on success, { error: string } on failure
       if (data.result) {
@@ -266,7 +266,7 @@ export default function BrandStudioLanding() {
         // Show stored brand guideline in the Brand Studio page
         setShowBrandGuidelineModal(true);
       } else {
-        const errorMsg = data.error || 'Could not analyze website.';
+        const errorMsg = data.error || data.details || 'Could not analyze website.';
         setShowBrandOnboarding(true);
         showError(`${errorMsg} Please try manual setup.`);
       }
@@ -494,48 +494,67 @@ export default function BrandStudioLanding() {
 
             {/* Create New Section */}
             <div>
-              <h2 className="text-lg font-semibold mb-4" style={{ color: colors.foreground }}>
-                What do you want to create?
+              <h2 className="text-lg font-semibold mb-2" style={{ color: colors.foreground }}>
+                Create something
               </h2>
+              <p className="text-sm mb-6" style={{ color: colors.mutedForeground }}>
+                Start a poster or video session
+              </p>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                {/* Poster Generation Card */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                {/* Poster — primary */}
                 <button
                   onClick={handleStartPosterSession}
-                  className="group relative aspect-[4/3] rounded-2xl border-2 shadow-sm transition-all flex flex-col items-center justify-center p-5 text-center"
-                  style={{ borderColor: colors.border, backgroundColor: colors.background }}
+                  disabled={isCreatingSession}
+                  className="group relative text-left rounded-2xl p-6 transition-all hover:scale-[1.01] disabled:opacity-60"
+                  style={{
+                    backgroundColor: colors.background,
+                    border: `1px solid ${colors.border}`,
+                    boxShadow: `0 0 0 1px hsl(213 100% 55% / 0.15)`,
+                  }}
                 >
-                  <div className="flex items-center justify-center w-14 h-14 rounded-xl mb-3 group-hover:scale-110 transition-transform overflow-hidden" style={{ backgroundColor: 'hsl(213 100% 55% / 0.2)', color: colors.primary }}>
-                    <svg viewBox="0 0 48 48" className="w-9 h-9" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                      <rect x="4" y="6" width="40" height="36" rx="2" />
-                      <rect x="8" y="10" width="20" height="14" rx="1" fill="currentColor" fillOpacity="0.2" />
-                      <line x1="8" y1="28" x2="28" y2="28" />
-                      <line x1="8" y1="32" x2="20" y2="32" />
-                      <rect x="32" y="10" width="8" height="10" rx="1" />
+                  <div
+                    className="flex items-center justify-center w-12 h-12 rounded-xl mb-4"
+                    style={{ backgroundColor: 'hsl(213 100% 55% / 0.18)', color: colors.primary }}
+                  >
+                    <svg viewBox="0 0 48 48" className="w-7 h-7" fill="none" stroke="currentColor" strokeWidth="1.5">
+                      <rect x="6" y="8" width="36" height="32" rx="3" />
+                      <line x1="12" y1="28" x2="28" y2="28" />
+                      <line x1="12" y1="34" x2="22" y2="34" />
                     </svg>
                   </div>
-                  <div className="text-base font-semibold" style={{ color: colors.foreground }}>Poster Generation</div>
-                  <p className="mt-1.5 text-sm max-w-xs" style={{ color: colors.mutedForeground }}>
-                    Chat with AI to create high-conversion marketing posters.
+                  <div className="text-lg font-semibold" style={{ color: colors.foreground }}>
+                    Poster
+                  </div>
+                  <p className="mt-1.5 text-sm leading-relaxed" style={{ color: colors.mutedForeground }}>
+                    Create campaign-ready advertising posters
                   </p>
+                  {isCreatingSession && newSessionType === 'poster' && (
+                    <p className="mt-3 text-xs" style={{ color: colors.primary }}>
+                      Opening studio…
+                    </p>
+                  )}
                 </button>
 
-                {/* Video Generation Card */}
+                {/* Video */}
                 <button
                   onClick={handleStartVideoSession}
-                  className="group relative aspect-[4/3] rounded-2xl border-2 shadow-sm transition-all flex flex-col items-center justify-center p-5 text-center"
-                  style={{ borderColor: colors.border, backgroundColor: colors.background }}
+                  className="group relative text-left rounded-2xl p-6 transition-all hover:scale-[1.01]"
+                  style={{ backgroundColor: colors.background, border: `1px solid ${colors.border}` }}
                 >
-                  <div className="flex items-center justify-center w-14 h-14 rounded-xl mb-3 group-hover:scale-110 transition-transform overflow-hidden" style={{ backgroundColor: 'hsl(270 80% 55% / 0.2)', color: 'hsl(270 80% 70%)' }}>
-                    <svg viewBox="0 0 48 48" className="w-9 h-9" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                      <rect x="4" y="8" width="40" height="32" rx="2" />
-                      <polygon points="20,14 20,34 34,24" fill="currentColor" fillOpacity="0.9" />
-                      <rect x="8" y="36" width="12" height="4" rx="0.5" fill="currentColor" fillOpacity="0.3" />
+                  <div
+                    className="flex items-center justify-center w-12 h-12 rounded-xl mb-4"
+                    style={{ backgroundColor: 'hsl(270 80% 55% / 0.18)', color: 'hsl(270 80% 70%)' }}
+                  >
+                    <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                     </svg>
                   </div>
-                  <div className="text-base font-semibold" style={{ color: colors.foreground }}>Video Generation</div>
-                  <p className="mt-1.5 text-sm max-w-xs" style={{ color: colors.mutedForeground }}>
-                    Plan and generate video-first ad concepts and storyboards.
+                  <div className="text-lg font-semibold" style={{ color: colors.foreground }}>
+                    Video
+                  </div>
+                  <p className="mt-1.5 text-sm leading-relaxed" style={{ color: colors.mutedForeground }}>
+                    Create video-first advertising concepts
                   </p>
                 </button>
               </div>

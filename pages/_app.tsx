@@ -6,6 +6,7 @@ import dynamic from "next/dynamic";
 import Router from "next/router";
 import { Analytics } from "@vercel/analytics/next";
 import AlertModal from "@/app/web/src/components/ui/AlertModal";
+import { useSubscription } from "@/app/web/src/hooks/use-subscription";
 
 const LiquidGlassAnimator = dynamic(() => import("../app/web/src/components/LiquidGlassAnimator").then((m) => m.default), { ssr: false });
 
@@ -14,6 +15,12 @@ const fontFamily = "ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto,
 
 export default function MyApp({ Component, pageProps }: AppProps) {
   const [loading, setLoading] = React.useState<boolean>(false);
+
+  // Rehydrate zustand persist only on the client (skipHydration) to avoid
+  // SSR mismatch → Fast Refresh full-reload loops.
+  React.useEffect(() => {
+    void useSubscription.persist.rehydrate();
+  }, []);
 
   React.useEffect(() => {
     let completeTimer: number | undefined;

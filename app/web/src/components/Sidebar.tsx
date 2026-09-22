@@ -358,22 +358,23 @@ const Sidebar: React.FC<SidebarProps> = ({
               {/* Session History List */}
               {!collapsed && (
                 <div className="px-3 pb-3">
-                  <div className="text-xs font-medium mb-2" style={{ color: sidebarFg, opacity: 0.7 }}>
+                  <div className="text-[11px] font-semibold uppercase tracking-wide mb-2.5 px-0.5" style={{ color: sidebarFg, opacity: 0.55 }}>
                     Your sessions
                   </div>
-                  <div className="space-y-1 max-h-[calc(100vh-380px)] overflow-y-auto" style={{ scrollbarWidth: 'thin' }}>
+                  <div className="space-y-0.5 max-h-[calc(100vh-380px)] overflow-y-auto" style={{ scrollbarWidth: 'thin' }}>
                     {chatHistory.length === 0 ? (
                       <div className="text-xs opacity-50 px-3 py-2">No sessions yet</div>
                     ) : (
                       chatHistory.map((chat) => {
                         const isActiveChat = activeChatId === chat.id;
                         return (
-                          <div key={chat.id} className="flex items-center gap-2 group w-full">
+                          <div key={chat.id} className="flex items-center gap-1 group w-full">
                             <button
-                              className="flex-1 text-left px-3 py-2 rounded-lg text-sm transition-colors duration-150 min-w-0"
+                              className="flex-1 text-left px-3 py-2.5 rounded-lg text-sm transition-colors duration-150 min-w-0"
                               style={{
                                 color: isActiveChat ? sidebarAccentFg : sidebarFg,
                                 backgroundColor: isActiveChat ? sidebarAccent : 'transparent',
+                                boxShadow: isActiveChat ? `inset 2px 0 0 ${colors.primary}` : 'none',
                               }}
                               onMouseEnter={(e) => {
                                 if (!isActiveChat) {

@@ -79,11 +79,17 @@ assert(budget8.finishBySecond === 6.5, "8s clip: finish by 6.5s");
 assert(budget8.minWords === 16, "8s clip: min 16 words");
 assert(budget8.maxWords === 20, "8s clip: max 20 words");
 
-const budget16 = computeVoiceoverBudget(16);
-assert(budget16.maxSpokenSeconds === 14, "16s clip: max spoken 14s");
-assert(budget16.finishBySecond === 14, "16s clip: finish by 14s");
-assert(budget16.minWords === 32, "16s clip: min 32 words");
-assert(budget16.maxWords === 40, "16s clip: max 40 words");
+const budget15 = computeVoiceoverBudget(15);
+assert(budget15.maxSpokenSeconds === 13, "15s commercial: max spoken 13s");
+assert(budget15.finishBySecond === 13, "15s commercial: finish by 13s");
+assert(budget15.minWords === 26, "15s commercial: min 26 words");
+assert(budget15.maxWords === 32, "15s commercial: max 32 words");
+
+const budget30 = computeVoiceoverBudget(30);
+assert(budget30.maxSpokenSeconds === 28, "30s commercial: max spoken 28s");
+assert(budget30.finishBySecond === 28, "30s commercial: finish by 28s");
+assert(budget30.minWords === 57, "30s commercial: min 57 words");
+assert(budget30.maxWords === 70, "30s commercial: max 70 words");
 
 assertEqual(countWords("one two three"), 3, "countWords basic");
 assertEqual(
@@ -155,7 +161,7 @@ assert(compressed.length > 0, "compressVoiceover returns non-empty script");
 const full16 =
   "Craving mango? Yoga Bar protein mango shake fuels your morning. Real results after every workout. Grab yours and try it today.";
 const split16 = splitVoiceoverForStitch(
-  truncateVoiceover(full16, budget16.maxWords),
+  truncateVoiceover(full16, budget15.maxWords),
   budget8.maxWords
 );
 const clip2Vo = finalizeVoiceoverForClip(split16.part2, 8, {
@@ -165,7 +171,7 @@ const clip2Vo = finalizeVoiceoverForClip(split16.part2, 8, {
 });
 assert(countWords(clip2Vo) > 0, "clip 2 keeps pre-split voiceover (no empty wipe)");
 assert(countWords(clip2Vo) <= 20, "clip 2 within per-clip budget");
-2
+
 const storyboard = [
   { scene: 1, visual_description: "Hook shot" },
   { scene: 2, visual_description: "Product hero" },
@@ -319,7 +325,7 @@ const product = {
 assert(buildHookCreativeBrief(hook).includes("Your skin deserves better"), "hook brief includes statement");
 assert(buildPosterPromptFromHook(hook, brand, product).includes("Radiance Serum"), "poster prompt includes product");
 assert(buildPosterPromptFromHook(hook, brand, product).includes("EXACT PRODUCT IMAGE"), "poster prompt demands exact product");
-assert(buildVideoDescriptionFromHook(hook, brand, product).includes("8-second"), "video description is 8s");
+assert(buildVideoDescriptionFromHook(hook, brand, product).includes("15-second"), "video description is 15s");
 assertEqual(mapHookTypeToVideoStyle("ugc authentic"), "UGC Style", "UGC hook → UGC Style");
 assertEqual(mapHookTypeToVideoStyle("emotional aspirational"), "Cinematic", "emotional → Cinematic");
 assertEqual(mapHookTypeToVideoStyle("product close-up"), "Product Close-up", "product → Product Close-up");

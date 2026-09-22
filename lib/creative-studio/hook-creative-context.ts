@@ -33,6 +33,11 @@ export function buildHookCreativeBrief(hook: HookCreativeInput): string {
   return parts.join("\n");
 }
 
+/**
+ * Creative brief / user-request seed for Poster Engine.
+ * Brand Studio / Creative Intelligence run the planner before Gemini;
+ * this remains usable as a userPrompt seed if planning falls back.
+ */
 export function buildPosterPromptFromHook(
   hook: HookCreativeInput,
   brand: BrandSnapshot,
@@ -42,17 +47,17 @@ export function buildPosterPromptFromHook(
     ? `Product: ${product.product_name}. ${product.short_benefit || product.description || ""}`.trim()
     : brand.offering || brand.description || "";
   return [
-    `Create a high-converting marketing poster for ${brand.name}.`,
+    `Create a deliberately art-directed marketing poster for ${brand.name}.`,
     productLine,
     buildHookCreativeBrief(hook),
+    `Advertising idea: let the hook drive a single strong visual concept — not a generic product collage.`,
     product
       ? `CRITICAL — EXACT PRODUCT IMAGE: A reference photo of "${product.product_name}" from Ad Studio is attached. You MUST use this exact product image as the hero — same packaging, colors, label, shape, and branding. Do NOT redraw, replace, or hallucinate a different product. Only change background, layout, typography, and graphics around the product.`
       : null,
-    `Visual direction: premium ad creative, product as hero, scroll-stopping composition aligned with the hook.`,
     brand.audience ? `Target audience: ${brand.audience}.` : null,
     brand.tone ? `Brand tone: ${brand.tone}.` : null,
     brand.primaryColors?.length
-      ? `Brand colors (mandatory): ${brand.primaryColors.join(", ")}.`
+      ? `Brand colors (use intelligently): ${brand.primaryColors.join(", ")}.`
       : null,
   ]
     .filter(Boolean)
@@ -68,10 +73,10 @@ export function buildVideoDescriptionFromHook(
     ? `Feature ${product.product_name} (${product.short_benefit || product.description || "key benefits from scan"}).`
     : `Feature ${brand.name} (${brand.offering || brand.description}).`;
   return [
-    `Create an 8-second premium video ad for ${brand.name}.`,
+    `Create a 15-second premium video ad for ${brand.name}.`,
     productLine,
     buildHookCreativeBrief(hook),
-    "Structure: 0-2s pattern interrupt using the hook → 2-5s product hero → 5-7s benefit/payoff → 7-8s brand lock-in.",
+    "Structure: 0-3s pattern interrupt using the hook → 3-8s product hero → 8-12s benefit/payoff → 12-15s brand lock-in.",
     brand.audience ? `Audience: ${brand.audience}.` : null,
   ]
     .filter(Boolean)

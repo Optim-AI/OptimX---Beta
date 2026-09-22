@@ -3,6 +3,12 @@
 
 import type { BrandSnapshot, PosterConfig, AdSetup, CreativeFormat, HookType } from './types';
 import { authFetch } from '@/lib/utils';
+import { normalizeCampaignDuration } from "@/lib/creative-studio/commercial-production/campaign/campaign-duration";
+import {
+  buildFallbackSpec,
+} from "@/lib/creative-studio/poster-engine/fallback";
+import { compilePosterPrompt } from "@/lib/creative-studio/poster-engine/compile";
+import { normalizePosterInput } from "@/lib/creative-studio/poster-engine/normalize";
 
 /** Save brand snapshot to DB via API */
 export async function saveBrandSnapshot(snapshot: BrandSnapshot): Promise<void> {
@@ -93,8 +99,8 @@ export function mapFullAnalyzeToBrandSnapshot(result: any): BrandSnapshot {
 }
 
 /**
- * Theme Configuration Map
- * Maps UI theme selections to specific marketing design rules
+ * Theme art-direction hints for UI labels.
+ * Theme is an art-direction modifier — the Poster Engine decides composition.
  */
 export const THEME_CONFIG: Record<string, {
   visualStyle: string;
@@ -106,100 +112,104 @@ export const THEME_CONFIG: Record<string, {
   negativeSpace: string;
 }> = {
   minimal: {
-    visualStyle: "Bauhaus style, geometric precision, functional design",
-    colorPalette: "Monochromatic palettes, limited color palette (2-3 colors max), high contrast black and white",
-    typography: "Thin sans-serif typography, Helvetica or similar, minimal text, large letter spacing",
-    composition: "40% negative space minimum, centered composition, grid-based layout",
-    lighting: "Even, flat lighting, no dramatic shadows",
-    textures: "Smooth surfaces, matte finishes, no textures",
-    negativeSpace: "Extensive white space, breathing room around elements"
+    visualStyle: "Restrained, geometric calm, functional clarity — not a fixed Bauhaus template",
+    colorPalette: "Limited palette (2-3 colors), high contrast when needed, quiet fields",
+    typography: "Thin/clean sans-serif tendency, minimal text, generous letter spacing",
+    composition: "Prefer fewer elements and large quiet regions — composition emerges from the idea, not a centered template",
+    lighting: "Even soft or gentle directional light",
+    textures: "Matte, smooth, untextured fields",
+    negativeSpace: "Intentional emptiness as a design decision"
   },
   professional: {
-    visualStyle: "Grid-based corporate layouts, clean corporate aesthetic, trustworthy design",
-    colorPalette: "Trust-building blues and whites, corporate color schemes, professional grays",
-    typography: "Clean sans-serif fonts, professional typography, clear hierarchy",
-    composition: "Grid-based layout, balanced composition, clear visual hierarchy",
-    lighting: "Clean, even studio lighting, professional photography style",
-    textures: "Clean surfaces, professional materials",
-    negativeSpace: "Organized spacing, clear sections, readable layout"
+    visualStyle: "Credible, structured, trustworthy — real-world clarity over spectacle",
+    colorPalette: "Restrained trust-building tones; brand colors when provided",
+    typography: "Clean sans-serif, clear hierarchy, highly legible",
+    composition: "Readable hierarchy and organized visual zones — NOT a mandatory grid template or fixed logo/product slots",
+    lighting: "Clean studio or neutral daylight",
+    textures: "Clean materials, restrained surfaces",
+    negativeSpace: "Organized breathing room for legibility"
   },
   commercial: {
-    visualStyle: "High-impact FMCG advertising poster. Looks like a TV ad frame converted into a poster. Designed for retail promotion. Bold, attention-grabbing. People interacting with product (if relevant), smiling expressions, warm skin tones, vibrant background gradients or kitchen/home environment, dynamic color blocking shapes or banners",
-    colorPalette: "High saturation. Red, yellow, orange accents. Strong contrast. Retail shelf visibility focus. White/yellow/red for headline contrast",
-    typography: "Large uppercase headline. Thick bold font style. High readability. Strong color contrast (white/yellow/red). Slight drop shadow or outline for emphasis. Big bold headline typography. Secondary supporting tagline",
-    composition: "Layout Structure: Top: Brand logo (top or top-right). Center: Headline. Mid/Lower: Hero product or people. Bottom corner: Pack shot. Optional corner: Offer badge (Limited Offer, Free, New Launch). Prominent product placement (foreground, clearly visible packaging). Large brand logo placement. Strong visual hierarchy. No chaotic floating layouts",
-    lighting: "Bright commercial lighting. High contrast. Saturated colors. Clean retail-ready look. Studio-quality product lighting",
-    textures: "Clean surfaces, professional materials, retail-ready finishes",
-    negativeSpace: "Controlled layout. Clear sections for logo, headline, product, CTA. No chaotic floating elements"
+    visualStyle: "Mass-market stop-power via a creative mechanism — NEVER black void + centered packshot + CTA",
+    colorPalette: "High contrast and brand-led saturation when appropriate; retail visibility without forcing red/yellow defaults if brand differs; backgrounds from product world / lifestyle — not automatic black",
+    typography: "Bold readable headline presence when the idea needs it — not mandatory uppercase badges",
+    composition: "One scroll-stopping hero idea. Product participates in the idea. Composition may be scene-led, still-life-led, or asymmetric — NEVER force logo-top / headline-center / pack-bottom template",
+    lighting: "Bright commercial or warm practical light that serves the idea",
+    textures: "Category-true surfaces (food, pack sheen, home, etc.)",
+    negativeSpace: "Controlled breathing room for hierarchy — not rigid section slots"
   },
   premium: {
-    visualStyle: "Luxury goods photography style, high-end aesthetic, sophisticated design",
-    colorPalette: "Gold and silk textures, rich deep colors, metallic accents, premium color schemes",
-    typography: "Serif fonts, elegant typography, sophisticated letterforms, classic typefaces",
-    composition: "Classical composition, balanced elegance, refined spacing",
-    lighting: "Chiaroscuro lighting (dramatic light and shadow), soft directional lighting, luxury photography",
-    textures: "Gold textures, silk materials, premium surfaces, luxury finishes",
-    negativeSpace: "Generous spacing, elegant proportions, refined layout"
+    visualStyle: "Craft, rarity, refined desire — sculptural product presence; NOT generic black luxury",
+    colorPalette: "Cream, stone, deep green, burgundy, navy, warm grey, soft white, or deep fields WHEN earned — never automatic black",
+    typography: "Elegant refined letterforms; restraint over shouting",
+    composition: "Elegance through restraint and negative space — not a classical centered template",
+    lighting: "Soft directional or chiaroscuro as the idea requires",
+    textures: "Fine materials — glass, stone, silk, craft packaging",
+    negativeSpace: "Generous quiet as luxury"
   },
   bold: {
-    visualStyle: "Brutalist design elements, high-impact visuals, strong graphic design",
-    colorPalette: "High-contrast color blocking (e.g., Black/Yellow, Red/White), bold color combinations, saturated colors",
-    typography: "Oversized typography, bold fonts, heavy weights, impactful letterforms",
-    composition: "Strong geometric shapes, bold compositions, high visual impact",
-    lighting: "Dramatic lighting, high contrast, bold shadows",
-    textures: "Bold textures, strong patterns, graphic elements",
-    negativeSpace: "Strategic negative space, bold use of space, strong visual hierarchy"
+    visualStyle: "Graphic force, hard contrast, decisive cropping — typography as graphic element",
+    colorPalette: "High-contrast blocking when it serves impact",
+    typography: "Oversized type as shape when earned — not merely bold fonts on a packshot",
+    composition: "Make one decision loudly; crop with intent — do not default to centered packshot",
+    lighting: "Hard light / graphic shadow when useful",
+    textures: "Flat graphic or strong material contrast",
+    negativeSpace: "Strategic emptiness to amplify impact"
   },
   playful: {
-    visualStyle: "3D claymorphism or vaporwave aesthetics, fun and energetic design",
-    colorPalette: "Vibrant gradients, bright colors, playful color combinations, neon accents",
-    typography: "Rounded shapes, friendly fonts, playful typography, curved letterforms",
-    composition: "Dynamic compositions, rounded shapes, organic layouts",
-    lighting: "Soft, colorful lighting, playful shadows, vibrant atmosphere",
-    textures: "3D clay textures, soft materials, rounded surfaces",
-    negativeSpace: "Playful spacing, organic flow, dynamic layout"
+    visualStyle: "Warmth, wit, kinetic joy — one playful idea, not sticker clutter",
+    colorPalette: "Bright accents and friendly combinations",
+    typography: "Rounded/friendly letterforms when on-brand",
+    composition: "Unexpected scale or interaction — wit over decoration",
+    lighting: "Soft colorful or sunny practical light",
+    textures: "Tactile, friendly surfaces",
+    negativeSpace: "Playful breathing room — not chaotic fill"
   },
   trendy: {
-    visualStyle: "3D claymorphism or vaporwave aesthetics, modern contemporary style, current design trends",
-    colorPalette: "Vibrant gradients, bright colors, trendy color combinations, modern palettes",
-    typography: "Modern fonts, trendy typography, contemporary letterforms",
-    composition: "Modern compositions, trendy layouts, fresh approach",
-    lighting: "Modern lighting, contemporary style, fresh atmosphere",
-    textures: "Modern textures, trendy materials, contemporary surfaces",
-    negativeSpace: "Modern spacing, trendy proportions, fresh layout"
+    visualStyle: "Contemporary editorial sharpness without trend pastiche",
+    colorPalette: "Current accents guided by brand",
+    typography: "Modern editorial type",
+    composition: "Editorial off-center framing — avoid last-year aesthetic clichés and forced claymorphism",
+    lighting: "Natural contemporary daylight or soft flash feel",
+    textures: "Real modern environments",
+    negativeSpace: "Fresh editorial breathing room"
   },
   festive: {
-    visualStyle: "Celebratory design, joyful aesthetic, festive atmosphere",
-    colorPalette: "Rich, warm colors, festive color schemes, celebratory palettes",
-    typography: "Decorative fonts, festive typography, celebratory letterforms",
-    composition: "Dynamic, engaging compositions, festive layouts",
-    lighting: "Warm lighting, celebratory atmosphere, festive mood",
-    textures: "Festive textures, celebratory materials, warm surfaces",
-    negativeSpace: "Engaging spacing, festive proportions, dynamic layout"
+    visualStyle: "Celebration and gathering energy — occasion is the idea, not confetti fill",
+    colorPalette: "Warm occasion-rich tones",
+    typography: "Celebratory but readable",
+    composition: "Ritual/gathering composition that fits the product — avoid generic party stock templates",
+    lighting: "Warm festive practical light",
+    textures: "Shared table / fabric / occasion materials",
+    negativeSpace: "Keep hierarchy readable amid celebration"
   },
   dynamic: {
-    visualStyle: "High-action focal points, movement-focused design, energetic aesthetic",
-    colorPalette: "Energetic colors, dynamic color schemes, high-energy palettes",
-    typography: "Dynamic typography, movement-oriented fonts, energetic letterforms",
-    composition: "Dutch angles, motion blur effects, high-action compositions, dynamic layouts",
-    lighting: "Dynamic lighting, motion-focused, energetic atmosphere",
-    textures: "Dynamic textures, movement-oriented materials, energetic surfaces",
-    negativeSpace: "Dynamic spacing, movement-oriented proportions, energetic layout"
+    visualStyle: "Momentum, kinetic tension, directional force",
+    colorPalette: "Energetic brand-led palettes",
+    typography: "Movement-oriented letterforms when useful",
+    composition: "Eye travels along a force line; product can be mid-action or stillness in motion — avoid static shelf packshot default",
+    lighting: "High-energy contrast or edge light",
+    textures: "Active surfaces when relevant",
+    negativeSpace: "Space that amplifies direction and speed"
   }
 };
 
 /**
- * Get composition rules based on aspect ratio
- * These rules are MANDATORY and override artistic freedom
+ * Aspect-ratio format principles for UI / docs.
+ * Composition is decided by the Poster Engine creative planner.
  */
 export function getCompositionRules(ratio: "1:1" | "4:5" | "9:16" | "1.91:1"): string {
   const rules: Record<string, string> = {
-    "1:1": "Centered, symmetrical composition. The hero element must be placed centrally. Visual weight radiates from the center. Balanced top-to-bottom layout.",
-    "4:5": "Rule of thirds. Top 60%: Hero visual and emotion. Bottom 40%: Product details or CTA space. Strong vertical hierarchy.",
-    "9:16": "CRITICAL SAFE ZONES: Top 15%: EMPTY. Bottom 15%: EMPTY. Only the middle 70% is usable. Follow a vertical Z-pattern. All key information must stay inside safe area. Failure to respect safe zones = unusable ad.",
-    "1.91:1": "Wide horizontal layout. Golden Ratio or Rule of Thirds horizontally. Center or off-center hero. Left-to-right visual flow. Top 10% and bottom 10% kept clean for overlays. Designed for banners and professional placements."
+    "1:1":
+      "Square social format. Prefer compact, decisive compositions — centered OR asymmetric as the idea requires. Do NOT force a centered packshot template. Keep essential type away from extreme corners.",
+    "4:5":
+      "Portrait feed format. Vertical hierarchy is available, but placement is idea-driven — not a fixed top-60% / bottom-40% template. Co-design product, type, and CTA regions. Leave breathing room near edges.",
+    "9:16":
+      "Vertical story/Reels format. Design top-to-bottom flow for the idea. CRITICAL SAFE ZONES: keep essential copy/logo out of the top ~12% and bottom ~15% (UI chrome). Middle band carries the primary idea. Do NOT simply crop a square layout.",
+    "1.91:1":
+      "Wide landscape / banner format. Prefer cinematic or editorial horizontal flow. Do NOT simply letterbox a square composition. Keep top/bottom edges cleaner for overlays when needed.",
   };
-  
+
   return rules[ratio] || rules["1:1"];
 }
 
@@ -254,85 +264,8 @@ export function getThemeForBrand(
 }
 
 /**
- * Generate production prompt that wraps user request with brand guidelines
- * This ensures AI adheres to brand colors, voice, and leaves space for logo
- */
-export function generateProductionPrompt(userRequest: string, brand: BrandSnapshot | null): string {
-  if (!brand) {
-    return userRequest; // Return as-is if no brand guidelines
-  }
-
-  const parts: string[] = [];
-  
-  // Start with user's request
-  parts.push(`User Request: ${userRequest}`);
-  parts.push("");
-
-  // Brand voice instruction
-  if (brand.brandVoice) {
-    const voiceInstructions: Record<string, string> = {
-      Professional: "Maintain a professional, corporate, and trustworthy tone. Use formal language and polished design.",
-      Playful: "Use a fun, energetic, and casual tone. Incorporate playful elements and friendly language.",
-      Minimalist: "Keep the design clean, simple, and understated. Use minimal elements and plenty of white space.",
-      Bold: "Create a confident, striking, and attention-grabbing design. Use strong visuals and impactful messaging."
-    };
-    parts.push(`Brand Voice: ${voiceInstructions[brand.brandVoice] || brand.brandVoice}`);
-  } else if (brand.personality) {
-    parts.push(`Brand Personality: ${brand.personality}`);
-  }
-
-  // Primary colors instruction
-  if (brand.primaryColors && brand.primaryColors.length > 0) {
-    parts.push(`CRITICAL: Use these exact brand colors: ${brand.primaryColors.join(", ")}`);
-    parts.push("These colors must be prominently featured in the design. Do not use colors outside this palette.");
-  } else if (brand.colors?.primary) {
-    parts.push(`CRITICAL: Use brand color ${brand.colors.primary} as the primary color.`);
-    if (brand.colors.secondary) {
-      parts.push(`Secondary color: ${brand.colors.secondary}`);
-    }
-    if (brand.colors.accent) {
-      parts.push(`Accent color: ${brand.colors.accent}`);
-    }
-  }
-
-  // Font style instruction
-  if (brand.fontStyles) {
-    parts.push(`Typography: Use ${brand.fontStyles} font style throughout the design.`);
-  }
-
-  // Core value proposition
-  if (brand.coreValueProp) {
-    parts.push(`Core Value Proposition: "${brand.coreValueProp}"`);
-    parts.push("This should be the main hook or headline in the creative.");
-  }
-
-  // Logo placement instruction
-  if (brand.logo || brand.logoUrl) {
-    parts.push("");
-    parts.push("CRITICAL: A brand logo has been provided. You MUST:");
-    parts.push("- Leave appropriate space in the layout for the logo placement");
-    parts.push("- Design the composition so the logo can be placed naturally (typically top-left, top-center, or bottom-right)");
-    parts.push("- Ensure the logo area has sufficient contrast and doesn't clash with other elements");
-    parts.push("- The logo will be added separately, so design around its placement");
-  }
-
-  // Target audience
-  if (brand.audience) {
-    parts.push(`Target Audience: ${brand.audience}`);
-    parts.push("Design and messaging should appeal specifically to this audience.");
-  }
-
-  // Brand description context
-  if (brand.description) {
-    parts.push(`Brand Context: ${brand.description}`);
-  }
-
-  return parts.join("\n");
-}
-
-/**
- * Build a high-quality poster generation prompt
- * Combines Theme Visuals + Aspect Ratio Composition + Brand Data
+ * Client emergency fallback when the Poster Engine plan API is unreachable.
+ * Uses the SAME fallback compiler as the server — not a second creative architecture.
  */
 export function buildPosterPrompt(options: {
   userRequest: string;
@@ -341,213 +274,28 @@ export function buildPosterPrompt(options: {
   brand: BrandSnapshot | null;
   hasProductImage: boolean;
   variant?: number; // 1, 2, or 3 for generating variants
+  productName?: string;
+  productDescription?: string;
+  productBenefits?: string[];
 }): string {
-  const { userRequest, theme, aspectRatio, brand, hasProductImage, variant } = options;
-  
-  const themeConfig = THEME_CONFIG[theme] || THEME_CONFIG.professional;
-  const compositionRules = getCompositionRules(aspectRatio);
-  
-  const parts: string[] = [];
-  
-  // ========== CORE SYSTEM ROLE & AUTHORITY ==========
-  parts.push("You are a Senior Commercial Graphic Designer and Creative Director working at a top-tier digital marketing agency.");
-  parts.push("Your task is to create high-conversion, paid-ad-quality marketing posters.");
-  parts.push("");
-  parts.push("You do NOT create:");
-  parts.push("- Templates");
-  parts.push("- UI layouts");
-  parts.push("- Generic AI art");
-  parts.push("- Decorative visuals");
-  parts.push("");
-  parts.push("You ONLY create:");
-  parts.push("- Real marketing posters");
-  parts.push("- Scroll-stopping ad creatives");
-  parts.push("- Brand-consistent paid media assets");
-  parts.push("");
-  parts.push("Every decision must follow marketing logic, brand rules, and layout discipline.");
-  parts.push("");
-  
-  // ========== FUNDAMENTAL DESIGN PRINCIPLES (GLOBAL RULES) ==========
-  parts.push("=== FUNDAMENTAL DESIGN PRINCIPLES (APPLY TO EVERY POSTER) ===");
-  parts.push("- One dominant idea per poster (product OR offer OR emotion)");
-  parts.push("- Clear visual hierarchy (Hero → Headline → Support → CTA space)");
-  parts.push("- Strong use of negative space");
-  parts.push("- High contrast for readability");
-  parts.push("- Commercial, agency-grade aesthetic");
-  parts.push("- Never look like a UI screen or template");
-  parts.push("");
-  parts.push("If a design looks 'polite' or 'safe,' it is wrong.");
-  parts.push("");
-  
-  // ========== USER REQUEST ==========
-  parts.push(`=== USER REQUEST ===`);
-  parts.push(`${userRequest}`);
-  parts.push("");
-  
-  // ========== THEME-BASED DESIGN LOGIC (STRATEGIC DIRECTIVE) ==========
-  parts.push(`=== THEME: ${theme.toUpperCase()} (STRATEGIC DIRECTIVE, NOT A FILTER) ===`);
-  parts.push(`Visual Style: ${themeConfig.visualStyle}`);
-  parts.push(`Color Palette: ${themeConfig.colorPalette}`);
-  parts.push(`Typography: ${themeConfig.typography}`);
-  parts.push(`Composition: ${themeConfig.composition}`);
-  parts.push(`Lighting: ${themeConfig.lighting}`);
-  parts.push(`Textures: ${themeConfig.textures}`);
-  parts.push(`Negative Space: ${themeConfig.negativeSpace}`);
-  parts.push("");
-
-  // ========== COMMERCIAL THEME: FMCG CAMPAIGN BRAIN (STRONG INJECTION) ==========
-  if (theme === "commercial") {
-    parts.push("=== COMMERCIAL THEME — FMCG CAMPAIGN BRAIN (MANDATORY) ===");
-    parts.push("You are generating a controlled advertising composition, NOT random loud posters.");
-    parts.push("");
-    parts.push("Mood: Energetic, family-friendly, emotion-driven, aspirational but mass-market.");
-    parts.push("");
-    parts.push("Emotional Angle: Show enjoyment of food, celebration, togetherness, or delight. Expressions should feel authentic and joyful. FMCG ads sell emotion, not design.");
-    parts.push("");
-    parts.push("Layout Template (MANDATORY): Top = Brand logo. Center = Headline. Mid/Lower = Hero product or people. Bottom corner = Pack shot. Optional corner = Offer badge (Limited Offer, Free, New Launch).");
-    parts.push("");
-    parts.push("Typography Bias: Large uppercase headline. Thick bold font. High readability. Strong color contrast (white/yellow/red). Slight drop shadow or outline for emphasis.");
-    parts.push("");
-    parts.push("Color Bias: High saturation. Red, yellow, orange accents. Strong contrast. Retail shelf visibility focus.");
-    parts.push("");
-  }
-
-  // ========== ASPECT RATIO COMPOSITION RULES (CRITICAL - MANDATORY) ==========
-  parts.push(`=== ASPECT RATIO: ${aspectRatio} (MANDATORY - OVERRIDES ARTISTIC FREEDOM) ===`);
-  parts.push(compositionRules);
-  parts.push("");
-  
-  // ========== BRAND GUIDELINE ENFORCEMENT (MANDATORY - MUST DOMINATE) ==========
-  if (brand) {
-    parts.push("=== BRAND GUIDELINES (MANDATORY - IF BRAND DATA EXISTS, IT MUST DOMINATE) ===");
-    
-    if (brand.primaryColors && brand.primaryColors.length > 0) {
-      parts.push(`Brand Colors: Use ONLY the provided primary and secondary brand colors: ${brand.primaryColors.join(", ")}`);
-      parts.push("No random or decorative colors allowed.");
-    } else if (brand.colors?.primary) {
-      parts.push(`Brand Colors: Use ONLY Primary ${brand.colors.primary}${brand.colors.secondary ? `, Secondary ${brand.colors.secondary}` : ''}${brand.colors.accent ? `, Accent ${brand.colors.accent}` : ''}`);
-      parts.push("No random or decorative colors allowed.");
-    }
-    
-    if (brand.fontStyles) {
-      parts.push(`Typography: Follow detected or selected brand font style consistently: ${brand.fontStyles}`);
-    }
-    
-    if (brand.brandVoice) {
-      const voiceMap: Record<string, string> = {
-        Professional: "Corporate, credible, structured",
-        Playful: "Casual, energetic, expressive",
-        Minimalist: "Understated, clean, confident",
-        Bold: "Loud, confident, disruptive"
-      };
-      parts.push(`Brand Voice: ${voiceMap[brand.brandVoice] || brand.brandVoice}`);
-    }
-    
-    if (brand.coreValueProp) {
-      parts.push(`Core Value Proposition: "${brand.coreValueProp}"`);
-      parts.push("This should be the main hook or headline in the creative.");
-    }
-    
-    if (brand.logo || brand.logoUrl) {
-      parts.push("Logo Space: Leave clear negative space for logo placement.");
-      parts.push("Do NOT place busy elements behind logo area.");
-    }
-    
-    if (brand.audience) {
-      parts.push(`Target Audience: ${brand.audience}`);
-      parts.push("Design must visually and emotionally appeal to the defined audience.");
-    }
-    
-    parts.push("");
-  }
-  
-  // ========== PRODUCT IMAGE RULES (NON-NEGOTIABLE) ==========
-  if (hasProductImage) {
-    parts.push("=== PRODUCT IMAGE RULES (NON-NEGOTIABLE) ===");
-    parts.push("If a product image is provided:");
-    parts.push("- Use ONLY that image");
-    parts.push("- Do NOT regenerate or alter the product");
-    parts.push("- Do NOT hallucinate variants");
-    parts.push("- The product must remain visually unchanged");
-    parts.push("");
-    parts.push("Only backgrounds, graphics, lighting context, and layout may change.");
-    parts.push("");
-  }
-  
-  // ========== VARIANT GENERATION STRATEGY (ALWAYS 3) ==========
-  if (variant) {
-    parts.push(`=== VARIANT ${variant} GENERATION STRATEGY ===`);
-    if (variant === 1) {
-      parts.push("VARIANT 1 — SAFE / ON-BRAND:");
-      parts.push("- Conservative");
-      parts.push("- Maximum brand alignment");
-      parts.push("- Clean and familiar");
-      parts.push("- Trust-first execution");
-    } else if (variant === 2) {
-      parts.push("VARIANT 2 — CREATIVE PUSH:");
-      parts.push("- Stronger typography");
-      parts.push("- Bolder shapes");
-      parts.push("- Higher visual energy");
-      parts.push("- Still brand-safe");
-    } else if (variant === 3) {
-      parts.push("VARIANT 3 — EXPERIMENTAL:");
-      parts.push("- Different composition");
-      parts.push("- Alternate emphasis");
-      parts.push("- Still commercial");
-      parts.push("- Never messy or chaotic");
-    }
-    parts.push("");
-  }
-  
-  // ========== OVERLAP & CLUTTER PREVENTION (CRITICAL) ==========
-  parts.push("=== OVERLAP & CLUTTER PREVENTION (CRITICAL) ===");
-  parts.push("The AI MUST enforce:");
-  parts.push("- No text overlapping graphics");
-  parts.push("- No graphics overlapping text");
-  parts.push("- Minimum spacing between elements");
-  parts.push("- Clear separation of layers");
-  parts.push("- Intentional empty space for text");
-  parts.push("");
-  parts.push("If unsure → leave more space.");
-  parts.push("");
-  
-  // ========== PRODUCTION QUALITY STANDARDS ==========
-  parts.push("=== PRODUCTION QUALITY STANDARDS ===");
-  parts.push("8K resolution");
-  parts.push("Professional studio lighting");
-  parts.push("Commercial photography look");
-  parts.push("Sharp focus");
-  parts.push("Magazine-quality finish");
-  parts.push("");
-  parts.push("NO:");
-  parts.push("- Gibberish text");
-  parts.push("- AI artifacts");
-  parts.push("- Watermarks");
-  parts.push("- Distorted anatomy");
-  parts.push("- Pixelation");
-  parts.push("- Low-quality textures");
-  parts.push("");
-  
-  // ========== SYSTEM PRIORITY ORDER (CONFLICT RESOLUTION) ==========
-  parts.push("=== SYSTEM PRIORITY ORDER (IF RULES CONFLICT, FOLLOW THIS ORDER) ===");
-  parts.push("1. Brand Guidelines");
-  parts.push("2. Aspect Ratio & Safe Zones");
-  parts.push("3. Product Integrity");
-  parts.push("4. Theme Logic");
-  parts.push("5. Creative Expression");
-  parts.push("");
-  parts.push("Creativity must NEVER break higher rules.");
-  parts.push("");
-  
-  // ========== CORE VISUAL INTENT ==========
-  parts.push("=== CORE VISUAL INTENT ===");
-  parts.push("Create bold, graphic marketing posters.");
-  parts.push("Design like a paid ad, not an illustration.");
-  parts.push("Typography is a visual element.");
-  parts.push("Backgrounds must feel designed, not empty.");
-  parts.push("Avoid polite or UI-like layouts.");
-  
-  return parts.join("\n");
+  const input = normalizePosterInput({
+    brandSnapshot: options.brand,
+    userRequest: options.userRequest,
+    theme: options.theme,
+    aspectRatio: options.aspectRatio,
+    variantCount: 1,
+    hasProductImage: options.hasProductImage,
+    product: options.productName
+      ? {
+          name: options.productName,
+          description: options.productDescription,
+          benefits: options.productBenefits,
+        }
+      : undefined,
+  });
+  const idx = Math.max(0, Math.min(2, (options.variant || 1) - 1));
+  const spec = buildFallbackSpec(input, idx);
+  return compilePosterPrompt(spec, input);
 }
 
 /**
@@ -617,7 +365,7 @@ export const DEFAULT_AD_BUILDER_DATA = {
     hookType: "Auto" as const,
     campaignGoal: "Drive Sales" as const,
     audience: "Auto" as const,
-    duration: 8 as const,
+    duration: 15 as const,
     platform: "Instagram Reels / TikTok" as const,
     aspect_ratio: "9:16" as const,
   },
@@ -647,14 +395,15 @@ export const DEFAULT_POSTER_CONFIG: PosterConfig = {
 export const THEME_IMAGES_BASE = "/images/posters/themes";
 
 /**
- * Available poster themes with notes, visual hints, and AI-generated example images
+ * Available poster themes — UI labels.
+ * Theme flavors art direction inside the Poster Engine; it is not a layout template.
  */
 export const POSTER_THEMES = [
   {
     id: "minimal",
     label: "Minimal",
     description: "Clean, simple, modern",
-    note: "Lots of white space, clean lines, minimal text. Best for brands that want a modern, uncluttered look. Think: Apple, Muji.",
+    note: "Visual language of restraint and clarity. SkalX invents a unique concept for your product — not a fixed white-space template.",
     previewStyle: "linear-gradient(135deg, #f5f5f5 0%, #e0e0e0 100%)",
     exampleImage: `${THEME_IMAGES_BASE}/theme-minimal.png`,
   },
@@ -662,7 +411,7 @@ export const POSTER_THEMES = [
     id: "professional",
     label: "Professional",
     description: "Corporate, trustworthy",
-    note: "Trust-building blues and whites, grid-based layout, clear hierarchy. Ideal for B2B, finance, or corporate brands.",
+    note: "Credibility and clarity as creative language. Composition is decided for your product — not a corporate grid template.",
     previewStyle: "linear-gradient(135deg, #1e3a5f 0%, #3b82f6 50%, #f8fafc 100%)",
     exampleImage: `${THEME_IMAGES_BASE}/theme-professional.png`,
   },
@@ -670,7 +419,7 @@ export const POSTER_THEMES = [
     id: "commercial",
     label: "Commercial",
     description: "FMCG, retail-ready",
-    note: "High-impact FMCG style: prominent product, bold headlines, bright lighting, family-friendly mood. Perfect for FMCG, retail, food & beverage, or mass-market brands.",
+    note: "Mass-market impact and appetite as language. Same theme produces different ideas for different products — never a fixed packshot recipe.",
     previewStyle: "linear-gradient(135deg, #dc2626 0%, #f59e0b 50%, #fbbf24 100%)",
     exampleImage: `${THEME_IMAGES_BASE}/theme-commercial.png`,
   },
@@ -678,7 +427,7 @@ export const POSTER_THEMES = [
     id: "premium",
     label: "Premium",
     description: "High-end, refined",
-    note: "Rich colors, metallic accents, refined spacing. Polished luxury feel for high-end brands.",
+    note: "Craft and desire as language. Art direction adapts to your product — not a gold-gradient template.",
     previewStyle: "linear-gradient(135deg, #0f0f0f 0%, #8b7355 50%, #d4af37 100%)",
     exampleImage: `${THEME_IMAGES_BASE}/theme-premium.png`,
   },
@@ -686,7 +435,7 @@ export const POSTER_THEMES = [
     id: "bold",
     label: "Bold",
     description: "Strong, impactful",
-    note: "High-contrast colors, oversized typography, strong shapes. Great for grabbing attention — events, sales, youth brands.",
+    note: "Graphic force and contrast as language. Cropping and hierarchy are concept-driven.",
     previewStyle: "linear-gradient(135deg, #000000 0%, #fbbf24 50%, #ef4444 100%)",
     exampleImage: `${THEME_IMAGES_BASE}/theme-bold.png`,
   },
@@ -694,7 +443,7 @@ export const POSTER_THEMES = [
     id: "playful",
     label: "Playful",
     description: "Fun, energetic",
-    note: "Bright gradients, rounded shapes, friendly vibe. Ideal for kids' brands, apps, or anything fun and casual.",
+    note: "Wit and warmth as language — one playful idea, not sticker clutter.",
     previewStyle: "linear-gradient(135deg, #ec4899 0%, #8b5cf6 50%, #06b6d4 100%)",
     exampleImage: `${THEME_IMAGES_BASE}/theme-playful.png`,
   },
@@ -702,7 +451,7 @@ export const POSTER_THEMES = [
     id: "trendy",
     label: "Trendy",
     description: "Modern, contemporary",
-    note: "Current design trends, fresh layouts, modern palettes. Good for startups, tech, or fashion-forward brands.",
+    note: "Contemporary editorial language — interpreted for your product, not a trend pastiche.",
     previewStyle: "linear-gradient(135deg, #6366f1 0%, #a855f7 50%, #ec4899 100%)",
     exampleImage: `${THEME_IMAGES_BASE}/theme-trendy.png`,
   },
@@ -710,7 +459,7 @@ export const POSTER_THEMES = [
     id: "festive",
     label: "Festive",
     description: "Celebratory, joyful",
-    note: "Warm colors, celebratory mood, decorative elements. Perfect for holidays, launches, or special occasions.",
+    note: "Occasion and gathering as language — not generic confetti templates.",
     previewStyle: "linear-gradient(135deg, #dc2626 0%, #f59e0b 50%, #fbbf24 100%)",
     exampleImage: `${THEME_IMAGES_BASE}/theme-festive.png`,
   },
@@ -718,7 +467,7 @@ export const POSTER_THEMES = [
     id: "dynamic",
     label: "Dynamic",
     description: "Motion, energy",
-    note: "Sense of movement, energetic angles, high-action feel. Best for sports, fitness, or action-oriented brands.",
+    note: "Momentum and force as language — composition follows the idea's direction.",
     previewStyle: "linear-gradient(135deg, #059669 0%, #10b981 50%, #34d399 100%)",
     exampleImage: `${THEME_IMAGES_BASE}/theme-dynamic.png`,
   },
@@ -820,7 +569,7 @@ export function normalizeAdSetup(
     hookType,
     campaignGoal: adSetup.campaignGoal || "Drive Sales",
     audience: adSetup.audience || "Auto",
-    duration: adSetup.duration === 16 ? 16 : 8,
+    duration: normalizeCampaignDuration(adSetup.duration),
     platform: adSetup.platform || "Instagram Reels / TikTok",
     aspect_ratio: adSetup.aspect_ratio || "9:16",
     quality: adSetup.quality,
@@ -833,7 +582,7 @@ export const VIDEO_STYLES = CREATIVE_FORMATS;
 /**
  * Video durations
  */
-export const VIDEO_DURATIONS = [8, 16] as const;
+export const VIDEO_DURATIONS = [15, 30] as const;
 
 /**
  * Video platforms
@@ -870,3 +619,96 @@ export const VIDEO_TEXT_POSITIONS = [
   { id: "top_third", label: "Top Third", description: "Upper area" },
   { id: "full_width", label: "Full Width", description: "Caption bar style" },
 ] as const;
+
+/** Client: request Poster Engine creative plans + compiled prompts */
+export type PosterDirectorVariantClient = {
+  routeId: string;
+  routeLabel: string;
+  mechanism?: string;
+  blueprint: Record<string, unknown> | null;
+  spec?: Record<string, unknown> | null;
+  prompt: string;
+};
+
+export async function fetchPosterCreativeDirectorVariants(options: {
+  authFetch: (url: string, init?: RequestInit) => Promise<Response>;
+  userRequest: string;
+  theme: string;
+  aspectRatio: "1:1" | "4:5" | "9:16" | "1.91:1";
+  brand: BrandSnapshot | null;
+  variantCount: 1 | 2 | 3;
+  hasProductImage: boolean;
+  hasLogo: boolean;
+  productName?: string;
+  productDescription?: string;
+  productBenefits?: string[];
+  audience?: string;
+  campaignObjective?: string;
+  creativeBrief?: string;
+  platform?: string;
+  referencePosterAnalysis?: Record<string, unknown> | null;
+  hasReferencePoster?: boolean;
+  referenceInfluence?: "subtle" | "balanced" | "strong";
+}): Promise<{
+  usedDirector: boolean;
+  usedFallback: boolean;
+  selectedConcept: string | null;
+  variants: PosterDirectorVariantClient[];
+  prompts: string[];
+}> {
+  try {
+    const res = await options.authFetch("/api/creative-studio/poster-creative-director", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userRequest: options.userRequest,
+        theme: options.theme,
+        aspectRatio: options.aspectRatio,
+        brandSnapshot: options.brand,
+        variantCount: options.variantCount,
+        hasProductImage: options.hasProductImage,
+        hasLogo: options.hasLogo,
+        hasReferencePoster: !!options.hasReferencePoster || !!options.referencePosterAnalysis,
+        referencePosterAnalysis: options.referencePosterAnalysis || null,
+        referenceInfluence: options.referenceInfluence || "balanced",
+        product: options.productName
+          ? {
+              name: options.productName,
+              description: options.productDescription,
+              benefits: options.productBenefits,
+            }
+          : undefined,
+        audience: options.audience || options.brand?.audience,
+        campaignObjective: options.campaignObjective,
+        creativeBrief: options.creativeBrief,
+        platform: options.platform,
+      }),
+    });
+    const data = await res.json();
+    if (data?.ok && Array.isArray(data.prompts) && data.prompts.length > 0) {
+      return {
+        usedDirector: true,
+        usedFallback: !!data.usedFallback,
+        selectedConcept: data.selectedConcept || null,
+        variants: (data.variants || []).map((v: any) => ({
+          routeId: v.routeId,
+          routeLabel: v.routeLabel,
+          mechanism: v.mechanism,
+          blueprint: null,
+          spec: v.spec || null,
+          prompt: v.prompt,
+        })),
+        prompts: data.prompts,
+      };
+    }
+  } catch (err) {
+    console.warn("[posterEngine] client plan fetch failed — using engine fallback prompts", err);
+  }
+  return {
+    usedDirector: false,
+    usedFallback: false,
+    selectedConcept: null,
+    variants: [],
+    prompts: [],
+  };
+}

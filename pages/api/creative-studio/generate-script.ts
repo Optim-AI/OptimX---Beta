@@ -17,6 +17,7 @@ import {
   validateVoiceoverCommercial,
   VOICEOVER_WORDS_PER_SECOND,
 } from "@/lib/creative-studio/video-prompt-utils";
+import { normalizeCampaignDuration } from "@/lib/creative-studio/commercial-production/campaign/campaign-duration";
 import { buildEnvatoCommercialDirective } from "@/lib/creative-studio/envato-prompt";
 import {
   formatFrameworkForPrompt,
@@ -151,11 +152,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // This expands user input into a comprehensive cinematic prompt
     // ========================================
     
-    // Duration in seconds (user's choice) — used to size shot plan and voiceover
-    const durationSeconds = typeof duration === 'number' ? Math.max(5, Math.min(120, duration)) : parseInt(String(duration || '6'), 10) || 6;
-    const durationSecondsClamped = Math.max(5, Math.min(120, durationSeconds));
+    // Duration in seconds (15 or 30) — Seedance generates the full commercial in one pass
+    const durationSecondsClamped = normalizeCampaignDuration(duration);
 
-    // Voiceover budget: leave tail silence so Veo does not cut speech at the end
+    // Voiceover budget: leave tail silence so speech is not cut at the end
     const {
       maxSpokenSeconds: maxVoiceoverSeconds,
       minWords: minVoiceoverWords,
@@ -165,8 +165,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     } = computeVoiceoverBudget(durationSecondsClamped);
     const voiceoverTimingRules = buildVoiceoverTimingDirective(durationSecondsClamped);
 
-    // For stitched videos (>8s), we generate two Veo clips. The script must have a natural midpoint.
-    const isStitchedDuration = durationSecondsClamped > 8;
+    // Seedance 2.5 generates the full 15s/30s commercial in one request — not two stitched clips.
+    const isStitchedDuration = false;
     const midpointSeconds = isStitchedDuration ? Math.round(durationSecondsClamped / 2) : 0;
 
     const isPerformanceMode = !!(strategy || concept);
@@ -197,7 +197,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const directorPipeline = `${pipelineInstructions}\n\n${envatoFormula}`;
 
     // Calculate recommended scene count based on duration
-    const recommendedScenes = durationSecondsClamped <= 6 ? 3 : durationSecondsClamped <= 8 ? 4 : durationSecondsClamped <= 12 ? 5 : Math.min(8, Math.ceil(durationSecondsClamped / 2.5));
+    const recommendedScenes = durationSecondsClamped <= 15 ? 6 : 10;
     const minScenes = Math.max(3, recommendedScenes - 1);
 
     const geminiKey = getGeminiApiKey();
@@ -350,7 +350,7 @@ ${directorPipeline}`;
 Your mindset for HOOK MODE:
 - Stop scrolling in the first 2 seconds. Trigger emotion immediately. Deliver fast product clarity. Drive action.
 - No slow build-ups, no aesthetic intros, no brand logo fade-in first. No landscape establishing shots, no calm mood builds, no ambient product spins.
-- Every 8-second video MUST follow this exact 4-part structure: 0–2s Pattern Interrupt → 2–4s Emotional Trigger → 4–6s Product Reveal → 6–8s Strong CTA.
+- Every ${durationSecondsClamped}-second video MUST follow a 4-part structure: hook → emotional trigger → product reveal → CTA, scaled to the full duration.
 - Emotion angle: prioritize one of Pain (problem amplification), Desire (aspiration/upgrade), Urgency (limited time), or Curiosity (unexpected visual setup).
 - Product must appear clearly by mid-video (4–6s). No mysterious slow storytelling. This is ad logic, not art school.
 - NO on-screen text: no captions, headlines, subtitles, overlays, or typography. 100% visual storytelling. If voiceover exists, it carries the message.

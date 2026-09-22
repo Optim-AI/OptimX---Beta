@@ -1,58 +1,23 @@
 // app/api/generate-campaign/route.ts
 import axios from "axios";
-import sharp from "sharp";
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from '@/auth/supabase/client'; // adjust path if necessary
 import { CreditsDAO } from '@/database/models/Credits.dao';
 import { withRetryOnGeminiTransient } from '@/lib/gemini-retry';
+import {
+  getNanoBananaApiKey,
+  getPosterImageModel,
+  normalizeImageForGemini,
+  isUnsupportedGeminiImageMime,
+  mapToAllowedGeminiAspect,
+  extractImageFromGeminiResponse,
+  dataUrlToBuffer,
+  fetchUrlToBuffer,
+  fetchUrlToDataUrl,
+} from "@/lib/creative-studio/nano-banana";
 
-/* Gemini supports: image/jpeg, image/png, image/gif, image/webp. NOT image/svg+xml. */
-const GEMINI_UNSUPPORTED_MIMES = ["image/svg+xml", "image/vnd.microsoft.icon", "image/x-icon", "image/ico"];
-
-function isUnsupportedMime(mimeType: string): boolean {
-  const normalized = mimeType.toLowerCase().trim();
-  return GEMINI_UNSUPPORTED_MIMES.some((t) => normalized.includes(t));
-}
-
-async function normalizeImageForGemini(dataUrl: string): Promise<{ mimeType: string; base64Data: string } | null> {
-  const m = dataUrl.match(/^data:(.+?);base64,(.+)$/);
-  if (!m) return null;
-  const mimeType = m[1].toLowerCase().split(";")[0].trim();
-  const base64Data = m[2];
-
-  const maxDim = 1600;
-  const maxBytes = 4 * 1024 * 1024;
-
-  try {
-    const inputBuffer = Buffer.from(base64Data, "base64");
-    const sharpInput = mimeType.includes("svg") ? { density: 144 } : undefined;
-    const meta = await sharp(inputBuffer, sharpInput).metadata();
-    const tooLarge =
-      inputBuffer.length > maxBytes ||
-      (meta.width != null && meta.width > maxDim) ||
-      (meta.height != null && meta.height > maxDim);
-
-    if (isUnsupportedMime(mimeType) || tooLarge) {
-      const optimized = await sharp(inputBuffer, sharpInput)
-        .resize({ width: maxDim, height: maxDim, fit: "inside", withoutEnlargement: true })
-        .jpeg({ quality: 88 })
-        .toBuffer();
-      return { mimeType: "image/jpeg", base64Data: optimized.toString("base64") };
-    }
-
-    if (!isUnsupportedMime(mimeType)) {
-      return { mimeType, base64Data };
-    }
-  } catch (e) {
-    console.warn("Failed to normalize image for Gemini:", e);
-    return null;
-  }
-
-  return null;
-}
-
-const NANO_API_KEY = process.env.NANO_API_KEY || process.env.GEMINI_API_KEY || process.env.GEMINI_VEO_API_KEY;
-const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash-image";
+const NANO_API_KEY = getNanoBananaApiKey();
+const GEMINI_MODEL = getPosterImageModel();
 const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
 
 if (!NANO_API_KEY) {
@@ -93,35 +58,6 @@ function placementToPrompt(placement: LogoPlacement): string {
 
 /* ---------- Generic helpers ---------- */
 
-function dataUrlToBuffer(dataUrl: string) {
-  const m = dataUrl.match(/^data:(.+);base64,(.+)$/);
-  if (!m) throw new Error("Invalid data URL");
-  return Buffer.from(m[2], "base64");
-}
-
-async function fetchUrlToBuffer(url: string) {
-  const resp = await fetch(url);
-  if (!resp.ok) throw new Error(`Failed to fetch ${url}: ${resp.status}`);
-  const arr = await resp.arrayBuffer();
-  return Buffer.from(arr);
-}
-
-async function fetchUrlToDataUrl(url: string): Promise<string | null> {
-  try {
-    const resp = await fetch(url, {
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; SkalX AI/1.0)", Accept: "image/*" },
-    });
-    if (!resp.ok) return null;
-    const contentType = resp.headers.get("content-type") || "image/png";
-    if (!contentType.startsWith("image/")) return null;
-    const arr = await resp.arrayBuffer();
-    const base64 = Buffer.from(arr).toString("base64");
-    return `data:${contentType.split(";")[0]};base64,${base64}`;
-  } catch {
-    return null;
-  }
-}
-
 async function uploadBufferToSupabase(
   buffer: Buffer,
   path: string,
@@ -136,47 +72,6 @@ async function uploadBufferToSupabase(
   if (error) throw error;
   const { data } = supabaseAdmin.storage.from(bucket).getPublicUrl(path);
   return (data as any)?.publicUrl ?? null;
-}
-
-/* Allowed Gemini aspect strings */
-const ALLOWED_ASPECTS = [
-  "1:1",
-  "2:3",
-  "3:2",
-  "3:4",
-  "4:3",
-  "4:5",
-  "5:4",
-  "9:16",
-  "16:9",
-  "21:9",
-];
-
-function mapToAllowedAspect(width: number, height: number) {
-  if (!width || !height) return "1:1";
-  const ratio = width / height;
-  const mapNum: Record<string, number> = {
-    "1:1": 1.0,
-    "2:3": 2 / 3,
-    "3:2": 3 / 2,
-    "3:4": 3 / 4,
-    "4:3": 4 / 3,
-    "4:5": 4 / 5,
-    "5:4": 5 / 4,
-    "9:16": 9 / 16,
-    "16:9": 16 / 9,
-    "21:9": 21 / 9,
-  };
-  let best = "4:5";
-  let bestDiff = Math.abs(mapNum[best] - ratio);
-  for (const a of ALLOWED_ASPECTS) {
-    const d = Math.abs(mapNum[a] - ratio);
-    if (d < bestDiff) {
-      best = a;
-      bestDiff = d;
-    }
-  }
-  return best;
 }
 
 /* ---------- Build prompt ---------- */
@@ -247,19 +142,38 @@ function buildPromptFromInputs(body: any) {
     }
   }
   
-  // Product image instruction
+  // Product image instruction — ROLE: PRODUCT
   if (body.productProvided || body.productDataUrl) {
     parts.push(
-      "CRITICAL PRODUCT IMAGE: A product image has been provided. Use THIS EXACT product image as the hero element. Do NOT regenerate or replace the product. Only adjust background and composition around it."
+      "IMAGE ROLE — PRODUCT: A product image has been provided. Use THIS EXACT product as the hero product. Do NOT regenerate, replace, or swap it for a different product, category, or brand. Only adjust background and composition around it. If the pack shows a brand name, that is the product brand — do not overlay a conflicting brand logo."
+    );
+    if (body.productName) {
+      parts.push(
+        `Named product (must match reference): ${body.productName}. Never depict a different product (e.g. electronics when the product is food).`
+      );
+    }
+  }
+
+  // Reference poster — ROLE: DESIGN INSPIRATION (separate from product refs)
+  if (body.referencePosterProvided || body.referencePosterDataUrl) {
+    parts.push(
+      [
+        "IMAGE ROLE — REFERENCE POSTER (DESIGN INSPIRATION ONLY):",
+        "Use ONLY as visual design inspiration: composition, typography hierarchy, layout,",
+        "graphic language, spacing, color relationships, lighting, visual treatment, information hierarchy.",
+        "DO NOT: reproduce the original brand, logo, text, product, characters, artwork, or recreate the poster literally.",
+        "DO NOT: replace the user's product with the reference poster's product.",
+        "Replace visual identity with the user's brand and product. Create an original composition.",
+      ].join(" ")
     );
   }
 
-  // Reference images
+  // Additional product/context reference images (not the design poster)
   const refUrls: string[] =
     Array.isArray(body.refUrls) ? body.refUrls : body.aiCustomization?.refUrls ?? [];
   if (refUrls && refUrls.length) {
     parts.push(
-      `Reference images (use as style/layout inspiration — color, composition, mood): ${refUrls
+      `Additional product/context reference images (style/context only — not the design inspiration poster): ${refUrls
         .slice(0, 8)
         .join(", ")}. Do not copy copyrighted elements verbatim.`
     );
@@ -298,60 +212,6 @@ function buildPromptFromInputs(body: any) {
   parts.push("CRITICAL: Never use asterisks (*) in any text. No * between words or sentences (e.g. no *and* or *bold*). Plain text only for headlines, body copy, and CTAs.");
 
   return parts.filter(Boolean).join("\n\n");
-}
-
-/* ---------- Gemini response image extraction ---------- */
-
-function extractImageFromGeminiResponse(respJson: any): {
-  kind: "inline" | "url" | null;
-  data?: string;
-  url?: string;
-} {
-  try {
-    const candidates =
-      respJson?.response?.candidates ??
-      respJson?.candidates ??
-      respJson?.result?.candidates ??
-      respJson?.parts ??
-      null;
-    if (Array.isArray(candidates) && candidates.length > 0) {
-      for (const c of candidates) {
-        const parts = c?.content?.parts ?? c?.content ?? c?.parts ?? null;
-        if (Array.isArray(parts)) {
-          for (const p of parts) {
-            if (p?.inline_data?.data) return { kind: "inline", data: p.inline_data.data };
-            if (p?.inlineData?.data) return { kind: "inline", data: p.inlineData.data };
-            if (p?.files && Array.isArray(p.files) && p.files.length > 0) {
-              const f = p.files[0];
-              if (f?.data) return { kind: "inline", data: f.data };
-              if (f?.uri) return { kind: "url", url: f.uri };
-            }
-            if (p?.data && typeof p.data === "string") {
-              const s = p.data;
-              if (s.startsWith("data:")) return { kind: "inline", data: s };
-              return { kind: "inline", data: s };
-            }
-          }
-        }
-      }
-    }
-    const topFiles =
-      respJson?.files ?? respJson?.outputs ?? respJson?.generated_images ?? respJson?.images;
-    if (Array.isArray(topFiles) && topFiles.length > 0) {
-      const f = topFiles[0];
-      if (typeof f === "string") {
-        if (f.startsWith("data:")) return { kind: "inline", data: f };
-        if (f.startsWith("http")) return { kind: "url", url: f };
-      } else if (f?.data) {
-        return { kind: "inline", data: f.data };
-      } else if (f?.uri) {
-        return { kind: "url", url: f.uri };
-      }
-    }
-  } catch (e) {
-    // ignore
-  }
-  return { kind: null };
 }
 
 /* ---------- Auth helpers ---------- */
@@ -599,7 +459,7 @@ export async function POST(request: Request) {
     };
 
     // Aspect mapping
-    const aspectLabel = mapToAllowedAspect(targetW, targetH);
+    const aspectLabel = mapToAllowedGeminiAspect(targetW, targetH);
 
     const prompt = buildPromptFromInputs({
       ...body,
@@ -623,14 +483,19 @@ export async function POST(request: Request) {
     // Add main product image FIRST (most important reference)
     if (productDataUrl && typeof productDataUrl === "string" && productDataUrl.startsWith("data:")) {
       const normalized = await normalizeImageForGemini(productDataUrl);
-      if (normalized && !isUnsupportedMime(normalized.mimeType)) {
+        if (normalized && !isUnsupportedGeminiImageMime(normalized.mimeType)) {
         parts.push({
           inline_data: {
             mimeType: normalized.mimeType,
             data: normalized.base64Data,
           },
         });
-        parts.push({ text: "The image above is the MAIN PRODUCT IMAGE. This is the primary subject. Use this exact product in the poster design. Do NOT alter, regenerate, or replace this product image." });
+        parts.push({ text: "IMAGE ROLE — PRODUCT: The image above is the MAIN PRODUCT IMAGE. This is the primary subject. Use this exact product in the poster design. Do NOT alter, regenerate, replace, or swap this product for a different SKU/category/brand. Packaging text, colors, and proportions must match this reference." });
+        if (typeof body.productName === "string" && body.productName.trim()) {
+          parts.push({
+            text: `PRODUCT NAME LOCK: ${body.productName.trim()}. The generated poster must feature this product only.`,
+          });
+        }
       }
     }
 
@@ -643,7 +508,7 @@ export async function POST(request: Request) {
         if (typeof d !== "string") continue;
         if (!d.startsWith("data:")) continue;
         const normalized = await normalizeImageForGemini(d);
-        if (!normalized || isUnsupportedMime(normalized.mimeType)) continue;
+        if (!normalized || isUnsupportedGeminiImageMime(normalized.mimeType)) continue;
         parts.push({
           inline_data: {
             mimeType: normalized.mimeType,
@@ -662,7 +527,7 @@ export async function POST(request: Request) {
     // Add brand logo (use resolved logo from data URL or fetched URL)
     if (resolvedLogoDataUrl && resolvedLogoDataUrl.startsWith("data:")) {
       const normalized = await normalizeImageForGemini(resolvedLogoDataUrl);
-      if (normalized && !isUnsupportedMime(normalized.mimeType)) {
+      if (normalized && !isUnsupportedGeminiImageMime(normalized.mimeType)) {
         parts.push({
           inline_data: {
             mimeType: normalized.mimeType,
@@ -673,7 +538,38 @@ export async function POST(request: Request) {
           ? ` Place it in the ${logoPlacement.replace(/-/g, " ")} position.`
           : "";
         parts.push({
-          text: `The image above is the BRAND LOGO from the brand guideline. You MUST include this logo in the poster design in a visible, professional location (e.g. corner or bottom). Do not redesign or replace the logo; use it exactly as provided. Every poster must feature this brand logo.${placementHint}`,
+          text: `IMAGE ROLE — BRAND LOGO: The image above is the BRAND LOGO from the brand guideline. You MUST include this logo in the poster in a visible, professional location. Do not redesign or replace the logo; use it exactly as provided.${placementHint}`,
+        });
+      }
+    }
+
+    // Add REFERENCE POSTER last among images — design inspiration only
+    const referencePosterDataUrl =
+      typeof body.referencePosterDataUrl === "string"
+        ? body.referencePosterDataUrl
+        : null;
+    if (
+      referencePosterDataUrl &&
+      referencePosterDataUrl.startsWith("data:")
+    ) {
+      const normalized = await normalizeImageForGemini(referencePosterDataUrl);
+      if (normalized && !isUnsupportedGeminiImageMime(normalized.mimeType)) {
+        parts.push({
+          inline_data: {
+            mimeType: normalized.mimeType,
+            data: normalized.base64Data,
+          },
+        });
+        parts.push({
+          text: [
+            "IMAGE ROLE — REFERENCE POSTER (DESIGN INSPIRATION ONLY).",
+            "Study composition, typography hierarchy, layout, graphic language, spacing,",
+            "color relationships, lighting, visual treatment, and information hierarchy.",
+            "DO NOT reproduce the original brand, logo, text, product, characters, artwork,",
+            "or recreate the poster literally.",
+            "DO NOT replace the user's product image with anything from this reference.",
+            "Create an original composition for the user's brand and product only.",
+          ].join(" "),
         });
       }
     }

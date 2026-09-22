@@ -442,18 +442,32 @@ export function computeVoiceoverBudget(durationSeconds: number): {
       finishBySecond: 6.5,
     };
   }
-  if (duration <= 16) {
-    const minSpokenSeconds = 13;
-    const maxSpokenSeconds = 14;
+  if (duration <= 15) {
+    const minSpokenSeconds = 12;
+    const maxSpokenSeconds = 13;
     const tailSilenceSeconds = 2;
     return {
       minSpokenSeconds,
       maxSpokenSeconds,
-      minWords: 32,
-      maxWords: 40,
-      targetWords: 36,
+      minWords: 26,
+      maxWords: 32,
+      targetWords: 29,
       tailSilenceSeconds,
-      finishBySecond: 14,
+      finishBySecond: 13,
+    };
+  }
+  if (duration <= 30) {
+    const minSpokenSeconds = 26;
+    const maxSpokenSeconds = 28;
+    const tailSilenceSeconds = 2;
+    return {
+      minSpokenSeconds,
+      maxSpokenSeconds,
+      minWords: 57,
+      maxWords: 70,
+      targetWords: 63,
+      tailSilenceSeconds,
+      finishBySecond: 28,
     };
   }
 
@@ -743,9 +757,11 @@ export function buildVoiceoverTimingDirective(durationSeconds: number): string {
   const spokenWindow =
     durationSeconds <= 8
       ? "5.5–6.5 seconds"
-      : durationSeconds <= 16
-        ? "13–14 seconds"
-        : `${budget.minSpokenSeconds}–${budget.maxSpokenSeconds} seconds`;
+      : durationSeconds <= 15
+        ? "12–13 seconds"
+        : durationSeconds <= 30
+          ? "26–28 seconds"
+          : `${budget.minSpokenSeconds}–${budget.maxSpokenSeconds} seconds`;
 
   return [
     `VOICEOVER TIMING (mandatory — complete TV/social commercial, never fragments):`,
@@ -773,14 +789,14 @@ REQUIRED ORDER in voiceover_script AND the combined narration:
 5. CTA: clear action ("Shop now", "Try it today", etc.)
 6. COMPLETE ENDING: finish on a closed sentence — never trail off
 
-GOOD 8s (~18 words): "Craving something sweet? Yoga Bar protein mango shake — 26g protein, no added sugar. Try it today."
-GOOD 16s (~36 words): "Still skipping breakfast? Yoga Bar protein mango shake fuels your morning — 26g protein, no added sugar, real results you can feel. Grab yours and try it today."
+GOOD 15s (~29 words): "Craving something sweet? Yoga Bar protein mango shake — 26g protein, no added sugar, real energy you can feel. Grab yours and try it today."
+GOOD 30s (~63 words): "Still skipping breakfast? Yoga Bar protein mango shake fuels your morning — 26g protein, no added sugar, and a taste you will actually crave. One bottle. Real results. Grab yours and try it today."
 
 BAD (reject): problem-only hooks with no product resolution / "Yoga Bar. Try it." / flavor-only / three-word fragments / ending on a question with no CTA.
 
 TIMING:
-- 8s video: speak 5.5–6.5s (${16}–${20} words), last 1–2s silent.
-- 16s video: speak 13–14s (${32}–${40} words), last 1–2s silent.
+- 15s video: speak 12–13s (26–32 words), last 2s silent.
+- 30s video: speak 26–28s (57–70 words), last 2s silent.
 - Fill the speaking window with one complete message — not the fewest words.
 
 Rules:

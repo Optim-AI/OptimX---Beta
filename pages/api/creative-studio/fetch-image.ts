@@ -89,9 +89,14 @@ export default async function handler(
     return res.status(405).json({ ok: false, error: "Method not allowed" });
   }
 
-  const { url, directFetch } = req.body ?? {};
-  if (!url || typeof url !== "string") {
+  const { url: rawUrl, directFetch } = req.body ?? {};
+  let url = typeof rawUrl === "string" ? rawUrl.trim() : "";
+  if (!url) {
     return res.status(400).json({ ok: false, error: "Missing or invalid URL" });
+  }
+  // Accept bare domains / paths (same as content-studio/scan)
+  if (!/^https?:\/\//i.test(url)) {
+    url = `https://${url}`;
   }
 
   try {

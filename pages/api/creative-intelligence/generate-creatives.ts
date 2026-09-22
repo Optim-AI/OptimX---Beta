@@ -58,6 +58,8 @@ async function callGemini(prompt: string, systemInstruction?: string): Promise<s
 
 const STEP7_SYSTEM = `You are the Creative Intelligence Engine. STEP 7 — CREATIVE GENERATION.
 No fluff. No marketing clichés. No long paragraphs. Everything must tie to research signals.
+Poster visual_direction must be SPECIFIC art direction (composition, focal hierarchy, lighting, what to avoid) — never "beautiful modern design".
+These decisions feed a Poster Creative Director before image generation.
 Return structured JSON only.`;
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -244,7 +246,7 @@ Rules:
 - Primary text: max 8-12 words. Short, bold, scroll-stopping.
 - Secondary text: max 15 words. Clear benefit or proof.
 - CTA: Short, action-driven, platform-appropriate.
-- Visual direction: Specific instructions for image generator. No "beautiful modern design".
+- Visual direction: Specific instructions for image generator / Poster Creative Director. No "beautiful modern design". Include focal hierarchy and what to avoid.
 - Video scripts: 5 variations. Total readable in 8 seconds. Max 25-35 words each. Format: 0-2s Hook, 2-5s Problem/Desire, 5-7s Solution, 7-8s CTA.
 - Generate 1 poster concept and 5 video script variations.
 - For hook_reference use exactly: "${hook.hookStatement}"`;
@@ -265,13 +267,28 @@ Rules:
       }
     }
 
-    // Ensure backward compatibility: also populate ad_concepts, headlines, ctas, visual_direction for poster generation
+    // Brief for Poster Creative Director (Brand Studio / Content Studio)
     const firstPoster = creatives.posters?.[0];
+    const posterCreativeBrief = [
+      hookBrief,
+      firstPoster?.visual_direction
+        ? `Visual direction: ${JSON.stringify(firstPoster.visual_direction)}`
+        : null,
+      firstPoster?.primary_text_options?.[0]
+        ? `Lead headline option: ${firstPoster.primary_text_options[0]}`
+        : null,
+      `Campaign goal: ${campaignGoal}`,
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    // Ensure backward compatibility: also populate ad_concepts, headlines, ctas, visual_direction for poster generation
     const legacyFormat = {
       ad_concepts: firstPoster?.primary_text_options?.slice(0, 5) || [],
       headlines: firstPoster?.primary_text_options || [],
       ctas: firstPoster?.cta_options || creatives.ctas || [],
       visual_direction: firstPoster?.visual_direction || creatives.visual_direction || {},
+      poster_creative_brief: posterCreativeBrief,
       reel_scripts_15s: creatives.video_scripts_8s?.map((s: any) => ({
         hook: s.hook_line,
         body: [s.problem_or_desire, s.solution].filter(Boolean).join(" "),

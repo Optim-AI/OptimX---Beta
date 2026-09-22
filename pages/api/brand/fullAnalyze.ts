@@ -644,8 +644,17 @@ export default async function handler(
     try {
       const factsJson = await callOpenAI(factsPrompt(data));
       facts = JSON.parse(factsJson || "{}");
-    } catch (e) {
+    } catch (e: any) {
       console.error("Failed to parse facts:", e);
+      const msg = String(e?.message || "");
+      if (msg.includes("invalid_api_key") || msg.includes("Incorrect API key")) {
+        throw new Error(
+          "OpenAI API key is invalid. Set a real OPENAI_API_KEY in .env.local and restart the server."
+        );
+      }
+      if (msg.includes("OPENAI_API_KEY is not configured")) {
+        throw new Error("OPENAI_API_KEY is missing. Add it to .env.local and restart the server.");
+      }
       throw new Error("Failed to extract brand facts");
     }
 
@@ -821,9 +830,13 @@ export default async function handler(
     console.error("❌ Brand analysis error:", e);
     console.error("Error stack:", e?.stack);
     console.error("Error message:", e?.message);
-    return res.status(500).json({ 
-      error: "Analysis failed",
-      details: process.env.NODE_ENV === "development" ? e?.message : undefined
+    const message = e?.message || "Analysis failed";
+    const isConfigError =
+      typeof message === "string" &&
+      (message.includes("OPENAI_API_KEY") || message.includes("OpenAI API key"));
+    return res.status(isConfigError ? 503 : 500).json({
+      error: isConfigError ? message : "Analysis failed",
+      details: process.env.NODE_ENV === "development" ? message : undefined,
     });
   }
 }

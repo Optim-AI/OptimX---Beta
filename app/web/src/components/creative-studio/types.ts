@@ -123,7 +123,7 @@ export type AdSetup = {
   audience: AudienceType;
   /** @deprecated Use creativeFormat — kept for session migration */
   style?: string;
-  duration: 8 | 16;
+  duration: 15 | 30;
   platform: "Instagram Reels / TikTok" | "YouTube Shorts" | "Instagram Feed" | "YouTube Ad";
   aspect_ratio: "9:16" | "1:1" | "16:9" | "4:5";
   quality?: "standard" | "high";
@@ -274,6 +274,11 @@ export type PosterConfig = {
   theme: string;
   aspectRatio: "1:1" | "4:5" | "9:16" | "1.91:1";
   variantCount: 1 | 2 | 3; // Number of variants to generate (1-3)
+  /**
+   * Optional design inspiration poster.
+   * Persisted inside session config jsonb — NOT a product image.
+   */
+  referencePoster?: import("@/lib/creative-studio/poster-engine").ReferencePosterAsset | null;
 };
 
 // Session type for database persistence
@@ -339,9 +344,56 @@ export type SessionListItem = {
 };
 
 // Generated video type
+export type CommercialQcDecision = "accept" | "regenerate" | "manual_review";
+
+export type CreativePlanSummary = {
+  conceptTitle: string;
+  conceptPitch: string;
+  visualDirection: string;
+  storyBeats: Array<{ index: number; label: string; intent: string }>;
+};
+
+export type GeneratedVideoQcSummary = {
+  decision: CommercialQcDecision;
+  visualAvailable: boolean;
+  categories?: {
+    product?: string;
+    brand?: string;
+    narrative?: string;
+    continuity?: string;
+    artifacts?: string;
+    ending?: string;
+    treatment?: string;
+  };
+  reason?: string;
+  requiredChanges?: string[];
+  preservedRequirements?: string[];
+  nextGenerationVersion?: string;
+};
+
 export type GeneratedVideo = {
   id: string;
   url: string;
   prompt: string;
   timestamp: number;
+  generationVersion?: string;
+  duration?: 15 | 30;
+  aspectRatio?: string;
+  productionMode?: "native_continuous" | string;
+  model?: string;
+  qcDecision?: CommercialQcDecision;
+  qcSummary?: GeneratedVideoQcSummary;
+  creativePlan?: CreativePlanSummary;
 };
+
+export type CommercialProductionStatus =
+  | "idle"
+  | "planning"
+  | "preparing"
+  | "generating"
+  | "evaluating"
+  | "completed"
+  | "regenerating"
+  | "manual_review"
+  | "failed";
+

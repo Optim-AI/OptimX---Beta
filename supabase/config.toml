@@ -66,17 +66,19 @@ port = 54324
 # ============================================================
 [storage]
 enabled = true
-# The maximum file size allowed (e.g. "5MB", "500KB").
-file_size_limit = "50MiB"
+# Global cap for ALL buckets. Bucket limits cannot exceed this.
+# Commercial Seedance MP4s (15–30s) commonly exceed 10–50MB.
+file_size_limit = "200MiB"
 
 [storage.image_transformation]
 enabled = true
 
 # Storage bucket: campaign-assets (public)
+# Used by: lib/creative-studio/video-delivery.ts → generated/videos/*.mp4
 [storage.buckets.campaign-assets]
 public = true
-file_size_limit = "10MiB"
-allowed_mime_types = ["image/png", "image/jpeg", "image/gif", "image/webp", "video/mp4", "video/webm"]
+file_size_limit = "200MiB"
+allowed_mime_types = ["image/png", "image/jpeg", "image/gif", "image/webp", "video/mp4", "video/webm", "video/quicktime"]
 
 # Storage bucket: user-uploads (public)
 [storage.buckets.user-uploads]
