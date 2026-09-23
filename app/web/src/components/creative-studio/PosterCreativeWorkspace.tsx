@@ -113,6 +113,23 @@ export type PosterCreativeWorkspaceProps = {
   onGenerate: () => void;
   isGenerating: boolean;
   thinkingMessages?: string[];
+  /** Primary CTA label — e.g. "Develop creative" or "Generate poster" */
+  primaryCtaLabel?: string;
+  /** Pipeline stage for progressive UX */
+  pipelineStage?: "compose" | "directions" | "generating" | "ready";
+  /** Creative direction cards (internal concepts, user-facing) */
+  creativeDirections?: Array<{
+    id: string;
+    name: string;
+    description: string;
+    visualApproach: string;
+  }>;
+  selectedDirectionId?: string | null;
+  onSelectDirection?: (id: string) => void;
+  onRegenerateDirections?: () => void;
+  isRegeneratingDirections?: boolean;
+  onGenerateFromDirection?: () => void;
+  canGenerateFromDirection?: boolean;
 
   /* Overlays */
   brandReviewSlot?: React.ReactNode;
@@ -125,6 +142,62 @@ function surfaceClass(extra?: string) {
   return cn(
     "rounded-2xl border border-white/[0.08] bg-white/[0.03] backdrop-blur-sm",
     extra
+  );
+}
+
+function generatingHeadline(messages: string[]): string {
+  const joined = messages.join(" ").toLowerCase();
+  if (joined.includes("creating your poster") || joined.includes("generating visual")) {
+    return "Creating your poster";
+  }
+  if (
+    joined.includes("understanding") ||
+    joined.includes("marketing direction") ||
+    joined.includes("creative directions") ||
+    joined.includes("exploring new")
+  ) {
+    return "Understanding your campaign";
+  }
+  return "Working on your creative";
+}
+
+function BrandContextBar({
+  brand,
+  onOpenBrandGuidelines,
+}: {
+  brand: BrandSnapshot;
+  onOpenBrandGuidelines: () => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div className="shrink-0 border-b border-white/[0.06] px-4 py-2.5 sm:px-6">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="text-left text-sm text-white/70 transition hover:text-white/85"
+        >
+          Using <span className="font-medium text-white">{brand.name}</span>
+          <span className="mx-2 text-white/25">·</span>
+          <span className="text-white/45">Brand guidelines applied</span>
+        </button>
+        <button
+          type="button"
+          onClick={onOpenBrandGuidelines}
+          className="text-xs font-medium transition hover:underline"
+          style={{ color: BLUE.text }}
+        >
+          View / Edit
+        </button>
+      </div>
+      {expanded && (
+        <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-white/45">
+          <li>✓ Brand identity</li>
+          <li>✓ Product information</li>
+          <li>✓ Visual guidelines</li>
+        </ul>
+      )}
+    </div>
   );
 }
 
@@ -163,6 +236,15 @@ export function PosterCreativeWorkspace({
   onGenerate,
   isGenerating,
   thinkingMessages = [],
+  primaryCtaLabel = "Generate poster",
+  pipelineStage = "compose",
+  creativeDirections = [],
+  selectedDirectionId = null,
+  onSelectDirection,
+  onRegenerateDirections,
+  isRegeneratingDirections = false,
+  onGenerateFromDirection,
+  canGenerateFromDirection = false,
   brandReviewSlot,
   resultsSlot,
   creditsAlertSlot,
@@ -289,8 +371,14 @@ export function PosterCreativeWorkspace({
     onReferencePosterFile(file);
   }
 
-  const showResults = !!resultsSlot && !isGenerating;
-  const showCompose = !isGenerating && !showResults;
+  const showResults =
+    pipelineStage === "ready" && !!resultsSlot && !isGenerating;
+  const showDirections =
+    pipelineStage === "directions" &&
+    !isGenerating &&
+    creativeDirections.length > 0;
+  const showCompose =
+    !isGenerating && !showResults && !showDirections && !brandReviewSlot;
 
   return (
     <div
@@ -331,25 +419,9 @@ export function PosterCreativeWorkspace({
         </div>
       </div>
 
-      {/* Brand context — compact */}
+      {/* Brand context — compact + expandable */}
       {brand && (
-        <div className="shrink-0 border-b border-white/[0.06] px-4 py-2.5 sm:px-6">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-sm text-white/70">
-              Using <span className="font-medium text-white">{brand.name}</span>
-              <span className="mx-2 text-white/25">·</span>
-              <span className="text-white/45">Brand guidelines applied</span>
-            </p>
-            <button
-              type="button"
-              onClick={onOpenBrandGuidelines}
-              className="text-xs font-medium transition hover:underline"
-              style={{ color: BLUE.text }}
-            >
-              View / Edit
-            </button>
-          </div>
-        </div>
+        <BrandContextBar brand={brand} onOpenBrandGuidelines={onOpenBrandGuidelines} />
       )}
 
       {creditsAlertSlot}
@@ -368,15 +440,17 @@ export function PosterCreativeWorkspace({
             />
             <div>
               <h2 className="text-lg font-medium tracking-tight text-white">
-                Creating your poster
+                {generatingHeadline(thinkingMessages)}
               </h2>
               <p className="mt-2 text-sm text-white/45">
-                {thinkingMessages[0] || "Working on your creative…"}
+                {thinkingMessages.find((m) => m.startsWith("→")) ||
+                  thinkingMessages[thinkingMessages.length - 1] ||
+                  "Working on your creative…"}
               </p>
             </div>
-            {thinkingMessages.length > 1 && (
+            {thinkingMessages.length > 0 && (
               <ul className="space-y-2 text-left text-sm text-white/40">
-                {thinkingMessages.slice(0, 5).map((msg, i) => (
+                {thinkingMessages.slice(0, 6).map((msg, i) => (
                   <li key={i} className="flex items-start gap-2">
                     <span
                       className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full"
@@ -403,7 +477,7 @@ export function PosterCreativeWorkspace({
                 >
                   Poster results
                 </p>
-                <h2 className="mt-1 text-xl font-medium text-white">Your variants</h2>
+                <h2 className="mt-1 text-xl font-medium text-white">Your posters</h2>
               </div>
               {onBackToCompose && (
                 <button
@@ -416,6 +490,128 @@ export function PosterCreativeWorkspace({
               )}
             </div>
             {resultsSlot}
+          </div>
+        </div>
+      )}
+
+      {/* Creative directions selection */}
+      {showDirections && (
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="mx-auto max-w-[1100px] space-y-6 p-4 sm:p-6">
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <p
+                  className="text-[10px] font-semibold uppercase tracking-[0.16em]"
+                  style={{ color: BLUE.text }}
+                >
+                  Creative directions
+                </p>
+                <h2 className="mt-1 text-xl font-medium text-white">
+                  Choose a direction for your poster
+                </h2>
+                <p className="mt-1 text-sm text-white/45">
+                  Exploring directions uses no image credits. Generation charges only when you
+                  create posters.
+                </p>
+              </div>
+              {onBackToCompose && (
+                <button
+                  type="button"
+                  onClick={onBackToCompose}
+                  className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-white/70 transition hover:bg-white/[0.08] hover:text-white"
+                >
+                  Adjust brief
+                </button>
+              )}
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-3">
+              {creativeDirections.map((dir, idx) => {
+                const selected = selectedDirectionId === dir.id;
+                return (
+                  <button
+                    key={dir.id}
+                    type="button"
+                    onClick={() => onSelectDirection?.(dir.id)}
+                    className={cn(
+                      "rounded-2xl border p-4 text-left transition",
+                      selected
+                        ? "border-blue-500/50 bg-blue-500/10"
+                        : "border-white/10 bg-white/[0.03] hover:border-white/20"
+                    )}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/40">
+                        Direction {String(idx + 1).padStart(2, "0")}
+                      </p>
+                      {selected && (
+                        <span
+                          className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium text-white"
+                          style={{ background: BLUE.solid }}
+                        >
+                          <Check className="h-3 w-3" />
+                          Selected
+                        </span>
+                      )}
+                    </div>
+                    <h3 className="mt-2 text-base font-medium text-white">{dir.name}</h3>
+                    <p className="mt-2 text-sm leading-relaxed text-white/60">
+                      {dir.description}
+                    </p>
+                    <p className="mt-3 text-xs text-white/40">
+                      Visual: {dir.visualApproach}
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              {onRegenerateDirections && (
+                <button
+                  type="button"
+                  onClick={onRegenerateDirections}
+                  disabled={isRegeneratingDirections || isGenerating}
+                  className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm text-white/75 transition hover:bg-white/[0.08] hover:text-white disabled:opacity-45"
+                >
+                  {isRegeneratingDirections ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Sparkles className="h-4 w-4" />
+                  )}
+                  Regenerate directions
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={onGenerateFromDirection}
+                disabled={
+                  !canGenerateFromDirection ||
+                  !selectedDirectionId ||
+                  isGenerating
+                }
+                className="inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-45"
+                style={{ background: BLUE.solid }}
+              >
+                {isGenerating ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Creating…
+                  </>
+                ) : (
+                  <>
+                    Generate poster
+                    <ArrowRight className="h-4 w-4" />
+                  </>
+                )}
+              </button>
+              {selectedDirectionId && (
+                <p className="text-xs text-white/40">
+                  {numVariants} poster{numVariants === 1 ? "" : "s"} · {numVariants} image
+                  credit{numVariants === 1 ? "" : "s"}
+                </p>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -954,7 +1150,7 @@ export function PosterCreativeWorkspace({
                       </>
                     ) : (
                       <>
-                        Generate poster
+                        {primaryCtaLabel}
                         <ArrowRight className="h-4 w-4" />
                       </>
                     )}

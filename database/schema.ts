@@ -649,3 +649,38 @@ export const creativeIntelligenceGoogleRanks = pgTable("creative_intelligence_go
 }, (table) => [
 	index("idx_creative_intelligence_google_ranks_run_id").using("btree", table.runId.asc().nullsLast()),
 ]);
+
+/**
+ * Poster Generation Sessions — structured creative state (Phase 2+).
+ * Separate from creative_studio_sessions (UI shell). Linked via studio_session_id.
+ * Does NOT replace generated_posters URL arrays on the studio session.
+ */
+export const posterGenerationSessions = pgTable("poster_generation_sessions", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	userId: uuid("user_id").notNull(),
+	studioSessionId: uuid("studio_session_id"),
+	brandId: text("brand_id"),
+	productId: text("product_id"),
+	status: text().notNull().default("draft"),
+	version: integer().notNull().default(1),
+	brief: jsonb(),
+	strategy: jsonb(),
+	concepts: jsonb().notNull().default([]),
+	selectedConceptIds: jsonb("selected_concept_ids").notNull().default([]),
+	dnaByConceptId: jsonb("dna_by_concept_id").notNull().default({}),
+	specifications: jsonb().notNull().default([]),
+	assets: jsonb().notNull().default([]),
+	iterations: jsonb().notNull().default([]),
+	trace: jsonb().notNull().default({}),
+	error: jsonb(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).defaultNow(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }).defaultNow(),
+}, (table) => [
+	index("idx_poster_gen_sessions_user_id").using("btree", table.userId.asc().nullsLast()),
+	index("idx_poster_gen_sessions_studio_session_id").using(
+		"btree",
+		table.studioSessionId.asc().nullsLast()
+	),
+	index("idx_poster_gen_sessions_status").using("btree", table.status.asc().nullsLast()),
+	index("idx_poster_gen_sessions_updated_at").using("btree", table.updatedAt.desc().nullsLast()),
+]);

@@ -33,8 +33,24 @@ import {
 } from '@/app/web/src/components/creative-studio';
 import PosterCreativeWorkspace from '@/app/web/src/components/creative-studio/PosterCreativeWorkspace';
 import type { Product } from '@/app/web/src/components/creative-studio/types';
+import {
+  buildCreativeBriefFromWorkspace,
+  conceptToUiCard,
+  createOrLoadPosterEngineSession,
+  generatePosterEngine,
+  loadEngineSessionId,
+  mapSessionAssetsToResults,
+  planPosterIterationClient,
+  executePosterIterationClient,
+  runPosterConcepts,
+  runPosterQcClient,
+  runPosterStrategy,
+  selectPosterConcept,
+  updatePosterEngineBrief,
+} from '@/app/web/src/components/creative-studio/poster-engine-client';
 import { authFetch, safeResponseJson } from '@/lib/utils';
 import PosterEditModal from '@/app/web/src/components/content-studio/PosterEditModal';
+import type { PosterGenerationSession } from '@/lib/creative-studio/poster-generation/types';
 
 /** Download image to user's device - works for data URLs and remote URLs (blob-based for reliable download) */
 async function downloadImageToLocal(url: string, filename: string): Promise<void> {
@@ -136,6 +152,29 @@ export default function PosterSessionPage() {
   // Poster edit modal state
   const [editingPosterIndex, setEditingPosterIndex] = useState<number | null>(null);
 
+  // Phase 7.5 — new poster engine session (server source of truth)
+  const [engineSessionId, setEngineSessionId] = useState<string | null>(null);
+  const [pipelineStage, setPipelineStage] = useState<
+    "compose" | "directions" | "generating" | "ready"
+  >("compose");
+  const [creativeDirections, setCreativeDirections] = useState<
+    Array<{ id: string; name: string; description: string; visualApproach: string }>
+  >([]);
+  const [selectedDirectionId, setSelectedDirectionId] = useState<string | null>(null);
+  const [isRegeneratingDirections, setIsRegeneratingDirections] = useState(false);
+  const [engineResultMeta, setEngineResultMeta] = useState<
+    Array<{
+      generationId: string;
+      status: "ready" | "review" | "failed";
+      qcSummary?: string | null;
+      qcIssues?: string[];
+      versionNumber?: number;
+      parentGenerationId?: string | null;
+      iterationRequest?: string | null;
+    }>
+  >([]);
+  const [lastCreditsCharged, setLastCreditsCharged] = useState<number | null>(null);
+
   // Image preview state (for chat history images)
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
 
@@ -228,6 +267,12 @@ export default function PosterSessionPage() {
       setFetchedProducts([]);
       setScannedUrl('');
       setProductsCollapsed(false);
+      setEngineSessionId(null);
+      setPipelineStage('compose');
+      setCreativeDirections([]);
+      setSelectedDirectionId(null);
+      setEngineResultMeta([]);
+      setLastCreditsCharged(null);
       
       try {
         // Handle 'new' session - load brand from database
@@ -265,6 +310,61 @@ export default function PosterSessionPage() {
         setPosterPrompt(loadedSession.posterPrompt || '');
         setConfig(loadedSession.config || DEFAULT_POSTER_CONFIG);
         setGeneratedPosters(loadedSession.generatedPosters || []);
+
+        // Restore poster engine session if present
+        try {
+          const sid = typeof sessionId === "string" ? sessionId : "";
+          const existingEngineId = sid ? loadEngineSessionId(sid) : null;
+          if (existingEngineId) {
+            const engRes = await authFetch(
+              `/api/creative-studio/poster/session/${existingEngineId}`
+            );
+            const engData = await engRes.json();
+            if (engData?.ok && engData.session) {
+              const eng = engData.session as PosterGenerationSession;
+              setEngineSessionId(eng.id);
+              // Restore brief fields into workspace controls
+              if (eng.brief) {
+                if (eng.brief.userInstruction) {
+                  setPosterPrompt(eng.brief.userInstruction);
+                }
+                setConfig((c) => ({
+                  ...c,
+                  aspectRatio: eng.brief!.aspectRatio || c.aspectRatio,
+                  variantCount: eng.brief!.variantCount || c.variantCount,
+                  theme: eng.brief!.visualDirection || c.theme,
+                }));
+              }
+              if (eng.concepts?.length) {
+                setCreativeDirections(eng.concepts.map(conceptToUiCard));
+                setSelectedDirectionId(eng.selectedConceptIds?.[0] || null);
+              }
+              const results = mapSessionAssetsToResults(eng);
+              if (results.length) {
+                setGeneratedPosters(results.map((r) => r.imageUrl));
+                setEngineResultMeta(
+                  results.map((r) => ({
+                    generationId: r.generationId,
+                    status: r.status,
+                    qcSummary: r.qcSummary,
+                    qcIssues: r.qcIssues,
+                    versionNumber: r.versionNumber,
+                    parentGenerationId: r.parentGenerationId,
+                  }))
+                );
+                setPipelineStage("ready");
+                setPhase("ready");
+              } else if (eng.concepts?.length) {
+                setPipelineStage("directions");
+                setPhase("config");
+              } else if (eng.brief?.userInstruction) {
+                setPipelineStage("compose");
+              }
+            }
+          }
+        } catch (engErr) {
+          console.warn("Poster engine session restore skipped", engErr);
+        }
         
         // Restore messages (including imageUrls for poster history)
         if (loadedSession.messages) {
@@ -1034,6 +1134,335 @@ export default function PosterSessionPage() {
   }
 
   async function handleWorkspaceGenerate() {
+    if (isGenerating) return;
+    if (hasInsufficientCredits) {
+      showError('You have no credits remaining. Purchase more to generate posters.');
+      return;
+    }
+
+    const hasSavedProduct =
+      (savedProductData?.imageDataUrls && savedProductData.imageDataUrls.length > 0) ||
+      (savedProductData?.images && savedProductData.images.length > 0) ||
+      productImages.length > 0;
+
+    if (!hasSavedProduct) {
+      showError('Add a product to generate');
+      return;
+    }
+
+    if (!safeTrim(posterPrompt)) {
+      showError('Describe what you want to create');
+      return;
+    }
+
+    let productOverride = savedProductData;
+    if (
+      (!(savedProductData?.imageDataUrls && savedProductData.imageDataUrls.length > 0) ||
+        !(savedProductData?.images && savedProductData.images.length > 0)) &&
+      productImages.length > 0
+    ) {
+      const imageDataUrls: string[] = [];
+      for (const img of productImages) {
+        imageDataUrls.push(await fileToDataUrl(img));
+      }
+      productOverride = {
+        prompt: selectedProduct?.product_name || productPrompt || 'Selected product',
+        images: [...productImages],
+        imageDataUrls,
+        productName: selectedProduct?.product_name,
+      };
+      setSavedProductData(productOverride);
+    }
+
+    if (!config.theme) {
+      setConfig((c) => ({ ...c, theme: 'commercial' }));
+    }
+
+    await developCreativeDirections(productOverride);
+  }
+
+  async function developCreativeDirections(
+    productOverride?: typeof savedProductData,
+    forceRegenerate = false,
+    creativePromptOverride?: string
+  ) {
+    const studioId = typeof sessionId === "string" ? sessionId : null;
+    if (!studioId) {
+      showError("Session not ready. Please refresh and try again.");
+      return;
+    }
+
+    const effectiveProduct = productOverride ?? savedProductData;
+    const rawImageUrls =
+      selectedProduct?.product_images?.filter((u) =>
+        /^https?:\/\//i.test(u)
+      ) ||
+      effectiveProduct?.imageDataUrls?.filter(Boolean) ||
+      selectedProduct?.product_images ||
+      [];
+    // Prefer remote URLs; upload data URLs so generation always gets a real packshot
+    let httpUrls = rawImageUrls.filter((u) => /^https?:\/\//i.test(u));
+    const dataUrls = rawImageUrls.filter((u) => u.startsWith("data:"));
+    if (!httpUrls.length && dataUrls.length) {
+      try {
+        const uploaded = await uploadDataUrlsToStorage(dataUrls.slice(0, 2));
+        httpUrls = uploaded.filter((u) => /^https?:\/\//i.test(u));
+      } catch (e) {
+        console.warn("Product image upload for engine brief failed", e);
+      }
+    }
+    const smallDataFallback = dataUrls.filter((u) => u.length < 400_000);
+    const imageUrls = (httpUrls.length ? httpUrls : smallDataFallback).slice(
+      0,
+      4
+    );
+    if (!imageUrls.length) {
+      showError(
+        "Add a product image first. Posters must use your uploaded product — not an AI-invented one."
+      );
+      return;
+    }
+    const effectivePrompt =
+      creativePromptOverride != null
+        ? safeTrim(creativePromptOverride)
+        : safeTrim(posterPrompt);
+
+    setIsGenerating(true);
+    setPhase("generating");
+    setPipelineStage("generating");
+    setThinkingMessages([
+      "Understanding your campaign…",
+      "✓ Product understood",
+      brand ? "✓ Brand context applied" : "→ Applying brand context",
+      "→ Defining marketing direction",
+    ]);
+
+    try {
+      const brief = buildCreativeBriefFromWorkspace({
+        brand,
+        product: selectedProduct,
+        productName:
+          effectiveProduct?.productName || selectedProduct?.product_name,
+        productImageUrls: imageUrls,
+        creativePrompt: effectivePrompt,
+        theme: config.theme || "commercial",
+        aspectRatio: (config.aspectRatio || "4:5") as any,
+        variantCount: (config.variantCount || 3) as 1 | 2 | 3,
+        referencePoster: config.referencePoster || null,
+      });
+
+      const { session: createdOrLoaded, created } =
+        await createOrLoadPosterEngineSession({
+          studioSessionId: studioId,
+          brandId: (brand as any)?.id || null,
+          productId: selectedProduct?.product_name || null,
+          brief,
+        });
+      // Capture id once — never rely on later PATCH payloads for routing
+      const capturedEngineSessionId = createdOrLoaded.id;
+      if (
+        typeof capturedEngineSessionId !== "string" ||
+        !capturedEngineSessionId.trim()
+      ) {
+        throw new Error("Poster engine session id missing after create/load");
+      }
+      setEngineSessionId(capturedEngineSessionId);
+
+      // Fresh create already persisted the brief — skip a second huge PATCH
+      if (!created) {
+        await updatePosterEngineBrief(capturedEngineSessionId, brief);
+      }
+
+      setThinkingMessages([
+        "Understanding your campaign…",
+        "✓ Product understood",
+        "✓ Brand context applied",
+        "→ Defining marketing direction",
+      ]);
+      await runPosterStrategy(capturedEngineSessionId, forceRegenerate);
+
+      setThinkingMessages([
+        "✓ Marketing direction ready",
+        "→ Developing creative directions…",
+      ]);
+      const { concepts } = await runPosterConcepts(capturedEngineSessionId, {
+        conceptCount: (config.variantCount || 3) as 1 | 2 | 3,
+        forceRegenerate,
+      });
+
+      const cards = concepts.map(conceptToUiCard);
+      setCreativeDirections(cards);
+      setSelectedDirectionId(cards[0]?.id || null);
+      setPipelineStage("directions");
+      setPhase("config");
+      setIsGenerating(false);
+      setThinkingMessages([]);
+    } catch (err: any) {
+      console.error("Develop creative directions failed", err);
+      showError(err?.message || "Could not develop creative directions. Please try again.");
+      setIsGenerating(false);
+      setPipelineStage("compose");
+      setPhase("input");
+      setThinkingMessages([]);
+    }
+  }
+
+  async function handleRegenerateDirections() {
+    setIsRegeneratingDirections(true);
+    setThinkingMessages(["Exploring new creative directions…"]);
+    try {
+      await developCreativeDirections(undefined, true);
+    } finally {
+      setIsRegeneratingDirections(false);
+    }
+  }
+
+  async function handleGenerateFromSelectedDirection() {
+    if (isGenerating) return;
+    if (!engineSessionId || !selectedDirectionId) {
+      showError("Select a creative direction first.");
+      return;
+    }
+    if (hasInsufficientCredits) {
+      showError("You have no credits remaining. Purchase more to generate posters.");
+      return;
+    }
+
+    const variantCount = (config.variantCount || 3) as 1 | 2 | 3;
+    setIsGenerating(true);
+    setPhase("generating");
+    setPipelineStage("generating");
+    setThinkingMessages([
+      "Creating your poster…",
+      "✓ Creative direction selected",
+      "✓ Composition planned",
+      "✓ Product references applied",
+      "→ Generating visual",
+    ]);
+
+    try {
+      await selectPosterConcept(engineSessionId, selectedDirectionId);
+
+      const gen = await generatePosterEngine({
+        engineSessionId,
+        conceptId: selectedDirectionId,
+        variantCount,
+        forceRegenerate: false,
+      });
+
+      setLastCreditsCharged(gen.creditsCharged);
+      setThinkingMessages([
+        "✓ Poster generated",
+        "→ Checking the final creative…",
+      ]);
+
+      // QC each successful asset
+      const results: string[] = [];
+      const meta: typeof engineResultMeta = [];
+      for (const outcome of gen.outcomes) {
+        if (!outcome.success || !outcome.asset?.imageUrl) {
+          meta.push({
+            generationId: outcome.generationId,
+            status: "failed",
+            qcSummary: outcome.asset?.errorMessage || "Generation failed",
+            qcIssues: [],
+          });
+          continue;
+        }
+        results.push(outcome.asset.imageUrl);
+        try {
+          const { qc } = await runPosterQcClient(
+            engineSessionId,
+            outcome.generationId
+          );
+          const status =
+            qc.passed || qc.status === "pass"
+              ? "ready"
+              : ("review" as const);
+          meta.push({
+            generationId: outcome.generationId,
+            status,
+            qcSummary: qc.summary,
+            qcIssues: (qc.issues || []).map((i) => i.message),
+            versionNumber: 1,
+            parentGenerationId: null,
+          });
+        } catch (qcErr) {
+          console.warn("QC failed for asset", qcErr);
+          meta.push({
+            generationId: outcome.generationId,
+            status: "review",
+            qcSummary: "Quality check incomplete",
+            qcIssues: [],
+            versionNumber: 1,
+            parentGenerationId: null,
+          });
+        }
+      }
+
+      if (!results.length) {
+        throw new Error("No posters were generated. Please try again.");
+      }
+
+      setGeneratedPosters(results);
+      setEngineResultMeta(meta);
+      setPipelineStage("ready");
+      setPhase("ready");
+      setIsGenerating(false);
+      setThinkingMessages([]);
+
+      // Refresh credits
+      try {
+        const bal = await authFetch("/api/credits/balance");
+        const balData = await bal.json();
+        if (balData?.ok && typeof balData.credits === "number") {
+          setCredits(balData.credits);
+        } else if (balData?.imageCredits?.total != null) {
+          setCredits(balData.imageCredits.total);
+        }
+      } catch {
+        /* ignore */
+      }
+
+      const readyCount = meta.filter((m) => m.status === "ready").length;
+      const reviewCount = meta.filter((m) => m.status === "review").length;
+      if (reviewCount > 0 && readyCount > 0) {
+        showSuccess(
+          `${readyCount} poster${readyCount === 1 ? "" : "s"} ready · ${reviewCount} need${reviewCount === 1 ? "s" : ""} review · ${gen.creditsCharged} credit${gen.creditsCharged === 1 ? "" : "s"} used`
+        );
+      } else {
+        showSuccess(
+          `${results.length} poster${results.length === 1 ? "" : "s"} generated · ${gen.creditsCharged} credit${gen.creditsCharged === 1 ? "" : "s"} used`
+        );
+      }
+
+      // Persist URLs onto studio session for resume
+      try {
+        await authFetch(`/api/creative-studio/sessions?id=${sessionId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            generatedPosters: results,
+            phase: "ready",
+            posterPrompt,
+            config,
+          }),
+        });
+      } catch {
+        /* non-fatal */
+      }
+    } catch (err: any) {
+      console.error("Poster engine generate failed", err);
+      showError(err?.message || "Could not generate posters. Please try again.");
+      setIsGenerating(false);
+      setPipelineStage("directions");
+      setPhase("config");
+      setThinkingMessages([]);
+    }
+  }
+
+  // Legacy path kept for regenerate-from-results (secondary). Primary UI uses the engine above.
+  async function handleWorkspaceGenerateLegacy() {
     if (hasInsufficientCredits) {
       showError('You have no credits remaining. Purchase more to generate posters.');
       return;
@@ -1720,6 +2149,20 @@ export default function PosterSessionPage() {
     posterIndex: number,
     editPrompt: string
   ) {
+    // Prefer Phase 8 engine iteration when we have session + generation id
+    const meta = engineResultMeta[posterIndex];
+    if (engineSessionId && meta?.generationId) {
+      // Legacy single-shot path should not be used when modal uses plan/execute.
+      // Kept for callers that still pass a direct prompt.
+      const planned = await planPosterIterationClient({
+        engineSessionId,
+        generationId: meta.generationId,
+        request: editPrompt,
+      });
+      await handleExecutePosterIteration(planned.iterationId, posterIndex);
+      return;
+    }
+
     let posterDataUrl = posterUrl;
     if (posterUrl.startsWith("http")) {
       try {
@@ -1763,6 +2206,83 @@ export default function PosterSessionPage() {
       }
     } catch (err: any) {
       showError(err.message || "Failed to regenerate poster");
+    }
+  }
+
+  async function handlePlanPosterIteration(
+    posterIndex: number,
+    editPrompt: string
+  ) {
+    const meta = engineResultMeta[posterIndex];
+    if (!engineSessionId || !meta?.generationId) {
+      throw new Error("Poster session not ready for editing");
+    }
+    return planPosterIterationClient({
+      engineSessionId,
+      generationId: meta.generationId,
+      request: editPrompt,
+    });
+  }
+
+  async function handleExecutePosterIteration(
+    iterationId: string,
+    posterIndex: number
+  ) {
+    if (!engineSessionId) {
+      throw new Error("Poster session not ready");
+    }
+    const result = await executePosterIterationClient({
+      engineSessionId,
+      iterationId,
+    });
+
+    if (!result.imageUrl) {
+      throw new Error("Update succeeded but no poster image was returned");
+    }
+
+    setGeneratedPosters((prev) => {
+      const next = [...prev];
+      next[posterIndex] = result.imageUrl;
+      return next;
+    });
+
+    setEngineResultMeta((prev) => {
+      const next = [...prev];
+      const parent = next[posterIndex];
+      next[posterIndex] = {
+        generationId: result.generationId,
+        status:
+          result.qcPassed === false
+            ? "review"
+            : result.qcPassed === true
+              ? "ready"
+              : "ready",
+        qcSummary: result.qcSummary,
+        qcIssues: [],
+        versionNumber: result.versionNumber,
+        parentGenerationId: result.parentGenerationId,
+        iterationRequest: parent?.iterationRequest || null,
+      };
+      return next;
+    });
+
+    setLastCreditsCharged(result.creditsCharged);
+    if (result.creditsCharged > 0) {
+      showSuccess(
+        `Poster updated · Version ${result.versionNumber} · ${result.creditsCharged} credit used`
+      );
+    }
+
+    try {
+      const bal = await authFetch("/api/credits/balance");
+      const balData = await bal.json();
+      if (balData?.ok && typeof balData.credits === "number") {
+        setCredits(balData.credits);
+      } else if (balData?.imageCredits?.total != null) {
+        setCredits(balData.imageCredits.total);
+      }
+    } catch {
+      /* ignore */
     }
   }
 
@@ -2260,9 +2780,24 @@ export default function PosterSessionPage() {
         onGenerate={() => void handleWorkspaceGenerate()}
         isGenerating={isGenerating || phase === 'generating'}
         thinkingMessages={thinkingMessages}
+        primaryCtaLabel="Develop creative"
+        pipelineStage={pipelineStage}
+        creativeDirections={creativeDirections}
+        selectedDirectionId={selectedDirectionId}
+        onSelectDirection={setSelectedDirectionId}
+        onRegenerateDirections={() => void handleRegenerateDirections()}
+        isRegeneratingDirections={isRegeneratingDirections}
+        onGenerateFromDirection={() => void handleGenerateFromSelectedDirection()}
+        canGenerateFromDirection={
+          !isGenerating && !hasInsufficientCredits && !!selectedDirectionId
+        }
         creditsAlertSlot={
           hasInsufficientCredits ? <InsufficientCreditsAlert type="image" /> : null
         }
+        onBackToCompose={() => {
+          setPipelineStage("compose");
+          setPhase("input");
+        }}
         brandReviewSlot={
           phase === 'brand-review' && brand ? (
             <div className="mb-8">
@@ -2278,9 +2813,11 @@ export default function PosterSessionPage() {
           ) : null
         }
         resultsSlot={
-          phase === 'ready' && generatedPosters.length > 0 ? (
+          (pipelineStage === 'ready' || phase === 'ready') && generatedPosters.length > 0 ? (
             <PosterGrid
               posters={generatedPosters}
+              posterMeta={engineResultMeta}
+              creditsUsed={lastCreditsCharged}
               posterPrompt={posterPrompt}
               config={config}
               onConfigChange={setConfig}
@@ -2297,17 +2834,33 @@ export default function PosterSessionPage() {
               showRegeneratePrompt={showRegeneratePrompt}
               regeneratePrompt={regeneratePrompt}
               onRegeneratePromptChange={setRegeneratePrompt}
-              onRegenerateSubmit={handleRegenerateSubmit}
+              onRegenerateSubmit={
+                hasInsufficientCredits
+                  ? undefined
+                  : () => {
+                      // Prefer engine path — re-develop directions from updated brief
+                      if (engineSessionId) {
+                        const nextPrompt = regeneratePrompt.trim();
+                        if (nextPrompt) setPosterPrompt(nextPrompt);
+                        setShowRegeneratePrompt(false);
+                        void developCreativeDirections(
+                          undefined,
+                          true,
+                          nextPrompt || undefined
+                        );
+                      } else {
+                        void handleWorkspaceGenerateLegacy();
+                      }
+                    }
+              }
               onRegenerateCancel={() => {
                 setShowRegeneratePrompt(false);
                 setPendingUseAsReference(null);
-                setRegeneratePrompt('');
               }}
               canCreateCampaigns={canCreateCampaigns}
             />
           ) : null
         }
-        onBackToCompose={() => setPhase('config')}
       />
 
         {/* Brand Onboarding Modal */}
@@ -2422,13 +2975,37 @@ export default function PosterSessionPage() {
           <PosterEditModal
             imageUrl={generatedPosters[editingPosterIndex]}
             posterIndex={editingPosterIndex}
+            versionLabel={
+              engineResultMeta[editingPosterIndex]?.versionNumber
+                ? `Version ${engineResultMeta[editingPosterIndex].versionNumber}`
+                : undefined
+            }
+            parentVersionLabel={
+              engineResultMeta[editingPosterIndex]?.parentGenerationId
+                ? `Version ${(engineResultMeta[editingPosterIndex].versionNumber || 2) - 1}`
+                : undefined
+            }
             onClose={() => setEditingPosterIndex(null)}
-            onRegenerate={(editPrompt) =>
-              handleRegenerateWithEdit(
-                generatedPosters[editingPosterIndex],
-                editingPosterIndex,
-                editPrompt
-              )
+            onPlanChange={
+              engineSessionId && engineResultMeta[editingPosterIndex]?.generationId
+                ? (prompt) => handlePlanPosterIteration(editingPosterIndex, prompt)
+                : undefined
+            }
+            onExecuteChange={
+              engineSessionId && engineResultMeta[editingPosterIndex]?.generationId
+                ? (iterationId) =>
+                    handleExecutePosterIteration(iterationId, editingPosterIndex)
+                : undefined
+            }
+            onRegenerate={
+              engineSessionId && engineResultMeta[editingPosterIndex]?.generationId
+                ? undefined
+                : (editPrompt) =>
+                    handleRegenerateWithEdit(
+                      generatedPosters[editingPosterIndex],
+                      editingPosterIndex,
+                      editPrompt
+                    )
             }
           />
         )}
@@ -2439,6 +3016,8 @@ export default function PosterSessionPage() {
 
 function PosterGrid({
   posters,
+  posterMeta = [],
+  creditsUsed = null,
   posterPrompt,
   config,
   onConfigChange,
@@ -2457,9 +3036,18 @@ function PosterGrid({
   onRegeneratePromptChange,
   onRegenerateSubmit,
   onRegenerateCancel,
-  canCreateCampaigns,
+  canCreateCampaigns = true,
 }: {
   posters: string[];
+  posterMeta?: Array<{
+    generationId: string;
+    status: "ready" | "review" | "failed";
+    qcSummary?: string | null;
+    qcIssues?: string[];
+    versionNumber?: number;
+    parentGenerationId?: string | null;
+  }>;
+  creditsUsed?: number | null;
   posterPrompt: string;
   config: PosterConfig;
   onConfigChange: (config: PosterConfig) => void;
@@ -2476,12 +3064,13 @@ function PosterGrid({
   showRegeneratePrompt: boolean;
   regeneratePrompt: string;
   onRegeneratePromptChange: (value: string) => void;
-  onRegenerateSubmit: () => void;
+  onRegenerateSubmit?: () => void;
   onRegenerateCancel: () => void;
-  canCreateCampaigns: boolean;
+  canCreateCampaigns?: boolean;
 }) {
   const [openMenuIndex, setOpenMenuIndex] = useState<number | null>(null);
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
+  const [expandedQcIndex, setExpandedQcIndex] = useState<number | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const regenerateTextareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -2816,15 +3405,91 @@ function PosterGrid({
           )}
 
           {/* Gallery-style poster grid */}
+          {creditsUsed != null && (
+            <p className="text-sm mb-4" style={{ color: colors.mutedForeground }}>
+              {posters.length} poster{posters.length === 1 ? "" : "s"} · {creditsUsed} credit
+              {creditsUsed === 1 ? "" : "s"} used
+            </p>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            {posters.map((poster, idx) => (
+            {posters.map((poster, idx) => {
+              const meta = posterMeta[idx];
+              return (
               <div
                 key={idx}
                 className="group"
               >
-                <p className="text-[11px] tracking-[0.14em] uppercase mb-2" style={{ color: colors.mutedForeground }}>
-                  Poster {String(idx + 1).padStart(2, '0')}
-                </p>
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <p className="text-[11px] tracking-[0.14em] uppercase" style={{ color: colors.mutedForeground }}>
+                    {meta?.versionNumber
+                      ? `Version ${meta.versionNumber}`
+                      : `Poster ${String(idx + 1).padStart(2, '0')}`}
+                  </p>
+                  {meta && (
+                    <button
+                      type="button"
+                      className="text-[11px]"
+                      style={{
+                        color:
+                          meta.status === "ready"
+                            ? "hsl(142 70% 45%)"
+                            : meta.status === "failed"
+                              ? colors.destructive
+                              : "hsl(38 90% 55%)",
+                      }}
+                      title={meta.qcSummary || undefined}
+                      onClick={() =>
+                        setExpandedQcIndex(expandedQcIndex === idx ? null : idx)
+                      }
+                    >
+                      {meta.status === "ready"
+                        ? "✓ Ready"
+                        : meta.status === "failed"
+                          ? "Failed"
+                          : "⚠ Needs improvement"}
+                    </button>
+                  )}
+                </div>
+                {expandedQcIndex === idx && meta && (
+                  <div
+                    className="mb-2 rounded-lg px-3 py-2 text-xs space-y-1"
+                    style={{
+                      backgroundColor: colors.muted,
+                      color: colors.mutedForeground,
+                    }}
+                  >
+                    <p className="font-medium" style={{ color: colors.foreground }}>
+                      Quality checks
+                    </p>
+                    {meta.status === "ready" ? (
+                      <>
+                        <p>✓ Product fidelity</p>
+                        <p>✓ Copy accuracy</p>
+                        <p>✓ Creative direction</p>
+                        <p>✓ Brand compliance</p>
+                        <p>✓ Technical quality</p>
+                      </>
+                    ) : (
+                      <>
+                        <p>{meta.qcSummary || "Needs another pass"}</p>
+                        {(meta.qcIssues || []).slice(0, 3).map((issue, i) => (
+                          <p key={i}>· {issue}</p>
+                        ))}
+                        <p className="pt-1 opacity-70">
+                          Regeneration comes in a later update — adjust your
+                          direction to try again.
+                        </p>
+                      </>
+                    )}
+                  </div>
+                )}
+                {meta?.status === "review" &&
+                  expandedQcIndex !== idx &&
+                  meta.qcSummary && (
+                  <p className="text-xs mb-2 line-clamp-2" style={{ color: colors.mutedForeground }}>
+                    {meta.qcIssues?.[0] || meta.qcSummary}
+                  </p>
+                )}
                 {/* Poster - Clickable for preview, with menu overlay */}
                 <div
                   className="rounded-xl overflow-visible cursor-pointer relative"
@@ -3000,7 +3665,8 @@ function PosterGrid({
                   </div>
                 )}
               </div>
-            ))}
+            );
+            })}
           </div>
 
           {/* Regenerate — refine composer */}
