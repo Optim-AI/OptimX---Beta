@@ -56,9 +56,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
     console.error('[onboarding/demo] unexpected error', err);
+    const raw = err instanceof Error ? err.message : '';
+    // Never surface SQL / Drizzle internals to the browser.
+    const isSchemaGap =
+      /generation_job_locks|Failed query|relation .* does not exist/i.test(raw);
     return res.status(500).json({
       success: false,
-      error: err instanceof Error ? err.message : 'Demo generation failed',
+      error: isSchemaGap
+        ? 'Onboarding demo is temporarily unavailable. Please try again shortly.'
+        : 'Demo generation failed',
+      code: isSchemaGap ? 'SCHEMA_UNAVAILABLE' : 'INTERNAL',
     });
   }
 }
