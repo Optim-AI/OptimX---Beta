@@ -59,7 +59,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const raw = err instanceof Error ? err.message : '';
     // Never surface SQL / Drizzle internals to the browser.
     const isSchemaGap =
-      /generation_job_locks|Failed query|relation .* does not exist/i.test(raw);
+      /generation_job_locks|poster_generation_sessions|Failed query|relation .* does not exist/i.test(
+        raw
+      );
     return res.status(500).json({
       success: false,
       error: isSchemaGap
