@@ -52,7 +52,7 @@ export async function storeKeyframeBuffer(input: {
   const uid = input.userId || "system";
   const storagePath = `generated/${uid}/keyframes/${input.campaignId}/${input.shotId}_a${input.attempt}_${Date.now()}.png`;
   try {
-    const { supabaseAdmin } = await import("@/auth/supabase/client");
+    const { supabaseAdmin } = await import("@/auth/supabase/admin");
     const { error } = await supabaseAdmin.storage
       .from("campaign-assets")
       .upload(storagePath, input.buffer, {

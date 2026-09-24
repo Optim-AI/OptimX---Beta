@@ -5,6 +5,7 @@ import * as React from "react";
 import dynamic from "next/dynamic";
 import Router from "next/router";
 import { Analytics } from "@vercel/analytics/next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import AlertModal from "@/app/web/src/components/ui/AlertModal";
 import { useSubscription } from "@/app/web/src/hooks/use-subscription";
 
@@ -143,6 +144,7 @@ export default function MyApp({ Component, pageProps }: AppProps) {
       <AlertModal />
 
       <Analytics />
+      <SpeedInsights />
     </>
   );
 }

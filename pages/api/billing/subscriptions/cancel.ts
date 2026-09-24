@@ -41,7 +41,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     return res.status(200).json({
       success: true,
-      message: 'Subscription cancelled successfully',
+      message: result.cancelAtPeriodEnd
+        ? 'Subscription will cancel at the end of the current billing period'
+        : 'Subscription cancelled',
+      cancelAtPeriodEnd: result.cancelAtPeriodEnd ?? false,
+      currentPeriodEnd: result.currentPeriodEnd,
     });
   } catch (error: any) {
     console.error('Cancel subscription error:', error);

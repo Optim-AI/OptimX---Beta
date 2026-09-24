@@ -10,7 +10,7 @@
  * - user-uploads: Public bucket for user-uploaded files
  */
 
-import { supabase, supabaseAdmin } from '@/auth/supabase/client';
+import { supabase } from '@/auth/supabase/client';
 
 // Default bucket names
 export const BUCKETS = {
@@ -256,6 +256,10 @@ export const storageAdmin = {
     } = {}
   ): Promise<{ error: Error | null }> {
     try {
+      if (typeof window !== 'undefined') {
+        throw new Error('storageAdmin.createBucket is server-only');
+      }
+      const { supabaseAdmin } = await import('@/auth/supabase/admin');
       const { error } = await supabaseAdmin.storage.createBucket(bucketId, {
         public: options.public ?? true,
         fileSizeLimit: options.fileSizeLimit,

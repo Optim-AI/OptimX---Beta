@@ -1,9 +1,12 @@
 // lib/razorpay/payment.service.ts
-// Service for managing one-time payments (credit top-ups)
+// Service for managing one-time payments (credit top-ups).
+//
+// Credits are granted exactly once via PaymentsDAO.captureIfCreated +
+// grantCreditsForCapturedPayment. Either verifyPayment OR payment.captured
+// webhook wins the race — never both.
 
 import { razorpay, RAZORPAY_KEY_ID } from './client';
 import { PaymentsDAO } from '@/database/models/Payments.dao';
-import { CreditsDAO } from '@/database/models/Credits.dao';
 import { VoucherDAO } from '@/database/models/Voucher.dao';
 
 interface CreateOrderParams {
@@ -25,25 +28,26 @@ interface VerifyPaymentParams {
   razorpayOrderId: string;
   razorpayPaymentId: string;
   razorpaySignature: string;
+  /** Authenticated caller — must own the payment. */
+  userId: string;
 }
 
 export class PaymentService {
   /**
-   * Create a Razorpay order for credit pack purchase
+   * Create a Razorpay order for credit pack purchase (legacy pack catalog).
+   * Prefer /api/billing/payments/create-order for PAYG custom quantities.
    */
   static async createOrder(params: CreateOrderParams): Promise<CreateOrderResult> {
     const { userId, creditPackId } = params;
 
     try {
-      // Get credit pack details
       const creditPack = await PaymentsDAO.getCreditPackById(creditPackId);
       if (!creditPack) {
         return { success: false, error: 'Credit pack not found' };
       }
 
-      // Create Razorpay order
       const order = await razorpay.orders.create({
-        amount: creditPack.priceInr * 100, // Razorpay uses paise
+        amount: creditPack.priceInr * 100,
         currency: 'INR',
         receipt: `credit_${creditPackId}_${Date.now()}`,
         notes: {
@@ -54,7 +58,6 @@ export class PaymentService {
         },
       });
 
-      // Create payment record
       const paymentType = creditPack.creditType === 'image' ? 'image_topup' : 'video_topup';
       const payment = await PaymentsDAO.create({
         userId,
@@ -85,24 +88,32 @@ export class PaymentService {
   }
 
   /**
-   * Verify payment and add credits
+   * Verify Razorpay checkout signature for the authenticated user.
+   * May atomically capture + grant via the shared helper if it wins the race
+   * against the payment.captured webhook.
    */
-  static async verifyPayment(params: VerifyPaymentParams): Promise<{ success: boolean; error?: string }> {
-    const { razorpayOrderId, razorpayPaymentId, razorpaySignature } = params;
+  static async verifyPayment(params: VerifyPaymentParams): Promise<{
+    success: boolean;
+    alreadyCaptured?: boolean;
+    creditsPending?: boolean;
+    error?: string;
+  }> {
+    const { razorpayOrderId, razorpayPaymentId, razorpaySignature, userId } = params;
 
     try {
-      // Get payment record
       const payment = await PaymentsDAO.getByOrderId(razorpayOrderId);
       if (!payment) {
         return { success: false, error: 'Payment not found' };
       }
 
-      // Already processed
-      if (payment.status === 'captured') {
-        return { success: true };
+      if (payment.userId !== userId) {
+        return { success: false, error: 'Payment does not belong to this user' };
       }
 
-      // Verify signature
+      if (payment.status === 'captured') {
+        return { success: true, alreadyCaptured: true, creditsPending: false };
+      }
+
       const crypto = await import('crypto');
       const generatedSignature = crypto
         .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET || '')
@@ -117,47 +128,45 @@ export class PaymentService {
         return { success: false, error: 'Invalid payment signature' };
       }
 
-      // Update payment status — credits are granted by the webhook handler to avoid double-granting
-      await PaymentsDAO.updateStatus(payment.id, 'captured', razorpayPaymentId, razorpaySignature);
-
-      // Add credits to user
-      const metadata = payment.metadata as any;
-      if (metadata?.creditType === 'image') {
-        await CreditsDAO.addImageCreditsAddon(payment.userId, metadata.credits);
-      } else if (metadata?.creditType === 'video') {
-        await CreditsDAO.addVideoCreditsAddon(payment.userId, metadata.credits);
+      // Store signature / payment id without granting credits.
+      // Prefer leaving status as created so the webhook performs the sole grant via captureIfCreated.
+      // If webhook already raced ahead, we're done.
+      const fresh = await PaymentsDAO.getById(payment.id);
+      if (fresh?.status === 'captured') {
+        return { success: true, alreadyCaptured: true, creditsPending: false };
       }
 
-      // Redeem voucher if attached to this payment
-      if (metadata?.voucherId) {
-        const redeemed = await VoucherDAO.markRedeemed(metadata.voucherId, payment.id);
-        if (redeemed) {
-          // Add voucher bonus credits
-          if (metadata.creditType === 'image') {
-            await CreditsDAO.addImageCreditsAddon(payment.userId, metadata.voucherCredits);
-          } else if (metadata.creditType === 'video') {
-            await CreditsDAO.addVideoCreditsAddon(payment.userId, metadata.voucherCredits);
-          }
-        }
+      // Update payment ids but keep status created — webhook grants.
+      // If webhook never arrives, an admin/ops path can capture; for UX we also try capture+grant
+      // ONLY through the shared grant helper used by the webhook (see grantCreditsForCapturedPayment).
+      // Actually: to avoid "payment succeeded but credits missing if webhook fails",
+      // verify may call the shared grant path AFTER captureIfCreated.
+      const captured = await PaymentsDAO.captureIfCreated(
+        payment.id,
+        razorpayPaymentId,
+        razorpaySignature
+      );
+
+      if (!captured) {
+        // Another process (webhook) already captured — credits granted there
+        return { success: true, alreadyCaptured: true, creditsPending: false };
       }
 
-      return { success: true };
+      // We won the race — grant exactly once via shared helper
+      const { grantCreditsForCapturedPayment } = await import('./credit-grant');
+      await grantCreditsForCapturedPayment(captured);
+
+      return { success: true, creditsPending: false };
     } catch (error: any) {
       console.error('Error verifying payment:', error);
       return { success: false, error: error.message || 'Failed to verify payment' };
     }
   }
 
-  /**
-   * Get available credit packs
-   */
   static async getCreditPacks(type?: 'image' | 'video') {
     return PaymentsDAO.getCreditPacks(type);
   }
 
-  /**
-   * Get payment history for a user
-   */
   static async getPaymentHistory(userId: string, limit: number = 50) {
     return PaymentsDAO.getByUserId(userId, limit);
   }

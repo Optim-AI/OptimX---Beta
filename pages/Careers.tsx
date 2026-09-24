@@ -64,7 +64,7 @@ const Careers = () => {
               className="text-xl max-w-2xl mx-auto"
               style={{ color: colors.mutedForeground }}
             >
-              Help us build the future of business Optimisation. We're looking
+              Help us build the future of business Optimisation. We&apos;re looking
               for passionate individuals who want to make a real impact.
             </p>
           </div>
@@ -94,8 +94,8 @@ const Careers = () => {
                       Apply to Join Our Team
                     </h2>
                     <p style={{ color: colors.mutedForeground }}>
-                      We're always looking for talented individuals to join our
-                      mission. Send us your details and we'll get in touch.
+                      We&apos;re always looking for talented individuals to join our
+                      mission. Send us your details and we&apos;ll get in touch.
                     </p>
                   </div>
 

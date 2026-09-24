@@ -11,7 +11,7 @@ const HEADER_HEIGHT = 64;
 const DISABLED = true;
 
 export const CursorFlow: React.FC = () => {
-  if (DISABLED) return null;
+  // Hooks must run unconditionally (Rules of Hooks). Feature gate returns below.
   const router = useRouter();
   const isMobile = useIsMobile();
   const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null);
@@ -34,6 +34,7 @@ export const CursorFlow: React.FC = () => {
   };
 
   useEffect(() => {
+    if (DISABLED) return;
     if (typeof window === 'undefined') return;
 
     const handleMove = (e: MouseEvent) => {
@@ -92,6 +93,7 @@ export const CursorFlow: React.FC = () => {
     };
   }, [router.pathname]);
 
+  if (DISABLED) return null;
   if (isMobile || router.pathname === '/product') return null;
 
   return (

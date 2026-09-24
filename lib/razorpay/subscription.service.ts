@@ -4,8 +4,8 @@
 import { razorpay, RAZORPAY_KEY_ID } from './client';
 import { PlansDAO } from '@/database/models/Plans.dao';
 import { SubscriptionsDAO } from '@/database/models/Subscriptions.dao';
-import { CreditsDAO } from '@/database/models/Credits.dao';
-import { PaymentsDAO } from '@/database/models/Payments.dao';
+import { isCanonicalSubscriptionPlanId } from '@/lib/billing/canonical-plans';
+import { subscriptionTotalsInr } from '@/lib/billing/marketing-plans';
 
 interface CreateSubscriptionParams {
   userId: string;
@@ -19,167 +19,244 @@ interface CreateSubscriptionResult {
   subscriptionId?: string;
   razorpaySubscriptionId?: string;
   shortUrl?: string;
+  key?: string;
+  error?: string;
+}
+
+interface CancelSubscriptionResult {
+  success: boolean;
+  cancelAtPeriodEnd?: boolean;
+  currentPeriodEnd?: string;
   error?: string;
 }
 
 export class SubscriptionService {
   /**
-   * Create a new subscription for a user
+   * Create a new subscription for a user.
+   * Credits are NEVER granted here — only after successful subscription.charged.
    */
   static async createSubscription(params: CreateSubscriptionParams): Promise<CreateSubscriptionResult> {
     const { userId, email, planId, contact } = params;
 
     try {
-      // Get plan details
       const plan = await PlansDAO.getById(planId);
       if (!plan) {
         return { success: false, error: 'Plan not found' };
       }
 
-      // Check if user already has active subscription
-      const existingSubscription = await SubscriptionsDAO.getActiveByUserId(userId);
-      if (existingSubscription) {
-        return { success: false, error: 'User already has an active subscription' };
-      }
-
-      const now = new Date();
-      let subscription;
-
-      // Handle Free Trial separately (no Razorpay needed)
+      // No free trial product — reject trial billing cycle
       if (plan.billingCycle === 'trial') {
-        const trialEnd = new Date(now);
-        trialEnd.setDate(trialEnd.getDate() + 5); // 5 day trial
-
-        subscription = await SubscriptionsDAO.create({
-          userId,
-          planId,
-          status: 'trialing',
-          currentPeriodStart: now.toISOString(),
-          currentPeriodEnd: trialEnd.toISOString(),
-          trialEndsAt: trialEnd.toISOString(),
-          nextResetDate: trialEnd.toISOString(), // No reset for trial
-        });
-
-        // Initialize credits
-        await CreditsDAO.initializeCredits(userId, plan.imageCredits, plan.videoCredits);
-
         return {
-          success: true,
-          subscriptionId: subscription.id,
+          success: false,
+          error: 'Free trial is not available. Please choose Starter, Growth, or Pro.',
         };
       }
 
-      // For paid plans, check if Razorpay plan ID exists
-      if (!plan.razorpayPlanId) {
-        // Create Razorpay plan if not exists
-        const razorpayPlan = await this.createRazorpayPlan(plan);
-        if (!razorpayPlan.success) {
-          return { success: false, error: razorpayPlan.error };
-        }
-        await PlansDAO.updateRazorpayPlanId(planId, razorpayPlan.planId!);
-        plan.razorpayPlanId = razorpayPlan.planId!;
+      // Only active canonical SkalX plans may be sold
+      if (!plan.isActive) {
+        return { success: false, error: 'This plan is no longer available' };
       }
 
-      // Calculate period dates
+      if (!isCanonicalSubscriptionPlanId(plan.id)) {
+        return {
+          success: false,
+          error: 'Invalid plan. Only SkalX Starter, Growth, and Pro are available.',
+        };
+      }
+
+      // Resume or replace incomplete checkout; block only paid/open entitlements
+      const existingSubscription = await SubscriptionsDAO.getOpenByUserId(userId);
+      if (existingSubscription) {
+        if (existingSubscription.status !== 'pending') {
+          return {
+            success: false,
+            error: 'User already has an active subscription',
+          };
+        }
+
+        // Always abandon pending checkouts and recreate so first-invoice
+        // (full plan amount via upfront addon) stays consistent.
+        await SubscriptionsDAO.updateStatus(existingSubscription.id, 'cancelled');
+        if (existingSubscription.razorpaySubscriptionId) {
+          try {
+            await razorpay.subscriptions.cancel(
+              existingSubscription.razorpaySubscriptionId,
+              false
+            );
+          } catch (cancelErr) {
+            console.warn(
+              '[subscription] could not cancel prior Razorpay pending sub',
+              cancelErr
+            );
+          }
+        }
+      }
+
+      // Paid plans must already have a Razorpay plan_id (created manually in dashboard).
+      // Do NOT auto-create Razorpay plans from application code.
+      if (!plan.razorpayPlanId) {
+        return {
+          success: false,
+          error:
+            'Plan is missing razorpay_plan_id. Map the Razorpay plan in the database before checkout.',
+        };
+      }
+
+      const now = new Date();
       const periodEnd = new Date(now);
       if (plan.billingCycle === 'monthly') {
         periodEnd.setMonth(periodEnd.getMonth() + 1);
       } else if (plan.billingCycle === 'quarterly') {
         periodEnd.setMonth(periodEnd.getMonth() + 3);
+      } else {
+        return { success: false, error: 'Unsupported billing cycle' };
       }
 
-      // Calculate next reset date (always 1 month from start)
       const nextReset = new Date(now);
       nextReset.setMonth(nextReset.getMonth() + 1);
 
-      // Create local subscription record first (pending activation)
-      subscription = await SubscriptionsDAO.create({
+      // Create local subscription as pending — NO credits until payment succeeds
+      const subscription = await SubscriptionsDAO.create({
         userId,
         planId,
         status: 'pending',
         currentPeriodStart: now.toISOString(),
         currentPeriodEnd: periodEnd.toISOString(),
         nextResetDate: nextReset.toISOString(),
+        cancelAtPeriodEnd: false,
       });
 
-      // Create Razorpay subscription
-      const razorpaySubscription = await razorpay.subscriptions.create({
-        plan_id: plan.razorpayPlanId,
-        total_count: plan.billingCycle === 'monthly' ? 12 : 4, // Max billing cycles
-        customer_notify: 1,
-        notes: {
-          user_id: userId,
-          subscription_id: subscription.id,
-          plan_name: plan.name,
-        },
-      });
+      // Charge the full first month (incl. GST) as an upfront addon at auth time,
+      // then start recurring billing on the next cycle so we do not double-charge.
+      // (UPI Autopay otherwise shows only a ₹1–₹5 mandate setup amount.)
+      const { totalInr } = subscriptionTotalsInr(plan.priceInr);
+      const firstInvoicePaise = totalInr * 100;
+      const billingCycles = plan.billingCycle === 'monthly' ? 12 : 4;
+      const remainingCycles = Math.max(1, billingCycles - 1);
+      const recurringStartAt = Math.floor(periodEnd.getTime() / 1000);
 
-      // Update subscription with Razorpay ID
+      let razorpaySubscription;
+      try {
+        razorpaySubscription = await razorpay.subscriptions.create({
+          plan_id: plan.razorpayPlanId,
+          total_count: remainingCycles,
+          customer_notify: 1,
+          start_at: recurringStartAt,
+          addons: [
+            {
+              item: {
+                name: `${plan.name} — first month (incl. GST)`,
+                amount: firstInvoicePaise,
+                currency: 'INR',
+              },
+            },
+          ],
+          notes: {
+            user_id: userId,
+            subscription_id: subscription.id,
+            plan_name: plan.name,
+            first_invoice_inr: String(totalInr),
+          },
+        });
+      } catch (rpError: any) {
+        // Avoid orphaning a pending row with no Razorpay id
+        await SubscriptionsDAO.updateStatus(subscription.id, 'cancelled');
+        throw rpError;
+      }
+
       await SubscriptionsDAO.updateRazorpayIds(
         subscription.id,
         razorpaySubscription.id,
         razorpaySubscription.customer_id || undefined
       );
 
-      // Initialize credits immediately for paid plans
-      await CreditsDAO.initializeCredits(userId, plan.imageCredits, plan.videoCredits);
+      // Intentionally do NOT grant subscription credits here.
+      // Usable monthly credits must only appear after successful payment / cycle provisioning.
 
       return {
         success: true,
         subscriptionId: subscription.id,
         razorpaySubscriptionId: razorpaySubscription.id,
         shortUrl: razorpaySubscription.short_url,
+        key: RAZORPAY_KEY_ID,
       };
     } catch (error: any) {
       console.error('Error creating subscription:', error);
-      return { success: false, error: error.message || 'Failed to create subscription' };
+      const razorpayDescription =
+        error?.error?.description ||
+        error?.description ||
+        error?.message;
+      const isInvalidPlanId =
+        typeof razorpayDescription === 'string' &&
+        /invalid or could not be found/i.test(razorpayDescription);
+      return {
+        success: false,
+        error: isInvalidPlanId
+          ? `Razorpay plan ID is invalid for this account/mode. Map a valid TEST plan_id on the SkalX plan row. (${razorpayDescription})`
+          : razorpayDescription || 'Failed to create subscription',
+      };
     }
   }
 
   /**
-   * Create a Razorpay plan from our plan definition
+   * Schedule cancellation at period end (Razorpay cancel_at_cycle_end).
+   *
+   * Razorpay Node SDK (v2.9.6):
+   *   cancel(subscriptionId, cancelAtCycleEnd?: boolean | number)
+   *   - false / 0 / omitted → cancel immediately
+   *   - true / 1 → cancel at end of current billing cycle (sends cancel_at_cycle_end: 1)
+   *
+   * Does NOT zero credits or revoke access until period end / subscription.cancelled webhook.
    */
-  private static async createRazorpayPlan(plan: any): Promise<{ success: boolean; planId?: string; error?: string }> {
-    try {
-      const interval = plan.billingCycle === 'monthly' ? 1 : 3;
-      
-      const razorpayPlan = await razorpay.plans.create({
-        period: 'monthly',
-        interval,
-        item: {
-          name: `${plan.name} - ${plan.billingCycle}`,
-          amount: plan.priceInr * 100, // Razorpay uses paise
-          currency: 'INR',
-          description: plan.description || `${plan.name} subscription plan`,
-        },
-      });
-
-      return { success: true, planId: razorpayPlan.id };
-    } catch (error: any) {
-      console.error('Error creating Razorpay plan:', error);
-      return { success: false, error: error.message };
-    }
-  }
-
-  /**
-   * Cancel a subscription
-   */
-  static async cancelSubscription(subscriptionId: string): Promise<{ success: boolean; error?: string }> {
+  static async cancelSubscription(subscriptionId: string): Promise<CancelSubscriptionResult> {
     try {
       const subscription = await SubscriptionsDAO.getById(subscriptionId);
       if (!subscription) {
         return { success: false, error: 'Subscription not found' };
       }
 
-      // Cancel on Razorpay if it's a paid subscription
-      if (subscription.razorpaySubscriptionId) {
-        await razorpay.subscriptions.cancel(subscription.razorpaySubscriptionId);
+      if (subscription.status === 'cancelled' || subscription.status === 'expired') {
+        return { success: false, error: 'Subscription is already cancelled' };
       }
 
-      // Update local status
-      await SubscriptionsDAO.updateStatus(subscriptionId, 'cancelled');
+      if (subscription.cancelAtPeriodEnd) {
+        return {
+          success: true,
+          cancelAtPeriodEnd: true,
+          currentPeriodEnd: subscription.currentPeriodEnd,
+        };
+      }
 
-      return { success: true };
+      // Pending checkout (no active billing cycle): Razorpay rejects cancel_at_cycle_end.
+      // Cancel immediately — user never received paid entitlement.
+      if (subscription.status === 'pending') {
+        if (subscription.razorpaySubscriptionId) {
+          await razorpay.subscriptions.cancel(subscription.razorpaySubscriptionId, false);
+        }
+        await SubscriptionsDAO.updateStatus(subscriptionId, 'cancelled');
+        return {
+          success: true,
+          cancelAtPeriodEnd: false,
+          currentPeriodEnd: subscription.currentPeriodEnd,
+        };
+      }
+
+      // Active / past_due / legacy trialing with an active period → schedule at cycle end
+      if (subscription.razorpaySubscriptionId) {
+        // SDK: second arg true → cancel_at_cycle_end: 1
+        await razorpay.subscriptions.cancel(subscription.razorpaySubscriptionId, true);
+      }
+
+      const updated = await SubscriptionsDAO.scheduleCancelAtPeriodEnd(subscriptionId);
+      if (!updated) {
+        return { success: false, error: 'Failed to persist cancel_at_period_end' };
+      }
+
+      return {
+        success: true,
+        cancelAtPeriodEnd: true,
+        currentPeriodEnd: updated.currentPeriodEnd,
+      };
     } catch (error: any) {
       console.error('Error cancelling subscription:', error);
       return { success: false, error: error.message };

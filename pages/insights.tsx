@@ -282,7 +282,7 @@ export default function Insights() {
             <div className="flex justify-between items-start mb-4">
               <div>
                 <h3 className="text-lg font-semibold">Google Ads</h3>
-                <p className="text-sm text-slate-500">If you connect Google Ads later, we'll surface live metrics here.</p>
+                <p className="text-sm text-slate-500">If you connect Google Ads later, we&apos;ll surface live metrics here.</p>
               </div>
               <div className="text-sm text-gray-500">Integration status</div>
             </div>
@@ -385,7 +385,7 @@ export default function Insights() {
             </div>
           ) : (
             <div className="text-sm text-gray-500">
-              No recommendations yet. Click "Generate Recommendations" to create AI-driven suggestions from the live metrics.
+              No recommendations yet. Click &quot;Generate Recommendations&quot; to create AI-driven suggestions from the live metrics.
               {aiRaw ? <pre className="mt-3 text-xs bg-gray-100 p-3 rounded max-h-48 overflow-auto">{JSON.stringify(aiRaw, null, 2)}</pre> : null}
               {error ? <div className="text-red-600 mt-2">{error}</div> : null}
             </div>

@@ -37,6 +37,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       subscription: {
         id: subscription.id,
         status: subscription.status,
+        cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
         plan: {
           id: subscription.plan.id,
           name: subscription.plan.name,
@@ -52,14 +53,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       credits,
     });
   } catch (error: any) {
-    const { extractDbError } = await import('@/database/client');
-    const dbErr = extractDbError(error);
-    console.error('Get subscription error:', JSON.stringify(dbErr, null, 2));
-    console.error('Full error stack:', error.stack);
+    console.error('Get subscription error');
     return res.status(500).json({
       error: 'Failed to get subscription',
-      message: error.message,
-      dbError: dbErr,
+      ...(process.env.NODE_ENV === 'development'
+        ? { message: error?.message }
+        : {}),
     });
   }
 }

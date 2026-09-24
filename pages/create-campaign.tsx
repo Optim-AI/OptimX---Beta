@@ -2,6 +2,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { createPortal } from "react-dom";
+import Link from "next/link";
 import { useRouter } from "next/router";
 import Sidebar from "../app/web/src/components/Sidebar";
 import NavBar from "../app/web/src/components/navBar";
@@ -2761,7 +2762,7 @@ const showAcknowledgement =
                               )}
                               {!isInstagramConnected() && !isFacebookConnected() && (
                                 <div className="text-sm text-muted-foreground">
-                                  No platforms connected. <a href="/integrations" className="text-primary hover:underline">Connect now</a>
+                                  No platforms connected. <Link href="/integrations" className="text-primary hover:underline">Connect now</Link>
                                 </div>
                               )}
                             </div>
@@ -2969,7 +2970,7 @@ const showAcknowledgement =
                               )}
                               {!isInstagramConnected() && !isFacebookConnected() && (
                                 <div className="text-sm text-muted-foreground">
-                                  No platforms connected. <a href="/integrations" className="text-primary hover:underline">Connect now</a>
+                                  No platforms connected. <Link href="/integrations" className="text-primary hover:underline">Connect now</Link>
                                 </div>
                               )}
                             </div>

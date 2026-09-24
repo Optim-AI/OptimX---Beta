@@ -1,7 +1,7 @@
 // app/api/generate-campaign/route.ts
 import axios from "axios";
 import { NextResponse } from "next/server";
-import { supabaseAdmin } from '@/auth/supabase/client'; // adjust path if necessary
+import { supabaseAdmin } from '@/auth/supabase/admin'; // adjust path if necessary
 import { CreditsDAO } from '@/database/models/Credits.dao';
 import { withRetryOnGeminiTransient } from '@/lib/gemini-retry';
 import {
@@ -713,10 +713,26 @@ export async function POST(request: Request) {
           console.log('[Credits] Credit deducted successfully, new balance:', updatedBalance);
         }
       } else {
-        console.warn('[Credits] Failed to deduct credit - insufficient balance');
+        console.warn('[Credits] Failed to deduct credit after successful generation');
+        return NextResponse.json(
+          {
+            ok: false,
+            error: result?.error || 'Insufficient image credits. Generation was not billed.',
+            code: 'INSUFFICIENT_CREDITS',
+          },
+          { status: 402 }
+        );
       }
     } catch (e) {
       console.warn("Credit deduction failed", e);
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Failed to deduct image credits after generation.",
+          code: "CREDIT_DEDUCT_FAILED",
+        },
+        { status: 500 }
+      );
     }
 
     if (saveTemp === true) {

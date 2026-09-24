@@ -175,8 +175,8 @@ const Community: React.FC = () => {
                 {/* <Button size="sm" variant="outline" asChild>
                   <a href="#top" onClick={(e) => { e.preventDefault(); topRef.current?.scrollTo({ top: 0, behavior: 'smooth' }); }}>Back to top</a>
                 </Button> */}
-                <Button size="sm" style={{ background: colors.gradientPrimary, color: colors.primaryForeground }}>
-                  <a href="/auth/signin" className="flex items-center gap-2">Start Free Trial</a>
+                <Button size="sm" asChild style={{ background: colors.gradientPrimary, color: colors.primaryForeground }}>
+                  <Link href="/auth/signin" className="flex items-center gap-2">Get Started</Link>
                 </Button>
               </div>
             </div>

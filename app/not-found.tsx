@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useRef, useEffect } from "react";
+import Link from "next/link";
 import { ArrowRight, Sparkles } from "lucide-react";
 import { Button } from "./web/src/components/ui/button"; // adjust import if your Button path differs
 import colors from '@/lib/ui/colors'; // adjust path if your colors file is elsewhere
@@ -78,7 +79,7 @@ export default function NotFound() {
               404
             </h1>
             <div className="mt-3 text-lg" style={{ color: colors.mutedForeground }}>
-              Sorry — we couldn't find that page.
+              Sorry — we couldn&apos;t find that page.
             </div>
           </div>
 
@@ -87,12 +88,12 @@ export default function NotFound() {
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-            <Button size="lg" style={{ background: colors.gradientPrimary, color: colors.primaryForeground }}>
-              <a href="/" className="flex items-center gap-2">Go to Homepage <ArrowRight className="h-4 w-4" /></a>
+            <Button size="lg" asChild style={{ background: colors.gradientPrimary, color: colors.primaryForeground }}>
+              <Link href="/" className="flex items-center gap-2">Go to Homepage <ArrowRight className="h-4 w-4" /></Link>
             </Button>
 
             <Button size="lg" variant="outline" asChild>
-              <a href="/help-center">Visit Help Center</a>
+              <Link href="/help-center">Visit Help Center</Link>
             </Button>
           </div>
 

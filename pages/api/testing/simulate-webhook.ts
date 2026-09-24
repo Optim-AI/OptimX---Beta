@@ -29,6 +29,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           'subscription.activated',
           'subscription.charged',
           'subscription.cancelled',
+          'subscription.pending',
+          'subscription.halted',
           'payment.failed',
         ],
       });

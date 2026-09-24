@@ -4,6 +4,7 @@ import React, { useEffect } from 'react';
 import { Image, Video, Zap, RefreshCw } from 'lucide-react';
 import { useSubscription, useIsSubscriptionStale } from '@/app/web/src/hooks/use-subscription';
 import { cn } from '@/lib/utils';
+import { getVideoSecondsForCredits } from '@/lib/billing/video-credits';
 
 interface CreditDisplayProps {
   variant?: 'full' | 'compact' | 'mini';
@@ -22,7 +23,6 @@ export function CreditDisplay({
   const { credits, fetchSubscription, isLoading } = useSubscription();
   const isStale = useIsSubscriptionStale();
 
-  // Fetch on mount if stale
   useEffect(() => {
     if (isStale) {
       fetchSubscription();
@@ -44,7 +44,7 @@ export function CreditDisplay({
         </span>
         <span className="flex items-center gap-1">
           <Video className="w-4 h-4 text-purple-500" />
-          {credits.videoCredits.total}s
+          {credits.videoCredits.total}
         </span>
       </div>
     );
@@ -69,7 +69,7 @@ export function CreditDisplay({
           </div>
           <div className="text-sm">
             <span className="font-semibold">{credits.videoCredits.total}</span>
-            <span className="text-muted-foreground ml-1">sec</span>
+            <span className="text-muted-foreground ml-1">video</span>
           </div>
         </div>
         {showRefresh && (
@@ -85,7 +85,6 @@ export function CreditDisplay({
     );
   }
 
-  // Full variant
   return (
     <div className={cn('space-y-4 p-4 bg-card border rounded-lg', className)}>
       <div className="flex items-center justify-between">
@@ -104,7 +103,6 @@ export function CreditDisplay({
         )}
       </div>
 
-      {/* Image Credits */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -120,23 +118,24 @@ export function CreditDisplay({
         </div>
       </div>
 
-      {/* Video Credits */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Video className="w-5 h-5 text-purple-500" />
             <span>Video Credits</span>
           </div>
-          <span className="font-bold text-lg">{credits.videoCredits.total} sec</span>
+          <span className="font-bold text-lg">{credits.videoCredits.total}</span>
         </div>
         <div className="flex gap-2 text-xs text-muted-foreground">
-          <span>Subscription: {credits.videoCredits.subscription}s</span>
+          <span>Subscription: {credits.videoCredits.subscription}</span>
           <span>•</span>
-          <span>Bonus: {credits.videoCredits.addon}s</span>
+          <span>Bonus: {credits.videoCredits.addon}</span>
         </div>
+        <p className="text-xs text-muted-foreground">
+          ≈{getVideoSecondsForCredits(credits.videoCredits.total)} sec video capacity
+        </p>
       </div>
 
-      {/* Reset info */}
       {credits.lastResetAt && (
         <p className="text-xs text-muted-foreground pt-2 border-t">
           Last reset: {new Date(credits.lastResetAt).toLocaleDateString()}
@@ -164,9 +163,12 @@ export function LowCreditWarning({
     ? credits.imageCredits.total 
     : credits.videoCredits.total;
 
-  if (balance > threshold) return null;
+  // Video: warn when below one 15s generation (300 credits)
+  const effectiveThreshold = type === 'video' ? Math.max(threshold, 300) : threshold;
 
-  const label = type === 'image' ? 'image credits' : 'video seconds';
+  if (balance > effectiveThreshold) return null;
+
+  const label = type === 'image' ? 'image credits' : 'Video Credits';
 
   return (
     <div className="flex items-center gap-2 p-3 bg-amber-50 dark:bg-amber-900/20 

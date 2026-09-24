@@ -164,6 +164,8 @@ export default function ContentStudioPage() {
   useEffect(() => {
     async function loadCredits() {
       try {
+        // Always hit the server — do not trust persisted zeros after checkout
+        await fetchSubscription({ force: true });
         const response = await authFetch('/api/credits/balance');
         const data = await response.json();
         if (data.success) {
@@ -175,7 +177,12 @@ export default function ContentStudioPage() {
       }
     }
     loadCredits();
-  }, []);
+    const onFocus = () => {
+      void loadCredits();
+    };
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [fetchSubscription]);
 
   useEffect(() => {
     let cancelled = false;
@@ -955,7 +962,7 @@ export default function ContentStudioPage() {
       return;
     }
     const sessionId = activeSession.id;
-    if (!credits || credits.videoCredits.total < 1) {
+    if (!credits || credits.videoCredits.total < 300) {
       setInsufficientCreditsType("video");
       return;
     }
@@ -1220,7 +1227,7 @@ export default function ContentStudioPage() {
                     <svg className="w-5 h-5" style={{ color: 'hsl(270 80% 65%)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                     </svg>
-                    <span className="font-semibold" style={{ color: 'hsl(270 80% 70%)' }}>{videoCredits}s</span>
+                    <span className="font-semibold" style={{ color: 'hsl(270 80% 70%)' }}>{videoCredits}</span>
                     <span className="text-sm" style={{ color: 'hsl(270 80% 65%)' }}>video</span>
                   </div>
                 )}

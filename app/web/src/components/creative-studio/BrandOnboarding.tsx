@@ -135,7 +135,7 @@ export default function BrandOnboarding({
                 disabled={isLoading}
               />
               <p className="text-xs text-gray-500 mt-1">
-                I'll analyze your website to extract brand information automatically.
+                I&apos;ll analyze your website to extract brand information automatically.
               </p>
             </div>
             {isLoading && (

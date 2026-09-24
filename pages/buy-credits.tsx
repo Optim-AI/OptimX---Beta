@@ -9,13 +9,15 @@ import { authFetch } from '@/lib/utils';
 import Sidebar from '@/app/web/src/components/Sidebar';
 import { SkeletonPageLoader } from '@/app/web/src/components/ui/skeletons';
 import {
-    BUY_CREDITS_PRICING,
-    calculateTotalsInr,
-    getMinQuantity,
-    getMaxQuantity,
-    getQuantityStep,
-    clampQuantity,
-  } from '@/lib/billing/pricing';
+  BUY_CREDITS_PRICING,
+  calculateTotalsInr,
+  getMinQuantity,
+  getMaxQuantity,
+  getQuantityStep,
+  clampQuantity,
+  formatVideoCapacityLabel,
+} from '@/lib/billing/pricing';
+import { VIDEO_CREDIT_BLOCK_SIZE, getVideoSecondsForCredits } from '@/lib/billing/video-credits';
 
 interface CreditBalance {
   imageCredits: { subscription: number; addon: number; total: number };
@@ -47,24 +49,24 @@ export default function BuyCreditsPage() {
   const [availableVouchers, setAvailableVouchers] = useState<VoucherItem[]>([]);
   const [selectedVoucherId, setSelectedVoucherId] = useState<string | null>(null);
   const [vouchersLoading, setVouchersLoading] = useState(false);
-  const [livePricing, setLivePricing] = useState<{ imageCreditPriceInr: number; videoSecondPriceInr: number } | null>(null);
+  const [livePricing, setLivePricing] = useState<{
+    imageCreditPriceInr: number;
+    videoCreditBlockPriceInr: number;
+  } | null>(null);
 
   useEffect(() => {
     checkAuth();
-    // Fetch live pricing (public endpoint, no auth needed)
     fetch('/api/billing/pricing')
       .then((res) => res.json())
       .then((data) => {
-        if (data.imageCreditPriceInr && data.videoSecondPriceInr) {
+        if (data.imageCreditPriceInr && data.videoCreditBlockPriceInr) {
           setLivePricing({
             imageCreditPriceInr: data.imageCreditPriceInr,
-            videoSecondPriceInr: data.videoSecondPriceInr,
+            videoCreditBlockPriceInr: data.videoCreditBlockPriceInr,
           });
         }
       })
-      .catch(() => {
-        // Fall back to hardcoded defaults — livePricing stays null
-      });
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -73,18 +75,17 @@ export default function BuyCreditsPage() {
     }
   }, [authenticated]);
 
-  // Reset quantity when credit type changes
   useEffect(() => {
-    const def = creditType === 'image'
-      ? BUY_CREDITS_PRICING.defaultImageQuantity
-      : BUY_CREDITS_PRICING.defaultVideoQuantity;
+    const def =
+      creditType === 'image'
+        ? BUY_CREDITS_PRICING.defaultImageQuantity
+        : BUY_CREDITS_PRICING.defaultVideoQuantity;
     setQuantity(def);
     setInputValue(String(def));
     setQuantityError(null);
     setSelectedVoucherId(null);
   }, [creditType]);
 
-  // Fetch available vouchers when credit type changes
   useEffect(() => {
     if (!authenticated) return;
     async function fetchVouchers() {
@@ -134,32 +135,52 @@ export default function BuyCreditsPage() {
     }
   }
 
-  const unitPrice = livePricing
-    ? (creditType === 'image' ? livePricing.imageCreditPriceInr : livePricing.videoSecondPriceInr)
-    : undefined;
-  const totals = calculateTotalsInr({ creditType, credits: quantity, overrides: unitPrice ? { unitPriceInr: unitPrice } : undefined });
+  const totals = calculateTotalsInr({
+    creditType,
+    credits: quantity,
+    overrides:
+      creditType === 'image'
+        ? livePricing
+          ? { unitPriceInr: livePricing.imageCreditPriceInr }
+          : undefined
+        : livePricing
+          ? { videoBlockPriceInr: livePricing.videoCreditBlockPriceInr }
+          : undefined,
+  });
+
+  const videoCapacityLabel =
+    creditType === 'video' ? formatVideoCapacityLabel(quantity) : null;
+
+  function setQuantitySynced(next: number) {
+    const clamped = clampQuantity(creditType, next);
+    setQuantity(clamped);
+    setInputValue(String(clamped));
+    setQuantityError(null);
+  }
 
   function adjustQuantity(delta: number) {
     const step = getQuantityStep(creditType);
-    const newQty = clampQuantity(creditType, quantity + delta * step);
-    setQuantity(newQty);
-    setInputValue(String(newQty));
-    setQuantityError(null);
+    setQuantitySynced(quantity + delta * step);
   }
 
   function validateQuantity(value: string): boolean {
     const num = parseInt(value, 10);
     const min = getMinQuantity(creditType);
+    const unit = creditType === 'image' ? 'credits' : 'Video Credits';
     if (value === '' || Number.isNaN(num)) {
-      setQuantityError(`Minimum order value is ${creditType === 'image' ? '10 credits' : '8 seconds'} for ${creditType === 'image' ? 'image' : 'video'}.`);
+      setQuantityError(`Minimum order is ${min} ${unit}.`);
       return false;
     }
     if (num < min) {
-      setQuantityError(`Minimum order value is ${creditType === 'image' ? '10 credits' : '8 seconds'} for ${creditType === 'image' ? 'image' : 'video'}.`);
+      setQuantityError(`Minimum order is ${min} ${unit}.`);
       return false;
     }
     if (num > getMaxQuantity(creditType)) {
-      setQuantityError(`Maximum order is ${getMaxQuantity(creditType)} ${creditType === 'image' ? 'credits' : 'seconds'}.`);
+      setQuantityError(`Maximum order is ${getMaxQuantity(creditType)} ${unit}.`);
+      return false;
+    }
+    if (creditType === 'video' && num % getQuantityStep('video') !== 0) {
+      setQuantityError(`Video credits must be a multiple of ${getQuantityStep('video')}.`);
       return false;
     }
     setQuantityError(null);
@@ -171,44 +192,29 @@ export default function BuyCreditsPage() {
     if (val !== '' && !/^\d*$/.test(val)) return;
     setInputValue(val);
     if (val === '') {
-      setQuantityError(`Minimum order value is ${creditType === 'image' ? '10 credits' : '8 seconds'} for ${creditType === 'image' ? 'image' : 'video'}.`);
+      setQuantityError(
+        `Minimum order is ${getMinQuantity(creditType)} ${creditType === 'image' ? 'credits' : 'Video Credits'}.`
+      );
       return;
     }
     const num = parseInt(val, 10);
     if (Number.isNaN(num)) return;
-    const min = getMinQuantity(creditType);
-    const max = getMaxQuantity(creditType);
-    if (num < min) {
-      setQuantityError(`Minimum order value is ${creditType === 'image' ? '10 credits' : '8 seconds'} for ${creditType === 'image' ? 'image' : 'video'}.`);
-    } else if (num > max) {
-      setQuantityError(`Maximum order is ${max} ${creditType === 'image' ? 'credits' : 'seconds'}.`);
-    } else {
-      setQuantityError(null);
-    }
     setQuantity(num);
+    validateQuantity(val);
   }
 
   function handleQuantityBlur() {
     const trimmed = inputValue.trim();
     if (trimmed === '') {
-      const min = getMinQuantity(creditType);
-      setInputValue(String(min));
-      setQuantity(min);
-      setQuantityError(null);
+      setQuantitySynced(getMinQuantity(creditType));
       return;
     }
     const num = parseInt(trimmed, 10);
     if (Number.isNaN(num)) {
-      const min = getMinQuantity(creditType);
-      setInputValue(String(min));
-      setQuantity(min);
-      setQuantityError(null);
+      setQuantitySynced(getMinQuantity(creditType));
       return;
     }
-    const clamped = clampQuantity(creditType, num);
-    setInputValue(String(clamped));
-    setQuantity(clamped);
-    validateQuantity(String(clamped));
+    setQuantitySynced(num);
   }
 
   function isValidEmail(email: string) {
@@ -225,7 +231,6 @@ export default function BuyCreditsPage() {
     setError(null);
 
     try {
-      // Create order (amount is computed server-side and includes GST)
       const orderResponse = await authFetch('/api/billing/payments/create-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -244,16 +249,14 @@ export default function BuyCreditsPage() {
         return;
       }
 
-      // Open Razorpay checkout
       const options = {
         key: orderData.key,
         amount: orderData.amount,
         currency: orderData.currency,
         order_id: orderData.razorpayOrderId,
         name: 'SkalX AI',
-        description: `${quantity} ${creditType === 'image' ? 'Image Credits' : 'Video Seconds'} (incl. GST)`,
+        description: `${quantity} ${creditType === 'image' ? 'Image Credits' : 'Video Credits'} (incl. GST)`,
         handler: async function (response: any) {
-          // Verify payment
           const verifyResponse = await authFetch('/api/billing/payments/verify', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -266,16 +269,14 @@ export default function BuyCreditsPage() {
           const verifyData = await verifyResponse.json();
 
           if (verifyData.success) {
-            // Refresh balance
             await fetchBalance();
             const voucherBonus = orderData.voucherCredits || 0;
             setPurchaseInfo({
               quantity,
-              type: creditType === 'image' ? 'image credits' : 'video seconds',
+              type: creditType === 'image' ? 'image credits' : 'Video Credits',
               ...(voucherBonus > 0 ? { voucherCredits: voucherBonus } : {}),
             });
             setShowSuccess(true);
-            // Remove used voucher from available list
             if (selectedVoucherId) {
               setAvailableVouchers((prev) => prev.filter((v) => v.id !== selectedVoucherId));
               setSelectedVoucherId(null);
@@ -316,9 +317,12 @@ export default function BuyCreditsPage() {
     );
   }
 
+  const imagePresets = BUY_CREDITS_PRICING.imagePresets;
+  const videoPresets = BUY_CREDITS_PRICING.videoPresets;
+  const blockPrice = livePricing?.videoCreditBlockPriceInr ?? BUY_CREDITS_PRICING.videoCreditBlockPriceInr;
+
   return (
     <>
-      {/* Load Razorpay Script */}
       <script src="https://checkout.razorpay.com/v1/checkout.js" async />
 
       <div className="min-h-screen flex app-page">
@@ -344,9 +348,12 @@ export default function BuyCreditsPage() {
                 <div className="balance-type" style={{ color: colors.primary }}>Image Credits</div>
               </div>
               <div className="balance-card-item balance-card-video" style={{ background: 'hsl(270 80% 55% / 0.15)', borderColor: 'hsl(270 80% 55% / 0.35)' }}>
-                <div className="balance-value" style={{ color: 'hsl(270 80% 70%)' }}>{balance.videoCredits.total}s</div>
-                <div className="balance-label" style={{ color: 'hsl(270 80% 70%)' }}>Seconds Remaining</div>
+                <div className="balance-value" style={{ color: 'hsl(270 80% 70%)' }}>{balance.videoCredits.total}</div>
+                <div className="balance-label" style={{ color: 'hsl(270 80% 70%)' }}>Available</div>
                 <div className="balance-type" style={{ color: 'hsl(270 80% 70%)' }}>Video Credits</div>
+                <div className="balance-capacity" style={{ color: 'hsl(270 80% 70%)', fontSize: 12, marginTop: 4, opacity: 0.85 }}>
+                  ≈{getVideoSecondsForCredits(balance.videoCredits.total)} sec video capacity
+                </div>
               </div>
             </div>
           )}
@@ -369,14 +376,14 @@ export default function BuyCreditsPage() {
                     onClick={() => setCreditType('video')}
                   >
                     <Video size={18} />
-                    Video Credits (seconds)
+                    Video Credits
                   </button>
                 </div>
               </div>
 
               <div className="quantity-selector">
                 <label>
-                  How many {creditType === 'image' ? 'image credits' : 'video seconds'} do you want?
+                  How many {creditType === 'image' ? 'image credits' : 'Video Credits'} do you want?
                 </label>
                 <div className="quantity-row">
                   <div className="quantity-controls">
@@ -413,78 +420,19 @@ export default function BuyCreditsPage() {
                     </button>
                   </div>
                   <div className="preset-chips">
-                    {creditType === 'image' ? (
-                      <>
-                        <button
-                          className={`preset-chip ${quantity === 25 ? 'selected' : ''}`}
-                          onClick={() => setQuantity(25)}
-                        >
-                          25
-                        </button>
-                        <button
-                          className={`preset-chip ${quantity === 50 ? 'selected' : ''}`}
-                          onClick={() => setQuantity(50)}
-                        >
-                          50
-                        </button>
-                        <button
-                          className={`preset-chip ${quantity === 100 ? 'selected' : ''}`}
-                          onClick={() => setQuantity(100)}
-                        >
-                          100
-                        </button>
-                        <button
-                          className={`preset-chip ${quantity === 250 ? 'selected' : ''}`}
-                          onClick={() => setQuantity(250)}
-                        >
-                          250
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <button
-                          className={`preset-chip ${quantity === 8 ? 'selected' : ''}`}
-                          onClick={() => setQuantity(8)}
-                        >
-                          8s
-                        </button>
-                        <button
-                          className={`preset-chip ${quantity === 24 ? 'selected' : ''}`}
-                          onClick={() => setQuantity(24)}
-                        >
-                          24s
-                        </button>
-                        <button
-                          className={`preset-chip ${quantity === 48 ? 'selected' : ''}`}
-                          onClick={() => setQuantity(48)}
-                        >
-                          48s
-                        </button>
-                        <button
-                          className={`preset-chip ${quantity === 96 ? 'selected' : ''}`}
-                          onClick={() => setQuantity(96)}
-                        >
-                          96s
-                        </button>
-                        <button
-                          className={`preset-chip ${quantity === 192 ? 'selected' : ''}`}
-                          onClick={() => setQuantity(192)}
-                        >
-                          192s
-                        </button>
-                        <button
-                          className={`preset-chip ${quantity === 384 ? 'selected' : ''}`}
-                          onClick={() => setQuantity(384)}
-                        >
-                          384s
-                        </button>
-                      </>
-                    )}
+                    {(creditType === 'image' ? imagePresets : videoPresets).map((preset) => (
+                      <button
+                        key={preset}
+                        className={`preset-chip ${quantity === preset ? 'selected' : ''}`}
+                        onClick={() => setQuantitySynced(preset)}
+                      >
+                        {creditType === 'video' ? preset : preset}
+                      </button>
+                    ))}
                   </div>
                 </div>
               </div>
 
-              {/* Voucher Selection */}
               {availableVouchers.length > 0 && (
                 <div className="voucher-section">
                   <label>
@@ -499,7 +447,7 @@ export default function BuyCreditsPage() {
                         onClick={() => setSelectedVoucherId(selectedVoucherId === voucher.id ? null : voucher.id)}
                       >
                         <Ticket size={14} />
-                        <span>+{voucher.credits} {voucher.creditType === 'image' ? 'credits' : 'seconds'}</span>
+                        <span>+{voucher.credits} {voucher.creditType === 'image' ? 'credits' : 'Video Credits'}</span>
                         {voucher.expiresAt && (
                           <span className="voucher-expiry">
                             expires {new Date(voucher.expiresAt).toLocaleDateString()}
@@ -543,13 +491,25 @@ export default function BuyCreditsPage() {
               <div className="summary-card">
                 <div className="price-summary">
                   <div className="price-row">
-                    <span className="price-label">Price per {creditType === 'image' ? 'credit' : 'second'}</span>
-                    <span className="price-value">₹{totals.unitPriceInr}</span>
+                    <span className="price-label">
+                      {creditType === 'image'
+                        ? 'Price per credit'
+                        : `Price per ${VIDEO_CREDIT_BLOCK_SIZE} credits`}
+                    </span>
+                    <span className="price-value">
+                      ₹{creditType === 'image' ? totals.unitPriceInr : blockPrice}
+                    </span>
                   </div>
                   <div className="price-row">
-                    <span className="price-label">Quantity</span>
+                    <span className="price-label">Credits</span>
                     <span className="price-value">{quantity}</span>
                   </div>
+                  {creditType === 'video' && videoCapacityLabel && (
+                    <div className="price-row">
+                      <span className="price-label">Video capacity</span>
+                      <span className="price-value">{videoCapacityLabel}</span>
+                    </div>
+                  )}
                   <div className="price-row">
                     <span className="price-label">Subtotal</span>
                     <span className="price-value">₹{totals.subtotalInr}</span>
@@ -567,7 +527,7 @@ export default function BuyCreditsPage() {
                           Voucher Bonus
                         </span>
                         <span className="price-value" style={{ color: '#16a34a' }}>
-                          +{v.credits} {v.creditType === 'image' ? 'credits' : 'seconds'}
+                          +{v.credits} {v.creditType === 'image' ? 'credits' : 'Video Credits'}
                         </span>
                       </div>
                     ) : null;
@@ -592,7 +552,6 @@ export default function BuyCreditsPage() {
       </div>
       </div>
 
-      {/* Payment Success Modal */}
       {showSuccess && purchaseInfo && (
         <div className="modal-overlay" onClick={() => setShowSuccess(false)}>
           <div className="modal-card" onClick={(e) => e.stopPropagation()}>
@@ -655,102 +614,66 @@ export default function BuyCreditsPage() {
           gap: 8px;
           background: transparent;
           border: 1px solid ${colors.border};
+          border-radius: 10px;
+          padding: 10px 14px;
           color: ${colors.foreground};
-          padding: 10px 16px;
-          border-radius: 8px;
           cursor: pointer;
-          font-weight: 500;
           font-size: 14px;
-          flex-shrink: 0;
-          transition: all 0.2s ease;
-        }
-        .back-btn:hover {
-          background: ${colors.card};
-          border-color: hsl(0 0% 30%);
-        }
-        .header {
-          flex: 1;
         }
         .header h1 {
           font-size: 28px;
           font-weight: 700;
-          margin: 0 0 4px;
-          color: ${colors.foreground};
-          letter-spacing: -0.02em;
+          margin: 0;
         }
         .header p {
+          margin: 4px 0 0;
           color: ${colors.mutedForeground};
           font-size: 14px;
-          margin: 0;
         }
         .balance-cards {
           display: grid;
           grid-template-columns: 1fr 1fr;
           gap: 16px;
-          margin-bottom: 32px;
+          margin-bottom: 28px;
         }
         .balance-card-item {
-          background: ${colors.card};
-          border: 1px solid ${colors.border};
-          border-radius: 12px;
+          border-radius: 16px;
+          border: 1px solid;
           padding: 20px 24px;
-          transition: box-shadow 0.2s ease, transform 0.2s ease;
         }
-        .balance-card-item:hover {
-          box-shadow: 0 4px 12px hsl(0 0% 0% / 0.25);
-          transform: translateY(-1px);
-        }
-        .balance-card-item .balance-value {
-          font-size: 28px;
+        .balance-value {
+          font-size: 32px;
           font-weight: 700;
-          color: ${colors.foreground};
-          letter-spacing: -0.02em;
-          margin-bottom: 4px;
         }
-        .balance-card-item .balance-label {
-          font-size: 12px;
-          color: ${colors.mutedForeground};
-          font-weight: 500;
-          text-transform: uppercase;
-          letter-spacing: 0.04em;
-        }
-        .balance-card-item .balance-type {
+        .balance-label {
           font-size: 13px;
-          color: ${colors.mutedForeground};
-          margin-top: 8px;
+          opacity: 0.85;
+        }
+        .balance-type {
+          font-size: 14px;
+          font-weight: 600;
+          margin-top: 4px;
+        }
+        .error-msg {
+          background: hsl(0 70% 50% / 0.15);
+          border: 1px solid hsl(0 70% 50% / 0.4);
+          color: hsl(0 70% 70%);
+          padding: 12px 16px;
+          border-radius: 10px;
+          margin-bottom: 20px;
         }
         .main-grid {
           display: grid;
-          grid-template-columns: 1fr 360px;
-          gap: 32px;
+          grid-template-columns: 1.4fr 1fr;
+          gap: 24px;
           align-items: start;
-        }
-        .main-left {
-          background: ${colors.card};
-          border: 1px solid ${colors.border};
-          border-radius: 16px;
-          padding: 28px 32px;
-        }
-        .main-right {
-          position: sticky;
-          top: 24px;
-        }
-        .summary-card {
-          background: ${colors.card};
-          border: 1px solid ${colors.border};
-          border-radius: 16px;
-          padding: 24px;
-        }
-        .type-toggle {
-          margin-bottom: 28px;
         }
         .segmented-control {
           display: flex;
-          background: ${colors.input};
-          border: 1px solid ${colors.border};
-          border-radius: 10px;
+          background: ${colors.muted};
+          border-radius: 12px;
           padding: 4px;
-          gap: 0;
+          margin-bottom: 24px;
         }
         .segmented-tab {
           flex: 1;
@@ -758,87 +681,42 @@ export default function BuyCreditsPage() {
           align-items: center;
           justify-content: center;
           gap: 8px;
-          padding: 12px 20px;
-          border-radius: 8px;
+          padding: 12px;
           border: none;
           background: transparent;
+          border-radius: 10px;
           color: ${colors.mutedForeground};
           cursor: pointer;
           font-weight: 600;
           font-size: 14px;
-          transition: all 0.25s ease;
         }
         .segmented-tab.active {
-          background: hsl(213 100% 55% / 0.15);
-          color: ${colors.primary};
-          border: 1px solid hsl(213 100% 55% / 0.35);
-        }
-        .segmented-tab:hover:not(.active) {
+          background: ${colors.card};
           color: ${colors.foreground};
-        }
-        .quantity-selector {
-          margin-bottom: 28px;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.2);
         }
         .quantity-selector label {
           display: block;
-          font-size: 14px;
           font-weight: 600;
-          color: ${colors.foreground};
           margin-bottom: 12px;
-        }
-        .quantity-row {
-          display: flex;
-          flex-direction: row;
-          align-items: center;
-          gap: 24px;
-          flex-wrap: wrap;
+          font-size: 15px;
         }
         .quantity-controls {
           display: flex;
-          align-items: center;
+          align-items: flex-start;
           gap: 12px;
-        }
-        .preset-chips {
-          display: flex;
-          gap: 8px;
-          flex-wrap: wrap;
-        }
-        .preset-chip {
-          padding: 10px 18px;
-          border-radius: 8px;
-          border: 1px solid ${colors.border};
-          background: transparent;
-          color: ${colors.foreground};
-          cursor: pointer;
-          font-weight: 600;
-          font-size: 14px;
-          transition: all 0.2s ease;
-        }
-        .preset-chip:hover {
-          border-color: hsl(213 100% 55% / 0.5);
-          background: hsl(213 100% 55% / 0.08);
-        }
-        .preset-chip.selected {
-          background: hsl(213 100% 55% / 0.2);
-          border-color: ${colors.primary};
-          color: ${colors.primary};
+          margin-bottom: 16px;
         }
         .qty-btn {
           width: 44px;
           height: 44px;
-          border-radius: 8px;
+          border-radius: 10px;
           border: 1px solid ${colors.border};
-          background: ${colors.input};
+          background: ${colors.card};
           color: ${colors.foreground};
-          display: flex;
-          align-items: center;
-          justify-content: center;
           cursor: pointer;
-          transition: all 0.2s ease;
-        }
-        .qty-btn:hover:not(:disabled) {
-          border-color: ${colors.primary};
-          background: hsl(213 100% 55% / 0.12);
+          display: grid;
+          place-items: center;
         }
         .qty-btn:disabled {
           opacity: 0.4;
@@ -846,240 +724,170 @@ export default function BuyCreditsPage() {
         }
         .qty-input-wrap {
           flex: 1;
-          display: flex;
-          flex-direction: column;
-          gap: 4px;
         }
         .qty-input {
           width: 100%;
           height: 44px;
-          border-radius: 8px;
+          border-radius: 10px;
           border: 1px solid ${colors.border};
-          background: ${colors.input};
-          padding: 0 16px;
-          font-size: 16px;
-          font-weight: 600;
-          text-align: center;
+          background: ${colors.card};
           color: ${colors.foreground};
-        }
-        .qty-input:focus {
-          outline: none;
-          border-color: ${colors.primary};
-        }
-        .qty-input[aria-invalid="true"] {
-          border-color: hsl(0 84% 55% / 0.6);
+          font-size: 20px;
+          font-weight: 700;
+          text-align: center;
+          padding: 0 12px;
         }
         .qty-validation-error {
+          color: hsl(0 70% 65%);
           font-size: 12px;
-          color: ${colors.destructive};
-          margin: 0;
-          line-height: 1.3;
+          margin: 6px 0 0;
         }
-        .trust-section {
+        .preset-chips {
           display: flex;
-          flex-direction: column;
-          gap: 16px;
-          padding-top: 20px;
-          border-top: 1px solid ${colors.border};
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+        .preset-chip {
+          padding: 8px 14px;
+          border-radius: 999px;
+          border: 1px solid ${colors.border};
+          background: transparent;
+          color: ${colors.foreground};
+          cursor: pointer;
+          font-weight: 600;
+          font-size: 13px;
+        }
+        .preset-chip.selected {
+          background: ${colors.primary};
+          border-color: ${colors.primary};
+          color: white;
         }
         .voucher-section {
-          margin-bottom: 28px;
-          padding-top: 20px;
-          border-top: 1px solid ${colors.border};
+          margin-top: 24px;
         }
         .voucher-section label {
           display: flex;
           align-items: center;
           gap: 8px;
-          font-size: 14px;
           font-weight: 600;
-          color: ${colors.foreground};
-          margin-bottom: 12px;
+          margin-bottom: 10px;
         }
         .voucher-chips {
           display: flex;
-          flex-direction: column;
+          flex-wrap: wrap;
           gap: 8px;
         }
         .voucher-chip {
           display: flex;
           align-items: center;
-          gap: 8px;
-          padding: 12px 16px;
+          gap: 6px;
+          padding: 8px 12px;
           border-radius: 10px;
           border: 1px solid ${colors.border};
           background: transparent;
           color: ${colors.foreground};
           cursor: pointer;
-          font-weight: 500;
-          font-size: 14px;
-          transition: all 0.2s ease;
-          text-align: left;
-        }
-        .voucher-chip:hover {
-          border-color: hsl(142 70% 45% / 0.5);
-          background: hsl(142 70% 45% / 0.06);
+          font-size: 13px;
         }
         .voucher-chip.selected {
-          background: hsl(142 70% 45% / 0.12);
-          border-color: hsl(142 70% 45% / 0.6);
-          color: hsl(142 70% 30%);
+          border-color: #16a34a;
+          background: hsl(142 70% 40% / 0.15);
         }
         .voucher-expiry {
-          font-size: 12px;
-          color: ${colors.mutedForeground};
-          margin-left: auto;
+          opacity: 0.7;
+          font-size: 11px;
+        }
+        .trust-section {
+          margin-top: 28px;
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
         }
         .trust-row {
           display: flex;
-          gap: 24px;
+          gap: 20px;
           flex-wrap: wrap;
         }
         .trust-item {
           display: flex;
           align-items: center;
-          gap: 10px;
+          gap: 8px;
           font-size: 13px;
           color: ${colors.mutedForeground};
-        }
-        .trust-item svg {
-          flex-shrink: 0;
-        }
-        .trust-email-row {
-          align-items: flex-start;
         }
         .trust-email-wrap {
           display: flex;
-          flex-direction: column;
-          gap: 6px;
-          flex: 1;
-        }
-        .trust-email-wrap span {
-          font-size: 13px;
+          align-items: center;
+          gap: 8px;
+          flex-wrap: wrap;
         }
         .invoice-email-input {
-          background: ${colors.input};
+          background: ${colors.card};
           border: 1px solid ${colors.border};
-          border-radius: 6px;
-          padding: 8px 12px;
-          font-size: 14px;
+          border-radius: 8px;
+          padding: 6px 10px;
           color: ${colors.foreground};
-          outline: none;
-          transition: border-color 0.2s;
+          font-size: 13px;
+          min-width: 200px;
         }
         .invoice-email-input:focus {
-          border-color: ${colors.primary};
+          outline: 2px solid ${colors.primary};
         }
-        .invoice-email-input::placeholder {
-          color: ${colors.mutedForeground};
-          opacity: 0.7;
-        }
-        .price-summary {
-          padding: 0 0 20px;
-          margin-bottom: 20px;
-          border-bottom: 1px solid ${colors.border};
+        .summary-card {
+          background: ${colors.card};
+          border: 1px solid ${colors.border};
+          border-radius: 16px;
+          padding: 24px;
+          position: sticky;
+          top: 24px;
         }
         .price-row {
           display: flex;
           justify-content: space-between;
-          align-items: center;
-          padding: 8px 0;
+          margin-bottom: 12px;
           font-size: 14px;
         }
         .price-label {
           color: ${colors.mutedForeground};
-          font-weight: 500;
         }
         .price-value {
-          font-weight: 700;
-          color: ${colors.foreground};
-          font-size: 15px;
+          font-weight: 600;
         }
         .price-divider {
           height: 1px;
           background: ${colors.border};
-          margin: 12px 0;
-        }
-        .price-row.total {
-          padding: 0;
+          margin: 16px 0;
         }
         .price-row.total .price-label {
-          font-size: 15px;
-          font-weight: 600;
-          color: ${colors.foreground};
-        }
-        .price-value-total {
-          font-size: 24px;
           font-weight: 700;
           color: ${colors.foreground};
-          letter-spacing: -0.02em;
+          font-size: 16px;
+        }
+        .price-value-total {
+          font-size: 22px;
+          font-weight: 700;
+          color: ${colors.primary};
         }
         .purchase-btn {
           width: 100%;
-          padding: 16px 24px;
-          border-radius: 10px;
-          background: ${colors.gradientPrimary || colors.primary};
+          margin-top: 20px;
+          padding: 14px;
+          border: none;
+          border-radius: 12px;
+          background: ${colors.primary};
           color: white;
           font-weight: 700;
           font-size: 16px;
-          border: none;
           cursor: pointer;
-          transition: all 0.2s ease;
-        }
-        .purchase-btn:hover:not(:disabled) {
-          transform: translateY(-2px);
-          box-shadow: 0 8px 24px hsl(213 100% 55% / 0.25);
         }
         .purchase-btn:disabled {
-          opacity: 0.6;
+          opacity: 0.5;
           cursor: not-allowed;
-        }
-        .error-msg {
-          background: hsl(0 84% 55% / 0.12);
-          border: 1px solid hsl(0 84% 55% / 0.3);
-          color: ${colors.destructive};
-          padding: 16px;
-          border-radius: 10px;
-          margin-bottom: 24px;
-          font-size: 14px;
-          font-weight: 500;
-        }
-        @media (max-width: 900px) {
-          .main-grid {
-            grid-template-columns: 1fr;
-          }
-          .main-right {
-            position: static;
-          }
-        }
-        @media (max-width: 768px) {
-          .page {
-            padding: 24px 16px;
-          }
-          .top-bar {
-            flex-direction: column;
-            align-items: flex-start;
-            gap: 16px;
-          }
-          .header h1 {
-            font-size: 24px;
-          }
-          .balance-cards {
-            grid-template-columns: 1fr;
-          }
-          .quantity-row {
-            flex-direction: column;
-            align-items: stretch;
-          }
-          .trust-row {
-            flex-direction: column;
-          }
         }
         .modal-overlay {
           position: fixed;
           inset: 0;
-          background: rgba(0, 0, 0, 0.6);
-          backdrop-filter: blur(4px);
+          background: rgba(0,0,0,0.6);
           display: grid;
           place-items: center;
           z-index: 1000;
@@ -1087,121 +895,71 @@ export default function BuyCreditsPage() {
         }
         .modal-card {
           background: ${colors.card};
-          border: 1px solid ${colors.border};
           border-radius: 20px;
-          padding: 40px 36px;
-          max-width: 440px;
+          padding: 32px;
+          max-width: 420px;
           width: 100%;
-          text-align: center;
           position: relative;
-          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-          animation: modalIn 300ms cubic-bezier(.2,.9,.3,1);
-        }
-        @keyframes modalIn {
-          from { opacity: 0; transform: scale(0.95) translateY(10px); }
-          to { opacity: 1; transform: scale(1) translateY(0); }
+          text-align: center;
         }
         .modal-close {
           position: absolute;
-          top: 14px;
-          right: 14px;
-          background: ${colors.muted};
-          border: 1px solid ${colors.border};
-          border-radius: 8px;
-          width: 32px;
-          height: 32px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          cursor: pointer;
+          top: 16px;
+          right: 16px;
+          background: none;
+          border: none;
           color: ${colors.mutedForeground};
-          transition: all 200ms;
-        }
-        .modal-close:hover {
-          background: ${colors.border};
-          color: ${colors.foreground};
+          cursor: pointer;
         }
         .modal-icon {
           margin-bottom: 16px;
         }
         .modal-title {
           font-size: 22px;
-          font-weight: 800;
-          color: ${colors.foreground};
+          font-weight: 700;
           margin: 0 0 8px;
         }
         .modal-subtitle {
-          font-size: 15px;
           color: ${colors.mutedForeground};
-          margin: 0 0 28px;
+          margin: 0 0 20px;
+          line-height: 1.5;
         }
         .invoice-section {
           background: ${colors.muted};
-          border: 1px solid ${colors.border};
           border-radius: 12px;
-          padding: 20px;
-          margin-bottom: 24px;
-          text-align: left;
+          padding: 14px;
+          margin-bottom: 20px;
         }
         .invoice-header {
           display: flex;
           align-items: center;
+          justify-content: center;
           gap: 8px;
-          font-size: 14px;
-          font-weight: 600;
-          color: ${colors.foreground};
-          margin-bottom: 8px;
+          font-size: 13px;
+          color: ${colors.mutedForeground};
+          margin-bottom: 6px;
         }
         .invoice-email-display {
-          font-size: 15px;
-          color: ${colors.primary};
           font-weight: 600;
           margin: 0;
-          word-break: break-all;
-        }
-        .billing-email-section {
-          margin-bottom: 24px;
-        }
-        .billing-email-label {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          font-size: 14px;
-          font-weight: 600;
-          color: ${colors.foreground};
-          margin-bottom: 8px;
-        }
-        .billing-email-input {
-          width: 100%;
-          height: 44px;
-          border-radius: 8px;
-          border: 2px solid ${colors.border};
-          background: ${colors.input};
-          color: ${colors.foreground};
-          padding: 0 14px;
-          font-size: 15px;
-          outline: none;
-          transition: border-color 200ms;
-          box-sizing: border-box;
-        }
-        .billing-email-input:focus {
-          border-color: ${colors.primary};
         }
         .modal-done-btn {
           width: 100%;
-          padding: 14px;
-          border-radius: 10px;
+          padding: 12px;
+          border: none;
+          border-radius: 12px;
           background: ${colors.primary};
           color: white;
           font-weight: 700;
-          font-size: 15px;
-          border: none;
           cursor: pointer;
-          transition: all 200ms;
         }
-        .modal-done-btn:hover {
-          opacity: 0.9;
-          transform: translateY(-1px);
+        @media (max-width: 800px) {
+          .main-grid, .balance-cards {
+            grid-template-columns: 1fr;
+          }
+          .summary-card {
+            position: static;
+          }
         }
       `}</style>
     </>

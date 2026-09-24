@@ -2,7 +2,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { JSDOM } from "jsdom";
 import sharp from "sharp";
-import { supabaseAdmin } from "@/auth/supabase/client";
+import { supabaseAdmin } from "@/auth/supabase/admin";
 import { getUserIdFromRequest } from "@/auth/request";
 
 // Helper to convert relative URLs to absolute

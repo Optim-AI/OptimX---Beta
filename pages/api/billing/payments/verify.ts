@@ -5,7 +5,8 @@ import { PaymentService, isRazorpayConfigured } from '@/lib/razorpay';
 
 /**
  * POST /api/billing/payments/verify
- * Verifies a Razorpay payment and adds credits
+ * Verifies Razorpay checkout signature for the authenticated user.
+ * Credits are granted at most once via atomic capture (shared with webhook).
  */
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
@@ -34,6 +35,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       razorpayOrderId,
       razorpayPaymentId,
       razorpaySignature,
+      userId,
     });
 
     if (!result.success) {
@@ -44,7 +46,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     return res.status(200).json({
       success: true,
-      message: 'Payment verified and credits added',
+      message: 'Payment verified',
+      alreadyCaptured: result.alreadyCaptured ?? false,
     });
   } catch (error: any) {
     console.error('Verify payment error:', error);

@@ -2,6 +2,7 @@
 import { db } from '../client';
 import { payments, webhookEvents, creditPacks } from '@/database/schema';
 import { eq, and, desc } from 'drizzle-orm';
+// `and` used by captureIfCreated
 
 // Type inference from Drizzle schema
 export type Payment = typeof payments.$inferSelect;
@@ -22,6 +23,39 @@ export class PaymentsDAO {
       .values(data)
       .returning();
     return result;
+  }
+
+  /**
+   * Insert a payment keyed by razorpay_payment_id, or return the existing row.
+   * Prevents duplicate subscription.charged (and other) payment accounting rows.
+   * Relies on unique index idx_payments_razorpay_payment_id_unique (migration).
+   */
+  static async createIfAbsentByRazorpayPaymentId(
+    data: NewPayment
+  ): Promise<{ payment: Payment; created: boolean }> {
+    if (!data.razorpayPaymentId) {
+      const payment = await this.create(data);
+      return { payment, created: true };
+    }
+
+    const existing = await this.getByRazorpayId(data.razorpayPaymentId);
+    if (existing) {
+      return { payment: existing, created: false };
+    }
+
+    try {
+      const payment = await this.create(data);
+      return { payment, created: true };
+    } catch (error: any) {
+      if (
+        error?.code === '23505' ||
+        /unique|duplicate/i.test(String(error?.message || ''))
+      ) {
+        const raced = await this.getByRazorpayId(data.razorpayPaymentId);
+        if (raced) return { payment: raced, created: false };
+      }
+      throw error;
+    }
   }
 
   /**
@@ -83,6 +117,28 @@ export class PaymentsDAO {
   }
 
   /**
+   * Atomically transition payment from `created` → `captured`.
+   * Returns null if the payment was already captured/failed (caller must not grant credits again).
+   */
+  static async captureIfCreated(
+    id: string,
+    razorpayPaymentId?: string,
+    razorpaySignature?: string
+  ): Promise<Payment | null> {
+    const [updated] = await db
+      .update(payments)
+      .set({
+        status: 'captured',
+        ...(razorpayPaymentId ? { razorpayPaymentId } : {}),
+        ...(razorpaySignature ? { razorpaySignature } : {}),
+        updatedAt: new Date().toISOString(),
+      })
+      .where(and(eq(payments.id, id), eq(payments.status, 'created')))
+      .returning();
+    return updated || null;
+  }
+
+  /**
    * Get payment history for a user
    */
   static async getByUserId(userId: string, limit: number = 50): Promise<Payment[]> {
@@ -133,15 +189,20 @@ export class PaymentsDAO {
  */
 export class WebhookEventsDAO {
   /**
-   * Check if event already processed
+   * True when this event id should not be processed again (processed or in-flight).
+   * Failed events are allowed to retry.
+   */
+  static async isDuplicateOrInFlight(razorpayEventId: string): Promise<boolean> {
+    const existing = await this.getByRazorpayId(razorpayEventId);
+    if (!existing) return false;
+    return existing.status === 'processed' || existing.status === 'pending';
+  }
+
+  /**
+   * @deprecated Prefer isDuplicateOrInFlight — failed events should be retryable.
    */
   static async exists(razorpayEventId: string): Promise<boolean> {
-    const result = await db
-      .select()
-      .from(webhookEvents)
-      .where(eq(webhookEvents.razorpayEventId, razorpayEventId))
-      .limit(1);
-    return result.length > 0;
+    return this.isDuplicateOrInFlight(razorpayEventId);
   }
 
   /**
@@ -162,6 +223,28 @@ export class WebhookEventsDAO {
       })
       .returning();
     return result;
+  }
+
+  /**
+   * Re-queue a failed event for another processing attempt.
+   */
+  static async reclaimFailed(
+    id: string,
+    eventType: string,
+    payload: any
+  ): Promise<WebhookEvent | null> {
+    const [updated] = await db
+      .update(webhookEvents)
+      .set({
+        status: 'pending',
+        eventType,
+        payload,
+        errorMessage: null,
+        processedAt: null,
+      })
+      .where(and(eq(webhookEvents.id, id), eq(webhookEvents.status, 'failed')))
+      .returning();
+    return updated || null;
   }
 
   /**

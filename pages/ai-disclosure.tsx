@@ -93,7 +93,7 @@ const AIUseDisclosure: React.FC = () => {
 
             <article className="prose prose-invert max-w-none" style={{ color: colors.foreground }}>
               <p>
-                SkalX AI uses artificial intelligence ("AI") and machine learning technologies to provide content generation, recommendations, and analytics features. This page explains how we use AI, what data may be sent to AI providers, your choices, and our commitments to responsible AI usage.
+                SkalX AI uses artificial intelligence (&quot;AI&quot;) and machine learning technologies to provide content generation, recommendations, and analytics features. This page explains how we use AI, what data may be sent to AI providers, your choices, and our commitments to responsible AI usage.
               </p>
 
               <h3 className="font-bold mt-8">1. How we use AI</h3>
@@ -178,8 +178,8 @@ const AIUseDisclosure: React.FC = () => {
                 {/* <Button size="sm" variant="outline" asChild>
                   <a href="#top" onClick={(e) => { e.preventDefault(); topRef.current?.scrollTo({ top: 0, behavior: 'smooth' }); }}>Back to top</a>
                 </Button> */}
-                <Button size="sm" style={{ background: colors.gradientPrimary, color: colors.primaryForeground }}>
-                  <a href="/auth/signin" className="flex items-center gap-2">Get Started <ArrowRight className="h-4 w-4" /></a>
+                <Button size="sm" asChild style={{ background: colors.gradientPrimary, color: colors.primaryForeground }}>
+                  <Link href="/auth/signin" className="flex items-center gap-2">Get Started <ArrowRight className="h-4 w-4" /></Link>
                 </Button>
               </div>
             </div>

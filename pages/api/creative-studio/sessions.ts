@@ -10,7 +10,7 @@ import { getUserIdFromRequest } from "@/auth/request";
 import { CreativeStudioSessionDAO } from "@/database/models/CreativeStudioSession.dao";
 import { GeneratedImageDAO } from "@/database/models/GeneratedImage.dao";
 import { SettingsDAO } from "@/database/models/Settings.dao";
-import { supabaseAdmin } from "@/auth/supabase/client";
+import { supabaseAdmin } from "@/auth/supabase/admin";
 
 // Increase body size limit to 50MB for large image payloads (multiple poster data URLs)
 export const config = {

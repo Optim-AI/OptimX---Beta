@@ -1,12 +1,17 @@
 "use client";
 
+import Link from "next/link";
 import { Button } from "./ui/button";
 import { Card, CardContent } from "./ui/card";
 import { useScrollAnimation } from "../hooks/use-scroll-animation";
-import { Mail, Phone, MessageSquare, ArrowRight } from "lucide-react";
-import colors from '@/lib/ui/colors';
-
-const CALENDLY_URL = 'https://calendly.com/reachout-optim/new-meeting';
+import { Check, ArrowRight } from "lucide-react";
+import colors from "@/lib/ui/colors";
+import {
+  MARKETING_SUBSCRIPTION_PLANS,
+  formatPricePlusGst,
+  subscriptionTotalsInr,
+  formatInr,
+} from "@/lib/billing/marketing-plans";
 
 export default function ContactForPricing() {
   const { elementRef: sectionRef, isVisible: sectionVisible } =
@@ -19,14 +24,14 @@ export default function ContactForPricing() {
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
         <div
           ref={sectionRef}
-          className={`max-w-4xl mx-auto transition-all duration-700`}
+          className="max-w-6xl mx-auto transition-all duration-700"
           style={{
             opacity: sectionVisible ? 1 : 0,
-            transform: sectionVisible ? 'translateY(0)' : 'translateY(20px)',
-            transitionTimingFunction: 'cubic-bezier(0.16, 1, 0.3, 1)',
+            transform: sectionVisible ? "translateY(0)" : "translateY(20px)",
+            transitionTimingFunction: "cubic-bezier(0.16, 1, 0.3, 1)",
           }}
         >
-          <div className="text-center mb-12">
+          <div className="text-center mb-14">
             <h2
               className="text-4xl md:text-5xl font-bold mb-6"
               style={{ color: colors.foreground }}
@@ -46,76 +51,99 @@ export default function ContactForPricing() {
               </span>
             </h2>
             <p
-              className="text-xl max-w-5xl mx-auto leading-relaxed"
+              className="text-lg md:text-xl max-w-2xl mx-auto leading-relaxed"
               style={{ color: colors.mutedForeground }}
             >
-              Every business is different. Our pricing is tailored based on your goals, scope, and scale, so you only pay for what actually drives results.
+              Monthly plans with Image Credits and Video Credits. Top up anytime
+              with pay-as-you-go when you need more.
             </p>
           </div>
 
-          <Card
-            className="rounded-[20px] overflow-hidden transition-all duration-500 hover:scale-[1.01] hover:shadow-[0_24px_64px_rgba(0,0,0,0.35),0_0_0_1px_hsl(213_100%_55%_/_0.15)]"
-            style={{
-              background: 'hsl(0 0% 15% / 0.6)',
-              backdropFilter: 'blur(20px)',
-              WebkitBackdropFilter: 'blur(20px)',
-              border: '1px solid rgba(255,255,255,0.08)',
-              boxShadow: '0 8px 32px rgba(0,0,0,0.2), 0 0 40px hsl(213 100% 55% / 0.08)',
-            }}
-          >
-            <CardContent
-              className="p-8 md:p-12"
-              style={{ color: colors.cardForeground }}
-            >
-              <div className="grid md:grid-cols-2 gap-8 mb-8">
-                <div>
-                  <h3
-                    className="text-2xl font-bold mb-4"
-                    style={{ color: colors.foreground }}
+          <div className="grid gap-6 md:grid-cols-3 items-stretch">
+            {MARKETING_SUBSCRIPTION_PLANS.map((plan) => {
+              return (
+                <Card
+                  key={plan.id}
+                  className="rounded-[20px] overflow-hidden transition-all duration-500 hover:scale-[1.02] h-full"
+                  style={{
+                    background: "hsl(0 0% 15% / 0.6)",
+                    backdropFilter: "blur(20px)",
+                    WebkitBackdropFilter: "blur(20px)",
+                    border: "1px solid rgba(255,255,255,0.08)",
+                    boxShadow: "0 8px 32px rgba(0,0,0,0.2)",
+                  }}
+                >
+                  <CardContent
+                    className="p-8 flex flex-col h-full"
+                    style={{ color: colors.cardForeground }}
                   >
-                    Invest in growth, not subscriptions
-                  </h3>
-                  <p className="mb-6" style={{ color: colors.mutedForeground }}>
-                    Get in touch with us to learn about our pricing plans and
-                    find the perfect fit for your business needs.
-                  </p>
+                    <h3
+                      className="text-2xl font-bold mb-2"
+                      style={{ color: colors.foreground }}
+                    >
+                      {plan.name}
+                    </h3>
 
-                  <div className="space-y-4">
-                    {[
-                      { Icon: MessageSquare, title: 'Flexible Plans', desc: 'From starter packages to enterprise solutions' },
-                      { Icon: Mail, title: '7-Day Free Trial', desc: 'Try any plan risk-free, no credit card required' },
-                      { Icon: Phone, title: 'Dedicated Support', desc: 'Get personalized onboarding and guidance' },
-                    ].map(({ Icon, title, desc }) => (
-                      <div key={title} className="flex items-start gap-3">
-                        <div
-                          className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-                          style={{ backgroundColor: 'hsl(213 100% 55% / 0.12)' }}
+                    <div className="mb-6">
+                      <div>
+                        <span
+                          className="text-4xl font-bold tracking-tight"
+                          style={{ color: colors.foreground }}
                         >
-                          <Icon className="h-5 w-5" style={{ color: colors.primary }} />
-                        </div>
-                        <div>
-                          <h4 className="font-semibold mb-1" style={{ color: colors.foreground }}>{title}</h4>
-                          <p className="text-sm" style={{ color: colors.mutedForeground }}>{desc}</p>
-                        </div>
+                          {formatPricePlusGst(plan.priceInr)}
+                        </span>
+                        <span
+                          className="text-base ml-1"
+                          style={{ color: colors.mutedForeground }}
+                        >
+                          / month
+                        </span>
                       </div>
-                    ))}
-                  </div>
-                </div>
+                      <p
+                        className="text-sm mt-1.5"
+                        style={{ color: colors.mutedForeground }}
+                      >
+                        {formatInr(subscriptionTotalsInr(plan.priceInr).totalInr)}{" "}
+                        incl. 18% GST
+                      </p>
+                    </div>
 
-                <div className="flex flex-col justify-center">
-                  <div
-                    className="rounded-[18px] p-8 border transition-all duration-500 hover:border-[hsl(213_100%_55%_/_0.25)]"
-                    style={{
-                      background: 'linear-gradient(180deg, hsl(213 100% 55% / 0.06) 0%, hsl(213 100% 55% / 0.02) 100%)',
-                      borderColor: 'hsl(213 100% 55% / 0.2)',
-                    }}
-                  >
-                    <h4 className="text-lg font-semibold mb-4" style={{ color: colors.foreground }}>
-                      Ready to get started?
-                    </h4>
-                    <p className="mb-6" style={{ color: colors.mutedForeground }}>
-                      Contact us to learn about our pricing and get started with SkalX AI.
-                    </p>
+                    <ul className="space-y-3 mb-8 flex-1">
+                      <li className="flex items-center gap-3">
+                        <span
+                          className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                          style={{ backgroundColor: "hsl(213 100% 55% / 0.12)" }}
+                        >
+                          <Check
+                            className="h-4 w-4"
+                            style={{ color: colors.primary }}
+                          />
+                        </span>
+                        <span style={{ color: colors.foreground }}>
+                          <strong>
+                            {plan.imageCredits.toLocaleString("en-IN")}
+                          </strong>{" "}
+                          Image Credits
+                        </span>
+                      </li>
+                      <li className="flex items-center gap-3">
+                        <span
+                          className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                          style={{ backgroundColor: "hsl(213 100% 55% / 0.12)" }}
+                        >
+                          <Check
+                            className="h-4 w-4"
+                            style={{ color: colors.primary }}
+                          />
+                        </span>
+                        <span style={{ color: colors.foreground }}>
+                          <strong>
+                            {plan.videoCredits.toLocaleString("en-IN")}
+                          </strong>{" "}
+                          Video Credits
+                        </span>
+                      </li>
+                    </ul>
 
                     <Button
                       asChild
@@ -126,22 +154,31 @@ export default function ContactForPricing() {
                         background: colors.gradientPrimary,
                         color: colors.primaryForeground,
                         boxShadow: colors.shadowGlow,
+                        border: "none",
                       }}
                     >
-                      <a
-                        href={CALENDLY_URL}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                      <Link
+                        href={`/subscribe?plan=${plan.id}`}
                         className="flex items-center justify-center w-full"
                       >
-                        Schedule Meeting <ArrowRight className="ml-2 h-4 w-4 inline-block" />
-                      </a>
+                        Get Started
+                        <ArrowRight className="ml-2 h-4 w-4" />
+                      </Link>
                     </Button>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+
+          <p
+            className="text-center text-sm mt-10"
+            style={{ color: colors.mutedForeground }}
+          >
+            Prices exclude GST (18% applied at checkout). Billed monthly via
+            Razorpay. Cancel anytime before your next renewal. Need more
+            capacity? Add credits with pay-as-you-go.
+          </p>
         </div>
       </div>
     </section>

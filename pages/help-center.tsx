@@ -194,13 +194,13 @@ const HelpCenter: React.FC = () => {
                       </div>
                     </a>
 
-                    <a href="/community" className="p-4 rounded-lg border flex items-center gap-3" style={{ borderColor: withAlpha(colors.border, 0.6), background: colors.card }}>
+                    <Link href="/community" className="p-4 rounded-lg border flex items-center gap-3" style={{ borderColor: withAlpha(colors.border, 0.6), background: colors.card }}>
                       <MessageCircle className="h-5 w-5" style={{ color: colors.primary }} />
                       <div>
                         <div style={{ color: colors.foreground, fontWeight: 700 }}>Community</div>
                         <div style={{ color: colors.mutedForeground, fontSize: 13 }}>Forums & Discord</div>
                       </div>
-                    </a>
+                    </Link>
 
                     <a href="/support" className="p-4 rounded-lg border flex items-center gap-3" style={{ borderColor: withAlpha(colors.border, 0.6), background: colors.card }}>
                       <LifeBuoy className="h-5 w-5" style={{ color: colors.primary }} />
@@ -239,8 +239,8 @@ const HelpCenter: React.FC = () => {
                   <ul className="mt-3 space-y-2 text-sm" style={{ color: colors.mutedForeground }}>
                     <li><a href="/status">System Status</a></li>
                     <li><a href="/docs/api">API Docs</a></li>
-                    <li><a href="/#pricing">Pricing</a></li>
-                    <li><a href="/community">Community</a></li>
+                    <li><Link href="/try">Try Now</Link></li>
+                    <li><Link href="/community">Community</Link></li>
                   </ul>
                 </div>
 
@@ -267,8 +267,8 @@ const HelpCenter: React.FC = () => {
               </div>
 
               <div className="flex items-center gap-3">
-                <Button size="sm" style={{ background: colors.gradientPrimary, color: colors.primaryForeground }}>
-                  <a href="/auth/signin" className="flex items-center gap-2">Sign in <ArrowRight className="h-4 w-4" /></a>
+                <Button size="sm" asChild style={{ background: colors.gradientPrimary, color: colors.primaryForeground }}>
+                  <Link href="/auth/signin" className="flex items-center gap-2">Sign in <ArrowRight className="h-4 w-4" /></Link>
                 </Button>
               </div>
             </div>

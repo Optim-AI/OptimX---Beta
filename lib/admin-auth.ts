@@ -3,7 +3,16 @@
 
 import crypto from 'crypto';
 
-const ADMIN_TOKEN_SECRET = process.env.ADMIN_TOKEN_SECRET || crypto.randomBytes(32).toString('hex');
+const DEV_ONLY_ADMIN_TOKEN_SECRET = 'dev-only-admin-token-secret-not-for-production';
+
+function getAdminTokenSecret(): string {
+  const fromEnv = (process.env.ADMIN_TOKEN_SECRET || '').trim();
+  if (fromEnv) return fromEnv;
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('ADMIN_TOKEN_SECRET must be set in production');
+  }
+  return DEV_ONLY_ADMIN_TOKEN_SECRET;
+}
 
 function getAdminCredentials() {
   const username = process.env.ADMIN_USERNAME || 'admin';
@@ -43,7 +52,10 @@ export function generateAdminToken(username: string): string {
     timestamp: Date.now(),
     role: 'admin',
   });
-  const signature = crypto.createHmac('sha256', ADMIN_TOKEN_SECRET).update(payload).digest('hex');
+  const signature = crypto
+    .createHmac('sha256', getAdminTokenSecret())
+    .update(payload)
+    .digest('hex');
   return Buffer.from(`${payload}.${signature}`).toString('base64');
 }
 
@@ -55,7 +67,10 @@ export function verifyAdminToken(token: string): { valid: boolean; username?: st
 
     const payload = decoded.slice(0, lastDot);
     const signature = decoded.slice(lastDot + 1);
-    const expected = crypto.createHmac('sha256', ADMIN_TOKEN_SECRET).update(payload).digest('hex');
+    const expected = crypto
+      .createHmac('sha256', getAdminTokenSecret())
+      .update(payload)
+      .digest('hex');
 
     if (expected.length !== signature.length) return { valid: false };
     if (!crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature))) {

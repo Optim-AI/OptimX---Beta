@@ -1233,7 +1233,7 @@ export default function Analytics(): JSX.Element {
           </div>
         ) : !recsRequested ? (
           <div className="text-sm" style={{ color: colors.mutedForeground }}>
-            No recommendations yet. Click "Get Recommendations".
+            No recommendations yet. Click &quot;Get Recommendations&quot;.
           </div>
         ) : rightPanelRecs.length > 0 ? (
           <div className="space-y-3">

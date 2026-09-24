@@ -2,7 +2,21 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
-const NEXT_PUBLIC_BASE_URL = process.env.NEXT_PUBLIC_BASE_URL ?? "http://localhost:3000";
+function getRecommendationsBaseUrl(): string {
+  const configured = (
+    process.env.NEXT_PUBLIC_BASE_URL ||
+    process.env.NEXT_PUBLIC_APP_URL ||
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    ""
+  )
+    .trim()
+    .replace(/\/$/, "");
+  if (configured) return configured;
+  if (process.env.NODE_ENV === "development") return "http://localhost:3000";
+  throw new Error(
+    "NEXT_PUBLIC_BASE_URL, NEXT_PUBLIC_APP_URL, or NEXT_PUBLIC_SITE_URL must be configured in production"
+  );
+}
 
 let _supabaseAdmin: SupabaseClient | null = null;
 function getSupabaseAdmin(): SupabaseClient {
@@ -212,7 +226,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const range = incoming.range ?? null;
 
     // Try real Meta AI
-    const aiAttempt = await callInternalMetaAI(NEXT_PUBLIC_BASE_URL, token, {
+    const aiAttempt = await callInternalMetaAI(getRecommendationsBaseUrl(), token, {
       metrics,
       range,
     });

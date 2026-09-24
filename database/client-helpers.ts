@@ -155,18 +155,10 @@ export const creditsClient = {
    * Deduct credits from user account
    * Replaces: supabase.rpc("decrement_credit", { user_id: userId })
    */
-  async deduct(amount = 1) {
-    const response = await apiFetch('/api/credits/deduct', {
-      method: 'POST',
-      body: JSON.stringify({ amount }),
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || 'Failed to deduct credits');
-    }
-
-    return response.json();
+  async deduct(_amount = 1) {
+    throw new Error(
+      'Direct credit deduction is disabled. Credits are consumed by generation APIs only.'
+    );
   },
 
   /**

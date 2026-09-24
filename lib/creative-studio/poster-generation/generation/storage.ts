@@ -20,7 +20,7 @@ export async function storePosterGeneratedImage(options: {
   const contentType = options.contentType || "image/png";
   const storagePath = `poster-generation/${options.userId}/${options.sessionId}/${options.generationId}.png`;
 
-  const { supabaseAdmin } = await import("@/auth/supabase/client");
+  const { supabaseAdmin } = await import("@/auth/supabase/admin");
   const { error } = await supabaseAdmin.storage
     .from(BUCKET)
     .upload(storagePath, options.buffer, {

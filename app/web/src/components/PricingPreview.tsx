@@ -2,7 +2,7 @@
 
 import ContactForPricing from './ContactForPricing';
 
-// Pricing is removed from the homepage and replaced by the pricing contact form CTA.
+/** Homepage pricing: Starter / Growth / Pro subscription cards. */
 export default function PricingPreview() {
   return <ContactForPricing />;
 }

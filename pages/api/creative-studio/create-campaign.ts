@@ -1,6 +1,6 @@
 // pages/api/creative-studio/create-campaign.ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import { supabaseAdmin } from "@/auth/supabase/client"; // Keep for storage operations
+import { supabaseAdmin } from "@/auth/supabase/admin"; // Keep for storage operations
 import { getUserIdFromRequest } from "@/auth/request";
 import { CampaignDAO } from "@/database/models/Campaign.dao";
 import { GeneratedImageDAO } from "@/database/models/GeneratedImage.dao";

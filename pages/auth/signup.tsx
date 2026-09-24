@@ -7,6 +7,7 @@ import { supabase } from '@/auth/supabase/client';
 import { authFetch } from '@/lib/utils';
 import colors from '@/lib/ui/colors';
 import { profileClient } from '@/database/client-helpers';
+import { getAuthRedirectUrl, getSafeNextPath } from '@/lib/routing/safe-next';
 
 export default function SignUpPage(): React.ReactElement {
   const router = useRouter();
@@ -100,7 +101,6 @@ export default function SignUpPage(): React.ReactElement {
   }
 
   useEffect(() => {
-    // Upsert profile and redirect to welcome (no subscription check needed for pay-as-you-go)
     async function checkAndRedirect(user: any) {
       try {
         await upsertProfile(user);
@@ -108,8 +108,7 @@ export default function SignUpPage(): React.ReactElement {
         console.error('upsert failed:', err);
       }
 
-      // Redirect directly to welcome page
-      router.replace('/welcome');
+      router.replace(getSafeNextPath(router.query.next, '/welcome'));
     }
 
     // If already signed in, check subscription
@@ -148,7 +147,7 @@ export default function SignUpPage(): React.ReactElement {
     setError(null);
     setInfo(null);
     try {
-      const redirectTo = `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/welcome`;
+      const redirectTo = getAuthRedirectUrl(getSafeNextPath(router.query.next, '/welcome'));
       const { data, error: oauthError } = await supabase.auth.signInWithOAuth({
         provider,
         options: { redirectTo },
@@ -209,7 +208,7 @@ export default function SignUpPage(): React.ReactElement {
           console.error('upsert after signUp failed:', err);
         }
         // redirect directly to welcome (pay-as-you-go - no plan required)
-        router.replace('/welcome');
+        router.replace(getSafeNextPath(router.query.next, '/welcome'));
         return;
       }
 
@@ -621,8 +620,8 @@ export default function SignUpPage(): React.ReactElement {
               </div>
 
               <div className="helper-row" style={{ marginTop: 6 }}>
-                <a href="/auth/signin" onClick={(e) => { e.preventDefault(); router.push('/auth/signin'); }}>Already have an account? Sign in</a>
-                <a href="/help-center" className="secondary" onClick={(e) => { e.preventDefault(); router.push('/help-center'); }}>Need help?</a>
+                <Link href="/auth/signin" onClick={(e) => { e.preventDefault(); router.push(typeof router.query.next === 'string' ? `/auth/signin?next=${encodeURIComponent(getSafeNextPath(router.query.next, '/try'))}` : '/auth/signin'); }}>Already have an account? Sign in</Link>
+                <Link href="/help-center" className="secondary" onClick={(e) => { e.preventDefault(); router.push('/help-center'); }}>Need help?</Link>
               </div>
 
               {error && <div className="msg" style={{ color: '#d9534f' }}>{error}</div>}

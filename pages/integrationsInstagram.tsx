@@ -848,7 +848,7 @@ export default function IntegrationsInstagram() {
           {loadingLeads ? (
             <p>Loading leads from Facebook...</p>
           ) : leads.length === 0 ? (
-            <p className="text-gray-500">No leads found. Click "Fetch Leads (from Facebook)".</p>
+            <p className="text-gray-500">No leads found. Click &quot;Fetch Leads (from Facebook)&quot;.</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="min-w-full border border-gray-200 rounded-lg shadow-sm">
@@ -1021,7 +1021,7 @@ export default function IntegrationsInstagram() {
 
                   <div className="mt-3 space-y-2">
                     {(adSetsByCampaign[c.id] ?? []).length === 0 ? (
-                      <div className="text-sm text-gray-500">No ad sets loaded. Click "View Ad Sets".</div>
+                      <div className="text-sm text-gray-500">No ad sets loaded. Click &quot;View Ad Sets&quot;.</div>
                     ) : (
                       adSetsByCampaign[c.id].map((as) => (
                         <div key={as.id} className="border rounded p-2 bg-white">
@@ -1047,7 +1047,7 @@ export default function IntegrationsInstagram() {
 
                           <div className="mt-2">
                             {(adsByAdSet[as.id] ?? []).length === 0 ? (
-                              <div className="text-sm text-gray-500">No ads loaded. Click "View Ads".</div>
+                              <div className="text-sm text-gray-500">No ads loaded. Click &quot;View Ads&quot;.</div>
                             ) : (
                               <div className="space-y-2">
                                 {(adsByAdSet[as.id] ?? []).map((ad) => (
@@ -1077,9 +1077,9 @@ export default function IntegrationsInstagram() {
 
         {/* Comments viewer */}
         <div className="mb-6 border p-4 rounded">
-          <h4 className="font-medium mb-2">Comments Viewer (click "View Comments")</h4>
+          <h4 className="font-medium mb-2">Comments Viewer (click &quot;View Comments&quot;)</h4>
           {Object.keys(postComments).length === 0 ? (
-            <p className="text-gray-500">No comments loaded. Click "View Comments" on a post to load them.</p>
+            <p className="text-gray-500">No comments loaded. Click &quot;View Comments&quot; on a post to load them.</p>
           ) : (
             <div className="space-y-3 max-h-64 overflow-auto">
               {Object.entries(postComments).map(([postId, comments]) => (

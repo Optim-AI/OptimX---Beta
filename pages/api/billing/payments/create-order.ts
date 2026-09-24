@@ -6,6 +6,7 @@ import { PaymentsDAO } from '@/database/models/Payments.dao';
 import { VoucherDAO } from '@/database/models/Voucher.dao';
 import { calculateTotalsInrFromDb } from '@/lib/billing/pricing.server';
 import { getMinQuantity, getMaxQuantity } from '@/lib/billing/pricing';
+import { isValidVideoPurchaseQuantity, VIDEO_CREDIT_BLOCK_SIZE } from '@/lib/billing/video-credits';
 
 /**
  * POST /api/billing/payments/create-order
@@ -30,7 +31,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const { creditType, credits, billingEmail, voucherId } = req.body;
 
-    // Validate inputs
     if (!creditType || (creditType !== 'image' && creditType !== 'video')) {
       return res.status(400).json({ error: 'Valid credit type (image or video) is required' });
     }
@@ -42,21 +42,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const minQty = getMinQuantity(creditType);
     const maxQty = getMaxQuantity(creditType);
-    if (creditsNum < minQty || creditsNum > maxQty) {
+
+    if (creditType === 'video') {
+      if (!isValidVideoPurchaseQuantity(creditsNum)) {
+        return res.status(400).json({
+          error: `Video credits must be at least ${minQty} and a multiple of 300 (e.g. 600, 900, 1200)`,
+        });
+      }
+    } else if (creditsNum < minQty || creditsNum > maxQty) {
       return res.status(400).json({
         error: `Credits must be between ${minQty} and ${maxQty}`,
-      });
-    }
-    if (creditType === 'video' && creditsNum % 8 !== 0) {
-      return res.status(400).json({
-        error: 'Video credits must be a multiple of 8 seconds',
       });
     }
 
     // IMPORTANT: compute amount server-side (never trust client-sent amount)
     const totals = await calculateTotalsInrFromDb({ creditType, credits: creditsNum });
 
-    // Validate voucher if provided
     let voucherCredits = 0;
     if (voucherId) {
       const validation = await VoucherDAO.validateForRedemption(voucherId, userId, creditType);
@@ -66,15 +67,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       voucherCredits = validation.voucher!.credits;
     }
 
-    // Create Razorpay order
     const order = await razorpay.orders.create({
-      amount: totals.totalInr * 100, // Razorpay uses paise
+      amount: totals.totalInr * 100, // GST-inclusive paise
       currency: 'INR',
       receipt: `credit_${creditType}_${creditsNum}_${Date.now()}`,
       notes: {
         user_id: userId,
         credit_type: creditType,
         credits: creditsNum.toString(),
+        unit: creditType === 'video' ? 'video_credits' : 'image_credits',
         subtotal_inr: totals.subtotalInr.toString(),
         gst_rate: totals.gstRate.toString(),
         gst_amount_inr: totals.gstAmountInr.toString(),
@@ -83,11 +84,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       },
     });
 
-    // Create payment record
     const paymentType = creditType === 'image' ? 'image_topup' : 'video_topup';
     const payment = await PaymentsDAO.create({
       userId,
-      creditPackId: null, // No pack ID for custom purchases
+      creditPackId: null,
       razorpayOrderId: order.id,
       amount: totals.totalInr,
       currency: 'INR',
@@ -96,10 +96,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       metadata: {
         creditType,
         credits: creditsNum,
+        unit: creditType === 'video' ? 'video_credits' : 'image_credits',
+        videoCreditBlockSize: creditType === 'video' ? VIDEO_CREDIT_BLOCK_SIZE : undefined,
         subtotalInr: totals.subtotalInr,
         gstRate: totals.gstRate,
         gstAmountInr: totals.gstAmountInr,
         totalInr: totals.totalInr,
+        unitPriceInr: totals.unitPriceInr,
         ...(billingEmail ? { billingEmail } : {}),
         ...(voucherId ? { voucherId, voucherCredits } : {}),
       },
@@ -109,7 +112,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       success: true,
       orderId: payment.id,
       razorpayOrderId: order.id,
-      // Razorpay checkout expects amount in paise
       amount: totals.totalInr * 100,
       currency: 'INR',
       key: RAZORPAY_KEY_ID,
@@ -117,6 +119,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       gstRate: totals.gstRate,
       gstAmountInr: totals.gstAmountInr,
       totalInr: totals.totalInr,
+      unitPriceInr: totals.unitPriceInr,
       ...(voucherCredits > 0 ? { voucherCredits } : {}),
     });
   } catch (error: any) {

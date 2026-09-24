@@ -155,7 +155,7 @@ export default function AdminDashboard() {
   const [imageRetentionDays, setImageRetentionDays] = useState<number>(7);
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
-  const [creditPricing, setCreditPricing] = useState({ imageCreditPriceInr: 10, videoSecondPriceInr: 26 });
+  const [creditPricing, setCreditPricing] = useState({ imageCreditPriceInr: 10, videoCreditBlockPriceInr: 699 });
   const [savingCreditPricing, setSavingCreditPricing] = useState(false);
 
   // Vouchers state
@@ -402,7 +402,7 @@ export default function AdminDashboard() {
       if (result.success) {
         setCreditPricing({
           imageCreditPriceInr: result.imageCreditPriceInr,
-          videoSecondPriceInr: result.videoSecondPriceInr,
+          videoCreditBlockPriceInr: result.videoCreditBlockPriceInr ?? 699,
         });
       }
     } catch (err: any) {
@@ -1038,7 +1038,7 @@ export default function AdminDashboard() {
                           </td>
                           <td className="price">₹{plan.priceInr}</td>
                           <td>{plan.imageCredits}</td>
-                          <td>{plan.videoCredits}s</td>
+                          <td>{plan.videoCredits}</td>
                           <td>
                             <label className="toggle-switch">
                               <input
@@ -1295,7 +1295,7 @@ export default function AdminDashboard() {
                             <span className="billing-badge">{user.plan}</span>
                           </td>
                           <td>{user.imageCredits}</td>
-                          <td>{user.videoCredits}s</td>
+                          <td>{user.videoCredits}</td>
                           <td style={{ whiteSpace: 'nowrap' }}>{user.createdAt ? formatDate(user.createdAt) : '—'}</td>
                           <td>
                             <button
@@ -1337,7 +1337,7 @@ export default function AdminDashboard() {
               <div style={{ maxWidth: '480px' }}>
                 <p style={{ fontSize: '14px', color: '#64748b', marginBottom: '20px', lineHeight: 1.6 }}>
                   Generated poster images in chat sessions are automatically removed after this many days.
-                  Images saved to a user's library are exempt from deletion. Set to 0 to expire immediately on next load.
+                  Images saved to a user&apos;s library are exempt from deletion. Set to 0 to expire immediately on next load.
                 </p>
 
                 <div className="form-group">
@@ -1383,7 +1383,7 @@ export default function AdminDashboard() {
 
               <div style={{ maxWidth: '480px' }}>
                 <p style={{ fontSize: '14px', color: '#64748b', marginBottom: '20px', lineHeight: 1.6 }}>
-                  Set the per-unit price for image credits and video seconds. These prices are used on the Buy Credits page and for order calculations.
+                  Set the per-unit price for image credits and Video Credits. Video pricing is the price for <strong>100 Video Credits</strong> (≈5 seconds of capacity). These prices are used on the Buy Credits page and for order calculations.
                 </p>
 
                 <div className="form-group" style={{ marginBottom: '16px' }}>
@@ -1406,17 +1406,17 @@ export default function AdminDashboard() {
                 </div>
 
                 <div className="form-group" style={{ marginBottom: '16px' }}>
-                  <label>Price per video second (₹)</label>
+                  <label>Price per 100 Video Credits (₹)</label>
                   <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
                     <input
                       type="number"
                       min={1}
                       step={1}
-                      value={creditPricing.videoSecondPriceInr}
+                      value={creditPricing.videoCreditBlockPriceInr}
                       onChange={(e) =>
                         setCreditPricing((prev) => ({
                           ...prev,
-                          videoSecondPriceInr: parseFloat(e.target.value) || 0,
+                          videoCreditBlockPriceInr: parseFloat(e.target.value) || 0,
                         }))
                       }
                       style={{ width: '120px' }}
@@ -1444,7 +1444,7 @@ export default function AdminDashboard() {
                   </button>
                 </div>
                 <span className="help-text">
-                  Default: ₹10 per image credit, ₹26 per video second.
+                  Default: ₹10 per image credit, ₹699 per 100 Video Credits (15s = 300 credits, 30s = 600 credits).
                 </span>
               </div>
             </div>
@@ -1888,7 +1888,7 @@ export default function AdminDashboard() {
 
                 <div className="report-detail-item">
                   <label>Video Credits</label>
-                  <span className="detail-value" style={{ fontWeight: 700 }}>{selectedUser.videoCredits}s</span>
+                  <span className="detail-value" style={{ fontWeight: 700 }}>{selectedUser.videoCredits}</span>
                 </div>
 
                 <div className="report-detail-item">

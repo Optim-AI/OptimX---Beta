@@ -21,7 +21,7 @@ export function InsufficientCreditsAlert({ type, onClose }: InsufficientCreditsA
       <div className="alert-content">
         <h3>Insufficient {type === 'image' ? 'Image' : 'Video'} Credits</h3>
         <p>
-          You don't have enough credits to generate {type === 'image' ? 'images' : 'videos'}. Purchase more
+          You don&apos;t have enough credits to generate {type === 'image' ? 'images' : 'videos'}. Purchase more
           credits to continue creating.
         </p>
       </div>

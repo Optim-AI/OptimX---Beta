@@ -780,7 +780,7 @@ export default function ImageLibraryPage(): JSX.Element {
             ) : images.length === 0 ? (
               <div style={{ color: colors.mutedForeground }}>
                 No generated images found. Create a campaign to generate images
-                and they'll appear here.
+                and they&apos;ll appear here.
               </div>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">

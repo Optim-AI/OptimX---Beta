@@ -6,6 +6,7 @@ import { useRouter } from "next/router";
 import { supabase } from '@/auth/supabase/client';
 import colors from '@/lib/ui/colors';
 import { profileClient } from '@/database/client-helpers';
+import { getAuthRedirectUrl, getSafeNextPath } from '@/lib/routing/safe-next';
 
 export default function SignInPage(): React.ReactElement {
   const router = useRouter();
@@ -137,8 +138,7 @@ export default function SignInPage(): React.ReactElement {
           } catch (e) {
             console.error("error upserting profile on SIGNED_IN:", e);
           } finally {
-            // keep original behaviour: redirect to welcome
-            router.replace("/welcome");
+            router.replace(getSafeNextPath(router.query.next, "/welcome"));
           }
         }
       }
@@ -171,7 +171,7 @@ export default function SignInPage(): React.ReactElement {
           } catch (e) {
             console.error("error upserting profile on mount:", e);
           }
-          router.replace("/welcome");
+          router.replace(getSafeNextPath(router.query.next, "/welcome"));
         }
       } catch (e) {
         // ignore, but log for debugging
@@ -195,10 +195,9 @@ export default function SignInPage(): React.ReactElement {
 
     setLoading(true);
     try {
-      const isDev = process.env.NODE_ENV === "development";
-      const redirectTo = isDev
-        ? "http://localhost:3000/welcome"
-        : `${process.env.NEXT_PUBLIC_SITE_URL || "https://optimx.app"}/welcome`;
+      const redirectTo = getAuthRedirectUrl(
+        getSafeNextPath(router.query.next, "/welcome")
+      );
 
       const { data, error: signError } = await supabase.auth.signInWithOtp({
         email,
@@ -246,7 +245,7 @@ export default function SignInPage(): React.ReactElement {
             console.error("upsert after password sign-in failed:", err);
           }
         }
-        router.replace("/welcome");
+        router.replace(getSafeNextPath(router.query.next, "/welcome"));
       }
     } catch (e: any) {
       setError(e?.message ?? String(e));
@@ -259,9 +258,9 @@ export default function SignInPage(): React.ReactElement {
     setError(null);
     setInfo(null);
     try {
-      const redirectTo = `${
-        process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"
-      }/welcome`;
+      const redirectTo = getAuthRedirectUrl(
+        getSafeNextPath(router.query.next, "/welcome")
+      );
       const { data, error: oauthError } = await supabase.auth.signInWithOAuth({
         provider,
         options: { redirectTo },
@@ -665,13 +664,13 @@ export default function SignInPage(): React.ReactElement {
 
                   {/* helper row with New user and Forgot password */}
                   <div className="helper-row" role="group" aria-label="Password helpers">
-                    <a href="/auth/signup" onClick={(e) => { e.preventDefault(); router.push("/auth/signup"); }}>
+                    <Link href="/auth/signup" onClick={(e) => { e.preventDefault(); router.push(typeof router.query.next === "string" ? `/auth/signup?next=${encodeURIComponent(getSafeNextPath(router.query.next, "/try"))}` : "/auth/signup"); }}>
                       New user? Create account
-                    </a>
+                    </Link>
 
-                    <a href="/auth/forgot-password" className="secondary" onClick={(e) => { e.preventDefault(); router.push("/auth/forgot-password"); }}>
+                    <Link href="/auth/forgot-password" className="secondary" onClick={(e) => { e.preventDefault(); router.push("/auth/forgot-password"); }}>
                       Forgot password?
-                    </a>
+                    </Link>
                   </div>
                 </div>
               )}

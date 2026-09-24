@@ -278,7 +278,7 @@ export default function ReportPage() {
             >
               <CheckCircle size={20} />
               <span className="flex-1 text-sm font-medium">
-                Report submitted successfully. We'll review it shortly.
+                Report submitted successfully. We&apos;ll review it shortly.
               </span>
               <button
                 onClick={() => setSuccessBanner(false)}

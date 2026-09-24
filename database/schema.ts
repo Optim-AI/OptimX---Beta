@@ -218,7 +218,7 @@ export const subscriptions = pgTable("subscriptions", {
 	id: uuid().primaryKey().notNull().defaultRandom(),
 	userId: uuid("user_id").notNull(),
 	planId: text("plan_id").notNull().references(() => plans.id),
-	status: text().notNull(), // 'trialing' | 'active' | 'cancelled' | 'expired' | 'past_due'
+	status: text().notNull(), // 'pending' | 'trialing' | 'active' | 'cancelled' | 'expired' | 'past_due'
 	razorpaySubscriptionId: text("razorpay_subscription_id"),
 	razorpayCustomerId: text("razorpay_customer_id"),
 	currentPeriodStart: timestamp("current_period_start", { withTimezone: true, mode: 'string' }).notNull(),
@@ -226,12 +226,42 @@ export const subscriptions = pgTable("subscriptions", {
 	trialEndsAt: timestamp("trial_ends_at", { withTimezone: true, mode: 'string' }),
 	nextResetDate: timestamp("next_reset_date", { withTimezone: true, mode: 'string' }).notNull(),
 	cancelledAt: timestamp("cancelled_at", { withTimezone: true, mode: 'string' }),
+	/** User requested cancel; remains usable until current_period_end (Razorpay cancel_at_cycle_end). */
+	cancelAtPeriodEnd: boolean("cancel_at_period_end").notNull().default(false),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 }, (table) => [
 	index("idx_subscriptions_user_active").using("btree", table.userId.asc().nullsLast()).where(sql`${table.status} IN ('trialing', 'active')`),
 	index("idx_subscriptions_status").using("btree", table.status.asc().nullsLast()),
 	index("idx_subscriptions_next_reset").using("btree", table.nextResetDate.asc().nullsLast()).where(sql`${table.status} IN ('trialing', 'active')`),
+	index("idx_subscriptions_cancel_at_period_end").using("btree", table.cancelAtPeriodEnd.asc().nullsLast()).where(sql`${table.cancelAtPeriodEnd} = true`),
+]);
+
+/**
+ * subscription_cycles — one entitlement grant per successful Razorpay subscription charge.
+ * Idempotency: unique idempotency_key + unique razorpay_payment_id.
+ */
+export const subscriptionCycles = pgTable("subscription_cycles", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	subscriptionId: uuid("subscription_id").notNull().references(() => subscriptions.id, { onDelete: 'cascade' }),
+	userId: uuid("user_id").notNull(),
+	planId: text("plan_id").notNull().references(() => plans.id),
+	razorpayPaymentId: text("razorpay_payment_id").notNull(),
+	periodStart: timestamp("period_start", { withTimezone: true, mode: 'string' }).notNull(),
+	periodEnd: timestamp("period_end", { withTimezone: true, mode: 'string' }).notNull(),
+	imageCreditsGranted: integer("image_credits_granted").notNull(),
+	videoCreditsGranted: integer("video_credits_granted").notNull(),
+	status: text().notNull().default('pending'), // 'pending' | 'provisioned' | 'failed'
+	idempotencyKey: text("idempotency_key").notNull(),
+	metadata: jsonb(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (table) => [
+	uniqueIndex("subscription_cycles_idempotency_key_unique").on(table.idempotencyKey),
+	uniqueIndex("subscription_cycles_razorpay_payment_id_unique").on(table.razorpayPaymentId),
+	index("idx_subscription_cycles_subscription").using("btree", table.subscriptionId.asc().nullsLast()),
+	index("idx_subscription_cycles_user").using("btree", table.userId.asc().nullsLast()),
+	index("idx_subscription_cycles_status").using("btree", table.status.asc().nullsLast()),
 ]);
 
 // credit_packs table
@@ -266,6 +296,9 @@ export const payments = pgTable("payments", {
 }, (table) => [
 	index("idx_payments_user").using("btree", table.userId.asc().nullsLast()),
 	index("idx_payments_razorpay").using("btree", table.razorpayPaymentId.asc().nullsLast()).where(sql`${table.razorpayPaymentId} IS NOT NULL`),
+	uniqueIndex("idx_payments_razorpay_payment_id_unique")
+		.on(table.razorpayPaymentId)
+		.where(sql`${table.razorpayPaymentId} IS NOT NULL`),
 	index("idx_payments_status").using("btree", table.status.asc().nullsLast()),
 ]);
 
@@ -290,7 +323,7 @@ export const creditHistory = pgTable("credit_history", {
 	userId: uuid("user_id").notNull(),
 	creditType: text("credit_type").notNull(), // 'image' | 'video'
 	amount: integer().notNull(),
-	operation: text().notNull(), // 'add' | 'deduct' | 'reset' | 'expire'
+	operation: text().notNull(), // 'add' | 'deduct' | 'reset' | 'expire' | 'reserve' | 'release' | 'consume' | 'migrate'
 	source: text().notNull(),
 	balanceAfter: integer("balance_after").notNull(),
 	metadata: jsonb(),
@@ -298,6 +331,52 @@ export const creditHistory = pgTable("credit_history", {
 }, (table) => [
 	index("idx_credit_history_user").using("btree", table.userId.asc().nullsLast()),
 	index("idx_credit_history_created").using("btree", table.createdAt.asc().nullsLast()),
+]);
+
+/**
+ * credit_reservations — DB-backed hold on credits for in-flight generation.
+ * Available balance = wallet total − sum(status='reserved' amounts).
+ * On success: status → consumed (credits already deducted at reserve time).
+ * On failure: status → released and credits returned to addon.
+ */
+export const creditReservations = pgTable("credit_reservations", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	userId: uuid("user_id").notNull(),
+	creditType: text("credit_type").notNull(), // 'image' | 'video'
+	amount: integer().notNull(),
+	status: text().notNull().default('reserved'), // 'reserved' | 'consumed' | 'released'
+	purpose: text().notNull(), // e.g. 'video_generation'
+	referenceId: text("reference_id"),
+	/** How much came from subscription vs addon at reserve time (for release). */
+	fromSubscription: integer("from_subscription").notNull().default(0),
+	fromAddon: integer("from_addon").notNull().default(0),
+	metadata: jsonb(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (table) => [
+	index("idx_credit_reservations_user").using("btree", table.userId.asc().nullsLast()),
+	index("idx_credit_reservations_status").using("btree", table.status.asc().nullsLast()),
+	index("idx_credit_reservations_reference").using("btree", table.referenceId.asc().nullsLast()),
+	uniqueIndex("idx_credit_reservations_active_reference")
+		.on(table.userId, table.referenceId)
+		.where(sql`${table.status} = 'reserved' AND ${table.referenceId} IS NOT NULL`),
+]);
+
+/**
+ * generation_job_locks — cross-instance idempotency for commercial video generation.
+ * Same logical referenceId → at most one in-progress provider job.
+ */
+export const generationJobLocks = pgTable("generation_job_locks", {
+	lockKey: text("lock_key").primaryKey().notNull(),
+	userId: uuid("user_id").notNull(),
+	status: text().notNull(), // 'in_progress' | 'completed' | 'failed'
+	reservationId: uuid("reservation_id"),
+	resultSummary: jsonb("result_summary"),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (table) => [
+	index("idx_generation_job_locks_user").using("btree", table.userId.asc().nullsLast()),
+	index("idx_generation_job_locks_status").using("btree", table.status.asc().nullsLast()),
 ]);
 
 // vouchers table

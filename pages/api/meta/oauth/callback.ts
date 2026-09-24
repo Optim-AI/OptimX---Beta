@@ -1,7 +1,7 @@
 // pages/api/meta/oauth/callback.ts
 import type { NextApiRequest, NextApiResponse } from "next";
 import { decodeState } from '@/auth/helpers';
-import { supabaseAdmin } from '@/auth/supabase/client';
+import { supabaseAdmin } from '@/auth/supabase/admin';
 import { storeOAuthSession } from '@/integrations/meta/oauth-session';
 
 const VERSION = process.env.FACEBOOK_API_VERSION || "23.0";

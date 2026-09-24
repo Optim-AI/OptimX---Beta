@@ -70,6 +70,35 @@ export class SubscriptionsDAO {
   }
 
   /**
+   * Open subscription for a user: active, trialing, pending checkout, or past_due.
+   * Used to prevent duplicate subscription creates before payment completes.
+   */
+  static async getOpenByUserId(userId: string): Promise<SubscriptionWithPlan | null> {
+    const result = await db
+      .select({
+        ...getTableColumns(subscriptions),
+        plan: plans,
+      })
+      .from(subscriptions)
+      .innerJoin(plans, eq(subscriptions.planId, plans.id))
+      .where(
+        and(
+          eq(subscriptions.userId, userId),
+          inArray(subscriptions.status, ['active', 'trialing', 'pending', 'past_due'])
+        )
+      )
+      .limit(1);
+
+    if (!result[0]) return null;
+
+    const { plan, ...subscriptionData } = result[0];
+    return {
+      ...subscriptionData,
+      plan,
+    };
+  }
+
+  /**
    * Get subscription by Razorpay subscription ID
    */
   static async getByRazorpayId(razorpaySubscriptionId: string): Promise<Subscription | null> {
@@ -91,11 +120,67 @@ export class SubscriptionsDAO {
       .set({ 
         status, 
         updatedAt: now,
-        ...(status === 'cancelled' ? { cancelledAt: now } : {}),
+        ...(status === 'cancelled' || status === 'expired'
+          ? { cancelledAt: now, cancelAtPeriodEnd: false }
+          : {}),
       })
       .where(eq(subscriptions.id, id))
       .returning();
     return updated || null;
+  }
+
+  /**
+   * Schedule cancellation at period end. Keeps status active/past_due/trialing.
+   * Does NOT zero credits.
+   */
+  static async scheduleCancelAtPeriodEnd(id: string): Promise<Subscription | null> {
+    const now = new Date().toISOString();
+    const [updated] = await db
+      .update(subscriptions)
+      .set({
+        cancelAtPeriodEnd: true,
+        cancelledAt: now, // request timestamp; access remains until current_period_end
+        updatedAt: now,
+      })
+      .where(eq(subscriptions.id, id))
+      .returning();
+    return updated || null;
+  }
+
+  /**
+   * Mark subscription past_due (payment failure / halted). No cycle grant.
+   */
+  static async markPastDue(id: string): Promise<Subscription | null> {
+    const [updated] = await db
+      .update(subscriptions)
+      .set({
+        status: 'past_due',
+        updatedAt: new Date().toISOString(),
+      })
+      .where(
+        and(
+          eq(subscriptions.id, id),
+          inArray(subscriptions.status, ['active', 'pending', 'past_due', 'trialing'])
+        )
+      )
+      .returning();
+    return updated || null;
+  }
+
+  /**
+   * Subscriptions scheduled to cancel whose period has ended (webhook safety net).
+   */
+  static async getDueForPeriodEndCancel(asOf: Date = new Date()): Promise<Subscription[]> {
+    return db
+      .select()
+      .from(subscriptions)
+      .where(
+        and(
+          eq(subscriptions.cancelAtPeriodEnd, true),
+          inArray(subscriptions.status, ['active', 'past_due', 'trialing']),
+          lte(subscriptions.currentPeriodEnd, asOf.toISOString())
+        )
+      );
   }
 
   /**
@@ -119,18 +204,27 @@ export class SubscriptionsDAO {
   }
 
   /**
-   * Activate subscription (change from trialing to active)
+   * Activate subscription (pending/trialing → active). Idempotent if already active.
    */
   static async activate(id: string): Promise<Subscription | null> {
+    const existing = await this.getById(id);
+    if (!existing) return null;
+    if (existing.status === 'active') return existing;
+
     const [updated] = await db
       .update(subscriptions)
       .set({ 
         status: 'active',
         updatedAt: new Date().toISOString(),
       })
-      .where(eq(subscriptions.id, id))
+      .where(
+        and(
+          eq(subscriptions.id, id),
+          inArray(subscriptions.status, ['pending', 'trialing', 'past_due'])
+        )
+      )
       .returning();
-    return updated || null;
+    return updated || existing;
   }
 
   /**

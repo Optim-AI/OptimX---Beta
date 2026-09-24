@@ -18,6 +18,8 @@ export { GeneratedImageDAO } from './models/GeneratedImage.dao';
 export { PlansDAO } from './models/Plans.dao';
 export { SubscriptionsDAO } from './models/Subscriptions.dao';
 export { PaymentsDAO, WebhookEventsDAO } from './models/Payments.dao';
+export { SubscriptionCyclesDAO } from './models/SubscriptionCycles.dao';
+export { GenerationLocksDAO } from './models/GenerationLocks.dao';
 
 // Reports DAO
 export { ReportDAO } from './models/Report.dao';
@@ -53,6 +55,8 @@ export {
   payments,
   webhookEvents,
   creditHistory,
+  creditReservations,
+  subscriptionCycles,
   // Reports
   reports,
 } from '@/database/schema';
@@ -82,6 +86,8 @@ import {
   payments,
   webhookEvents,
   creditHistory,
+  creditReservations,
+  subscriptionCycles,
   // Reports
   reports,
 } from '@/database/schema';
@@ -111,6 +117,7 @@ export type CreditPack = typeof creditPacks.$inferSelect;
 export type Payment = typeof payments.$inferSelect;
 export type WebhookEvent = typeof webhookEvents.$inferSelect;
 export type CreditHistory = typeof creditHistory.$inferSelect;
+export type SubscriptionCycle = typeof subscriptionCycles.$inferSelect;
 
 // Report types
 export type Report = typeof reports.$inferSelect;

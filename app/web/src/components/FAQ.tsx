@@ -14,20 +14,56 @@ type FAQItem = { question: string; answer: string };
 
 const FAQ: React.FC = () => {
   const { elementRef: titleRef, isVisible: titleVisible } = useScrollAnimation();
-  const { elementRef: accordionRef, isVisible: accordionVisible } = useScrollAnimation({ threshold: 0.1 });
+  const { elementRef: accordionRef, isVisible: accordionVisible } = useScrollAnimation({
+    threshold: 0.1,
+  });
 
   const faqs: FAQItem[] = [
-    { question: 'Do I need a marketing background?', answer: "No. SkalX AI handles copy, design, targeting, SEO, and insights for you. You get expert-level marketing without needing experience." },
-    { question: 'Which platforms are supported?', answer: 'Google, Meta (Facebook), Instagram, WhatsApp Business, LinkedIn. We integrate with all major advertising and social platforms.' },
-    { question: 'Can I track organic results too?', answer: 'Yes. You can track website rankings, organic traffic, engagement, and see how your paid and organic results work together.' },
-    { question: 'Can I hire freelancers or influencers?', answer: 'Yes. SkalX AI has a built-in marketplace to hire vetted designers, writers, videographers, and local influencers.' },
-    { question: 'How does AI targeting work?', answer: 'SkalX AI analyzes your business, competitors, and past winning campaigns in your industry to target the right audience — and improves automatically.' },
-    { question: 'What if I want to cancel?', answer: "Cancel anytime. Your data stays safe, and you can restart whenever you want." },
-    { question: 'How much should I budget for ads?', answer: 'Start with whatever you\'re comfortable with. SkalX AI works even with budgets as low as ₹100/day.' },
-    { question: 'Is my data secure?', answer: 'Yes. All data is encrypted and never shared with third parties.' },
-    { question: 'Do I need marketing experience to use SkalX AI?', answer: 'No. SkalX AI writes ads, builds audiences, launches campaigns, and generates reports for you.' },
-    { question: 'What makes SkalX AI different from Meta Ads / Google Ads / Canva / Buffer?', answer: 'Those are single tools. SkalX AI is the full growth system — ads, content, posting, SEO, analytics, brand voice, and influencers in one place.' },
-    { question: "I've tried ads before and lost money. What makes this different?", answer: 'SkalX AI helps you avoid waste. It alerts you when a campaign underperforms and suggests fixes so your money goes where it works.' },
+    {
+      question: 'Do I need a marketing background?',
+      answer:
+        'No. SkalX helps you create on-brand posters, ad creatives, and videos from your brand context — without needing a design or media team.',
+    },
+    {
+      question: 'What can SkalX create?',
+      answer:
+        'SkalX can generate AI posters, ad creatives, and short marketing videos, and help you plan campaign concepts and creative direction inside Brand Studio and Ad Studio.',
+    },
+    {
+      question: 'Which platforms can I use my creatives on?',
+      answer:
+        'Export campaign-ready assets and use them across the channels you already advertise on. Meta and other integrations continue to expand inside the product.',
+    },
+    {
+      question: 'How does SkalX understand my brand?',
+      answer:
+        'You share your website or a product image. SkalX analyzes brand signals like offering, audience cues, colors, and visual style to personalize creatives.',
+    },
+    {
+      question: 'Is there a free trial?',
+      answer:
+        'You can try SkalX through the Try Now experience. Plans and pay-as-you-go credits are available inside the product when you are ready to keep creating.',
+    },
+    {
+      question: 'What if I want to cancel?',
+      answer:
+        'You can cancel anytime from billing settings. Your account data stays available if you return later.',
+    },
+    {
+      question: 'Is my data secure?',
+      answer:
+        'Yes. Account and brand data are protected with encrypted connections and access controls. We do not sell your data.',
+    },
+    {
+      question: 'How is SkalX different from Canva or ad managers alone?',
+      answer:
+        'Canva and ad platforms are single tools. SkalX connects brand understanding with creative generation and campaign planning so you can move from brand to creative faster.',
+    },
+    {
+      question: 'Where do I see pricing?',
+      answer:
+        'Pricing is shown inside the Try Now journey after SkalX understands your brand — so you choose a plan after seeing personalized value, not before.',
+    },
   ];
 
   return (
@@ -37,7 +73,7 @@ const FAQ: React.FC = () => {
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
         <div
           ref={titleRef}
-          className={`text-center max-w-4xl mx-auto mb-16 transition-all duration-700`}
+          className="text-center max-w-4xl mx-auto mb-16 transition-all duration-700"
           style={{
             opacity: titleVisible ? 1 : 0,
             transform: titleVisible ? 'translateY(0)' : 'translateY(20px)',
@@ -45,22 +81,10 @@ const FAQ: React.FC = () => {
           }}
         >
           <h2 className="text-4xl md:text-[46px] font-normal mb-6" style={{ color: colors.foreground }}>
-            Frequently Asked{' '}
-            <span
-              className="gradient-text"
-              style={{
-                backgroundImage: colors.gradientHero,
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                backgroundClip: 'text',
-                color: 'transparent',
-              }}
-            >
-              Questions
-            </span>
+            Frequently Asked Questions
           </h2>
           <p className="text-xl font-extralight" style={{ color: colors.mutedForeground }}>
-            Got questions? We&apos;ve got answers. If you can&apos;t find what you&apos;re looking for, reach out at info@optimx.app.
+            Got questions? If you need more help, reach out at info@skalxai.app.
           </p>
         </div>
 
@@ -70,7 +94,8 @@ const FAQ: React.FC = () => {
           style={{
             opacity: accordionVisible ? 1 : 0,
             transform: accordionVisible ? 'translateY(0)' : 'translateY(20px)',
-            transition: 'opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1), transform 0.6s cubic-bezier(0.16, 1, 0.3, 1)',
+            transition:
+              'opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1), transform 0.6s cubic-bezier(0.16, 1, 0.3, 1)',
             transitionDelay: '0.1s',
           }}
         >
@@ -95,7 +120,10 @@ const FAQ: React.FC = () => {
                 >
                   {faq.question}
                 </AccordionTrigger>
-                <AccordionContent className="pb-6 leading-relaxed" style={{ color: colors.mutedForeground }}>
+                <AccordionContent
+                  className="pb-6 leading-relaxed"
+                  style={{ color: colors.mutedForeground }}
+                >
                   {faq.answer}
                 </AccordionContent>
               </AccordionItem>

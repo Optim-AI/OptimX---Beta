@@ -455,9 +455,9 @@ const CookiePolicy: React.FC = () => {
                 style={{ background: colors.gradientPrimary, color: colors.primaryForeground }}
                 asChild
               >
-                <a href="/auth/signin" className="flex items-center gap-2">
+                <Link href="/auth/signin" className="flex items-center gap-2">
                   Get Started <ArrowRight className="h-4 w-4" />
-                </a>
+                </Link>
               </Button>
             </div>
           </div>

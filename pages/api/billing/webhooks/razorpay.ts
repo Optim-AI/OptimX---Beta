@@ -2,7 +2,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { WebhookService, RAZORPAY_WEBHOOK_SECRET } from '@/lib/razorpay';
 
-// Disable body parsing - we need the raw body for signature verification
 export const config = {
   api: {
     bodyParser: false,
@@ -29,40 +28,41 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    // Read raw body
     const chunks: Buffer[] = [];
     for await (const chunk of req) {
       chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
     }
     const rawBody = Buffer.concat(chunks).toString('utf8');
 
-    // Get signature from header
     const signature = req.headers['x-razorpay-signature'] as string;
-    
+
     if (!signature) {
       console.error('Missing Razorpay signature');
       return res.status(401).json({ error: 'Missing signature' });
     }
 
-    // Verify signature
     const isValid = WebhookService.verifySignature(rawBody, signature);
     if (!isValid) {
       console.error('Invalid Razorpay signature');
       return res.status(401).json({ error: 'Invalid signature' });
     }
 
-    // Parse payload
     const payload = JSON.parse(rawBody);
-    
-    // Generate event ID from payload (Razorpay doesn't always include one)
-    const eventId = payload.id || `${payload.event}_${payload.created_at}_${Date.now()}`;
 
-    // Process webhook
+    const eventId = WebhookService.resolveEventId(
+      payload,
+      req.headers['x-razorpay-event-id']
+    );
+    if (!eventId) {
+      console.error('Unable to resolve stable Razorpay event id');
+      return res.status(400).json({ error: 'Missing event id' });
+    }
+
     const result = await WebhookService.processWebhook(payload, eventId);
 
     if (!result.success) {
       console.error('Webhook processing failed:', result.error);
-      // Still return 200 to prevent Razorpay from retrying
+      // Still return 200 to prevent infinite Razorpay retries for logic errors
       return res.status(200).json({ received: true, error: result.error });
     }
 

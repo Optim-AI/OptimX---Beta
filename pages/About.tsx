@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef } from "react";
+import Link from "next/link";
 import Header from "../app/web/src/components/Header";
 import Footer from "../app/web/src/components/Footer";
 // **As requested** — importing from your relative file path
@@ -116,7 +117,7 @@ export default function About() {
             style={{ color: addAlpha(colors.foreground, 0.8) }}
           >
             <blockquote className="text-2xl md:text-3xl font-light italic leading-relaxed">
-              "The best marketing doesn't feel like marketing at all."
+              &quot;The best marketing doesn&apos;t feel like marketing at all.&quot;
             </blockquote>
           </div>
         </section>
@@ -155,7 +156,7 @@ export default function About() {
                   style={{ color: colors.mutedForeground }}
                 >
                   We saw countless SMBs losing time and money, stuck between
-                  overpriced agencies and confusing tools. That's when the idea
+                  overpriced agencies and confusing tools. That&apos;s when the idea
                   for{" "}
                   <span style={{ color: colors.foreground, fontWeight: 400 }}>
                     SkalX AI
@@ -207,7 +208,7 @@ export default function About() {
                   Founder
                 </p>
                 <p className="font-light leading-relaxed" style={{ color: colors.mutedForeground }}>
-                  With a background in product, design, and user experience, I've worked closely with startups and small businesses. I've seen firsthand how much energy owners waste trying to make sense of marketing.
+                  With a background in product, design, and user experience, I&apos;ve worked closely with startups and small businesses. I&apos;ve seen firsthand how much energy owners waste trying to make sense of marketing.
                 </p>
               </div>
 
@@ -243,7 +244,7 @@ export default function About() {
             style={{ color: addAlpha(colors.foreground, 0.8) }}
           >
             <blockquote className="text-2xl md:text-3xl font-light italic leading-relaxed">
-              "Simplicity is the ultimate sophistication."
+              &quot;Simplicity is the ultimate sophistication.&quot;
             </blockquote>
           </div>
         </section>
@@ -286,7 +287,7 @@ export default function About() {
                   <span style={{ color: colors.foreground, fontWeight: 400 }}>
                     go-to marketing partner for SMBs
                   </span>
-                  , already simplifying campaigns for businesses who once thought digital marketing was "too complicated."
+                  , already simplifying campaigns for businesses who once thought digital marketing was &quot;too complicated.&quot;
                 </p>
               </div>
             </div>
@@ -356,7 +357,7 @@ export default function About() {
             style={{ color: addAlpha(colors.foreground, 0.8) }}
           >
             <blockquote className="text-2xl md:text-3xl font-light italic leading-relaxed">
-              "One simple platform, powered by AI, guiding owners to grow smarter without the chaos."
+              &quot;One simple platform, powered by AI, guiding owners to grow smarter without the chaos.&quot;
             </blockquote>
           </div>
         </section>
@@ -374,15 +375,15 @@ export default function About() {
               }}
             >
               <h2 className="text-4xl md:text-6xl font-light mb-8 leading-tight" style={{ color: colors.foreground }}>
-                Let's Build Smarter
+                Let&apos;s Build Smarter
                 <br />
                 Campaigns Together
               </h2>
               <p className="text-lg md:text-xl mb-12 font-light max-w-2xl mx-auto leading-relaxed" style={{ color: colors.mutedForeground }}>
                 Ready to transform your marketing approach? Join us in making marketing simple, powerful, and human.
               </p>
-              <a
-                href="/auth/signin"
+              <Link
+                href="/try"
                 className="inline-block px-12 py-4 rounded-full text-lg font-normal transition-all duration-300"
                 style={{
                   background: colors.primary,
@@ -390,8 +391,8 @@ export default function About() {
                   boxShadow: colors.shadowGlow,
                 }}
               >
-                Get Started
-              </a>
+                Try Now
+              </Link>
             </div>
           </div>
         </section>

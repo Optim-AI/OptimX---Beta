@@ -35,6 +35,8 @@ export type BrandSnapshot = {
   ctaPatterns?: string[]; // Common CTAs like "Shop Now", "Buy Today", "Explore More"
   productCategory?: string; // Specific category like "earbuds", "headphones", "smartwatches"
   pricePositioning?: "budget" | "mid-range" | "premium";
+  /** Product image URLs from website analysis or upload (http or data URL) */
+  productImages?: string[];
 };
 
 export type Phase =

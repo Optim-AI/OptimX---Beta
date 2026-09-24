@@ -95,6 +95,11 @@ export function mapFullAnalyzeToBrandSnapshot(result: any): BrandSnapshot {
     brand_values: result.brand_values,
     business_overview: result.business_overview,
     website_url: result.website_url,
+    productImages: Array.isArray(result.product_images)
+      ? result.product_images
+          .filter((u: unknown): u is string => typeof u === 'string' && u.length > 0)
+          .slice(0, 6)
+      : undefined,
   };
 }
 

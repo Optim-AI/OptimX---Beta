@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/router';
-import { showAlert, showError } from '@/app/web/src/components/ui/alert-modal-api';
+import { showAlert, showError, showSuccess } from '@/app/web/src/components/ui/alert-modal-api';
 import dynamic from 'next/dynamic';
 import colors from '@/lib/ui/colors';
 import {
@@ -32,6 +32,12 @@ import {
   type CreativePlanSummary,
 } from '@/lib/creative-studio/commercial-production/studio-mapper';
 import { isCampaignDurationSeconds } from '@/lib/creative-studio/commercial-production/campaign/campaign-duration';
+import { getVideoCreditsForDuration } from '@/lib/billing/video-credits';
+import {
+  formatPostGenerationCreditSummary,
+  formatPreGenerationCreditNotice,
+} from '@/lib/billing/credit-usage-messages';
+import { splitCreditDeduction } from '@/lib/billing/credit-split';
 
 const Sidebar = dynamic(() => import('@/app/web/src/components/Sidebar'), { ssr: false });
 const VideoStudioWorkspace = dynamic(
@@ -499,11 +505,18 @@ export default function VideoSessionPage() {
       if (data.success) {
         setCredits(data.credits);
         setVideoCredits(data.videoCredits);
-        setHasInsufficientCredits((data.videoCredits?.total ?? 0) <= 0);
+        const requiredForDefault = getVideoCreditsForDuration(15);
+        setHasInsufficientCredits((data.videoCredits?.total ?? 0) < requiredForDefault);
+        return data.videoCredits as {
+          subscription: number;
+          addon: number;
+          total: number;
+        } | null;
       }
     } catch (err) {
       console.error('Error loading credits:', err);
     }
+    return null;
   }, []);
 
   useEffect(() => {
@@ -1105,18 +1118,37 @@ export default function VideoSessionPage() {
       return;
     }
 
-    if (hasInsufficientCredits || (videoCredits && videoCredits.total <= 0)) {
+    const duration = adBuilderData.adSetup.duration;
+    if (!isCampaignDurationSeconds(duration)) {
+      showError('Choose a 15s or 30s duration for your commercial.');
+      return;
+    }
+
+    const requiredCredits = getVideoCreditsForDuration(duration);
+    const available = videoCredits?.total ?? 0;
+    if (available < requiredCredits) {
       showError(
-        'You have insufficient video credits. Please purchase more credits to generate videos.',
+        `Not enough Video Credits. You need ${requiredCredits} Video Credits to generate a ${duration}-second video.`,
         'Insufficient Credits'
       );
       return;
     }
 
-    const duration = adBuilderData.adSetup.duration;
-    if (!isCampaignDurationSeconds(duration)) {
-      showError('Choose a 15s or 30s duration for your commercial.');
-      return;
+    const previewSplit = splitCreditDeduction(
+      videoCredits?.subscription ?? 0,
+      videoCredits?.addon ?? 0,
+      requiredCredits
+    );
+    if (previewSplit) {
+      const preNotice = formatPreGenerationCreditNotice({
+        fromSubscription: previewSplit.fromSubscription,
+        fromAddon: previewSplit.fromAddon,
+        requiredCredits,
+        creditType: 'video',
+      });
+      if (preNotice) {
+        showAlert(preNotice, 'Using Add-on Credits');
+      }
     }
 
     const aspect = adBuilderData.adSetup.aspect_ratio;
@@ -1245,6 +1277,13 @@ export default function VideoSessionPage() {
         ok: boolean;
         error?: string;
         generationMode?: string;
+        creditsCharged?: number;
+        creditUsage?: {
+          fromSubscription: number;
+          fromAddon: number;
+          requiredCredits: number;
+          creditType: 'video';
+        };
         finalCommercial?: {
           campaignId: string;
           generationVersion: string;
@@ -1353,6 +1392,26 @@ export default function VideoSessionPage() {
       };
       setGeneratedVideos((prev) => [...prev, newVideo]);
       setSelectedVideoId(videoId);
+      // Refresh wallet after server-side consume
+      let refreshed = null as {
+        subscription: number;
+        addon: number;
+        total: number;
+      } | null;
+      try {
+        refreshed = await loadCredits();
+      } catch {
+        /* non-fatal */
+      }
+
+      if (result.creditUsage) {
+        const summary = formatPostGenerationCreditSummary(result.creditUsage);
+        const remaining =
+          result.creditUsage.fromAddon > 0 && refreshed
+            ? ` ${refreshed.addon} Add-on Video Credits remaining.`
+            : '';
+        showSuccess(`${summary}${remaining}`.trim(), 'Credits used');
+      }
 
       await loadCredits();
     } catch (error: unknown) {

@@ -1,4 +1,5 @@
 // pages/integrations/meta/error.tsx
+import Link from "next/link";
 import { useRouter } from "next/router";
 import dynamic from "next/dynamic";
 
@@ -65,7 +66,7 @@ export default function MetaError() {
 
         {stage && (
           <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-xs text-gray-600 text-center">
-            <strong>Debug Info:</strong> Error occurred at stage "{stage}"
+            <strong>Debug Info:</strong> Error occurred at stage &quot;{stage}&quot;
           </div>
         )}
 
@@ -89,12 +90,12 @@ export default function MetaError() {
           >
             Try Again
           </a>
-          <a
+          <Link
             href="/integrations"
             className="px-6 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors font-medium"
           >
             Back to Integrations
-          </a>
+          </Link>
         </div>
 
         <div className="text-center pt-2 space-y-1">

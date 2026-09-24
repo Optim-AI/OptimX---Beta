@@ -119,7 +119,7 @@ export default function TestBillingPage() {
               <p style={{ fontSize: 12, color: '#94a3b8' }}>
                 (Sub: {credits.imageCredits?.subscription || 0} + Addon: {credits.imageCredits?.addon || 0})
               </p>
-              <p><strong>Video Credits:</strong> {credits.videoCredits?.total || 0} sec</p>
+              <p><strong>Video Credits:</strong> {credits.videoCredits?.total || 0}</p>
               <p style={{ fontSize: 12, color: '#94a3b8' }}>
                 (Sub: {credits.videoCredits?.subscription || 0} + Addon: {credits.videoCredits?.addon || 0})
               </p>
@@ -145,14 +145,14 @@ export default function TestBillingPage() {
             Creates a subscription without Razorpay payment
           </p>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            {['free_trial', 'basic_monthly', 'starter_monthly', 'lite_growth_monthly', 'growth_pro_monthly'].map(plan => (
+            {['skalx_starter', 'skalx_growth', 'skalx_pro'].map(plan => (
               <button
                 key={plan}
                 onClick={() => callTestEndpoint('create-test-subscription', { planId: plan })}
                 disabled={!!loading || !!subscription}
                 style={buttonStyle(loading === 'create-test-subscription')}
               >
-                {plan.replace('_', ' ')}
+                {plan.replace('skalx_', '')}
               </button>
             ))}
           </div>

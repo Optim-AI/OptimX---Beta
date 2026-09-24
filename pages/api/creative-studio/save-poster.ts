@@ -1,6 +1,6 @@
 // pages/api/creative-studio/save-poster.ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import { supabaseAdmin } from "@/auth/supabase/client";
+import { supabaseAdmin } from "@/auth/supabase/admin";
 import { getUserIdFromRequest } from "@/auth/request";
 import { GeneratedImageDAO } from "@/database/models/GeneratedImage.dao";
 import { randomUUID } from "crypto";

@@ -6,28 +6,28 @@ import { useScrollAnimation } from '../hooks/use-scroll-animation';
 const STEPS = [
   {
     id: '01',
-    title: 'Add your brand',
-    desc: 'Drop your website link or describe your product. SkalX AI understands your tone, audience, and positioning in minutes.',
+    title: 'Tell us about your brand',
+    desc: 'Share your website or a product image. SkalX starts from your real brand — not a blank template.',
   },
   {
     id: '02',
-    title: 'Generate creatives',
-    desc: 'AI creates campaign angles, ad copy, visuals, and variations tailored to your brand.',
+    title: 'SkalX understands your brand',
+    desc: 'We map your offering, visual style, colors, and tone so every creative stays on-brand.',
   },
   {
     id: '03',
-    title: 'Refine & customize',
-    desc: 'Edit, tweak, and approve creatives before publishing across platforms.',
+    title: 'Create personalized creatives',
+    desc: 'Generate posters, ad creatives, and videos tailored to your product and brand language.',
   },
   {
     id: '04',
-    title: 'Publish & distribute',
-    desc: 'Download assets or publish directly to Meta, Google, and LinkedIn with controlled budgeting.',
+    title: 'Launch your campaigns',
+    desc: 'Turn concepts into campaign-ready assets and move from brief to launch inside SkalX.',
   },
   {
     id: '05',
-    title: 'AI Analytics & Optimisation',
-    desc: 'Track performance, see what’s working, fix what’s not, and get AI recommendations to improve results and manage budget efficiently.',
+    title: 'Learn and optimize',
+    desc: 'Use insights and recommendations to refine what you create next.',
   },
 ];
 
@@ -147,7 +147,7 @@ const HowCreditsWork: React.FC = () => {
             How It Works
           </h2>
           <p className="text-xl max-w-xl mx-auto font-extralight" style={{ color: 'rgba(255,255,255,0.5)' }}>
-            From brand input to published campaigns in four steps.
+            From brand understanding to campaign-ready creatives.
           </p>
         </div>
 
@@ -245,103 +245,85 @@ const HowCreditsWork: React.FC = () => {
                 )}
                 {i === 1 && (
                   <>
-                    <div className="aspect-video rounded-lg mb-4" style={{ background: 'rgba(255,255,255,0.06)' }} />
-                    <div className="space-y-2">
-                      <div className="h-3 rounded w-3/4" style={{ background: 'rgba(255,255,255,0.1)' }} />
-                      <div className="h-3 rounded w-1/2" style={{ background: 'rgba(255,255,255,0.08)' }} />
+                    <div className="text-xs mb-3 uppercase tracking-wider" style={{ color: 'rgba(255,255,255,0.45)' }}>
+                      Brand profile
                     </div>
-                    <div className="flex gap-3 mt-4">
-                      <div
-                        className="w-10 h-10 rounded-full flex items-center justify-center"
-                        style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)' }}
-                      >
-                        <span className="text-xs" style={{ color: 'rgba(255,255,255,0.5)' }}>✕</span>
-                      </div>
-                      <div
-                        className="w-10 h-10 rounded-full flex items-center justify-center"
-                        style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)' }}
-                      >
-                        <span className="text-xs" style={{ color: 'rgba(255,255,255,0.5)' }}>♥</span>
-                      </div>
+                    <div className="flex gap-2 mb-4">
+                      {['#4F8CFF', '#E8E8E8', '#1A1A1A', '#F5C542'].map((c) => (
+                        <div
+                          key={c}
+                          className="h-8 w-8 rounded-full"
+                          style={{ background: c, border: '1px solid rgba(255,255,255,0.12)' }}
+                        />
+                      ))}
+                    </div>
+                    <div className="space-y-2">
+                      <div className="h-3 rounded w-2/3" style={{ background: 'rgba(255,255,255,0.12)' }} />
+                      <div className="h-3 rounded w-1/2" style={{ background: 'rgba(255,255,255,0.08)' }} />
+                      <div className="h-3 rounded w-3/4" style={{ background: 'rgba(255,255,255,0.06)' }} />
                     </div>
                   </>
                 )}
                 {i === 2 && (
-                  <div className="flex gap-4">
-                    <div className="w-16 rounded-lg flex-shrink-0" style={{ background: 'rgba(255,255,255,0.05)' }}>
-                      <div className="h-8 mt-2 mx-2 rounded" style={{ background: 'rgba(255,255,255,0.08)' }} />
-                      <div className="h-8 mt-2 mx-2 rounded" style={{ background: 'rgba(255,255,255,0.05)' }} />
-                      <div className="h-8 mt-2 mx-2 rounded" style={{ background: 'rgba(255,255,255,0.05)' }} />
-                    </div>
-                    <div className="flex-1">
-                      <div className="aspect-square max-w-[140px] rounded-xl mx-auto" style={{ background: 'rgba(255,255,255,0.06)' }} />
-                      <div className="h-2 rounded-full mt-4" style={{ background: 'rgba(255,255,255,0.08)' }} />
-                    </div>
+                  <div className="relative aspect-[3/4] max-w-[200px] mx-auto rounded-xl overflow-hidden"
+                    style={{ border: '1px solid rgba(255,255,255,0.1)' }}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src="/images/partners/plum-cc332b6e-16f6-42a6-937c-cca1d9a11816.png"
+                      alt="Sample personalized creative"
+                      className="absolute inset-0 w-full h-full object-cover"
+                    />
                   </div>
                 )}
                 {i === 3 && (
                   <>
                     <div
                       className="h-12 rounded-lg mb-4 flex items-center justify-center gap-2"
-                      style={{ background: 'rgba(255,255,255,0.06)' }}
+                      style={{ background: 'rgba(79,140,255,0.15)', border: '1px solid rgba(79,140,255,0.25)' }}
                     >
-                      <span className="text-sm" style={{ color: 'rgba(255,255,255,0.55)' }}>Export</span>
-                      <span className="text-xs" style={{ color: 'rgba(255,255,255,0.4)' }}>↓</span>
+                      <span className="text-sm font-medium" style={{ color: 'rgba(255,255,255,0.9)' }}>
+                        Campaign ready
+                      </span>
                     </div>
                     <div className="space-y-2">
                       <div className="h-8 rounded flex items-center px-3" style={{ background: 'rgba(255,255,255,0.05)' }}>
-                        <span className="text-xs" style={{ color: 'rgba(255,255,255,0.5)' }}>image.png</span>
+                        <span className="text-xs" style={{ color: 'rgba(255,255,255,0.55)' }}>Poster set</span>
                       </div>
                       <div className="h-8 rounded flex items-center px-3" style={{ background: 'rgba(255,255,255,0.05)' }}>
-                        <span className="text-xs" style={{ color: 'rgba(255,255,255,0.5)' }}>creative.pdf</span>
+                        <span className="text-xs" style={{ color: 'rgba(255,255,255,0.55)' }}>Ad creative</span>
+                      </div>
+                      <div className="h-8 rounded flex items-center px-3" style={{ background: 'rgba(255,255,255,0.05)' }}>
+                        <span className="text-xs" style={{ color: 'rgba(255,255,255,0.55)' }}>Video concept</span>
                       </div>
                     </div>
                   </>
                 )}
                 {i === 4 && (
                   <>
-                    <div className="grid grid-cols-3 gap-2 mb-4">
-                      {[
-                        { label: 'CTR', value: '2.4%', trend: 'up', color: '#22c55e' },
-                        { label: 'ROAS', value: '3.2x', trend: 'up', color: '#4F8CFF' },
-                        { label: 'Cost', value: '₹1.2k', trend: 'down', color: '#22c55e' },
-                      ].map((m, j) => (
-                        <div
-                          key={j}
-                          className="rounded-lg p-2"
-                          style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.06)' }}
-                        >
-                          <div className="text-[10px] mb-0.5" style={{ color: 'rgba(255,255,255,0.5)' }}>{m.label}</div>
-                          <div className="text-sm font-semibold" style={{ color: 'rgba(255,255,255,0.95)' }}>{m.value}</div>
-                          <span className="text-[10px]" style={{ color: m.color }}>{m.trend === 'up' ? '↑' : '↓'}</span>
+                    <div className="text-xs mb-3" style={{ color: 'rgba(255,255,255,0.5)' }}>
+                      Insights
+                    </div>
+                    <div className="space-y-2 mb-3">
+                      <div className="rounded-lg p-3" style={{ background: 'rgba(255,255,255,0.05)' }}>
+                        <div className="text-xs" style={{ color: 'rgba(255,255,255,0.85)' }}>
+                          Strongest visual direction for this brand
                         </div>
-                      ))}
+                      </div>
+                      <div className="rounded-lg p-3" style={{ background: 'rgba(255,255,255,0.05)' }}>
+                        <div className="text-xs" style={{ color: 'rgba(255,255,255,0.85)' }}>
+                          Next creative angle to test
+                        </div>
+                      </div>
                     </div>
                     <div
-                      className="rounded-lg p-3"
-                      style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}
+                      className="flex items-center gap-2 rounded-lg p-2"
+                      style={{ background: 'rgba(79,140,255,0.12)', border: '1px solid rgba(79,140,255,0.2)' }}
                     >
-                      <div className="text-xs mb-2" style={{ color: 'rgba(255,255,255,0.5)' }}>Performance</div>
-                      <div className="flex items-end gap-1 h-12">
-                        {[32, 45, 38, 52, 48, 65, 58, 72, 68, 78].map((h, j) => (
-                          <div
-                            key={j}
-                            className="flex-1 rounded-t min-w-[4px] transition-all duration-300"
-                            style={{
-                              height: `${h}%`,
-                              background: j >= 7 ? 'linear-gradient(to top, #4F8CFF, #7B5CFF)' : 'rgba(255,255,255,0.12)',
-                            }}
-                          />
-                        ))}
-                      </div>
-                      <div className="flex justify-between mt-1 text-[10px]" style={{ color: 'rgba(255,255,255,0.4)' }}>
-                        <span>Mon</span>
-                        <span>Sun</span>
-                      </div>
-                    </div>
-                    <div className="mt-3 flex items-center gap-2 rounded-lg p-2" style={{ background: 'rgba(79,140,255,0.12)', border: '1px solid rgba(79,140,255,0.2)' }}>
                       <span className="text-xs" style={{ color: '#4F8CFF' }}>◆</span>
-                      <span className="text-xs" style={{ color: 'rgba(255,255,255,0.85)' }}>AI: Increase budget on top performers</span>
+                      <span className="text-xs" style={{ color: 'rgba(255,255,255,0.85)' }}>
+                        Refine and generate the next set
+                      </span>
                     </div>
                   </>
                 )}

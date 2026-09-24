@@ -43,7 +43,7 @@ interface SubscriptionState {
   lastFetched: number | null;
   
   // Actions
-  fetchSubscription: () => Promise<void>;
+  fetchSubscription: (options?: { force?: boolean }) => Promise<void>;
   clearSubscription: () => void;
   setCredits: (credits: Credits) => void;
   deductImageCredit: (amount?: number) => Promise<boolean>;
@@ -60,10 +60,10 @@ export const useSubscription = create<SubscriptionState>()(
       error: null,
       lastFetched: null,
 
-      fetchSubscription: async () => {
+      fetchSubscription: async (options?: { force?: boolean }) => {
         const { lastFetched } = get();
         const CACHE_MS = 30 * 1000; // 30 seconds - avoid redundant fetches
-        if (lastFetched && Date.now() - lastFetched < CACHE_MS) {
+        if (!options?.force && lastFetched && Date.now() - lastFetched < CACHE_MS) {
           return;
         }
         set({ isLoading: true, error: null });
@@ -106,50 +106,18 @@ export const useSubscription = create<SubscriptionState>()(
         set({ credits });
       },
 
-      deductImageCredit: async (amount = 1) => {
-        const { credits } = get();
-        if (!credits || credits.imageCredits.total < amount) {
-          return false;
-        }
-
-        try {
-          const response = await authFetch('/api/credits/deduct', {
-            method: 'POST',
-            body: JSON.stringify({ type: 'image', amount }),
-          });
-          const data = await response.json();
-
-          if (data.success && data.balance) {
-            set({ credits: data.balance });
-            return true;
-          }
-          return false;
-        } catch {
-          return false;
-        }
+      deductImageCredit: async (_amount = 1) => {
+        // Image billing is server-side only (poster/campaign generate after success).
+        console.warn(
+          '[useSubscription] deductImageCredit is disabled; use generation APIs for billing.'
+        );
+        return false;
       },
 
-      deductVideoCredit: async (seconds: number) => {
-        const { credits } = get();
-        if (!credits || credits.videoCredits.total < seconds) {
-          return false;
-        }
-
-        try {
-          const response = await authFetch('/api/credits/deduct', {
-            method: 'POST',
-            body: JSON.stringify({ type: 'video', amount: seconds }),
-          });
-          const data = await response.json();
-
-          if (data.success && data.balance) {
-            set({ credits: data.balance });
-            return true;
-          }
-          return false;
-        } catch {
-          return false;
-        }
+      deductVideoCredit: async (_seconds: number) => {
+        // Video billing is server-side only (reserve on /api/commercial/generate).
+        console.warn('[useSubscription] deductVideoCredit is disabled; use commercial generate billing.');
+        return false;
       },
     }),
     {

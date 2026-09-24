@@ -1,8 +1,10 @@
 'use client';
 
 import React, { useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { supabase } from '@/auth/supabase/client';
+import { getAuthRedirectUrl } from '@/lib/routing/safe-next';
 import colors from '@/lib/ui/colors';
 
 export default function ForgotPasswordPage(): React.ReactElement {
@@ -70,7 +72,7 @@ export default function ForgotPasswordPage(): React.ReactElement {
 
     setLoading(true);
     try {
-      const redirectTo = `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/reset-password`;
+      const redirectTo = getAuthRedirectUrl('/reset-password');
 
       // Supabase: send password reset email with redirect back to reset page
       const { data, error: supaErr } = await supabase.auth.resetPasswordForEmail(email, {
@@ -93,7 +95,7 @@ export default function ForgotPasswordPage(): React.ReactElement {
 
   const oauthLogin = async (provider: 'google' | 'facebook') => {
     try {
-      const redirectTo = `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/welcome`;
+      const redirectTo = getAuthRedirectUrl('/welcome');
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider,
         options: { redirectTo },
@@ -172,7 +174,7 @@ export default function ForgotPasswordPage(): React.ReactElement {
             </div>
 
             <h1 id="forgot-title" className="brand-title">Reset password</h1>
-            <div className="brand-sub">Enter your email and we'll send a reset link.</div>
+            <div className="brand-sub">Enter your email and we&apos;ll send a reset link.</div>
           </div>
 
           <div className="oauth-row" role="group" aria-label="Third party sign in" style={{ display: 'none' }}>
@@ -189,14 +191,14 @@ export default function ForgotPasswordPage(): React.ReactElement {
             {info && <div className="msg" style={{ color: '#2f855a' }}>{info}</div>}
 
             <div className="policy" style={{ marginTop: 20 }}>
-              If you don't receive the email, check your spam folder or try again. The link will redirect you to a secure page to set a new password.
+              If you don&apos;t receive the email, check your spam folder or try again. The link will redirect you to a secure page to set a new password.
             </div>
 
             <button className="cta" type="submit" disabled={loading}>{loading ? 'Sending...' : 'Send reset email'}</button>
           </form>
 
           <div style={{ marginTop: 12, fontSize: 13, color: colors.mutedForeground }}>
-            <a href="/auth/signin" onClick={(e) => { e.preventDefault(); router.push('/auth/signin'); }} style={{ color: colors.primary, textDecoration: 'none', fontWeight: 700 }}>Back to sign in</a>
+            <Link href="/auth/signin" onClick={(e) => { e.preventDefault(); router.push('/auth/signin'); }} style={{ color: colors.primary, textDecoration: 'none', fontWeight: 700 }}>Back to sign in</Link>
           </div>
         </main>
       </div>

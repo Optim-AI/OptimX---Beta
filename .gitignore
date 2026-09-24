@@ -12,6 +12,8 @@ node_modules/
 dist/
 .next
 .vercel
+*.tsbuildinfo
+tsconfig.tsbuildinfo
 
 # Logs
 *.log

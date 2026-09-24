@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { supabaseAdmin } from "@/auth/supabase/client";
+import { supabaseAdmin } from "@/auth/supabase/admin";
 import { parseVideoDataUrl } from "./parse-video-data-url";
 
 export { parseVideoDataUrl } from "./parse-video-data-url";

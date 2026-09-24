@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { supabase } from '@/auth/supabase/client';
 import colors from '@/lib/ui/colors';
@@ -283,7 +284,7 @@ export default function ResetPasswordPage(): React.ReactElement {
           </form>
 
           <div style={{ marginTop: 12, fontSize: 13, color: colors.mutedForeground }}>
-            <a href="/auth/signin" onClick={(e) => { e.preventDefault(); router.push('/auth/signin'); }} style={{ color: colors.primary, textDecoration: 'none', fontWeight: 700 }}>Back to sign in</a>
+            <Link href="/auth/signin" onClick={(e) => { e.preventDefault(); router.push('/auth/signin'); }} style={{ color: colors.primary, textDecoration: 'none', fontWeight: 700 }}>Back to sign in</Link>
           </div>
         </main>
       </div>

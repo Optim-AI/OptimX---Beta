@@ -53,41 +53,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Upsert profile using Prisma DAO (with retry for cold-start connection issues)
     const profile = await withRetry(() => ProfileDAO.upsert(userId, profileData));
 
-    // Initialize free credits for new users (pay-as-you-go welcome bonus)
+    // New users: initialize empty wallet (0 / 0). Do NOT grant the historical welcome bonus
+    // (5 image + 600 video). Existing users who already received welcome_bonus are untouched.
     if (isNewUser) {
-      const INITIAL_IMAGE_CREDITS = 5;
-      const INITIAL_VIDEO_SECONDS = 30;
-
       try {
-        // Initialize credit record
         const initResult = await CreditsDAO.initializeCredits(
           userId,
           0, // No subscription credits
-          0  // No subscription video credits
+          0 // No subscription video credits
         );
 
         if (!initResult.success) {
           console.error(`Failed to initialize credits for user ${userId}:`, initResult.error);
-        }
-
-        // Add welcome bonus as addon credits (these don't expire)
-        const imageResult = await CreditsDAO.addImageCreditsAddon(userId, INITIAL_IMAGE_CREDITS);
-        if (!imageResult.success) {
-          console.error(`Failed to add image credits for user ${userId}:`, imageResult.error);
-        }
-
-        const videoResult = await CreditsDAO.addVideoCreditsAddon(userId, INITIAL_VIDEO_SECONDS);
-        if (!videoResult.success) {
-          console.error(`Failed to add video credits for user ${userId}:`, videoResult.error);
-        }
-
-        if (initResult.success && imageResult.success && videoResult.success) {
-          console.log(`✓ Initialized welcome credits for new user ${userId}: ${INITIAL_IMAGE_CREDITS} image credits, ${INITIAL_VIDEO_SECONDS}s video`);
         } else {
-          console.warn(`⚠ Partial credit initialization for user ${userId}. Init: ${initResult.success}, Image: ${imageResult.success}, Video: ${videoResult.success}`);
+          console.log(`✓ Initialized empty credit wallet for new user ${userId} (0 image, 0 video)`);
         }
       } catch (creditsError: any) {
-        // Don't fail the signup if credits fail, but log it prominently
         console.error(`❌ CREDITS INITIALIZATION ERROR for user ${userId}:`, creditsError);
         console.error('Stack:', creditsError.stack);
       }

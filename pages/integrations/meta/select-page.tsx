@@ -212,7 +212,7 @@ function PageCard({ page, onSelect, disabled, isSelected }: PageCardProps) {
       {/* Warnings */}
       {!canManage && (
         <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded text-sm text-red-800">
-          ⚠️ You don't have publishing permissions for this page
+          ⚠️ You don&apos;t have publishing permissions for this page
         </div>
       )}
 

@@ -1,5 +1,6 @@
 // pages/integrationsnew.tsx
 import React, { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/router";
 import { supabase } from '@/auth/supabase/client';
 import type { JSX } from "react";
@@ -586,9 +587,9 @@ export default function IntegrationsNew(): JSX.Element {
 
                 <div style={{ fontSize: 12, color: "#6b7280", marginTop: 8 }}>
                   By proceeding, you consent to our{" "}
-                  <a href="/terms-and-conditions" style={{ color: "#0b74ff" }}>
+                  <Link href="/terms-and-conditions" style={{ color: "#0b74ff" }}>
                     Terms & Conditions
-                  </a>
+                  </Link>
                 </div>
 
                 {message && <div style={{ marginTop: 10, color: "#0b74ff", fontWeight: 600 }}>{message}</div>}

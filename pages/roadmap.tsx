@@ -74,7 +74,7 @@ const Roadmap: React.FC = () => {
           <div className="p-8 rounded-2xl glass-card border" style={{ borderColor: withAlpha(colors.border, 0.6), background: colors.card }}>
             <div className="mb-6">
               <h1 className="text-4xl font-extrabold mb-2" style={{ color: colors.foreground }}>Product Roadmap</h1>
-              <p className="text-lg" style={{ color: colors.mutedForeground }}>What we're building next — timelines are estimates and subject to change. We appreciate feedback; submit ideas below.</p>
+              <p className="text-lg" style={{ color: colors.mutedForeground }}>What we&apos;re building next — timelines are estimates and subject to change. We appreciate feedback; submit ideas below.</p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -112,7 +112,7 @@ const Roadmap: React.FC = () => {
                   <p style={{ color: colors.mutedForeground }}>Have an idea? Tell us — our product team reviews all submissions.</p>
                   <div className="mt-4 flex gap-2">
                     <Button size="sm" variant="outline" asChild>
-                      <a href="/community">Discuss on community</a>
+                      <Link href="/community">Discuss on community</Link>
                     </Button>
                     <Button size="sm" style={{ background: colors.gradientPrimary, color: colors.primaryForeground }}>
                       <a href="mailto:info@optimx.app" className="flex items-center gap-2">Email Product <ArrowRight className="h-4 w-4" /></a>
@@ -143,8 +143,8 @@ const Roadmap: React.FC = () => {
                 {/* <Button size="sm" variant="outline" asChild>
                   <a href="#top" onClick={(e) => { e.preventDefault(); topRef.current?.scrollTo({ top: 0, behavior: 'smooth' }); }}>Back to top</a>
                 </Button> */}
-                <Button size="sm" style={{ background: colors.gradientPrimary, color: colors.primaryForeground }}>
-                  <a href="/auth/signin" className="flex items-center gap-2">Try Features <Rocket className="h-4 w-4" /></a>
+                <Button size="sm" asChild style={{ background: colors.gradientPrimary, color: colors.primaryForeground }}>
+                  <Link href="/auth/signin" className="flex items-center gap-2">Try Features <Rocket className="h-4 w-4" /></Link>
                 </Button>
               </div>
             </div>

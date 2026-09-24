@@ -4,8 +4,8 @@ export const CTA = () => (
     <div className="container mx-auto text-center">
       <h2 className="text-3xl font-bold">Ready to replace your marketing agency?</h2>
       <p className="text-lg mt-4">Join thousands of businesses growing with AI-powered marketing.</p>
-      <button className="bg-blue-600 text-white px-6 py-3 rounded mt-8">Start Your Free Trial</button>
-      <p className="text-sm mt-4">7-day free trial · Full refun · Cancel anytime</p>
+      <button className="bg-blue-600 text-white px-6 py-3 rounded mt-8">Get Started</button>
+      <p className="text-sm mt-4">Starter, Growth &amp; Pro plans · Cancel anytime</p>
     </div>
   </section>
 );

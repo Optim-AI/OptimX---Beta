@@ -249,10 +249,10 @@ const Tutorials: React.FC = () => {
                     Back to top
                   </a>
                 </Button> */}
-                <Button size="sm" style={{ background: colors.gradientPrimary, color: colors.primaryForeground }}>
-                  <a href="/auth/signin" className="flex items-center gap-2">
+                <Button size="sm" asChild style={{ background: colors.gradientPrimary, color: colors.primaryForeground }}>
+                  <Link href="/auth/signin" className="flex items-center gap-2">
                     Get Started <ArrowRight className="h-4 w-4" />
-                  </a>
+                  </Link>
                 </Button>
               </div>
             </div>

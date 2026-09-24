@@ -14,15 +14,19 @@ const Footer: React.FC = () => {
 
   const footerLinks: Record<string, LinkItem[]> = {
     Product: [
-      { name: 'Features', href: '/#system', type: 'section' },
-      { name: 'Pricing', href: '/#pricing', type: 'section' },
-      { name: 'Use Cases', href: '/use-cases', type: 'route' },
-      { name: 'Blog', href: '/blog', type: 'route' },
+      { name: 'Features', href: '/#product', type: 'section' },
+      { name: 'How It Works', href: '/#how-it-works', type: 'section' },
+      { name: 'Use Cases', href: '/#built-for', type: 'section' },
     ],
-    'Security & Policy': [
-      { name: 'Terms & Conditions', href: '/terms-and-conditions', type: 'route' },
-      { name: 'Privacy Policy', href: '/privacy-policy', type: 'route' },
-      { name: 'Cookie Policy', href: '/cpolicy', type: 'route' },
+    Company: [
+      { name: 'About', href: '/About', type: 'route' },
+      { name: 'Contact', href: '/Contact', type: 'route' },
+      { name: 'FAQ', href: '/#faq', type: 'section' },
+    ],
+    Legal: [
+      { name: 'Privacy', href: '/privacy-policy', type: 'route' },
+      { name: 'Terms', href: '/terms-and-conditions', type: 'route' },
+      { name: 'Cookies', href: '/cpolicy', type: 'route' },
     ],
     Support: [
       { name: 'Contact', href: '/Contact', type: 'route' },
@@ -31,15 +35,31 @@ const Footer: React.FC = () => {
   };
 
   const socialLinks = [
-    { name: 'Facebook', icon: Facebook, href: 'https://www.facebook.com/share/1BNxZDcfRe/?mibextid=wwXIfr' },
-    { name: 'Instagram', icon: Instagram, href: 'https://www.instagram.com/optimx.ai/?utm_source=qr' },
-    { name: 'LinkedIn', icon: Linkedin, href: 'https://www.linkedin.com/company/optim01/?viewAsMember=true' },
+    {
+      name: 'Facebook',
+      icon: Facebook,
+      href: 'https://www.facebook.com/share/1BNxZDcfRe/?mibextid=wwXIfr',
+    },
+    {
+      name: 'Instagram',
+      icon: Instagram,
+      href: 'https://www.instagram.com/optimx.ai/?utm_source=qr',
+    },
+    {
+      name: 'LinkedIn',
+      icon: Linkedin,
+      href: 'https://www.linkedin.com/company/optim01/?viewAsMember=true',
+    },
   ];
 
   const handleSectionClick = (href: string) => {
     if (pathname !== '/') router.push(href);
     else {
-      const selector = href.startsWith('/#') ? `#${href.substring(2)}` : href.startsWith('#') ? href : href.replace('/#', '#');
+      const selector = href.startsWith('/#')
+        ? `#${href.substring(2)}`
+        : href.startsWith('#')
+          ? href
+          : href.replace('/#', '#');
       const element = document.querySelector(selector);
       if (element) element.scrollIntoView({ behavior: 'smooth' });
       else if (selector.startsWith('#')) window.location.hash = selector;
@@ -49,30 +69,47 @@ const Footer: React.FC = () => {
   return (
     <footer style={{ backgroundColor: '#121212', borderTop: `1px solid ${colors.border}` }}>
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-16">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-8">
           <div className="col-span-2 md:col-span-1">
             <div className="flex items-center space-x-2 mb-4">
-              <img src="/images/SkalX_Logo.png" alt="SkalX AI Logo" className="h-8 w-auto object-contain" />
+              <img
+                src="/images/SkalX_Logo.png"
+                alt="SkalX AI Logo"
+                className="h-8 w-auto object-contain"
+              />
             </div>
             <p className="text-sm leading-relaxed mb-4" style={{ color: colors.mutedForeground }}>
               An AI Marketing Team — Without Expanding Headcount.
             </p>
-            <Link href="/auth/signup" className="text-sm font-medium" style={{ color: colors.primary }}>Start Free →</Link>
+            <Link href="/try" className="text-sm font-medium" style={{ color: colors.primary }}>
+              Try Now →
+            </Link>
           </div>
 
           {Object.entries(footerLinks).map(([category, links]) => (
             <div key={category}>
-              <h3 className="font-semibold mb-4" style={{ color: colors.foreground }}>{category}</h3>
+              <h3 className="font-semibold mb-4" style={{ color: colors.foreground }}>
+                {category}
+              </h3>
               <ul className="space-y-3">
                 {links.map((link) => (
-                  <li key={link.name}>
+                  <li key={`${category}-${link.name}`}>
                     {link.type === 'section' ? (
                       <button
                         onClick={() => handleSectionClick(link.href)}
                         className="text-left transition-colors duration-200"
-                        style={{ color: colors.mutedForeground, background: 'transparent', border: 'none', padding: 0 }}
-                        onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = colors.primary)}
-                        onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = colors.mutedForeground)}
+                        style={{
+                          color: colors.mutedForeground,
+                          background: 'transparent',
+                          border: 'none',
+                          padding: 0,
+                        }}
+                        onMouseEnter={(e) =>
+                          ((e.currentTarget as HTMLElement).style.color = colors.primary)
+                        }
+                        onMouseLeave={(e) =>
+                          ((e.currentTarget as HTMLElement).style.color = colors.mutedForeground)
+                        }
                       >
                         {link.name}
                       </button>
@@ -81,8 +118,12 @@ const Footer: React.FC = () => {
                         href={link.href}
                         className="transition-colors duration-200"
                         style={{ color: colors.mutedForeground, textDecoration: 'none' }}
-                        onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = colors.primary)}
-                        onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = colors.mutedForeground)}
+                        onMouseEnter={(e) =>
+                          ((e.currentTarget as HTMLElement).style.color = colors.primary)
+                        }
+                        onMouseLeave={(e) =>
+                          ((e.currentTarget as HTMLElement).style.color = colors.mutedForeground)
+                        }
                       >
                         {link.name}
                       </Link>
@@ -92,38 +133,35 @@ const Footer: React.FC = () => {
               </ul>
             </div>
           ))}
+        </div>
 
-          <div>
-            <h3 className="font-semibold mb-4" style={{ color: colors.foreground }}>Connect</h3>
-            <div className="flex gap-3">
-              {socialLinks.map((social) => {
-                const Icon = social.icon;
-                return (
-                  <a
-                    key={social.name}
-                    href={social.href}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    aria-label={social.name}
-                    className="flex items-center justify-center w-10 h-10 rounded-xl transition-all duration-300"
-                    style={{ backgroundColor: colors.muted, color: colors.foreground }}
-                    onMouseEnter={(e) => {
-                      const el = e.currentTarget as HTMLElement;
-                      el.style.backgroundColor = colors.primary;
-                      el.style.color = colors.primaryForeground;
-                    }}
-                    onMouseLeave={(e) => {
-                      const el = e.currentTarget as HTMLElement;
-                      el.style.backgroundColor = colors.muted;
-                      el.style.color = colors.foreground;
-                    }}
-                  >
-                    <Icon className="h-5 w-5" />
-                  </a>
-                );
-              })}
-            </div>
-          </div>
+        <div className="mt-10 flex gap-3">
+          {socialLinks.map((social) => {
+            const Icon = social.icon;
+            return (
+              <a
+                key={social.name}
+                href={social.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={social.name}
+                className="flex items-center justify-center w-10 h-10 rounded-xl transition-all duration-300"
+                style={{ backgroundColor: colors.muted, color: colors.foreground }}
+                onMouseEnter={(e) => {
+                  const el = e.currentTarget as HTMLElement;
+                  el.style.backgroundColor = colors.primary;
+                  el.style.color = colors.primaryForeground;
+                }}
+                onMouseLeave={(e) => {
+                  const el = e.currentTarget as HTMLElement;
+                  el.style.backgroundColor = colors.muted;
+                  el.style.color = colors.foreground;
+                }}
+              >
+                <Icon className="h-5 w-5" />
+              </a>
+            );
+          })}
         </div>
 
         <div

@@ -87,7 +87,7 @@ const Blog: React.FC = () => {
                 <a href="#top" onClick={(e) => { e.preventDefault(); topRef.current?.scrollTo({ top: 0, behavior: 'smooth' }); }}>Back to top</a>
               </Button> */}
               <Button size="sm" style={{ marginLeft: 8, background: colors.gradientPrimary, color: colors.primaryForeground }}>
-                <a href="/auth/signin" className="flex items-center gap-2">Start Free Trial <ArrowRight className="h-4 w-4" /></a>
+                <a href="/auth/signin" className="flex items-center gap-2">Get Started <ArrowRight className="h-4 w-4" /></a>
               </Button>
             </div>
           </div>

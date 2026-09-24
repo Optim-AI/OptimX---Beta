@@ -1,7 +1,7 @@
 // pages/api/meta/debug/pages.ts
 import type { NextApiRequest, NextApiResponse } from "next";
 import { getUserIdFromRequest } from '@/auth/request';
-import { supabaseAdmin } from '@/auth/supabase/client';
+import { supabaseAdmin } from '@/auth/supabase/admin';
 
 const VERSION = process.env.FACEBOOK_API_VERSION || "23.0";
 

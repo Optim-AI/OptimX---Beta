@@ -199,7 +199,7 @@ const Contact = () => {
                     Get Your Free Marketing Consultation
                   </CardTitle>
                   <CardDescription style={{ color: colors.mutedForeground }}>
-                    Tell us about your business needs and discover how Oli AI's
+                    Tell us about your business needs and discover how Oli AI&apos;s
                     AI can revolutionize your marketing strategy. Our experts
                     will respond within 24 hours.
                   </CardDescription>

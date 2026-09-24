@@ -827,7 +827,7 @@ export default function SettingsPage(): JSX.Element {
                               <span className="label">Image Credits</span>
                             </div>
                             <div className="credit-chip credit-chip-video">
-                              <span className="value">{creditBalance.videoCredits?.total ?? 0}s</span>
+                              <span className="value">{creditBalance.videoCredits?.total ?? 0}</span>
                               <span className="label">Video Credits</span>
                             </div>
                           </>
@@ -922,7 +922,7 @@ export default function SettingsPage(): JSX.Element {
                                     : tx.paymentType === "image_topup"
                                     ? `Image Credits${tx.metadata?.credits ? ` - ${tx.metadata.credits}` : ""}`
                                     : tx.paymentType === "video_topup"
-                                    ? `Video Credits${tx.metadata?.credits ? ` - ${tx.metadata.credits}s` : ""}`
+                                    ? `Video Credits${tx.metadata?.credits ? ` - ${tx.metadata.credits} credits` : ""}`
                                     : tx.paymentType}
                                 </td>
                                 <td>{new Date(tx.createdAt).toLocaleDateString()}</td>

@@ -1,18 +1,10 @@
 // pages/api/auth/google-ads/auth.ts
 import type { NextApiRequest, NextApiResponse } from "next";
 import { google } from "googleapis";
+import { resolveRequestOrigin } from "@/lib/routing/safe-next";
 
 const CLIENT_ID = process.env.GOOGLE_ADS_CLIENT_ID;
 const CLIENT_SECRET = process.env.GOOGLE_ADS_CLIENT_SECRET;
-
-function computeOrigin(req: NextApiRequest) {
-  const originHeader = (req.headers.origin as string | undefined) || "";
-  if (originHeader) return originHeader;
-  const host = req.headers.host || "";
-  if (!host) return "https://67476f1a363d.ngrok-free.app";
-  const proto = host.includes("localhost") || host.includes("127.0.0.1") ? "http" : "https";
-  return `${proto}://${host}`;
-}
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (!CLIENT_ID || !CLIENT_SECRET) {
@@ -21,7 +13,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
   }
 
-  const origin = computeOrigin(req);
+  let origin: string;
+  try {
+    origin = resolveRequestOrigin(req);
+  } catch (err: any) {
+    return res.status(500).json({
+      error: err?.message || "Application URL is not configured",
+    });
+  }
+
   const redirectUri = `${origin}/api/auth/google-ads/callback`;
 
   const oauth2Client = new google.auth.OAuth2(CLIENT_ID, CLIENT_SECRET, redirectUri);
@@ -37,6 +37,5 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     scope: scopes,
   });
 
-  console.log("[google-ads/auth] using redirectUri:", redirectUri);
   res.redirect(url);
 }

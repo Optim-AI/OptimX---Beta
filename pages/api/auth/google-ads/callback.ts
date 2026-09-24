@@ -2,12 +2,10 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import * as cookie from "cookie";
 import { setStatus } from '@/integrations/store';
+import { resolveRequestOrigin } from "@/lib/routing/safe-next";
 
 const CLIENT_ID = process.env.GOOGLE_ADS_CLIENT_ID;
 const CLIENT_SECRET = process.env.GOOGLE_ADS_CLIENT_SECRET;
-
-// Fallback origin if we can't detect one (keep your ngrok here)
-const FALLBACK_ORIGIN = "https://67476f1a363d.ngrok-free.app";
 const REDIRECT_PATH = "/api/auth/google-ads/callback";
 
 type TokenResponse = {
@@ -18,23 +16,6 @@ type TokenResponse = {
   error_description?: string;
 };
 
-function computeOrigin(req: NextApiRequest): string {
-  const originHeader = (req.headers.origin as string | undefined) || "";
-  if (originHeader) return originHeader.replace(/\/$/, "");
-
-  const host = req.headers.host || "";
-  if (!host) return FALLBACK_ORIGIN;
-
-  // If x-forwarded-proto indicates https, trust it (when behind proxies)
-  const forwardedProto = (req.headers["x-forwarded-proto"] as string | undefined) || "";
-  const isHttpsProto = forwardedProto.toLowerCase() === "https";
-
-  // Heuristic: localhost/127.0.0.1 -> http, otherwise https
-  const isLocal = host.includes("localhost") || host.includes("127.0.0.1");
-  const proto = isHttpsProto ? "https" : isLocal ? "http" : "https";
-  return `${proto}://${host}`.replace(/\/$/, "");
-}
-
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
     if (!CLIENT_ID || !CLIENT_SECRET) {
@@ -44,17 +25,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     const { code, error } = req.query;
-    console.log("[google-ads callback] query:", req.query);
 
     if (error) {
-      console.error("[google-ads callback] oauth error param:", error);
+      console.error("[google-ads callback] oauth error param present");
       return res.status(400).send("OAuth error: " + String(error));
     }
     if (!code || Array.isArray(code)) {
       return res.status(400).send("Missing code");
     }
 
-    const origin = computeOrigin(req);
+    let origin: string;
+    try {
+      origin = resolveRequestOrigin(req);
+    } catch (err: any) {
+      return res.status(500).send(err?.message || "Application URL is not configured");
+    }
     const redirectUri = `${origin}${REDIRECT_PATH}`;
 
     // Exchange authorization code for tokens
@@ -74,19 +59,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const tokenText = await tokenRes.text();
     try {
       tokenJson = JSON.parse(tokenText) as TokenResponse;
-    } catch (parseErr) {
-      console.error("[google-ads] token parse error:", tokenText);
+    } catch {
+      console.error("[google-ads] token parse error");
       return res.status(500).send("Failed to parse token response");
     }
 
     if (!tokenRes.ok) {
-      console.error("[google-ads] token endpoint returned error:", tokenJson);
+      console.error("[google-ads] token endpoint returned error", tokenJson?.error || tokenRes.status);
       const msg = tokenJson?.error_description || tokenJson?.error || `status ${tokenRes.status}`;
       return res.status(500).send("Token exchange failed: " + msg);
     }
 
     if (!tokenJson || !tokenJson.access_token) {
-      console.error("[google-ads] no access_token in token response:", tokenJson);
+      console.error("[google-ads] no access_token in token response");
       return res.status(500).send("No access token in response");
     }
 
@@ -129,18 +114,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       })
     );
 
-    console.log("[google-ads] setting cookies:", cookiesToSet);
     res.setHeader("Set-Cookie", cookiesToSet);
 
-    // Update server-side status immediately so status endpoint returns connected
     try {
       await setStatus("google-ads", true);
-      console.log("[google-ads] setStatus ok");
     } catch (sErr) {
-      console.warn("[google-ads] setStatus failed:", sErr);
+      console.warn("[google-ads] setStatus failed");
     }
 
-    // Small HTML page to notify opener and close
     const payload = {
       type: "oauth_connected",
       platform: "google-ads",
@@ -184,8 +165,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     return res.status(200).send(html);
   } catch (outerErr: any) {
-    console.error("[google-ads callback] unexpected error:", outerErr);
-    // helpful error page in popup for debugging
+    console.error("[google-ads callback] unexpected error");
     const errHtml = `<!doctype html><html><body><h3>OAuth callback error</h3><pre>${String(outerErr?.message || outerErr)}</pre></body></html>`;
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     return res.status(500).send(errHtml);

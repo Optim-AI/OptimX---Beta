@@ -40,7 +40,7 @@ export default function NoFacebookPages() {
             <li>Choose a page category (Business, Brand, Community, etc.)</li>
             <li>Enter your page name and description</li>
             <li>Complete the setup wizard</li>
-            <li>Return here and click "Retry Connection" below</li>
+            <li>Return here and click &quot;Retry Connection&quot; below</li>
           </ol>
         </div>
 

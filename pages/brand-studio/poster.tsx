@@ -1428,11 +1428,11 @@ export default function PosterSessionPage() {
       const reviewCount = meta.filter((m) => m.status === "review").length;
       if (reviewCount > 0 && readyCount > 0) {
         showSuccess(
-          `${readyCount} poster${readyCount === 1 ? "" : "s"} ready · ${reviewCount} need${reviewCount === 1 ? "s" : ""} review · ${gen.creditsCharged} credit${gen.creditsCharged === 1 ? "" : "s"} used`
+          `${readyCount} poster${readyCount === 1 ? "" : "s"} ready · ${reviewCount} need${reviewCount === 1 ? "s" : ""} review · ${gen.creditsCharged} Image Credit${gen.creditsCharged === 1 ? "" : "s"} used`
         );
       } else {
         showSuccess(
-          `${results.length} poster${results.length === 1 ? "" : "s"} generated · ${gen.creditsCharged} credit${gen.creditsCharged === 1 ? "" : "s"} used`
+          `${results.length} poster${results.length === 1 ? "" : "s"} generated · ${gen.creditsCharged} Image Credit${gen.creditsCharged === 1 ? "" : "s"} used`
         );
       }
 
@@ -2269,7 +2269,7 @@ export default function PosterSessionPage() {
     setLastCreditsCharged(result.creditsCharged);
     if (result.creditsCharged > 0) {
       showSuccess(
-        `Poster updated · Version ${result.versionNumber} · ${result.creditsCharged} credit used`
+        `Poster updated · Version ${result.versionNumber} · ${result.creditsCharged} Image Credit used`
       );
     }
 
