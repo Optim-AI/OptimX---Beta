@@ -4,7 +4,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { JSDOM } from "jsdom";
 import { Readability } from "@mozilla/readability";
-import { getUserIdFromRequest } from "@/auth/request";
 import { ContentStudioScanDAO } from "@/database/models/ContentStudioScan.dao";
 import { GEMINI_REST_BASE, getGeminiApiKey } from "@/lib/gemini-config";
 import { fetchWithGeminiRateLimitRetry } from "@/lib/gemini-retry";
@@ -898,7 +897,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ ok: false, error: "Method not allowed" });
   }
 
-  const userId = await getUserIdFromRequest(req);
+  const { getOnboardingActor } = await import("@/lib/onboarding/actor");
+  const actor = await getOnboardingActor(req);
+  const userId = actor?.userId ?? null;
   if (!userId) {
     return res.status(401).json({ ok: false, error: "Authentication required" });
   }

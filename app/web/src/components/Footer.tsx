@@ -2,176 +2,47 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
-import { Facebook, Instagram, Linkedin } from 'lucide-react';
 import colors from '@/lib/ui/colors';
 
-type LinkItem = { name: string; href: string; type: 'route' | 'section' };
-
+/**
+ * Minimal marketing footer — legal + entry, no long link grids.
+ */
 const Footer: React.FC = () => {
-  const pathname = usePathname();
-  const router = useRouter();
-
-  const footerLinks: Record<string, LinkItem[]> = {
-    Product: [
-      { name: 'Features', href: '/#product', type: 'section' },
-      { name: 'How It Works', href: '/#how-it-works', type: 'section' },
-      { name: 'Use Cases', href: '/#built-for', type: 'section' },
-    ],
-    Company: [
-      { name: 'About', href: '/About', type: 'route' },
-      { name: 'Contact', href: '/Contact', type: 'route' },
-      { name: 'FAQ', href: '/#faq', type: 'section' },
-    ],
-    Legal: [
-      { name: 'Privacy', href: '/privacy-policy', type: 'route' },
-      { name: 'Terms', href: '/terms-and-conditions', type: 'route' },
-      { name: 'Cookies', href: '/cpolicy', type: 'route' },
-    ],
-    Support: [
-      { name: 'Contact', href: '/Contact', type: 'route' },
-      { name: 'Support', href: '/help-center', type: 'route' },
-    ],
-  };
-
-  const socialLinks = [
-    {
-      name: 'Facebook',
-      icon: Facebook,
-      href: 'https://www.facebook.com/share/1BNxZDcfRe/?mibextid=wwXIfr',
-    },
-    {
-      name: 'Instagram',
-      icon: Instagram,
-      href: 'https://www.instagram.com/optimx.ai/?utm_source=qr',
-    },
-    {
-      name: 'LinkedIn',
-      icon: Linkedin,
-      href: 'https://www.linkedin.com/company/optim01/?viewAsMember=true',
-    },
-  ];
-
-  const handleSectionClick = (href: string) => {
-    if (pathname !== '/') router.push(href);
-    else {
-      const selector = href.startsWith('/#')
-        ? `#${href.substring(2)}`
-        : href.startsWith('#')
-          ? href
-          : href.replace('/#', '#');
-      const element = document.querySelector(selector);
-      if (element) element.scrollIntoView({ behavior: 'smooth' });
-      else if (selector.startsWith('#')) window.location.hash = selector;
-    }
-  };
-
   return (
     <footer style={{ backgroundColor: '#121212', borderTop: `1px solid ${colors.border}` }}>
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-16">
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-8">
-          <div className="col-span-2 md:col-span-1">
-            <div className="flex items-center space-x-2 mb-4">
-              <img
-                src="/images/SkalX_Logo.png"
-                alt="SkalX AI Logo"
-                className="h-8 w-auto object-contain"
-              />
-            </div>
-            <p className="text-sm leading-relaxed mb-4" style={{ color: colors.mutedForeground }}>
-              An AI Marketing Team — Without Expanding Headcount.
-            </p>
+      <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-10 max-w-5xl">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6">
+          <div className="flex items-center gap-4">
+            <img
+              src="/images/SkalX_Logo.png"
+              alt="SkalX AI"
+              className="h-5 w-auto object-contain"
+            />
             <Link href="/try" className="text-sm font-medium" style={{ color: colors.primary }}>
-              Try Now →
+              Get Started →
             </Link>
           </div>
-
-          {Object.entries(footerLinks).map(([category, links]) => (
-            <div key={category}>
-              <h3 className="font-semibold mb-4" style={{ color: colors.foreground }}>
-                {category}
-              </h3>
-              <ul className="space-y-3">
-                {links.map((link) => (
-                  <li key={`${category}-${link.name}`}>
-                    {link.type === 'section' ? (
-                      <button
-                        onClick={() => handleSectionClick(link.href)}
-                        className="text-left transition-colors duration-200"
-                        style={{
-                          color: colors.mutedForeground,
-                          background: 'transparent',
-                          border: 'none',
-                          padding: 0,
-                        }}
-                        onMouseEnter={(e) =>
-                          ((e.currentTarget as HTMLElement).style.color = colors.primary)
-                        }
-                        onMouseLeave={(e) =>
-                          ((e.currentTarget as HTMLElement).style.color = colors.mutedForeground)
-                        }
-                      >
-                        {link.name}
-                      </button>
-                    ) : (
-                      <Link
-                        href={link.href}
-                        className="transition-colors duration-200"
-                        style={{ color: colors.mutedForeground, textDecoration: 'none' }}
-                        onMouseEnter={(e) =>
-                          ((e.currentTarget as HTMLElement).style.color = colors.primary)
-                        }
-                        onMouseLeave={(e) =>
-                          ((e.currentTarget as HTMLElement).style.color = colors.mutedForeground)
-                        }
-                      >
-                        {link.name}
-                      </Link>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
+          <nav className="flex flex-wrap gap-x-5 gap-y-2 text-sm" aria-label="Legal">
+            <Link href="/privacy-policy" style={{ color: colors.mutedForeground, textDecoration: 'none' }}>
+              Privacy
+            </Link>
+            <Link href="/terms-and-conditions" style={{ color: colors.mutedForeground, textDecoration: 'none' }}>
+              Terms
+            </Link>
+            <Link href="/cpolicy" style={{ color: colors.mutedForeground, textDecoration: 'none' }}>
+              Cookies
+            </Link>
+            <Link href="/Contact" style={{ color: colors.mutedForeground, textDecoration: 'none' }}>
+              Contact
+            </Link>
+            <Link href="/help-center" style={{ color: colors.mutedForeground, textDecoration: 'none' }}>
+              Support
+            </Link>
+          </nav>
         </div>
-
-        <div className="mt-10 flex gap-3">
-          {socialLinks.map((social) => {
-            const Icon = social.icon;
-            return (
-              <a
-                key={social.name}
-                href={social.href}
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label={social.name}
-                className="flex items-center justify-center w-10 h-10 rounded-xl transition-all duration-300"
-                style={{ backgroundColor: colors.muted, color: colors.foreground }}
-                onMouseEnter={(e) => {
-                  const el = e.currentTarget as HTMLElement;
-                  el.style.backgroundColor = colors.primary;
-                  el.style.color = colors.primaryForeground;
-                }}
-                onMouseLeave={(e) => {
-                  const el = e.currentTarget as HTMLElement;
-                  el.style.backgroundColor = colors.muted;
-                  el.style.color = colors.foreground;
-                }}
-              >
-                <Icon className="h-5 w-5" />
-              </a>
-            );
-          })}
-        </div>
-
-        <div
-          className="mt-12 pt-8 flex flex-col md:flex-row items-center justify-between"
-          style={{ borderTop: `1px solid ${colors.border}`, gap: 12 }}
-        >
-          <div style={{ color: colors.mutedForeground, fontSize: 14 }}>
-            © {new Date().getFullYear()} SkalX AI. All rights reserved.
-          </div>
-        </div>
+        <p className="mt-8 text-sm" style={{ color: colors.mutedForeground }}>
+          © {new Date().getFullYear()} SkalX AI. All rights reserved.
+        </p>
       </div>
     </footer>
   );

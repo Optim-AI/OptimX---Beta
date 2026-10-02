@@ -14,7 +14,7 @@ assert.deepEqual(
     brandSnapshot: null,
     onboarding: null,
   }),
-  { kind: 'signin', next: '/try' }
+  { kind: 'guest' }
 );
 
 assert.deepEqual(

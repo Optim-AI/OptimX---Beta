@@ -13,10 +13,8 @@ const Header: React.FC = () => {
   const pathname = router.pathname;
 
   const navItems = [
-    { name: 'About', href: '/#about', type: 'section' as const },
     { name: 'How It Works', href: '/#how-it-works', type: 'section' as const },
-    { name: 'Product', href: '/#product', type: 'section' as const },
-    { name: 'FAQ', href: '/#faq', type: 'section' as const },
+    { name: 'Showcase', href: '/#showcase', type: 'section' as const },
     { name: 'Contact', href: '/Contact', type: 'route' as const },
   ];
 
@@ -117,7 +115,7 @@ const Header: React.FC = () => {
               Login
             </Link>
             <Link href="/try">
-              <Button variant="cta">Try Now</Button>
+              <Button variant="cta">Get Started</Button>
             </Link>
           </div>
 
@@ -218,7 +216,7 @@ const Header: React.FC = () => {
                 </Link>
                 <Link href="/try" onClick={() => setIsMenuOpen(false)}>
                   <Button variant="cta" className="justify-start w-full">
-                    Try Now
+                    Get Started
                   </Button>
                 </Link>
               </div>

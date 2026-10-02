@@ -153,10 +153,19 @@ export function getOnboardingDemoCreatives(
   return [];
 }
 
+export type BrandAnalysisStage =
+  | 'connecting'
+  | 'website'
+  | 'identity'
+  | 'products'
+  | 'dna';
+
 export type TryOnboardingState = {
   status: TryOnboardingStatus;
   brandName?: string;
   websiteUrl?: string;
+  /** Honest analysis milestone written by the server or the discover client. */
+  analysisStage?: BrandAnalysisStage | null;
   source?: TryOnboardingSource;
   /** Prefer storing only small refs; large data URLs live on brand_snapshot.logo */
   productImagePreview?: string | null;
@@ -215,6 +224,14 @@ export function parseTryOnboarding(
     status: o.status as TryOnboardingStatus,
     brandName: typeof o.brandName === 'string' ? o.brandName : undefined,
     websiteUrl: typeof o.websiteUrl === 'string' ? o.websiteUrl : undefined,
+    analysisStage:
+      o.analysisStage === 'connecting' ||
+      o.analysisStage === 'website' ||
+      o.analysisStage === 'identity' ||
+      o.analysisStage === 'products' ||
+      o.analysisStage === 'dna'
+        ? o.analysisStage
+        : null,
     source: o.source === 'website' || o.source === 'image' ? o.source : undefined,
     productImagePreview:
       typeof o.productImagePreview === 'string' ? o.productImagePreview : null,
@@ -240,7 +257,26 @@ export function buildTryOnboardingPatch(
 export type EntryDestination =
   | { kind: 'try'; step?: TryOnboardingStatus }
   | { kind: 'workspace' }
+  | { kind: 'guest' }
   | { kind: 'signin'; next: string };
+
+const STATUS_RANK: Record<TryOnboardingStatus, number> = {
+  brand_started: 1,
+  analyzing: 2,
+  brand_analyzed: 3,
+  demo_ready: 4,
+  demo_pending: 5,
+  demo_complete: 6,
+  pricing_seen: 7,
+  skipped: 7,
+  subscribed: 8,
+  complete: 8,
+};
+
+export function onboardingStatusRank(status?: string | null): number {
+  if (!status || !(status in STATUS_RANK)) return 0;
+  return STATUS_RANK[status as TryOnboardingStatus];
+}
 
 export type EntryInputs = {
   authenticated: boolean;
@@ -257,7 +293,7 @@ export type EntryInputs = {
  */
 export function resolveTryEntry(input: EntryInputs): EntryDestination {
   if (!input.authenticated) {
-    return { kind: 'signin', next: '/try' };
+    return { kind: 'guest' };
   }
 
   if (input.hasActiveSubscription) {

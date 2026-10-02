@@ -597,9 +597,21 @@ export default async function handler(
 ) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
-  const { getUserIdFromRequest } = await import("@/auth/request");
-  const userId = await getUserIdFromRequest(req);
-  if (!userId) return res.status(401).json({ error: "Authentication required" });
+  const { getOnboardingActor } = await import("@/lib/onboarding/actor");
+  const { writeAnalysisStage } = await import("@/lib/onboarding/analysis-progress");
+  const actor = await getOnboardingActor(req);
+  if (!actor) return res.status(401).json({ error: "Authentication required" });
+  const trackProgress = Boolean(req.body?.onboarding);
+  const markStage = async (
+    stage: 'connecting' | 'website' | 'identity' | 'products' | 'dna'
+  ) => {
+    if (!trackProgress) return;
+    try {
+      await writeAnalysisStage(actor.userId, stage);
+    } catch (stageErr) {
+      console.warn('[fullAnalyze] progress write failed', stageErr);
+    }
+  };
 
   const { url } = req.body;
   if (!url) return res.status(400).json({ error: "Missing url" });
@@ -610,9 +622,11 @@ export default async function handler(
   }
 
   try {
+    await markStage('connecting');
     let data: any;
     try {
       data = await fetchPageData(url);
+      await markStage('website');
     } catch (e: any) {
       console.error("Failed to fetch page data:", e?.message || e);
       throw new Error(`Failed to fetch or parse website: ${e?.message || "Unknown error"}`);
@@ -739,6 +753,8 @@ export default async function handler(
       console.error("Failed to parse brand voice:", e);
       // Continue with empty brand voice data
     }
+
+    await markStage('identity');
 
     const rankedImages = await rankImagesWithAI(
       data.allImages,

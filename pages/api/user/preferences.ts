@@ -2,14 +2,15 @@
 // GET/PUT user UI preferences stored in profiles.ui_preferences JSONB
 
 import type { NextApiRequest, NextApiResponse } from "next";
-import { getUserIdFromRequest } from "@/auth/request";
+import { getOnboardingActor } from "@/lib/onboarding/actor";
 import { db } from "@/database/client";
 import { profiles } from "@/database/schema";
 import { eq } from "drizzle-orm";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
-    const userId = await getUserIdFromRequest(req);
+    const actor = await getOnboardingActor(req);
+    const userId = actor?.userId ?? null;
     if (!userId) {
       return res.status(401).json({ ok: false, error: "Authentication required" });
     }

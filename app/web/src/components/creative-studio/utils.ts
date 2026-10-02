@@ -95,6 +95,10 @@ export function mapFullAnalyzeToBrandSnapshot(result: any): BrandSnapshot {
     brand_values: result.brand_values,
     business_overview: result.business_overview,
     website_url: result.website_url,
+    marketSummary:
+      typeof result.competition?.summary === 'string' && result.competition.summary.trim()
+        ? result.competition.summary.trim()
+        : undefined,
     productImages: Array.isArray(result.product_images)
       ? result.product_images
           .filter((u: unknown): u is string => typeof u === 'string' && u.length > 0)

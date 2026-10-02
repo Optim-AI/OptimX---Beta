@@ -1,21 +1,12 @@
-"use client";
+'use client';
 
-import React, { useState, useRef, useEffect } from "react";
-import { Button } from "./ui/button";
-import {
-  Sparkles,
-  Lightbulb,
-  TrendingUp,
-  Target,
-  Megaphone,
-  PenTool,
-  BarChart3,
-} from "lucide-react";
-import { useRouter } from "next/router";
-import Link from "next/link";
-import colors from "@/lib/ui/colors";
-import { useIsMobile } from "../hooks/use-mobile";
-import { ParallaxLayer } from "./ParallaxLayer";
+import React, { useState } from 'react';
+import Image from 'next/image';
+import Link from 'next/link';
+import { motion, useReducedMotion } from 'framer-motion';
+import { Button } from './ui/button';
+import colors from '@/lib/ui/colors';
+import { useTryNavigation } from '../hooks/use-try-navigation';
 
 function withAlpha(token: string, alpha: number) {
   const hslMatch = token.match(/hsl\(\s*([\d.]+)\s+([\d.]+)%\s+([\d.]+)%\s*\)/i);
@@ -26,304 +17,253 @@ function withAlpha(token: string, alpha: number) {
   return token;
 }
 
+const EASE = [0.16, 1, 0.3, 1] as const;
+
+const CREATIVES = [
+  {
+    src: '/images/partners/boat-stone-350-deadpool.png',
+    label: 'Social post',
+    role: 'side' as const,
+    rotate: -6,
+  },
+  {
+    src: '/images/partners/jimmys-cocktails-green-apple-martini.png',
+    label: 'Product ad',
+    role: 'primary' as const,
+    rotate: 0,
+  },
+  {
+    src: '/images/partners/plum-cc332b6e-16f6-42a6-937c-cca1d9a11816.png',
+    label: 'Campaign',
+    role: 'side' as const,
+    rotate: 6,
+  },
+] as const;
+
 /**
- * Public hero — marketing CTA surface.
- * Brand URL/product input routes into the canonical /try flow (no second onboarding).
- * Creative carousel lives in CreativeShowcase on the homepage.
+ * Public hero — stacked hierarchy: headline → creatives → brand input.
+ * Routes into the canonical /try guest onboarding flow.
  */
 const Hero: React.FC = () => {
-  const router = useRouter();
-  const isMobile = useIsMobile();
-  const [url, setUrl] = useState("");
-  const sectionRef = useRef<HTMLElement>(null);
-  const floatContainerRef = useRef<HTMLDivElement>(null);
-  const [hoveredOrbs, setHoveredOrbs] = useState<Set<number>>(new Set());
-
-  useEffect(() => {
-    if (isMobile) return;
-    const container = floatContainerRef.current;
-    if (!container) return;
-    const orbs = container.querySelectorAll(".hero-float-orb");
-    const onMove = (e: MouseEvent) => {
-      const next = new Set<number>();
-      orbs.forEach((orb, i) => {
-        const r = (orb as HTMLElement).getBoundingClientRect();
-        const cx = r.left + r.width / 2;
-        const cy = r.top + r.height / 2;
-        const dist = Math.hypot(e.clientX - cx, e.clientY - cy);
-        if (dist < 56) next.add(i);
-      });
-      setHoveredOrbs(next);
-    };
-    window.addEventListener("mousemove", onMove, { passive: true });
-    return () => window.removeEventListener("mousemove", onMove);
-  }, [isMobile]);
+  const reduceMotion = useReducedMotion();
+  const [url, setUrl] = useState('');
+  const { goToTry, submitting, inputError, clearError } = useTryNavigation();
 
   const scrollToSection = (id: string) => {
     const el = document.getElementById(id);
-    if (el) el.scrollIntoView({ behavior: "smooth" });
-    else router.push(`/#${id}`);
+    if (el) el.scrollIntoView({ behavior: 'smooth' });
   };
 
-  const goToTry = (e?: React.FormEvent) => {
-    e?.preventDefault();
-    const trimmed = url.trim();
-    if (trimmed) {
-      const looksLikeUrl =
-        /^https?:\/\//i.test(trimmed) ||
-        /^[a-z0-9.-]+\.[a-z]{2,}/i.test(trimmed);
-      if (looksLikeUrl) {
-        const withProtocol = /^https?:\/\//i.test(trimmed)
-          ? trimmed
-          : `https://${trimmed}`;
-        router.push(`/try?website=${encodeURIComponent(withProtocol)}`);
-        return;
-      }
-      router.push(`/try?brand=${encodeURIComponent(trimmed)}`);
-      return;
-    }
-    router.push("/try");
-  };
+  const fadeUp = (delay = 0) =>
+    reduceMotion
+      ? {}
+      : {
+          initial: { opacity: 0, y: 16 },
+          animate: { opacity: 1, y: 0 },
+          transition: { duration: 0.65, delay, ease: EASE },
+        };
 
   return (
     <section
-      ref={sectionRef}
       id="hero-liquid-trigger"
-      className="pt-28 pb-16 min-h-[85vh] flex flex-col items-center justify-center relative overflow-hidden"
-      style={{ backgroundColor: "#121212", color: colors.foreground, isolation: "isolate" }}
+      className="relative overflow-hidden pt-24 sm:pt-28 pb-14 sm:pb-20"
+      style={{ backgroundColor: '#121212', color: colors.foreground }}
     >
       <a id="home" className="absolute top-0 left-0 block w-px h-px invisible" aria-hidden />
-      <style jsx>{`
-        .hero-card {
-          border-radius: 20px;
-          backdrop-filter: blur(20px);
-          -webkit-backdrop-filter: blur(20px);
-          box-shadow: 0 1px 2px hsl(0 0% 0% / 0.04), 0 4px 12px hsl(0 0% 0% / 0.04),
-            0 12px 40px hsl(0 0% 0% / 0.06);
-        }
-        .hero-input-wrap {
-          transition: transform 0.3s, box-shadow 0.3s;
-        }
-        .hero-input-wrap:focus-within {
-          transform: scale(1.01);
-          box-shadow: 0 0 0 1px hsl(213 100% 62% / 0.2), 0 0 24px hsl(213 100% 62% / 0.12);
-        }
-        @keyframes floatOrbit {
-          0%,
-          100% {
-            transform: translate(0, 0) rotate(0deg);
-          }
-          25% {
-            transform: translate(4px, -6px) rotate(2deg);
-          }
-          50% {
-            transform: translate(-3px, -4px) rotate(-1deg);
-          }
-          75% {
-            transform: translate(5px, 2px) rotate(1deg);
-          }
-        }
-        .hero-float-orb {
-          animation: floatOrbit 6s ease-in-out infinite;
-        }
-        .hero-float-orb.delay-1 {
-          animation-delay: -1.2s;
-        }
-        .hero-float-orb.delay-2 {
-          animation-delay: -2.5s;
-        }
-        .hero-float-orb.delay-3 {
-          animation-delay: -4s;
-        }
-        .hero-float-orb.delay-4 {
-          animation-delay: -0.5s;
-        }
-        .hero-float-orb.delay-5 {
-          animation-delay: -3.2s;
-        }
-        @media (prefers-reduced-motion: reduce) {
-          .hero-float-orb {
-            animation: none;
-          }
-        }
-        .hero-float-orb-inner {
-          transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.2s,
-            filter 0.2s;
-        }
-        .hero-float-orb-hover .hero-float-orb-inner {
-          transform: scale(1.45);
-          opacity: 0.6;
-          filter: drop-shadow(0 0 10px currentColor);
-        }
-      `}</style>
 
-      <div className="absolute inset-0 z-0" style={{ backgroundColor: "#121212" }} />
       <div
-        className="absolute inset-0 pointer-events-none opacity-[0.012] z-[1]"
+        className="absolute inset-0 pointer-events-none"
+        style={{ background: colors.gradientMesh, opacity: 0.45 }}
+        aria-hidden
+      />
+      <div
+        className="absolute inset-0 pointer-events-none opacity-[0.015]"
         style={{
           backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")`,
         }}
+        aria-hidden
       />
 
-      {!isMobile && (
-        <div
-          ref={floatContainerRef}
-          className="absolute inset-0 pointer-events-none z-[2] overflow-hidden"
-          aria-hidden
+      <div className="container relative z-10 mx-auto flex w-full max-w-5xl flex-col items-center px-4 sm:px-6 lg:px-8">
+        {/* 1. Headline — own region, never overlapped */}
+        <div className="w-full max-w-[850px] text-center">
+          <motion.h1
+            className="text-[2rem] font-normal leading-[1.15] tracking-tight sm:text-5xl md:text-[52px]"
+            style={{ color: colors.foreground }}
+            {...fadeUp(0.05)}
+          >
+            Your brand.
+            <br />
+            Infinite possibilities.
+          </motion.h1>
+          <motion.p
+            className="mx-auto mt-4 max-w-xl text-base font-light sm:text-lg"
+            style={{ color: colors.mutedForeground }}
+            {...fadeUp(0.12)}
+          >
+            Turn your brand into campaign-ready creatives with AI.
+          </motion.p>
+        </div>
+
+        {/* 2. Creative showcase — defined container below headline */}
+        <motion.div
+          className="relative mt-8 w-full max-w-3xl sm:mt-10"
+          {...fadeUp(0.2)}
+          aria-label="Example SkalX creatives"
         >
+          {/* Soft blue glow behind the set */}
           <div
-            className={`hero-float-orb absolute left-[5%] top-[12%] opacity-[0.32] ${hoveredOrbs.has(0) ? "hero-float-orb-hover" : ""}`}
-            style={{ color: colors.primary }}
-          >
-            <span className="hero-float-orb-inner inline-block origin-center">
-              <Lightbulb className="h-7 w-7" strokeWidth={1.5} />
-            </span>
-          </div>
-          <div
-            className={`hero-float-orb delay-1 absolute left-[22%] top-[8%] opacity-[0.22] ${hoveredOrbs.has(1) ? "hero-float-orb-hover" : ""}`}
-            style={{ color: colors.mutedForeground }}
-          >
-            <span className="hero-float-orb-inner inline-block origin-center">
-              <PenTool className="h-5 w-5" strokeWidth={1.5} />
-            </span>
-          </div>
-          <div
-            className={`hero-float-orb delay-3 absolute left-[8%] top-[58%] opacity-[0.28] ${hoveredOrbs.has(2) ? "hero-float-orb-hover" : ""}`}
-            style={{ color: colors.primary }}
-          >
-            <span className="hero-float-orb-inner inline-block origin-center">
-              <TrendingUp className="h-6 w-6" strokeWidth={1.5} />
-            </span>
-          </div>
-          <div
-            className={`hero-float-orb delay-4 absolute left-[18%] top-[88%] opacity-[0.24] ${hoveredOrbs.has(3) ? "hero-float-orb-hover" : ""}`}
-            style={{ color: colors.primary }}
-          >
-            <span className="hero-float-orb-inner inline-block origin-center">
-              <Megaphone className="h-6 w-6" strokeWidth={1.5} />
-            </span>
-          </div>
-          <div
-            className={`hero-float-orb delay-5 absolute left-[35%] top-[25%] opacity-[0.2] ${hoveredOrbs.has(4) ? "hero-float-orb-hover" : ""}`}
-            style={{ color: colors.mutedForeground }}
-          >
-            <span className="hero-float-orb-inner inline-block origin-center">
-              <Sparkles className="h-5 w-5" strokeWidth={1.5} />
-            </span>
-          </div>
-          <div
-            className={`hero-float-orb delay-2 absolute left-[28%] top-[72%] opacity-[0.26] ${hoveredOrbs.has(5) ? "hero-float-orb-hover" : ""}`}
-            style={{ color: colors.primary }}
-          >
-            <span className="hero-float-orb-inner inline-block origin-center">
-              <Target className="h-6 w-6" strokeWidth={1.5} />
-            </span>
-          </div>
-          <div
-            className={`hero-float-orb absolute right-[6%] top-[18%] opacity-[0.3] ${hoveredOrbs.has(6) ? "hero-float-orb-hover" : ""}`}
-            style={{ color: colors.primary }}
-          >
-            <span className="hero-float-orb-inner inline-block origin-center">
-              <Target className="h-7 w-7" strokeWidth={1.5} />
-            </span>
-          </div>
-          <div
-            className={`hero-float-orb delay-1 absolute right-[20%] top-[6%] opacity-[0.22] ${hoveredOrbs.has(7) ? "hero-float-orb-hover" : ""}`}
-            style={{ color: colors.mutedForeground }}
-          >
-            <span className="hero-float-orb-inner inline-block origin-center">
-              <BarChart3 className="h-5 w-5" strokeWidth={1.5} />
-            </span>
-          </div>
-        </div>
-      )}
+            className="pointer-events-none absolute left-1/2 top-1/2 h-[70%] w-[60%] -translate-x-1/2 -translate-y-1/2 rounded-full blur-3xl"
+            style={{ background: 'hsl(213 100% 55% / 0.12)' }}
+            aria-hidden
+          />
 
-      <ParallaxLayer speed={0.08} className="relative" style={{ zIndex: 10 }}>
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10 w-full max-w-6xl">
-          <div
-            className="text-center mb-4 mx-auto max-w-6xl animate-[fadeUp_0.7s_cubic-bezier(0.16,1,0.3,1)_both"
-            style={{ animationDelay: "0.1s" }}
-          >
-            <h1
-              className="text-4xl sm:text-[46px] font-normal leading-tight tracking-tight md:whitespace-nowrap"
-              style={{ color: colors.foreground }}
-            >
-              Your AI Marketing Partner.
-            </h1>
+          <div className="relative flex items-end justify-center gap-2 sm:gap-4 md:gap-5">
+            {CREATIVES.map((card, index) => {
+              const isPrimary = card.role === 'primary';
+              return (
+                <motion.div
+                  key={card.src}
+                  className={
+                    isPrimary
+                      ? 'relative z-10 w-[42%] max-w-[240px] sm:w-[38%] sm:max-w-[280px]'
+                      : 'relative z-[1] w-[28%] max-w-[160px] sm:w-[26%] sm:max-w-[200px]'
+                  }
+                  initial={reduceMotion ? false : { opacity: 0, y: 28 }}
+                  animate={
+                    reduceMotion
+                      ? { opacity: 1 }
+                      : {
+                          opacity: 1,
+                          y: isPrimary ? [0, -5, 0] : [0, -3, 0],
+                        }
+                  }
+                  transition={
+                    reduceMotion
+                      ? { duration: 0 }
+                      : {
+                          opacity: {
+                            duration: 0.6,
+                            delay: 0.28 + index * 0.1,
+                            ease: EASE,
+                          },
+                          y: {
+                            duration: isPrimary ? 5.5 : 6.2,
+                            delay: 0.9 + index * 0.15,
+                            repeat: Infinity,
+                            ease: 'easeInOut',
+                          },
+                        }
+                  }
+                >
+                  <div
+                    className="relative aspect-[4/5] w-full overflow-hidden rounded-2xl"
+                    style={{
+                      transform: `rotate(${card.rotate}deg)`,
+                      border: isPrimary
+                        ? '1px solid hsl(213 100% 55% / 0.35)'
+                        : '1px solid rgba(255,255,255,0.1)',
+                      boxShadow: isPrimary
+                        ? '0 24px 56px rgba(0,0,0,0.5), 0 0 32px hsl(213 100% 55% / 0.15)'
+                        : '0 16px 40px rgba(0,0,0,0.4)',
+                    }}
+                  >
+                    <Image
+                      src={card.src}
+                      alt={`SkalX ${card.label} example`}
+                      fill
+                      className="object-cover"
+                      sizes={isPrimary ? '(max-width: 640px) 42vw, 280px' : '(max-width: 640px) 28vw, 200px'}
+                      priority={isPrimary}
+                    />
+                    <span
+                      className="absolute bottom-2 left-2 rounded-md px-2 py-0.5 text-[10px] uppercase tracking-wider"
+                      style={{
+                        background: 'rgba(0,0,0,0.6)',
+                        color: colors.foreground,
+                        backdropFilter: 'blur(6px)',
+                      }}
+                    >
+                      {card.label}
+                    </span>
+                  </div>
+                </motion.div>
+              );
+            })}
           </div>
-          <p
-            className="text-center text-xl mb-8 max-w-3xl mx-auto font-extralight animate-[fadeUp_0.7s_cubic-bezier(0.16,1,0.3,1)_both"
-            style={{ color: colors.mutedForeground, animationDelay: "0.25s" }}
-          >
-            SkalX understands your brand and creates marketing creatives so campaigns move
-            faster.
-          </p>
+        </motion.div>
 
-          <form
-            onSubmit={goToTry}
-            className="hero-card p-6 sm:p-8 mb-4 mx-auto w-full max-w-2xl animate-float-subtle"
-            style={{
-              background: `linear-gradient(135deg, ${withAlpha(colors.card, 0.85)} 0%, ${withAlpha(colors.card, 0.92)} 100%)`,
-              border: "1px solid rgba(97, 97, 97, 1)",
-            }}
-          >
-            <div className="space-y-5">
-              <div className="hero-input-wrap rounded-[18px]">
-                <label htmlFor="hero-brand-input" className="sr-only">
-                  Website URL or brand name
-                </label>
-                <input
-                  id="hero-brand-input"
-                  type="text"
-                  placeholder="Paste your website URL or brand name..."
-                  value={url}
-                  onChange={(e) => setUrl(e.target.value)}
-                  className="w-full h-12 rounded-[18px] px-4 text-base outline-none"
-                  style={{
-                    backgroundColor: colors.card,
-                    border: `1px solid ${colors.input}`,
-                    color: colors.foreground,
-                  }}
-                />
-              </div>
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-                <Button
-                  type="submit"
-                  variant="hero"
-                  size="lg"
-                  className="px-8 py-4 text-base rounded-xl w-full sm:w-auto min-w-[160px]"
-                  style={{
-                    background: colors.gradientPrimary,
-                    color: colors.primaryForeground,
-                    boxShadow: colors.shadowGlow,
-                  }}
-                >
-                  Try Now →
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="lg"
-                  className="px-8 py-4 text-base rounded-xl w-full sm:w-auto min-w-[160px]"
-                  onClick={() => scrollToSection("how-it-works")}
-                  style={{ borderColor: colors.border, color: colors.foreground }}
-                >
-                  See How It Works
-                </Button>
-              </div>
-              <p className="text-center text-sm" style={{ color: colors.mutedForeground }}>
-                Experience SkalX with your brand — no free trial required to explore.
-              </p>
+        {/* 3. Brand input — dedicated panel below artwork */}
+        <motion.form
+          onSubmit={(e) => goToTry(url, e)}
+          className="mt-8 w-full max-w-[760px] rounded-[20px] p-5 sm:mt-10 sm:p-6"
+          style={{
+            background: `linear-gradient(135deg, ${withAlpha(colors.card, 0.94)} 0%, ${withAlpha(colors.card, 0.98)} 100%)`,
+            border: '1px solid rgba(255,255,255,0.1)',
+            boxShadow: '0 20px 48px rgba(0,0,0,0.4)',
+            backdropFilter: 'blur(20px)',
+          }}
+          {...fadeUp(0.42)}
+        >
+          <div className="space-y-4">
+            <label htmlFor="hero-brand-input" className="sr-only">
+              Website URL or brand name
+            </label>
+            <input
+              id="hero-brand-input"
+              type="text"
+              placeholder="Paste your website URL or brand name..."
+              value={url}
+              onChange={(e) => {
+                setUrl(e.target.value);
+                if (inputError) clearError();
+              }}
+              className="h-12 w-full rounded-[16px] px-4 text-base outline-none"
+              style={{
+                backgroundColor: 'hsl(0 0% 10%)',
+                border: `1px solid ${colors.input}`,
+                color: colors.foreground,
+              }}
+            />
+            <div className="flex flex-col items-stretch justify-center gap-3 sm:flex-row sm:items-center">
+              <Button
+                type="submit"
+                variant="hero"
+                size="lg"
+                disabled={submitting}
+                className="btn-premium w-full min-w-[160px] rounded-xl px-8 py-4 text-base sm:w-auto"
+                style={{
+                  background: colors.gradientPrimary,
+                  color: colors.primaryForeground,
+                  boxShadow: colors.shadowGlow,
+                }}
+              >
+                Get Started →
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="lg"
+                className="w-full min-w-[160px] rounded-xl px-8 py-4 text-base sm:w-auto"
+                onClick={() => scrollToSection('how-it-works')}
+                style={{ borderColor: colors.border, color: colors.foreground }}
+              >
+                See How It Works
+              </Button>
             </div>
-          </form>
-
-          <div className="text-center">
-            <Link href="/try" className="text-sm font-medium" style={{ color: colors.primary }}>
-              Or continue without entering a URL →
-            </Link>
+            {inputError && (
+              <p className="text-center text-sm" role="alert" style={{ color: 'hsl(0 84% 60%)' }}>
+                {inputError}
+              </p>
+            )}
+            <p className="text-center">
+              <Link href="/try" className="text-sm font-medium" style={{ color: colors.primary }}>
+                Or continue without entering a URL →
+              </Link>
+            </p>
           </div>
-        </div>
-      </ParallaxLayer>
+        </motion.form>
+      </div>
     </section>
   );
 };

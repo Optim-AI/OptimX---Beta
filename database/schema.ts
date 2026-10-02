@@ -763,3 +763,22 @@ export const posterGenerationSessions = pgTable("poster_generation_sessions", {
 	index("idx_poster_gen_sessions_status").using("btree", table.status.asc().nullsLast()),
 	index("idx_poster_gen_sessions_updated_at").using("btree", table.updatedAt.desc().nullsLast()),
 ]);
+
+/**
+ * Pre-auth product onboarding. Holds a shadow profile id so existing brand
+ * snapshot, preferences, and poster-generation code can run before signup.
+ * Claim copies that state onto the real account.
+ */
+export const onboardingGuestSessions = pgTable("onboarding_guest_sessions", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	tokenHash: text("token_hash").notNull(),
+	profileId: uuid("profile_id").notNull(),
+	claimedBy: uuid("claimed_by"),
+	claimedAt: timestamp("claimed_at", { withTimezone: true, mode: "string" }),
+	expiresAt: timestamp("expires_at", { withTimezone: true, mode: "string" }).notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).defaultNow(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }).defaultNow(),
+}, (table) => [
+	uniqueIndex("onboarding_guest_sessions_token_hash_key").using("btree", table.tokenHash.asc().nullsLast()),
+	uniqueIndex("onboarding_guest_sessions_profile_id_key").using("btree", table.profileId.asc().nullsLast()),
+]);

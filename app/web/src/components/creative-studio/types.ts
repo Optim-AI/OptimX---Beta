@@ -31,6 +31,8 @@ export type BrandSnapshot = {
   brand_values?: string[]; // e.g. ["100% Vegan", "Cruelty-Free"]
   business_overview?: string; // 2-sentence summary
   website_url?: string;
+  /** Competitive summary from brand analysis, when the extractor returned one. */
+  marketSummary?: string;
   // Expanded Brand Intelligence
   ctaPatterns?: string[]; // Common CTAs like "Shop Now", "Buy Today", "Explore More"
   productCategory?: string; // Specific category like "earbuds", "headphones", "smartwatches"

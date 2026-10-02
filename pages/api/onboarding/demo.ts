@@ -5,7 +5,7 @@
  */
 
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { getUserIdFromRequest } from '@/auth/request';
+import { getOnboardingActor } from '@/lib/onboarding/actor';
 import {
   OnboardingDemoError,
   runOnboardingPosterDemo,
@@ -23,7 +23,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ success: false, error: 'Method not allowed' });
   }
 
-  const userId = await getUserIdFromRequest(req);
+  const actor = await getOnboardingActor(req);
+  const userId = actor?.userId ?? null;
   if (!userId) {
     return res.status(401).json({ success: false, error: 'Authentication required' });
   }
@@ -57,10 +58,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
     console.error('[onboarding/demo] unexpected error', err);
     const raw = err instanceof Error ? err.message : '';
-    // Never surface SQL / Drizzle internals to the browser.
+    const cause =
+      err && typeof err === 'object' && 'cause' in err
+        ? String((err as { cause?: unknown }).cause ?? '')
+        : '';
+    const combined = `${raw}\n${cause}`;
+    // Only treat genuine missing relations as schema gaps — not FK / constraint failures.
     const isSchemaGap =
-      /generation_job_locks|poster_generation_sessions|Failed query|relation .* does not exist/i.test(
-        raw
+      /relation ["'].*["'] does not exist|Failed query:.*does not exist/i.test(
+        combined
       );
     return res.status(500).json({
       success: false,
