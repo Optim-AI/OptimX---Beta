@@ -54,16 +54,18 @@ const HelpCenter: React.FC = () => {
     },
     {
       q: "How do I request a refund?",
-      a: "Email info@optimx.app with your registered email, payment ID, and reason. Refunds for unused credits must be requested within 7 days of purchase.",
+      a: "Email info@skalxai.app with your registered email, payment ID, and reason. Refunds for unused credits must be requested within 7 days of purchase.",
     },
   ];
 
+  /** Point only at existing public pages — no invented /docs routes. */
   const guides = [
-    { title: "Getting Started: Create your first campaign", href: "/docs/getting-started" },
-    { title: "Connecting Meta & Google", href: "/docs/integrations" },
-    { title: "Managing Credits & Billing", href: "/docs/billing" },
-    { title: "AI Best Practices", href: "/docs/ai-best-practices" },
-    { title: "Troubleshooting Ad Rejections", href: "/docs/ad-rejections" },
+    { title: "Try SkalX with your brand", href: "/try", description: "Start the Try Now experience" },
+    { title: "Product overview", href: "/#product", description: "AI ads, posters, and video creatives" },
+    { title: "How SkalX works", href: "/#how-it-works", description: "From brand understanding to creatives" },
+    { title: "Frequently asked questions", href: "/#faq", description: "Common product questions" },
+    { title: "AI use disclosure", href: "/ai-disclosure", description: "How we use AI responsibly" },
+    { title: "Data handling & security", href: "/data-handling-security", description: "Security practices overview" },
   ];
 
   const filteredFaqs = faqs.filter((f) => f.q.toLowerCase().includes(query.toLowerCase()) || f.a.toLowerCase().includes(query.toLowerCase()));
@@ -124,7 +126,7 @@ const HelpCenter: React.FC = () => {
           </div> */}
 
           <Link href="/" className="flex items-center space-x-1" style={{ color: colors.foreground }}>
-                      <img src="/images/Oli_AI_Logo.svg" alt="SkalX AI Logo" className="h-10 w-auto" />
+                      <img src="/images/SkalX_Logo.png" alt="SkalX AI Logo" className="h-10 w-auto object-contain" />
                       <span className="text-xl font-bold" style={{ lineHeight: 1 }}>
 <span style={{ color: colors.foreground }}>SkalX AI</span>
                       </span>
@@ -172,18 +174,18 @@ const HelpCenter: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Guides */}
+                {/* Guides — existing public destinations only */}
                 <div className="mb-8">
-                  <h3 style={{ color: colors.foreground }}>Guides &amp; Tutorials</h3>
+                  <h3 style={{ color: colors.foreground }}>Guides &amp; resources</h3>
                   <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {guides.map((g, i) => (
-                      <a key={i} href={g.href} className="p-4 rounded-lg border flex items-start gap-3" style={{ borderColor: withAlpha(colors.border, 0.6), background: colors.card }}>
+                      <Link key={i} href={g.href} className="p-4 rounded-lg border flex items-start gap-3" style={{ borderColor: withAlpha(colors.border, 0.6), background: colors.card }}>
                         <BookOpen className="h-5 w-5" style={{ color: colors.primary }} />
                         <div>
                           <div style={{ color: colors.foreground, fontWeight: 700 }}>{g.title}</div>
-                          <div style={{ color: colors.mutedForeground, fontSize: 13 }}>Read guide</div>
+                          <div style={{ color: colors.mutedForeground, fontSize: 13 }}>{g.description}</div>
                         </div>
-                      </a>
+                      </Link>
                     ))}
                   </div>
                 </div>
@@ -192,11 +194,11 @@ const HelpCenter: React.FC = () => {
                 <div>
                   <h3 style={{ color: colors.foreground }}>Support Channels</h3>
                   <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <a href="mailto:info@optimx.app" className="p-4 rounded-lg border flex items-center gap-3" style={{ borderColor: withAlpha(colors.border, 0.6), background: colors.card }}>
+                    <a href="mailto:info@skalxai.app" className="p-4 rounded-lg border flex items-center gap-3" style={{ borderColor: withAlpha(colors.border, 0.6), background: colors.card }}>
                       <Mail className="h-5 w-5" style={{ color: colors.primary }} />
                       <div>
                         <div style={{ color: colors.foreground, fontWeight: 700 }}>Email Support</div>
-                        <div style={{ color: colors.mutedForeground, fontSize: 13 }}>info@optimx.app</div>
+                        <div style={{ color: colors.mutedForeground, fontSize: 13 }}>info@skalxai.app</div>
                       </div>
                     </a>
 
@@ -204,25 +206,25 @@ const HelpCenter: React.FC = () => {
                       <MessageCircle className="h-5 w-5" style={{ color: colors.primary }} />
                       <div>
                         <div style={{ color: colors.foreground, fontWeight: 700 }}>Community</div>
-                        <div style={{ color: colors.mutedForeground, fontSize: 13 }}>Forums & Discord</div>
+                        <div style={{ color: colors.mutedForeground, fontSize: 13 }}>Social channels & updates</div>
                       </div>
                     </Link>
 
-                    <a href="/support" className="p-4 rounded-lg border flex items-center gap-3" style={{ borderColor: withAlpha(colors.border, 0.6), background: colors.card }}>
+                    <Link href="/Contact" className="p-4 rounded-lg border flex items-center gap-3" style={{ borderColor: withAlpha(colors.border, 0.6), background: colors.card }}>
                       <LifeBuoy className="h-5 w-5" style={{ color: colors.primary }} />
                       <div>
-                        <div style={{ color: colors.foreground, fontWeight: 700 }}>Help Articles</div>
-                        <div style={{ color: colors.mutedForeground, fontSize: 13 }}>Search docs & tutorials</div>
+                        <div style={{ color: colors.foreground, fontWeight: 700 }}>Contact</div>
+                        <div style={{ color: colors.mutedForeground, fontSize: 13 }}>Send a message to the team</div>
                       </div>
-                    </a>
+                    </Link>
 
-                    <a href="/support/ticket" className="p-4 rounded-lg border flex items-center gap-3" style={{ borderColor: withAlpha(colors.border, 0.6), background: colors.card }}>
+                    <Link href="/#faq" className="p-4 rounded-lg border flex items-center gap-3" style={{ borderColor: withAlpha(colors.border, 0.6), background: colors.card }}>
                       <HelpCircle className="h-5 w-5" style={{ color: colors.primary }} />
                       <div>
-                        <div style={{ color: colors.foreground, fontWeight: 700 }}>Create Ticket</div>
-                        <div style={{ color: colors.mutedForeground, fontSize: 13 }}>Open a support request</div>
+                        <div style={{ color: colors.foreground, fontWeight: 700 }}>Product FAQ</div>
+                        <div style={{ color: colors.mutedForeground, fontSize: 13 }}>Answers on the homepage</div>
                       </div>
-                    </a>
+                    </Link>
 
                   </div>
                 </div>
@@ -235,7 +237,7 @@ const HelpCenter: React.FC = () => {
                     <Zap className="h-6 w-6" style={{ color: colors.primary }} />
                     <div>
                       <div style={{ color: colors.foreground, fontWeight: 700 }}>Need immediate help?</div>
-                      <div style={{ color: colors.mutedForeground, fontSize: 13 }}>Check system status or create a ticket</div>
+                      <div style={{ color: colors.mutedForeground, fontSize: 13 }}>Email us or use the contact form</div>
                     </div>
                   </div>
                 </div>
@@ -243,17 +245,18 @@ const HelpCenter: React.FC = () => {
                 <div className="mt-3">
                   <h4 style={{ color: colors.foreground, fontWeight: 700 }}>Quick links</h4>
                   <ul className="mt-3 space-y-2 text-sm" style={{ color: colors.mutedForeground }}>
-                    <li><a href="/status">System Status</a></li>
-                    <li><a href="/docs/api">API Docs</a></li>
+                    <li><Link href="/Contact">Contact</Link></li>
+                    <li><Link href="/#faq">Product FAQ</Link></li>
                     <li><Link href="/try">Try Now</Link></li>
                     <li><Link href="/community">Community</Link></li>
+                    <li><Link href="/ai-disclosure">AI Disclosure</Link></li>
                   </ul>
                 </div>
 
                 <div className="mt-6">
                   <h4 style={{ color: colors.foreground, fontWeight: 700 }}>Contact</h4>
                   <div className="text-sm" style={{ color: colors.mutedForeground }}>
-                    Email: <strong>info@optimx.app</strong>
+                    Email: <strong>info@skalxai.app</strong>
                   </div>
                 </div>
 

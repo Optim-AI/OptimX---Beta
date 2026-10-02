@@ -2,15 +2,19 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { useRouter } from 'next/router';
 import { Facebook, Instagram, Linkedin } from 'lucide-react';
 import colors from '@/lib/ui/colors';
 
 type LinkItem = { name: string; href: string; type: 'route' | 'section' };
 
+/**
+ * Marketing footer. Uses Pages Router (`next/router`) so it can SSR under `pages/`.
+ * Section items are real <Link> anchors (crawlable) with smooth-scroll on the homepage.
+ */
 const Footer: React.FC = () => {
-  const pathname = usePathname();
   const router = useRouter();
+  const pathname = router.pathname;
 
   const footerLinks: Record<string, LinkItem[]> = {
     Product: [
@@ -37,6 +41,10 @@ const Footer: React.FC = () => {
     ],
   };
 
+  /**
+   * Legacy Optim-named social profiles currently linked from the site.
+   * Confirm official SkalX handles before replacing these URLs.
+   */
   const socialLinks = [
     {
       name: 'Facebook',
@@ -55,18 +63,20 @@ const Footer: React.FC = () => {
     },
   ];
 
-  const handleSectionClick = (href: string) => {
-    if (pathname !== '/') router.push(href);
-    else {
-      const selector = href.startsWith('/#')
-        ? `#${href.substring(2)}`
-        : href.startsWith('#')
-          ? href
-          : href.replace('/#', '#');
-      const element = document.querySelector(selector);
-      if (element) element.scrollIntoView({ behavior: 'smooth' });
-      else if (selector.startsWith('#')) window.location.hash = selector;
-    }
+  const handleSectionClick = (
+    e: React.MouseEvent<HTMLAnchorElement>,
+    href: string
+  ) => {
+    if (pathname !== '/') return;
+    e.preventDefault();
+    const selector = href.startsWith('/#')
+      ? `#${href.substring(2)}`
+      : href.startsWith('#')
+        ? href
+        : href.replace('/#', '#');
+    const element = document.querySelector(selector);
+    if (element) element.scrollIntoView({ behavior: 'smooth' });
+    else if (selector.startsWith('#')) window.location.hash = selector;
   };
 
   return (
@@ -97,40 +107,24 @@ const Footer: React.FC = () => {
               <ul className="space-y-3">
                 {links.map((link) => (
                   <li key={`${category}-${link.name}`}>
-                    {link.type === 'section' ? (
-                      <button
-                        onClick={() => handleSectionClick(link.href)}
-                        className="text-left transition-colors duration-200"
-                        style={{
-                          color: colors.mutedForeground,
-                          background: 'transparent',
-                          border: 'none',
-                          padding: 0,
-                        }}
-                        onMouseEnter={(e) =>
-                          ((e.currentTarget as HTMLElement).style.color = colors.primary)
-                        }
-                        onMouseLeave={(e) =>
-                          ((e.currentTarget as HTMLElement).style.color = colors.mutedForeground)
-                        }
-                      >
-                        {link.name}
-                      </button>
-                    ) : (
-                      <Link
-                        href={link.href}
-                        className="transition-colors duration-200"
-                        style={{ color: colors.mutedForeground, textDecoration: 'none' }}
-                        onMouseEnter={(e) =>
-                          ((e.currentTarget as HTMLElement).style.color = colors.primary)
-                        }
-                        onMouseLeave={(e) =>
-                          ((e.currentTarget as HTMLElement).style.color = colors.mutedForeground)
-                        }
-                      >
-                        {link.name}
-                      </Link>
-                    )}
+                    <Link
+                      href={link.href}
+                      className="transition-colors duration-200"
+                      style={{ color: colors.mutedForeground, textDecoration: 'none' }}
+                      onClick={
+                        link.type === 'section'
+                          ? (e) => handleSectionClick(e, link.href)
+                          : undefined
+                      }
+                      onMouseEnter={(e) =>
+                        ((e.currentTarget as HTMLElement).style.color = colors.primary)
+                      }
+                      onMouseLeave={(e) =>
+                        ((e.currentTarget as HTMLElement).style.color = colors.mutedForeground)
+                      }
+                    >
+                      {link.name}
+                    </Link>
                   </li>
                 ))}
               </ul>

@@ -21,12 +21,13 @@ export const DEFAULT_DESCRIPTION =
 export const SITE_LOGO_URL = `${SITE_ORIGIN}/images/SkalX_Logo.png`;
 export const SITE_OG_IMAGE_URL = `${SITE_ORIGIN}/icon-512.png`;
 
-/** Contact email verified across product legal/support pages. */
-export const SITE_SUPPORT_EMAIL = "info@optimx.app";
+/** Public support email for SkalX AI (marketing/contact surfaces). */
+export const SITE_SUPPORT_EMAIL = "info@skalxai.app";
 
 /**
- * Official social profiles linked from the public site footer.
- * Handles may retain legacy Optim naming; they are the brand's linked profiles.
+ * Social profiles currently linked from the public footer.
+ * Handles still use legacy Optim naming — confirm before changing/removing.
+ * Listed for Organization sameAs until verified SkalX-branded profiles exist.
  */
 export const SITE_SAME_AS = [
   "https://www.facebook.com/share/1BNxZDcfRe/?mibextid=wwXIfr",

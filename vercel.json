@@ -10,7 +10,7 @@
         }
       ],
       "destination": "https://skalxai.app/:path*",
-      "permanent": true
+      "statusCode": 308
     }
   ]
 }

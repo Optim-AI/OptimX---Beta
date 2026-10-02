@@ -18,7 +18,7 @@ import {
  */
 
 const Header = dynamic(() => import("../app/web/src/components/Header"), {
-  ssr: false,
+  ssr: true,
   loading: HeaderSkeleton,
 });
 const ParallaxBackground = dynamic(
@@ -45,7 +45,7 @@ const AboutPreview = dynamic(() => import("../app/web/src/components/AboutPrevie
 });
 const FAQ = dynamic(() => import("../app/web/src/components/FAQ"), { ssr: true });
 const FinalCTA = dynamic(() => import("../app/web/src/components/FinalCTA"), { ssr: false });
-const Footer = dynamic(() => import("../app/web/src/components/Footer"), { ssr: false });
+const Footer = dynamic(() => import("../app/web/src/components/Footer"), { ssr: true });
 
 /**
  * Public marketing homepage.
