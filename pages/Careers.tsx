@@ -11,6 +11,7 @@ import { Upload, Users } from "lucide-react";
 
 // Importing exact colors file you requested
 import colors from '@/lib/ui/colors';
+import PageSeo from "@/components/seo/PageSeo";
 
 /** Helper to add slash-style alpha to HSL tokens (returns original if not hsl) */
 const withAlpha = (token: string, alpha: number) => {
@@ -31,6 +32,11 @@ const Careers = () => {
       className="min-h-screen"
       style={{ background: colors.background, color: colors.foreground }}
     >
+      <PageSeo
+        title="Careers at SkalX AI"
+        description="Explore careers at SkalX AI. Join the team building an AI marketing platform for ad creatives, posters, and video ads."
+        path="/Careers"
+      />
       <Header />
 
       <main className="pt-20">

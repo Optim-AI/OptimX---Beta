@@ -5,6 +5,7 @@ import { Sparkles, Zap, Info, ShieldCheck, Mail, ArrowRight } from "lucide-react
 import { Button } from "../app/web/src/components/ui/button";
 import colors from '@/lib/ui/colors';
 import Link from 'next/link';
+import PageSeo from "@/components/seo/PageSeo";
 
 function withAlpha(token: string, alpha: number) {
   const hslMatch = token.match(/hsl\(\s*([\d.]+)\s+([\d.]+)%\s+([\d.]+)%\s*\)/i);
@@ -32,6 +33,11 @@ const AIUseDisclosure: React.FC = () => {
       className="min-h-screen pb-24 pt-20 relative overflow-hidden"
       style={{ backgroundColor: colors.background, color: colors.foreground }}
     >
+      <PageSeo
+        title="AI Use Disclosure"
+        description="How SkalX AI uses artificial intelligence to generate marketing creatives, and what users should know about AI-assisted outputs."
+        path="/ai-disclosure"
+      />
       <style jsx>{`
         .animation-float { animation: floatY 6s ease-in-out infinite alternate; }
         @keyframes floatY { from { transform: translateY(-8px);} to { transform: translateY(8px);} }

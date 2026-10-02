@@ -14,12 +14,14 @@ const Footer: React.FC = () => {
 
   const footerLinks: Record<string, LinkItem[]> = {
     Product: [
-      { name: 'Features', href: '/#product', type: 'section' },
+      { name: 'AI Ad Creatives', href: '/#product', type: 'section' },
+      { name: 'AI Poster Generator', href: '/#product', type: 'section' },
+      { name: 'AI Video Ads', href: '/#product', type: 'section' },
       { name: 'How It Works', href: '/#how-it-works', type: 'section' },
       { name: 'Use Cases', href: '/#built-for', type: 'section' },
     ],
     Company: [
-      { name: 'About', href: '/About', type: 'route' },
+      { name: 'About SkalX AI', href: '/About', type: 'route' },
       { name: 'Contact', href: '/Contact', type: 'route' },
       { name: 'FAQ', href: '/#faq', type: 'section' },
     ],
@@ -27,10 +29,11 @@ const Footer: React.FC = () => {
       { name: 'Privacy', href: '/privacy-policy', type: 'route' },
       { name: 'Terms', href: '/terms-and-conditions', type: 'route' },
       { name: 'Cookies', href: '/cpolicy', type: 'route' },
+      { name: 'AI Disclosure', href: '/ai-disclosure', type: 'route' },
     ],
     Support: [
       { name: 'Contact', href: '/Contact', type: 'route' },
-      { name: 'Support', href: '/help-center', type: 'route' },
+      { name: 'Help Center', href: '/help-center', type: 'route' },
     ],
   };
 

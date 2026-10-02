@@ -18,17 +18,17 @@ const GROUPS = [
     items: [
       {
         icon: Palette,
-        title: 'AI posters',
+        title: 'AI poster generator',
         desc: 'Generate on-brand poster creatives from your brand kit and product imagery.',
       },
       {
         icon: LayoutTemplate,
-        title: 'AI ad creatives',
+        title: 'AI ad generator',
         desc: 'Build scroll-stopping ad visuals and copy for campaign-ready assets.',
       },
       {
         icon: Clapperboard,
-        title: 'AI videos',
+        title: 'AI video ad generator',
         desc: 'Produce short-form marketing videos from your product and brand context.',
       },
     ],
@@ -97,10 +97,11 @@ const ProductSection: React.FC = () => {
             className="text-4xl md:text-[46px] font-normal leading-tight mb-4"
             style={{ color: colors.foreground }}
           >
-            The SkalX product
+            AI ad creatives, posters, and video ads
           </h2>
           <p className="text-xl font-extralight" style={{ color: colors.mutedForeground }}>
-            Create, plan, and improve marketing creatives from one AI marketing platform.
+            Create, plan, and improve marketing creatives from one AI marketing platform —
+            SkalX AI.
           </p>
         </div>
 

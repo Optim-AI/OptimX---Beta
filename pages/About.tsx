@@ -6,6 +6,7 @@ import Header from "../app/web/src/components/Header";
 import Footer from "../app/web/src/components/Footer";
 // **As requested** — importing from your relative file path
 import colors from '@/lib/ui/colors';
+import PageSeo from "@/components/seo/PageSeo";
 
 const addAlpha = (hsl: string, alpha: number) => {
   if (!hsl) return hsl;
@@ -76,6 +77,11 @@ export default function About() {
         color: colors.foreground,
       }}
     >
+      <PageSeo
+        title="About SkalX AI"
+        description="Learn about SkalX AI — an AI marketing platform that helps growing brands create campaign-ready ad creatives, posters, and short marketing videos."
+        path="/About"
+      />
       <Header />
 
       <main className="pt-32 pb-20">
@@ -98,7 +104,7 @@ export default function About() {
               Building smarter marketing
               <br />
               <span className="font-normal" style={{ color: colors.foreground }}>
-                for every small business
+                with SkalX AI
               </span>
             </h1>
             <p

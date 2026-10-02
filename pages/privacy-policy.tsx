@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { Button } from "../app/web/src/components/ui/button";
 import colors from "@/lib/ui/colors";
+import PageSeo from "@/components/seo/PageSeo";
 
 const TOC_ITEMS = [
   { id: "information-collect", label: "Information We Collect" },
@@ -173,6 +174,11 @@ const PrivacyPolicy: React.FC = () => {
       className="min-h-screen pb-24 pt-20 relative"
       style={{ backgroundColor: colors.background, color: colors.foreground }}
     >
+      <PageSeo
+        title="Privacy Policy"
+        description="Read the SkalX AI Privacy Policy to understand how we collect, use, store, and protect information when you use our AI marketing platform."
+        path="/privacy-policy"
+      />
       <div
         className="absolute inset-0 pointer-events-none"
         style={{

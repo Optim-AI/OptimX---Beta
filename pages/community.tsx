@@ -12,6 +12,7 @@ import {
 import { Button } from "../app/web/src/components/ui/button";
 import colors from '@/lib/ui/colors';
 import Link from 'next/link';
+import PageSeo from "@/components/seo/PageSeo";
 
 function withAlpha(token: string, alpha: number) {
   const hslMatch = token.match(/hsl\(\s*([\d.]+)\s+([\d.]+)%\s+([\d.]+)%\s*\)/i);
@@ -44,6 +45,11 @@ const Community: React.FC = () => {
       className="min-h-screen pb-24 pt-20 relative overflow-hidden"
       style={{ backgroundColor: colors.background, color: colors.foreground }}
     >
+      <PageSeo
+        title="Community"
+        description="Connect with the SkalX AI community on social channels and stay updated on AI marketing creatives and product news."
+        path="/community"
+      />
       <style jsx>{`
         .animation-float { animation: floatY 6s ease-in-out infinite alternate; }
         @keyframes floatY { from { transform: translateY(-8px);} to { transform: translateY(8px);} }

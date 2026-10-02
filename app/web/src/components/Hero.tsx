@@ -248,15 +248,15 @@ const Hero: React.FC = () => {
               className="text-4xl sm:text-[46px] font-normal leading-tight tracking-tight md:whitespace-nowrap"
               style={{ color: colors.foreground }}
             >
-              Your AI Marketing Partner.
+              SkalX AI — Your AI Marketing Partner.
             </h1>
           </div>
           <p
             className="text-center text-xl mb-8 max-w-3xl mx-auto font-extralight animate-[fadeUp_0.7s_cubic-bezier(0.16,1,0.3,1)_both"
             style={{ color: colors.mutedForeground, animationDelay: "0.25s" }}
           >
-            SkalX understands your brand and creates marketing creatives so campaigns move
-            faster.
+            SkalX AI understands your brand and creates marketing creatives — ad creatives,
+            posters, and short video ads — so campaigns move faster.
           </p>
 
           <form

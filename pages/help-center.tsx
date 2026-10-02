@@ -15,6 +15,7 @@ import {
 import Link from 'next/link';
 import { Button } from "../app/web/src/components/ui/button";
 import colors from '@/lib/ui/colors';
+import PageSeo from "@/components/seo/PageSeo";
 
 function withAlpha(token: string, alpha: number) {
   const hslMatch = token.match(/hsl\(\s*([\d.]+)\s+([\d.]+)%\s+([\d.]+)%\s*\)/i);
@@ -73,6 +74,11 @@ const HelpCenter: React.FC = () => {
       className="min-h-screen pb-24 pt-20 relative overflow-hidden"
       style={{ backgroundColor: colors.background, color: colors.foreground }}
     >
+      <PageSeo
+        title="Help Center"
+        description="SkalX AI Help Center — answers about credits, integrations, campaigns, and getting support for the AI marketing platform."
+        path="/help-center"
+      />
       <style jsx>{`
         .animation-float { animation: floatY 6s ease-in-out infinite alternate; }
         @keyframes floatY { from { transform: translateY(-8px);} to { transform: translateY(8px);} }
