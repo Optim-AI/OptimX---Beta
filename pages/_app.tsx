@@ -3,11 +3,18 @@ import "../styles/globals.css";
 import type { AppProps } from "next/app";
 import * as React from "react";
 import dynamic from "next/dynamic";
+import Head from "next/head";
 import Router from "next/router";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import AlertModal from "@/app/web/src/components/ui/AlertModal";
 import { useSubscription } from "@/app/web/src/hooks/use-subscription";
+
+/** Stable absolute URLs for Google Search favicon discovery (https://skalxai.app). */
+const SITE_ORIGIN = "https://skalxai.app";
+const FAVICON_PNG = `${SITE_ORIGIN}/icon-512.png`;
+const FAVICON_ICO = `${SITE_ORIGIN}/favicon.ico`;
+const APPLE_TOUCH_ICON = `${SITE_ORIGIN}/apple-touch-icon.png`;
 
 const LiquidGlassAnimator = dynamic(() => import("../app/web/src/components/LiquidGlassAnimator").then((m) => m.default), { ssr: false });
 
@@ -49,6 +56,15 @@ export default function MyApp({ Component, pageProps }: AppProps) {
 
   return (
     <>
+      {/* Favicon / Google Search-crawlable icons — absolute URLs, no SEO title/canonical changes */}
+      <Head>
+        <link rel="icon" href={FAVICON_ICO} sizes="any" />
+        <link rel="icon" type="image/png" sizes="512x512" href={FAVICON_PNG} />
+        <link rel="icon" type="image/png" sizes="192x192" href={`${SITE_ORIGIN}/icon-192.png`} />
+        <link rel="icon" type="image/png" sizes="48x48" href={`${SITE_ORIGIN}/icon-48.png`} />
+        <link rel="apple-touch-icon" sizes="180x180" href={APPLE_TOUCH_ICON} />
+      </Head>
+
       {/* Liquid glass SVG filter - refraction + magnifying lens effect */}
       <svg aria-hidden width="0" height="0" style={{ position: 'absolute', left: 0, top: 0, overflow: 'hidden', pointerEvents: 'none' }}>
         <defs>
