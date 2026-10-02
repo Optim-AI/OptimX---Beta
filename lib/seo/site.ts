@@ -25,19 +25,18 @@ export const SITE_OG_IMAGE_URL = `${SITE_ORIGIN}/icon-512.png`;
 export const SITE_SUPPORT_EMAIL = "info@skalxai.app";
 
 /**
- * Social profiles currently linked from the public footer.
- * Handles still use legacy Optim naming — confirm before changing/removing.
- * Listed for Organization sameAs until verified SkalX-branded profiles exist.
+ * Verified official profiles for Organization JSON-LD sameAs.
+ * Legacy OptimX Instagram/LinkedIn URLs removed — no repo evidence they are
+ * official SkalX accounts. Add SkalX-branded URLs here after confirmation.
  */
 export const SITE_SAME_AS = [
   "https://www.facebook.com/share/1BNxZDcfRe/?mibextid=wwXIfr",
-  "https://www.instagram.com/optimx.ai/?utm_source=qr",
-  "https://www.linkedin.com/company/optim01/?viewAsMember=true",
 ] as const;
 
 /** Public marketing / legal routes that should be indexed (Pages Router paths). */
 export const INDEXABLE_PATHS = [
   "/",
+  "/ai-ad-generator",
   "/About",
   "/Contact",
   "/Careers",

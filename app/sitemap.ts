@@ -23,7 +23,10 @@ export default function sitemap(): MetadataRoute.Sitemap {
       url,
       lastModified,
       changeFrequency: "monthly",
-      priority: path === "/About" || path === "/Contact" ? 0.8 : 0.6,
+      priority:
+        path === "/ai-ad-generator" || path === "/About" || path === "/Contact"
+          ? 0.8
+          : 0.6,
     };
   });
 

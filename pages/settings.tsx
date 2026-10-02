@@ -16,6 +16,7 @@ import {
   TabsList,
   TabsTrigger,
 } from "../app/web/src/components/ui/tabs";
+import { SITE_SUPPORT_EMAIL } from "@/lib/seo/site";
 
 type ProfilePayload = {
   id: string;
@@ -1002,11 +1003,11 @@ export default function SettingsPage(): JSX.Element {
                   <p className="text-sm leading-relaxed" style={{ color: colors.mutedForeground }}>
                     To remove your data or permanently delete your account, email{" "}
                     <a
-                      href="mailto:info@optimx.app?subject=Delete%20Account&body=delete%20-%20[reason]"
+                      href={`mailto:${SITE_SUPPORT_EMAIL}?subject=Delete%20Account&body=delete%20-%20[reason]`}
                       className="font-medium underline"
                       style={{ color: colors.primary }}
                     >
-                      info@optimx.app
+                      {SITE_SUPPORT_EMAIL}
                     </a>{" "}
                     with the subject <span className="font-semibold" style={{ color: colors.foreground }}>&quot;delete&quot;</span> and a brief reason.
                   </p>

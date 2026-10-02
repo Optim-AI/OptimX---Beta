@@ -5,6 +5,7 @@ import { useRouter } from "next/router";
 import { supabase } from '@/auth/supabase/client';
 import type { JSX } from "react";
 import { apiFetch } from '@/api/fetch';
+import { SITE_SUPPORT_EMAIL } from '@/lib/seo/site';
 
 /**
  * IntegrationsNew - single-purpose page to connect Facebook (Meta).
@@ -534,7 +535,7 @@ export default function IntegrationsNew(): JSX.Element {
                 <span style={{ fontSize: 16 }}>⚠️</span>
                 <span>
                   This application is under review. For running ads or campaigns, contact us at
-                  <span style={{ color: "#0b74ff" }}> info@optimx.app</span>.
+                  <span style={{ color: "#0b74ff" }}> {SITE_SUPPORT_EMAIL}</span>.
                 </span>
               </div>
 

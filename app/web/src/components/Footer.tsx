@@ -3,7 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { Facebook, Instagram, Linkedin } from 'lucide-react';
+import { Facebook } from 'lucide-react';
 import colors from '@/lib/ui/colors';
 
 type LinkItem = { name: string; href: string; type: 'route' | 'section' };
@@ -18,7 +18,7 @@ const Footer: React.FC = () => {
 
   const footerLinks: Record<string, LinkItem[]> = {
     Product: [
-      { name: 'AI Ad Creatives', href: '/#product', type: 'section' },
+      { name: 'AI Ad Generator', href: '/ai-ad-generator', type: 'route' },
       { name: 'AI Poster Generator', href: '/#product', type: 'section' },
       { name: 'AI Video Ads', href: '/#product', type: 'section' },
       { name: 'How It Works', href: '/#how-it-works', type: 'section' },
@@ -42,24 +42,15 @@ const Footer: React.FC = () => {
   };
 
   /**
-   * Legacy Optim-named social profiles currently linked from the site.
-   * Confirm official SkalX handles before replacing these URLs.
+   * Only include verified official SkalX social profiles.
+   * Instagram/LinkedIn OptimX URLs removed — no confirmed SkalX handles in repo.
+   * Facebook share URL retained (same profile referenced in Organization sameAs).
    */
   const socialLinks = [
     {
       name: 'Facebook',
       icon: Facebook,
       href: 'https://www.facebook.com/share/1BNxZDcfRe/?mibextid=wwXIfr',
-    },
-    {
-      name: 'Instagram',
-      icon: Instagram,
-      href: 'https://www.instagram.com/optimx.ai/?utm_source=qr',
-    },
-    {
-      name: 'LinkedIn',
-      icon: Linkedin,
-      href: 'https://www.linkedin.com/company/optim01/?viewAsMember=true',
     },
   ];
 

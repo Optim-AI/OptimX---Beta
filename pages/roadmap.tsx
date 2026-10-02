@@ -5,6 +5,7 @@ import { Calendar, Rocket, Zap, Clock, CheckCircle2, MessageSquare, ArrowRight, 
 import { Button } from "../app/web/src/components/ui/button";
 import colors from '@/lib/ui/colors';
 import Link from 'next/link';
+import { SITE_SUPPORT_EMAIL } from '@/lib/seo/site';
 function withAlpha(token: string, alpha: number) {
   const hslMatch = token.match(/hsl\(\s*([\d.]+)\s+([\d.]+)%\s+([\d.]+)%\s*\)/i);
   if (hslMatch) {
@@ -115,7 +116,7 @@ const Roadmap: React.FC = () => {
                       <Link href="/community">Discuss on community</Link>
                     </Button>
                     <Button size="sm" style={{ background: colors.gradientPrimary, color: colors.primaryForeground }}>
-                      <a href="mailto:info@optimx.app" className="flex items-center gap-2">Email Product <ArrowRight className="h-4 w-4" /></a>
+                      <a href={`mailto:${SITE_SUPPORT_EMAIL}`} className="flex items-center gap-2">Email Product <ArrowRight className="h-4 w-4" /></a>
                     </Button>
                   </div>
                 </div>
@@ -127,7 +128,7 @@ const Roadmap: React.FC = () => {
 
                 <div className="mt-6">
                   <h4 style={{ color: colors.foreground, fontWeight: 700 }}>Contact</h4>
-                  <div style={{ color: colors.mutedForeground, marginTop: 6 }}>Email: <strong>info@optimx.app</strong></div>
+                  <div style={{ color: colors.mutedForeground, marginTop: 6 }}>Email: <strong>{SITE_SUPPORT_EMAIL}</strong></div>
                 </div>
               </aside>
 

@@ -5,6 +5,7 @@ import { Code, Server, Clipboard, BookOpen, Zap, ArrowRight } from "lucide-react
 import { Button } from "../app/web/src/components/ui/button";
 import colors from '@/lib/ui/colors';
 import Link from 'next/link';
+import { SITE_SUPPORT_EMAIL } from '@/lib/seo/site';
 function withAlpha(token: string, alpha: number) {
   const hslMatch = token.match(/hsl\(\s*([\d.]+)\s+([\d.]+)%\s+([\d.]+)%\s*\)/i);
   if (hslMatch) {
@@ -189,7 +190,7 @@ Content-Type: application/json
 
               <section>
                 <h3 style={{ color: colors.foreground }}>Support & Contact</h3>
-                <p style={{ color: colors.mutedForeground }}>If you need API access, key rotation, or have issues, contact <strong>info@optimx.app</strong>. For urgent incidents, use the support ticketing system via the dashboard.</p>
+                <p style={{ color: colors.mutedForeground }}>If you need API access, key rotation, or have issues, contact <strong>{SITE_SUPPORT_EMAIL}</strong>. For urgent incidents, use the support ticketing system via the dashboard.</p>
               </section>
 
             </div>

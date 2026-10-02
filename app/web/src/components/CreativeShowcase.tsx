@@ -50,6 +50,26 @@ const AD_CREATIVE_MEDIA: CarouselMediaItem[] = interleaveMedia(
   AD_CREATIVE_VIDEOS
 );
 
+const IMAGE_ALT_BY_SRC: Record<string, string> = {
+  '/images/partners/boat-stone-350-deadpool.png':
+    'SkalX AI ad creative for a consumer electronics product',
+  '/images/partners/bombay-shaving-legend-365.png':
+    'SkalX AI poster creative for a personal care brand',
+  '/images/partners/jimmys-cocktails-green-apple-martini.png':
+    'SkalX AI advertising creative for a beverage product',
+  '/images/partners/plum-cc332b6e-16f6-42a6-937c-cca1d9a11816.png':
+    'SkalX AI ad creative for a beauty product',
+  '/images/partners/wild_date-a0935436-0c67-4d06-a04a-92172fdb7fd9.png':
+    'SkalX AI ad creative for a food and beverage product',
+};
+
+function mediaAlt(item: CarouselMediaItem, ordinal: number): string {
+  if (item.type === 'video') {
+    return `SkalX AI short video ad creative example ${ordinal}`;
+  }
+  return IMAGE_ALT_BY_SRC[item.src] ?? `SkalX AI ad creative example ${ordinal}`;
+}
+
 const LazyVideo = memo(function LazyVideo({ src, label }: { src: string; label: string }) {
   const ref = useRef<HTMLVideoElement>(null);
   const [isVisible, setIsVisible] = useState(false);
@@ -140,7 +160,10 @@ const CreativeShowcase: React.FC = () => {
 
         <div className="relative overflow-hidden -mx-4 sm:mx-0">
           <div className="showcase-ad-carousel-track flex gap-4 w-max" style={{ width: 'max-content' }}>
-            {[...AD_CREATIVE_MEDIA, ...AD_CREATIVE_MEDIA].map((item, index) => (
+            {[...AD_CREATIVE_MEDIA, ...AD_CREATIVE_MEDIA].map((item, index) => {
+              const ordinal = (index % AD_CREATIVE_MEDIA.length) + 1;
+              const alt = mediaAlt(item, ordinal);
+              return (
               <div
                 key={index}
                 className="flex-shrink-0 w-[220px] sm:w-[260px] md:w-[280px] rounded-[16px] overflow-hidden"
@@ -153,7 +176,7 @@ const CreativeShowcase: React.FC = () => {
                   {item.type === 'image' ? (
                     <Image
                       src={item.src}
-                      alt={`SkalX creative ${(index % AD_CREATIVE_MEDIA.length) + 1}`}
+                      alt={alt}
                       fill
                       className="object-cover"
                       sizes="(max-width: 640px) 220px, (max-width: 768px) 260px, 280px"
@@ -161,12 +184,13 @@ const CreativeShowcase: React.FC = () => {
                   ) : (
                     <LazyVideo
                       src={item.src}
-                      label={`SkalX creative video ${(index % AD_CREATIVE_MEDIA.length) + 1}`}
+                      label={alt}
                     />
                   )}
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>
