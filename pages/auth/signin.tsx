@@ -37,7 +37,9 @@ export default function SignInPage(): React.ReactElement {
   }
 
   useEffect(() => {
-    const subscription = supabase.auth.onAuthStateChange(async (event, session) => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === "SIGNED_IN" && session?.user) {
         try {
           await routeAfterAuth();
@@ -49,17 +51,7 @@ export default function SignInPage(): React.ReactElement {
     });
 
     return () => {
-      try {
-        // @ts-ignore
-        if (subscription?.data?.subscription?.unsubscribe) {
-          subscription.data.subscription.unsubscribe();
-        // @ts-ignore
-        } else if (subscription?.unsubscribe) {
-          subscription.unsubscribe();
-        }
-      } catch {
-        // ignore
-      }
+      subscription.unsubscribe();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
