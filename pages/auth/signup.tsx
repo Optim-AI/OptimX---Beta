@@ -4,10 +4,13 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { supabase } from '@/auth/supabase/client';
-import { authFetch } from '@/lib/utils';
 import colors from '@/lib/ui/colors';
-import { profileClient } from '@/database/client-helpers';
-import { getAuthRedirectUrl, getSafeNextPath } from '@/lib/routing/safe-next';
+import {
+  getOAuthCallbackUrl,
+  getSafeNextPath,
+  redirectWwwToCanonicalForOAuth,
+} from '@/lib/routing/safe-next';
+import { fetchPostAuthDestination } from '@/lib/auth/client-post-auth';
 
 export default function SignUpPage(): React.ReactElement {
   const router = useRouter();
@@ -61,72 +64,32 @@ export default function SignUpPage(): React.ReactElement {
     return token;
   }
 
-  // Upsert profile row for a signed-in user.
-  // Uses common profile fields: id (supabase auth user id), email, full_name and username.
-  // Adjust field names if your `profiles` table uses different column names.
-  async function upsertProfile(user: any) {
-    if (!user || !user.id) return;
-    try {
-      const id = user.id;
-      const emailVal = user.email ?? user.user_metadata?.email ?? null;
-      const full_name =
-        user.user_metadata?.full_name ??
-        user.user_metadata?.name ??
-        user.user_metadata?.given_name ??
-        null;
-      // derive a sensible username fallback from email if not present
-      const usernameFallback =
-        (emailVal && typeof emailVal === 'string' ? emailVal.split('@')[0] : null) ?? null;
-      const username =
-        user.user_metadata?.username ??
-        user.user_metadata?.preferred_username ??
-        usernameFallback;
-
-      const payload: Record<string, any> = {};
-      if (emailVal) payload.email = emailVal;
-      if (full_name) payload.full_name = full_name;
-      if (username) payload.username = username;
-
-      // Upsert profile using Prisma via API (replaces direct Supabase call)
-      const result = await profileClient.upsert(payload);
-
-      if (result.success) {
-        console.debug('profiles upserted for user:', id, result.data);
-      } else {
-        console.error('profiles upsert error:', result.error);
-      }
-    } catch (err) {
-      console.error('upsertProfile unexpected error:', err);
+  async function routeAfterAuth() {
+    const decision = await fetchPostAuthDestination();
+    if (!decision.ok) {
+      setError(decision.error);
+      return;
     }
+    router.replace(decision.path);
   }
 
   useEffect(() => {
-    async function checkAndRedirect(user: any) {
-      try {
-        await upsertProfile(user);
-      } catch (err) {
-        console.error('upsert failed:', err);
-      }
-
-      router.replace(getSafeNextPath(router.query.next, '/welcome'));
-    }
-
-    // If already signed in, check subscription
     (async () => {
       try {
         const { data } = await supabase.auth.getUser();
         if (data?.user) {
-          await checkAndRedirect(data.user);
+          await routeAfterAuth();
         }
       } catch {
         // ignore
       }
     })();
 
-    // Also subscribe to auth state changes to catch OAuth sign-up flows (provider redirect back).
+    // Password / email confirmation sessions on this page.
+    // OAuth returns to /auth/callback instead.
     const subscription = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_IN' && session?.user) {
-        await checkAndRedirect(session.user);
+        await routeAfterAuth();
       }
     });
 
@@ -147,7 +110,9 @@ export default function SignUpPage(): React.ReactElement {
     setError(null);
     setInfo(null);
     try {
-      const redirectTo = getAuthRedirectUrl(getSafeNextPath(router.query.next, '/welcome'));
+      if (redirectWwwToCanonicalForOAuth()) return;
+
+      const redirectTo = getOAuthCallbackUrl(getSafeNextPath(router.query.next, '/try'));
       const { data, error: oauthError } = await supabase.auth.signInWithOAuth({
         provider,
         options: { redirectTo },
@@ -199,16 +164,9 @@ export default function SignUpPage(): React.ReactElement {
         return;
       }
 
-      // If Supabase returns a user immediately (depends on auth settings), upsert profile now
       const user = (data as any)?.user ?? null;
       if (user && user.id) {
-        try {
-          await upsertProfile(user);
-        } catch (err) {
-          console.error('upsert after signUp failed:', err);
-        }
-        // redirect directly to welcome (pay-as-you-go - no plan required)
-        router.replace(getSafeNextPath(router.query.next, '/welcome'));
+        await routeAfterAuth();
         return;
       }
 

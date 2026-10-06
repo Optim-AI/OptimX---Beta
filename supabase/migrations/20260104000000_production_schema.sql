@@ -248,6 +248,7 @@ END;
 $function$;
 
 -- handle_new_auth_user
+-- Superseded by 20261006120000_fix_handle_new_auth_user.sql (raw_user_meta_data).
 CREATE OR REPLACE FUNCTION public.handle_new_auth_user()
 RETURNS trigger
 LANGUAGE plpgsql

@@ -4,6 +4,7 @@
  */
 
 import type { Product } from '@/app/web/src/components/creative-studio/types';
+import { decidePostAuthDestination } from '@/lib/auth/post-auth-decision';
 
 export type TryOnboardingStatus =
   | 'brand_started'
@@ -238,80 +239,51 @@ export function buildTryOnboardingPatch(
 
 /** Entry destinations for authenticated users opening /try or post-auth. */
 export type EntryDestination =
-  | { kind: 'try'; step?: TryOnboardingStatus }
+  | { kind: 'try'; step?: TryOnboardingStatus | 'brand' | 'pricing' }
   | { kind: 'workspace' }
   | { kind: 'signin'; next: string };
 
 export type EntryInputs = {
   authenticated: boolean;
+  /** Mapped into canonical resolver as subscriptionStatus=active when true. */
   hasActiveSubscription: boolean;
   brandSnapshot: { name?: string } | null;
   onboarding: TryOnboardingState | null;
   /** Legacy signal from /welcome */
   businessName?: string | null;
+  hasCapturedPayment?: boolean;
+  subscriptionStatus?: string | null;
+  subscriptionCurrentPeriodEnd?: string | Date | null;
 };
 
 /**
- * Central routing decision for Try Now / post-auth.
- * Does not scatter state across random components.
+ * Try entry helper — delegates to the canonical post-auth decision so
+ * Google OAuth, email/password, /welcome, and /try cannot disagree.
  */
 export function resolveTryEntry(input: EntryInputs): EntryDestination {
   if (!input.authenticated) {
     return { kind: 'signin', next: '/try' };
   }
 
-  if (input.hasActiveSubscription) {
+  const decision = decidePostAuthDestination({
+    hasCapturedPayment: Boolean(input.hasCapturedPayment),
+    subscriptionStatus:
+      input.subscriptionStatus ??
+      (input.hasActiveSubscription ? 'active' : null),
+    subscriptionCurrentPeriodEnd: input.subscriptionCurrentPeriodEnd ?? null,
+    onboarding: input.onboarding,
+    businessName: input.businessName ?? null,
+    brandSnapshotName: input.brandSnapshot?.name ?? null,
+  });
+
+  if (decision.destination === 'workspace') {
     return { kind: 'workspace' };
   }
 
-  const status = input.onboarding?.status;
-  const hasBrand =
-    Boolean(input.brandSnapshot?.name) ||
-    status === 'brand_analyzed' ||
-    status === 'demo_ready' ||
-    status === 'demo_pending' ||
-    status === 'demo_complete' ||
-    status === 'pricing_seen' ||
-    status === 'skipped' ||
-    status === 'subscribed' ||
-    status === 'complete';
-
-  // Incomplete Try Now flow — resume on /try
-  if (
-    status === 'brand_started' ||
-    status === 'analyzing' ||
-    status === 'brand_analyzed' ||
-    status === 'demo_ready' ||
-    status === 'demo_pending'
-  ) {
-    return { kind: 'try', step: status };
-  }
-
-  // Payment confirmed / onboarding complete — still wait for active entitlement
-  // before sending to workspace (hasActiveSubscription gate above).
-  if (status === 'subscribed' || status === 'complete') {
-    return { kind: 'try', step: status };
-  }
-
-  // Already finished brand understanding in Try Now but not subscribed
-  if (
-    status === 'demo_complete' ||
-    status === 'pricing_seen' ||
-    status === 'skipped'
-  ) {
-    return { kind: 'try', step: status };
-  }
-
-  // Legacy workspace users who never used Try Now
-  if (input.businessName && !input.onboarding) {
-    return { kind: 'workspace' };
-  }
-
-  if (hasBrand && !status) {
-    return { kind: 'workspace' };
-  }
-
-  return { kind: 'try' };
+  return {
+    kind: 'try',
+    step: decision.step ?? 'brand',
+  };
 }
 
 export const WORKSPACE_PATH = '/content-studio';

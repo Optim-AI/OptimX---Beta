@@ -41,20 +41,38 @@ ALTER FUNCTION "public"."decrement_credit"("p_user" "uuid") OWNER TO "postgres";
 CREATE OR REPLACE FUNCTION "public"."handle_new_auth_user"() RETURNS "trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
     AS $$
+DECLARE
+  v_full_name text;
 BEGIN
-  INSERT INTO public.profiles (id, email, full_name, inserted_at)
-  VALUES (
-    NEW.id,
-    NEW.email,
-    (CASE WHEN NEW.raw_user_meta IS NOT NULL THEN NEW.raw_user_meta->>'full_name' ELSE NULL END),
-    now()
-  )
-  ON CONFLICT (id) DO NOTHING;
+  v_full_name := COALESCE(
+    NULLIF(btrim(NEW.raw_user_meta_data->>'full_name'), ''),
+    NULLIF(btrim(NEW.raw_user_meta_data->>'name'), '')
+  );
+
+  BEGIN
+    INSERT INTO public.profiles (id, email, full_name, inserted_at)
+    VALUES (
+      NEW.id,
+      NEW.email,
+      v_full_name,
+      now()
+    )
+    ON CONFLICT (id) DO NOTHING;
+  EXCEPTION
+    WHEN unique_violation THEN
+      INSERT INTO public.profiles (id, email, full_name, inserted_at)
+      VALUES (
+        NEW.id,
+        NULL,
+        v_full_name,
+        now()
+      )
+      ON CONFLICT (id) DO NOTHING;
+  END;
 
   RETURN NEW;
 EXCEPTION WHEN others THEN
-  -- Ensure signup never fails because of profile creation issues
-  RAISE NOTICE 'handle_new_auth_user exception: %', SQLERRM;
+  RAISE WARNING 'handle_new_auth_user failed for %: %', NEW.id, SQLERRM;
   RETURN NEW;
 END;
 $$;

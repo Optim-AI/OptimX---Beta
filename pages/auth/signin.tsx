@@ -5,8 +5,12 @@ import Link from "next/link";
 import { useRouter } from "next/router";
 import { supabase } from '@/auth/supabase/client';
 import colors from '@/lib/ui/colors';
-import { profileClient } from '@/database/client-helpers';
-import { getAuthRedirectUrl, getSafeNextPath } from '@/lib/routing/safe-next';
+import {
+  getOAuthCallbackUrl,
+  getSafeNextPath,
+  redirectWwwToCanonicalForOAuth,
+} from '@/lib/routing/safe-next';
+import { fetchPostAuthDestination } from '@/lib/auth/client-post-auth';
 
 export default function SignInPage(): React.ReactElement {
   const router = useRouter();
@@ -64,81 +68,26 @@ export default function SignInPage(): React.ReactElement {
     return token;
   }
 
-  // Derive a sane full name from metadata or email when missing
-  function deriveFullName(user: any): string | null {
-    if (!user) return null;
-    const m = user.user_metadata ?? {};
-    // Common metadata fields
-    const candidates = [
-      m.full_name,
-      m.name,
-      m.preferred_username,
-      m.given_name && (m.family_name ? `${m.given_name} ${m.family_name}` : m.given_name),
-      m.given_name,
-      m.family_name,
-    ];
-    for (const c of candidates) {
-      if (c && typeof c === "string" && c.trim().length > 0) return c.trim();
+  async function routeAfterAuth() {
+    const decision = await fetchPostAuthDestination();
+    if (!decision.ok) {
+      setError(decision.error);
+      return;
     }
-    // as a last resort, try to get from email local part
-    if (user.email && typeof user.email === "string") {
-      const local = user.email.split("@")[0] ?? null;
-      if (local) return local.replace(/[._\-0-9]+/g, " ").trim();
-    }
-    return null;
-  }
-
-  // Derive a sensible username fallback
-  function deriveUsername(user: any): string | null {
-    if (!user) return null;
-    const m = user.user_metadata ?? {};
-    if (m.username) return String(m.username);
-    if (m.preferred_username) return String(m.preferred_username);
-    if (user.email && typeof user.email === "string") return user.email.split("@")[0];
-    return null;
-  }
-
-  // Upsert profile row for a signed-in user.
-  // Writes id (supabase user id), email and full_name (as requested).
-  async function upsertProfile(user: any) {
-    if (!user || !user.id) return;
-    try {
-      const id = user.id;
-      // Prefer explicit fields, then metadata fallbacks
-      const emailValue = user.email ?? user.user_metadata?.email ?? null;
-      const full_name_value = deriveFullName(user);
-      const username = deriveUsername(user);
-
-      const payload: Record<string, any> = {};
-      if (emailValue) payload.email = emailValue;
-      if (full_name_value) payload.full_name = full_name_value;
-      if (username) payload.username = username;
-
-      // Upsert profile using Prisma via API (replaces direct Supabase call)
-      const result = await profileClient.upsert(payload);
-
-      if (result.success) {
-        console.debug("profiles upserted for user:", id, result.data);
-      } else {
-        console.error("profiles upsert error:", result.error);
-      }
-    } catch (err) {
-      console.error("upsertProfile unexpected error:", err);
-    }
+    router.replace(decision.path);
   }
 
   useEffect(() => {
+    // Password / magic-link sessions established on this page.
+    // OAuth returns to /auth/callback instead.
     const subscription = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        // when user completes sign-in (magic link / oauth / password) this fires
         if (event === "SIGNED_IN" && session?.user) {
           try {
-            // ensure profile row exists / updated
-            await upsertProfile(session.user);
+            await routeAfterAuth();
           } catch (e) {
-            console.error("error upserting profile on SIGNED_IN:", e);
-          } finally {
-            router.replace(getSafeNextPath(router.query.next, "/welcome"));
+            console.error("post-auth routing failed on SIGNED_IN:", e);
+            setError("Could not determine where to send you. Please try again.");
           }
         }
       }
@@ -157,27 +106,22 @@ export default function SignInPage(): React.ReactElement {
     };
 
     return cleanup;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
   useEffect(() => {
     (async () => {
       try {
-        // if user already signed in (page load), upsert profile and redirect
         const { data } = await supabase.auth.getUser();
         const user = (data as any)?.user ?? null;
         if (user) {
-          try {
-            await upsertProfile(user);
-          } catch (e) {
-            console.error("error upserting profile on mount:", e);
-          }
-          router.replace(getSafeNextPath(router.query.next, "/welcome"));
+          await routeAfterAuth();
         }
       } catch (e) {
-        // ignore, but log for debugging
         console.debug("getUser failed on mount:", e);
       }
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
   const sendMagicLink = async () => {
@@ -195,8 +139,8 @@ export default function SignInPage(): React.ReactElement {
 
     setLoading(true);
     try {
-      const redirectTo = getAuthRedirectUrl(
-        getSafeNextPath(router.query.next, "/welcome")
+      const redirectTo = getOAuthCallbackUrl(
+        getSafeNextPath(router.query.next, "/try")
       );
 
       const { data, error: signError } = await supabase.auth.signInWithOtp({
@@ -235,17 +179,8 @@ export default function SignInPage(): React.ReactElement {
       });
       if (signError) {
         setError(signError.message);
-      } else {
-        // sign-in succeeded immediately; ensure profile upsert before redirect
-        const user = (data as any)?.user ?? null;
-        if (user && user.id) {
-          try {
-            await upsertProfile(user);
-          } catch (err) {
-            console.error("upsert after password sign-in failed:", err);
-          }
-        }
-        router.replace(getSafeNextPath(router.query.next, "/welcome"));
+      } else if ((data as any)?.user) {
+        await routeAfterAuth();
       }
     } catch (e: any) {
       setError(e?.message ?? String(e));
@@ -258,8 +193,11 @@ export default function SignInPage(): React.ReactElement {
     setError(null);
     setInfo(null);
     try {
-      const redirectTo = getAuthRedirectUrl(
-        getSafeNextPath(router.query.next, "/welcome")
+      // PKCE verifier must live on the same origin as the code exchange.
+      if (redirectWwwToCanonicalForOAuth()) return;
+
+      const redirectTo = getOAuthCallbackUrl(
+        getSafeNextPath(router.query.next, "/try")
       );
       const { data, error: oauthError } = await supabase.auth.signInWithOAuth({
         provider,
@@ -268,7 +206,6 @@ export default function SignInPage(): React.ReactElement {
       if (oauthError) {
         setError(oauthError.message);
       } else if (data?.url) {
-        // redirect to provider consent screen; after redirect back, onAuthStateChange will upsert profile
         window.location.href = data.url;
       }
     } catch (e: any) {

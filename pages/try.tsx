@@ -17,12 +17,13 @@ import {
   getOnboardingDemoCreatives,
   isOnboardingDemoComplete,
   parseTryOnboarding,
-  resolveTryEntry,
   WORKSPACE_PATH,
   type OnboardingDemoState,
   type TryOnboardingState,
   type TryOnboardingStatus,
 } from '@/lib/onboarding/try-onboarding';
+import { fetchPostAuthDestination } from '@/lib/auth/client-post-auth';
+import type { PostAuthTryStep } from '@/lib/auth/post-auth-decision';
 import { productFromImageUrl } from '@/lib/onboarding/product-scene-guidance';
 import {
   getMarketingPlan,
@@ -97,6 +98,40 @@ export default function TryPage() {
     return onboarding;
   }, []);
 
+  const applyTryStep = useCallback(
+    (step: PostAuthTryStep | string | null | undefined, onboarding: TryOnboardingState | null) => {
+      const demoStatus = onboarding?.demo?.status;
+
+      if (step === 'pricing' || step === 'pricing_seen' || step === 'skipped') {
+        setScreen('pricing');
+        return;
+      }
+      if (step === 'demo_complete') {
+        setScreen(isOnboardingDemoComplete(onboarding?.demo) ? 'demo_result' : 'demo');
+        return;
+      }
+      if (step === 'brand_analyzed') {
+        setScreen('reveal');
+        return;
+      }
+      if (step === 'demo_ready' || step === 'demo_pending') {
+        setScreen('demo');
+        return;
+      }
+      if (demoStatus === 'failed') {
+        setScreen('demo');
+        return;
+      }
+      if (demoStatus === 'generating') {
+        setScreen('demo');
+        return;
+      }
+      // brand | brand_started | analyzing | default
+      setScreen('brand');
+    },
+    []
+  );
+
   const bootstrap = useCallback(async () => {
     setError(null);
     const { data } = await supabase.auth.getUser();
@@ -104,6 +139,19 @@ export default function TryPage() {
 
     if (!user) {
       router.replace('/auth/signin?next=/try');
+      return;
+    }
+
+    // Canonical post-auth decision (same as Google callback / email login).
+    // Never treat a failed lookup as a new/empty account.
+    const decision = await fetchPostAuthDestination();
+    if (!decision.ok) {
+      setError(decision.error);
+      return;
+    }
+
+    if (decision.destination === 'workspace') {
+      router.replace(WORKSPACE_PATH);
       return;
     }
 
@@ -120,7 +168,7 @@ export default function TryPage() {
       );
       activePlanNameLocal = subData?.subscription?.plan?.name || null;
     } catch {
-      /* ignore — treat as no subscription */
+      /* UI-only; routing already decided */
     }
     setHasActiveSubscription(hasActiveSubscriptionLocal);
     setActivePlanName(activePlanNameLocal);
@@ -138,7 +186,6 @@ export default function TryPage() {
     }
 
     let onboarding: TryOnboardingState | null = null;
-    let businessName: string | null = null;
     try {
       const prefRes = await authFetch('/api/user/preferences');
       const prefData = await prefRes.json();
@@ -146,31 +193,7 @@ export default function TryPage() {
         onboarding = parseTryOnboarding(prefData.preferences);
       }
     } catch {
-      /* ignore */
-    }
-
-    try {
-      const profileRes = await authFetch('/api/profile/get');
-      const profileData = await profileRes.json();
-      if (profileData?.success && profileData.data) {
-        businessName =
-          profileData.data.businessName ?? profileData.data.business_name ?? null;
-      }
-    } catch {
-      /* ignore */
-    }
-
-    const destination = resolveTryEntry({
-      authenticated: true,
-      hasActiveSubscription: hasActiveSubscriptionLocal,
-      brandSnapshot: snapshot,
-      onboarding,
-      businessName,
-    });
-
-    if (destination.kind === 'workspace') {
-      router.replace(WORKSPACE_PATH);
-      return;
+      /* ignore — screen still resumes from resolver step */
     }
 
     if (onboarding?.brandName) setBrandName(onboarding.brandName);
@@ -190,45 +213,8 @@ export default function TryPage() {
       setSelectedPlanId(onboarding.selectedPlanId);
     }
 
-    const status = onboarding?.status;
-    const demoStatus = onboarding?.demo?.status;
-
-    if (isOnboardingDemoComplete(onboarding?.demo)) {
-      if (status === 'pricing_seen' || status === 'complete' || status === 'subscribed') {
-        setScreen('pricing');
-        return;
-      }
-      setScreen('demo_result');
-      return;
-    }
-    if (status === 'demo_complete' && isOnboardingDemoComplete(onboarding?.demo)) {
-      setScreen('demo_result');
-      return;
-    }
-    if (status === 'pricing_seen' || status === 'complete') {
-      setScreen('pricing');
-      return;
-    }
-    if (status === 'brand_analyzed') {
-      setScreen('reveal');
-      return;
-    }
-    if (status === 'demo_ready' || demoStatus === 'failed') {
-      setScreen('demo');
-      return;
-    }
-    if (status === 'demo_pending' || demoStatus === 'generating') {
-      // Do not auto-fire generation on refresh — show choice / recover UI
-      setScreen('demo');
-      return;
-    }
-    if (status === 'analyzing') {
-      setScreen('brand');
-      return;
-    }
-
-    setScreen('brand');
-  }, [router]);
+    applyTryStep(decision.step ?? onboarding?.status ?? 'brand', onboarding);
+  }, [router, applyTryStep]);
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -660,11 +646,37 @@ export default function TryPage() {
   if (screen === 'loading') {
     return (
       <div
-        className="min-h-screen flex items-center justify-center"
-        style={{ backgroundColor: '#121212' }}
+        className="min-h-screen flex flex-col items-center justify-center gap-4 px-6"
+        style={{ backgroundColor: '#121212', color: colors.foreground }}
       >
-        <Loader2 className="h-8 w-8 animate-spin" style={{ color: colors.primary }} />
-        <span className="sr-only">Loading</span>
+        {error ? (
+          <>
+            <p style={{ color: colors.destructive ?? '#ef4444', textAlign: 'center' }}>{error}</p>
+            <button
+              type="button"
+              onClick={() => {
+                setError(null);
+                void bootstrap();
+              }}
+              style={{
+                background: colors.primary,
+                color: '#fff',
+                border: 'none',
+                borderRadius: 10,
+                padding: '10px 18px',
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              Retry
+            </button>
+          </>
+        ) : (
+          <>
+            <Loader2 className="h-8 w-8 animate-spin" style={{ color: colors.primary }} />
+            <span className="sr-only">Loading</span>
+          </>
+        )}
       </div>
     );
   }
