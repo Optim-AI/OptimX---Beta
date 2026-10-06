@@ -121,6 +121,10 @@ export interface CompileCampaignGenerationInput {
   generationMode?: CampaignGenerationMode;
   /** Override provider reference cap (default from Runway capabilities). */
   maxReferenceImages?: number;
+  /**
+   * When true, Seedance prompt forbids spoken VO (Gemini TTS path).
+   */
+  suppressSpokenVoiceover?: boolean;
 }
 
 export type CampaignCompilerErrorCode =

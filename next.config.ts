@@ -8,6 +8,12 @@ const nextConfig = {
       { source: '/cookiepolicy', destination: '/cpolicy', permanent: true },
     ];
   },
+  // Middleware clones request bodies (default 10MB). Video session PUTs can
+  // exceed that when brand images / inline media are included; match the
+  // pages/api/creative-studio/sessions bodyParser sizeLimit (50mb).
+  experimental: {
+    middlewareClientMaxBodySize: '50mb',
+  },
   serverExternalPackages: ['playwright', 'ffmpeg-static', 'sharp'],
   webpack: (config: any, { isServer }: { isServer: boolean; dev: boolean }) => {
     if (isServer) {

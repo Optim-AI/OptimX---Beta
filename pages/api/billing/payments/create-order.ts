@@ -29,7 +29,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const { creditType, credits, billingEmail, voucherId } = req.body;
+    let payload = req.body;
+    if (typeof payload === 'string') {
+      try {
+        payload = JSON.parse(payload);
+      } catch {
+        payload = {};
+      }
+    }
+    const { creditType, credits, billingEmail, voucherId } = payload ?? {};
 
     if (!creditType || (creditType !== 'image' && creditType !== 'video')) {
       return res.status(400).json({ error: 'Valid credit type (image or video) is required' });

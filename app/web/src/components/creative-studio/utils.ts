@@ -378,6 +378,7 @@ export const DEFAULT_AD_BUILDER_DATA = {
     enabled: true,
     language: "english" as const,
     tone: "Energetic" as const,
+    ctaEnabled: true,
   },
   onScreenText: {
     enabled: true,

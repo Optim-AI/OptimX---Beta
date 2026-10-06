@@ -1,6 +1,8 @@
 import type { CampaignDurationSeconds } from "./campaign-duration";
 import type { StoredAssetRef } from "../assets";
 import type { AdConcept, CampaignGoal, CreativeStrategy, HookType } from "../../strategy-types";
+import type { SpokenLanguageStyle } from "../audio/spoken-language-style";
+import type { VoiceoverLanguage } from "../audio/voiceover-languages";
 
 export type CommercialAspectRatio = "9:16" | "16:9" | "1:1" | "4:5" | "4:3" | "3:4";
 
@@ -35,6 +37,28 @@ export interface CampaignProductInput {
 }
 
 /**
+ * Voiceover routing for the commercial.
+ * English → Seedance native spoken audio.
+ * Tamil / Hindi / Malayalam / Kannada → silent Seedance + Gemini 3.8 Flash TTS.
+ */
+export interface CampaignVoiceoverInput {
+  enabled?: boolean;
+  language?: VoiceoverLanguage;
+  /**
+   * Spoken register for Gemini TTS script generation.
+   * Not exposed in UI yet. Tamil defaults to natural_spoken.
+   */
+  spokenLanguageStyle?: SpokenLanguageStyle;
+  tone?: string;
+  keyMessage?: string;
+  cta?: string;
+  /** When false, VO script omits a hard CTA. Default true. */
+  ctaEnabled?: boolean;
+  /** Optional pre-written script (preferred when already in target language). */
+  script?: string;
+}
+
+/**
  * Campaign Input — everything the Commercial Director reasons over.
  * Maps from Brand Studio / Creative Studio session fields without depending on UI types.
  */
@@ -58,4 +82,6 @@ export interface CampaignBrief {
   /** Existing performance strategy, if already generated. */
   creativeStrategy?: CreativeStrategy;
   selectedConcept?: AdConcept;
+  /** Voiceover language + CTA routing for Seedance vs Gemini TTS. */
+  voiceover?: CampaignVoiceoverInput;
 }

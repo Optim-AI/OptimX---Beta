@@ -48,6 +48,21 @@ const VideoStudioWorkspace = dynamic(
 // NOTE: Do not patch console.error / add window listeners at module scope.
 // That breaks Fast Refresh (re-wraps on every HMR) and can trigger reload loops.
 
+/** Inline data: URLs blow past middleware/body limits; keep metadata only for persistence. */
+const MAX_PERSISTED_DATA_URL_CHARS = 200_000;
+
+function videosForSessionPersist(videos: GeneratedVideo[]): GeneratedVideo[] {
+  return videos.map((video) => {
+    if (!video.url?.startsWith('data:') || video.url.length <= MAX_PERSISTED_DATA_URL_CHARS) {
+      return video;
+    }
+    return {
+      ...video,
+      url: '',
+    };
+  });
+}
+
 /** Build full voiceover script from scene-by-scene storyboard lines. */
 function getVoiceoverFromStoryboard(storyboard: Array<{ voiceover_line?: string; voiceover_script?: string }> | null | undefined): string {
   if (!storyboard?.length) return '';
@@ -70,13 +85,30 @@ function getCanonicalVoiceover(
 /** Vercel caps request bodies at ~4.5MB; large base64 galleries exceed this before the API runs. */
 const MAX_VIDEO_API_REF_IMAGES = 3;
 const VERCEL_SAFE_BODY_BYTES = 4 * 1024 * 1024;
+/** Target per data-URL after compress (base64 expands ~33%, so ~750KB binary ≈ 1MB string). */
+const TARGET_DATA_URL_CHARS = 900_000;
+const MAX_PERSISTED_IMAGE_DATA_URL_CHARS = 350_000;
 
-async function compressDataUrlForVideoApi(dataUrl: string): Promise<string> {
-  if (!dataUrl.startsWith('data:') || dataUrl.length < 600_000) return dataUrl;
+async function compressDataUrlForVideoApi(
+  dataUrl: string,
+  options?: { maxDim?: number; targetChars?: number; minQuality?: number }
+): Promise<string> {
+  if (!dataUrl?.startsWith('data:')) return dataUrl;
+  const maxDim = options?.maxDim ?? 1280;
+  const targetChars = options?.targetChars ?? TARGET_DATA_URL_CHARS;
+  const minQuality = options?.minQuality ?? 0.48;
+  // Always re-encode large / non-JPEG data URLs so PNG/WebP galleries shrink.
+  if (
+    dataUrl.length < targetChars &&
+    /^data:image\/jpe?g/i.test(dataUrl) &&
+    dataUrl.length < 400_000
+  ) {
+    return dataUrl;
+  }
+
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
-      const maxDim = 1600;
       let w = img.naturalWidth || img.width;
       let h = img.naturalHeight || img.height;
       if (w <= 0 || h <= 0) {
@@ -96,15 +128,29 @@ async function compressDataUrlForVideoApi(dataUrl: string): Promise<string> {
         resolve(dataUrl);
         return;
       }
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, w, h);
       ctx.drawImage(img, 0, 0, w, h);
       try {
-        let q = 0.86;
+        let q = 0.82;
         let out = canvas.toDataURL('image/jpeg', q);
-        while (out.length > 1_100_000 && q > 0.52) {
-          q -= 0.07;
+        while (out.length > targetChars && q > minQuality) {
+          q -= 0.08;
           out = canvas.toDataURL('image/jpeg', q);
         }
-        resolve(out);
+        // Still too big — shrink dimensions once more
+        if (out.length > targetChars && (w > 720 || h > 720)) {
+          const r2 = Math.min(720 / w, 720 / h, 1);
+          const w2 = Math.max(1, Math.round(w * r2));
+          const h2 = Math.max(1, Math.round(h * r2));
+          canvas.width = w2;
+          canvas.height = h2;
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, w2, h2);
+          ctx.drawImage(img, 0, 0, w2, h2);
+          out = canvas.toDataURL('image/jpeg', Math.max(minQuality, 0.55));
+        }
+        resolve(out.length < dataUrl.length ? out : dataUrl);
       } catch {
         resolve(dataUrl);
       }
@@ -112,6 +158,10 @@ async function compressDataUrlForVideoApi(dataUrl: string): Promise<string> {
     img.onerror = () => resolve(dataUrl);
     img.src = dataUrl;
   });
+}
+
+async function compressUrlList(urls: string[], opts?: Parameters<typeof compressDataUrlForVideoApi>[1]) {
+  return Promise.all(urls.map((u) => (u?.startsWith('data:') ? compressDataUrlForVideoApi(u, opts) : u)));
 }
 
 async function prepareVideoGenerateImages(args: {
@@ -129,14 +179,52 @@ async function prepareVideoGenerateImages(args: {
     .filter((img) => img && img !== hero_image && img !== brand_logo)
     .slice(0, slotsForProducts);
 
-  // Fetched product photos are sent unchanged — server passes JPEG/PNG bytes through to Veo.
-  const compressedLogo = brand_logo ? await compressDataUrlForVideoApi(brand_logo) : null;
+  const [compressedHero, compressedLogo, compressedProducts] = await Promise.all([
+    hero_image ? compressDataUrlForVideoApi(hero_image) : Promise.resolve(null),
+    brand_logo ? compressDataUrlForVideoApi(brand_logo) : Promise.resolve(null),
+    compressUrlList(productSlice),
+  ]);
 
   return {
-    hero_image: hero_image,
+    hero_image: compressedHero,
     brand_logo: compressedLogo,
-    product_images: productSlice,
+    product_images: compressedProducts,
   };
+}
+
+/** Shrink inline images before session persist so PUT/GET stay under Next response limits. */
+async function productForSessionPersist(product: AdBuilderData['product']): Promise<AdBuilderData['product']> {
+  if (!product) return product;
+  const persistOpts = {
+    maxDim: 960,
+    targetChars: MAX_PERSISTED_IMAGE_DATA_URL_CHARS,
+    minQuality: 0.45,
+  };
+  const [hero_image, brand_logo, product_images] = await Promise.all([
+    product.hero_image?.startsWith('data:')
+      ? compressDataUrlForVideoApi(product.hero_image, persistOpts)
+      : Promise.resolve(product.hero_image),
+    product.brand_logo?.startsWith('data:')
+      ? compressDataUrlForVideoApi(product.brand_logo, persistOpts)
+      : Promise.resolve(product.brand_logo),
+    compressUrlList(product.product_images || [], persistOpts),
+  ]);
+  return { ...product, hero_image, brand_logo, product_images };
+}
+
+async function brandForSessionPersist(snapshot: BrandSnapshot): Promise<BrandSnapshot> {
+  const persistOpts = {
+    maxDim: 960,
+    targetChars: MAX_PERSISTED_IMAGE_DATA_URL_CHARS,
+    minQuality: 0.45,
+  };
+  const [logo, productImages] = await Promise.all([
+    snapshot.logo?.startsWith('data:')
+      ? compressDataUrlForVideoApi(snapshot.logo, persistOpts)
+      : Promise.resolve(snapshot.logo),
+    compressUrlList(snapshot.productImages || [], persistOpts),
+  ]);
+  return { ...snapshot, logo, productImages };
 }
 
 function getSelectedConcept(data: AdBuilderData) {
@@ -562,10 +650,14 @@ export default function VideoSessionPage() {
     setIsSaving(true);
 
     try {
+      const [product, brandSnapshot] = await Promise.all([
+        productForSessionPersist(adBuilderData.product),
+        brandForSessionPersist(brand),
+      ]);
       const payload = {
-        brandSnapshot: brand,
-        adBuilderData: { ...adBuilderData, step },
-        generatedVideos,
+        brandSnapshot,
+        adBuilderData: { ...adBuilderData, product, step },
+        generatedVideos: videosForSessionPersist(generatedVideos),
       };
 
       const response = await authFetch(`/api/creative-studio/sessions?id=${sessionId}`, {
@@ -573,7 +665,7 @@ export default function VideoSessionPage() {
         body: JSON.stringify(payload),
       });
 
-      const data = await response.json();
+      const data = await safeResponseJson<{ ok?: boolean; error?: string }>(response);
 
       if (!data.ok) {
         console.error('Failed to save session:', data.error);
@@ -1183,12 +1275,40 @@ export default function VideoSessionPage() {
     }
 
     try {
+      const preparedProduct = await prepareVideoGenerateImages({
+        hero_image: adBuilderData.product.hero_image,
+        brand_logo: adBuilderData.product.brand_logo,
+        product_images: adBuilderData.product.product_images || [],
+      });
+      const productForGenerate = {
+        ...adBuilderData.product,
+        hero_image: preparedProduct.hero_image,
+        brand_logo: preparedProduct.brand_logo,
+        // Keep only compressed canonical refs for Runway (gallery extras already sliced).
+        product_images: [
+          ...(preparedProduct.hero_image ? [preparedProduct.hero_image] : []),
+          ...preparedProduct.product_images,
+        ].filter(Boolean),
+      };
+
       const brief = mapStudioFormToCampaignBrief({
         campaignId,
-        product: adBuilderData.product,
+        product: productForGenerate,
         adSetup: adBuilderData.adSetup,
         brand,
         userDescription: getCommercialBrief(adBuilderData),
+        voiceover: {
+          enabled: adBuilderData.voiceover.enabled !== false,
+          language: adBuilderData.voiceover.language ?? 'english',
+          tone: adBuilderData.voiceover.tone,
+          key_message: adBuilderData.voiceover.key_message,
+          cta: adBuilderData.voiceover.cta || adBuilderData.creativeStrategy?.cta,
+          ctaEnabled: adBuilderData.voiceover.ctaEnabled !== false,
+          script: getCanonicalVoiceover(
+            adBuilderData.voiceover.script,
+            adBuilderData.storyboard
+          ),
+        },
         voiceoverCta: adBuilderData.voiceover.cta || adBuilderData.creativeStrategy?.cta,
         voiceoverKeyMessage: adBuilderData.voiceover.key_message,
         creativeStrategy: adBuilderData.creativeStrategy as never,
@@ -1217,7 +1337,7 @@ export default function VideoSessionPage() {
         throw new Error('Internal error: generation mode must be native_continuous');
       }
 
-      const availableAssets = buildStudioAvailableAssets(adBuilderData.product);
+      const availableAssets = buildStudioAvailableAssets(productForGenerate);
       const generationVersion =
         options?.generationVersion ||
         pendingRegeneration?.nextVersion ||
@@ -1516,10 +1636,14 @@ export default function VideoSessionPage() {
       // Save current session immediately before switching
       if (sessionId && sessionId !== 'new' && brand) {
         try {
+          const [product, brandSnapshot] = await Promise.all([
+            productForSessionPersist(adBuilderData.product),
+            brandForSessionPersist(brand),
+          ]);
           const payload = {
-            brandSnapshot: brand,
-            adBuilderData: { ...adBuilderData, step },
-            generatedVideos,
+            brandSnapshot,
+            adBuilderData: { ...adBuilderData, product, step },
+            generatedVideos: videosForSessionPersist(generatedVideos),
           };
 
           console.log('[DEBUG] Saving session before switch:', {
@@ -1535,7 +1659,7 @@ export default function VideoSessionPage() {
             body: JSON.stringify(payload),
           });
           
-          const result = await response.json();
+          const result = await safeResponseJson<{ ok?: boolean; error?: string }>(response);
           console.log('[DEBUG] Save response:', result.ok ? 'success' : result.error);
         } catch (err) {
           console.error('Error saving session before switch:', err);

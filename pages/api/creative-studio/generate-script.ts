@@ -29,6 +29,7 @@ import {
   meetsCreativeThreshold,
   scoreCreativeScript,
 } from "@/lib/creative-studio/creative-score";
+import { voiceoverLanguageDisplayName } from "@/lib/creative-studio/commercial-production/audio/voiceover-languages";
 import { getGeminiApiKey } from "@/lib/gemini-config";
 
 // Configure API route to handle large payloads (product images as base64 data URLs)
@@ -81,7 +82,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       platform,
       aspect_ratio,
       voiceover,
-      language, // Voiceover language: english, tamil, hindi
+      language, // Voiceover language: english, tamil, hindi, malayalam, kannada
       tone,
       key_message,
       cta,
@@ -498,7 +499,7 @@ AD REQUIREMENTS:
 - Platform: ${platform || "Instagram Reels / TikTok"}
 - Aspect Ratio: ${aspect_ratio || "9:16"}
 - Voiceover: ${voiceover ? "Yes" : "No"}
-${voiceover ? `- Voiceover Language: ${String(language || "english").charAt(0).toUpperCase() + String(language || "english").slice(1)} (write the entire voiceover script and voiceover_lines in ${language === "tamil" ? "Tamil" : language === "hindi" ? "Hindi" : "English"})` : ""}
+${voiceover ? `- Voiceover Language: ${voiceoverLanguageDisplayName(language)} (write the entire voiceover script and voiceover_lines in ${voiceoverLanguageDisplayName(language)})` : ""}
 - Tone: ${tone || "Energetic"}
 ${key_message ? `- Key Message: ${key_message}` : ""}
 ${cta ? `- CTA: ${cta}` : ""}
@@ -522,7 +523,7 @@ ${isPerformanceMode ? `- BEAT-BASED STORYBOARD (NOT scene-only): Plan beats firs
 - Each shot: 1–3 seconds. Time ranges must be consecutive like "0-2s", "2-4s", "4-6s", "6-8s". They must sum to ${durationSecondsClamped}s.
 - Each shot MUST have a unique, specific visual description — not generic. Describe exact camera angle, subject position, lighting setup, and composition.
 - Specify camera (angle, movement), lighting, and composition for each shot.
-- Voiceover (if enabled): write a script in ${language === "tamil" ? "Tamil" : language === "hindi" ? "Hindi" : "English"} — ${minVoiceoverWords}–${maxVoiceoverWords} words (target ~${targetVoiceoverWords}), finish by ${maxVoiceoverSeconds}s at ~${VOICEOVER_WORDS_PER_SECOND} words/sec. Last ${voTailSeconds}s must be silent. Never write only 3–5 words.${isStitchedDuration ? `
+- Voiceover (if enabled): write a script in ${voiceoverLanguageDisplayName(language)} — ${minVoiceoverWords}–${maxVoiceoverWords} words (target ~${targetVoiceoverWords}), finish by ${maxVoiceoverSeconds}s at ~${VOICEOVER_WORDS_PER_SECOND} words/sec. Last ${voTailSeconds}s must be silent. Never write only 3–5 words.${isStitchedDuration ? `
   CRITICAL FOR ${durationSecondsClamped}s EXTENDED VIDEO:
   - The voiceover must tell a COMPLETE story across the full ${durationSecondsClamped} seconds — NOT just an 8-second script repeated.
   - Distribute voiceover_line across ALL ${recommendedScenes} scenes. The first half of scenes (Part 1, 0–${midpointSeconds}s) gets the setup/hook voiceover; the second half (Part 2, ${midpointSeconds}–${durationSecondsClamped}s) gets the payoff/CTA voiceover.
@@ -642,7 +643,7 @@ Return your response as a JSON object with this exact structure. The storyboard 
     "motion_style": "Overall motion",
     "brand_polish": "Brand polish (premium category-leading quality)"
   },
-  "voiceover_script": "${voiceover ? `Full ad script in ${language === "tamil" ? "Tamil" : language === "hindi" ? "Hindi" : "English"}. MUST say brand + product together as one phrase (e.g. "${brand_name} ${product_name}"), state one specific benefit, end with CTA. ${minVoiceoverWords}–${maxVoiceoverWords} words (target ~${targetVoiceoverWords}) — finish by ${maxVoiceoverSeconds}s (last ${voTailSeconds}s silent). Complete conversational sentences, not fragments. ${tone || "Energetic"} tone.` : "N/A - Voiceover disabled"}",
+  "voiceover_script": "${voiceover ? `Full ad script in ${voiceoverLanguageDisplayName(language)}. MUST say brand + product together as one phrase (e.g. "${brand_name} ${product_name}"), state one specific benefit, end with CTA. ${minVoiceoverWords}–${maxVoiceoverWords} words (target ~${targetVoiceoverWords}) — finish by ${maxVoiceoverSeconds}s (last ${voTailSeconds}s silent). Complete conversational sentences, not fragments. ${tone || "Energetic"} tone.` : "N/A - Voiceover disabled"}",
   "headline": "",
   "subtext": "",
   "final_video_prompt": "Director-grade Veo production brief (400-900 tokens) for the full ${durationSecondsClamped}-second film. Write like a premium agency shoot call sheet condensed into one prompt. MUST include: (1) OVERALL VISION — one sentence emotional goal; (2) COLOR GRADE — specific film-grade look (e.g. warm premium print-film feel, cool high-contrast studio look, bright high-key white); (3) LENS & CAMERA — specific focal lengths and moves per act (e.g. 35mm dolly push-in, 100mm macro rack focus); (4) LIGHTING SETUP — key/fill/rim description, motivated sources; (5) SHOT SEQUENCE — timed beats with cut types (match cut, whip-pan, hard cut on action); (6) SOUND MOOD — music genre/tempo, foley texture; (7) PRODUCT HERO MOMENT — exact frame composition for the closing shot; (8) CONTENT SAFETY — all people fully clothed, modest mainstream brand ad (no nudity, no revealing attire, no bare chest).${isStitchedDuration ? ' IMPORTANT: Two ~' + midpointSeconds + 's clips stitched. Describe ONE consistent visual world. Midpoint = motivated professional edit cut.' : ''} CRITICAL: STRICT ZERO on-screen text — no captions, slogans, floating brand typography, flavor callouts, or end-card words. Brand and product names in voiceover ONLY. Purely visual product shots + spoken ad."

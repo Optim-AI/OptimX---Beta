@@ -24,6 +24,11 @@ import {
   VIDEO_EXECUTOR_MODEL,
   VIDEO_EXECUTOR_PROVIDER,
 } from "../video-executor/types";
+import { usesGeminiTts } from "../audio/voiceover-languages";
+import {
+  attachGeminiVoiceoverIfNeeded,
+  VoiceoverPipelineError,
+} from "../audio/attach-gemini-voiceover";
 
 function defaultLog(event: string, payload: Record<string, unknown>): void {
   console.log(`[campaign-executor] ${event}`, payload);
@@ -101,12 +106,15 @@ export async function produceFinalCommercial(
     shotPlan = plan;
   }
 
+  const suppressSpokenVoiceover = usesGeminiTts(brief.voiceover?.language);
+
   const spec = compileCampaignGeneration({
     blueprint,
     shotPlan,
     availableAssets: input.availableAssets,
     generationVersion,
     generationMode: "native_continuous",
+    suppressSpokenVoiceover,
   });
 
   log("produce.compiled", {
@@ -114,14 +122,24 @@ export async function produceFinalCommercial(
     duration: spec.duration,
     referenceCount: spec.referenceAssets.length,
     promptLength: spec.campaignPrompt.length,
+    suppressSpokenVoiceover,
+    voiceoverLanguage: brief.voiceover?.language || "english",
   });
+
+  // Gemini TTS path must download the Seedance MP4 so we can remux audio.
+  const skipDownload = suppressSpokenVoiceover
+    ? false
+    : (input.skipDownload ?? true);
+  const skipStorage = suppressSpokenVoiceover
+    ? false
+    : (input.skipStorage ?? true);
 
   const native = await generateCampaignVideo(
     {
       spec,
       forceRegenerate: input.forceRegenerate,
-      skipDownload: input.skipDownload ?? true,
-      skipStorage: input.skipStorage ?? true,
+      skipDownload,
+      skipStorage,
       userId: input.userId,
     },
     options
@@ -153,6 +171,38 @@ export async function produceFinalCommercial(
     creativePlan: buildCreativePlanSummary(blueprint),
     createdAt: new Date().toISOString(),
   };
+
+  if (suppressSpokenVoiceover) {
+    try {
+      const attached = await attachGeminiVoiceoverIfNeeded(brief, final, { log });
+      if (attached) {
+        final = attached.final;
+        log("produce.gemini_tts", {
+          campaignId: final.campaignId,
+          language: attached.language,
+          voice: attached.voice,
+          model: attached.model,
+        });
+      }
+    } catch (ttsErr) {
+      if (ttsErr instanceof VoiceoverPipelineError) {
+        throw new CampaignExecutorError(
+          "NATIVE_GENERATION_FAILED",
+          ttsErr.message,
+          { phase: ttsErr.phase, error: String(ttsErr.cause ?? ttsErr.message) },
+          false
+        );
+      }
+      throw new CampaignExecutorError(
+        "NATIVE_GENERATION_FAILED",
+        ttsErr instanceof Error
+          ? `Gemini voiceover pipeline failed: ${ttsErr.message}`
+          : "Gemini voiceover pipeline failed",
+        { phase: "VOICEOVER_PIPELINE", error: String(ttsErr) },
+        false
+      );
+    }
+  }
 
   // Phase 8 — Commercial QC (deterministic always; visual when analyzer injected / live flag)
   if (input.runCommercialQc !== false) {
