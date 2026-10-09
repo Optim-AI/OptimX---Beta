@@ -7,27 +7,49 @@ import { useRouter } from "next/router";
 import type { JSX } from "react";
 import Sidebar from "../app/web/src/components/Sidebar";
 import { Button } from "../app/web/src/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "../app/web/src/components/ui/card";
 import { Alert, AlertTitle, AlertDescription } from "../app/web/src/components/ui/alert";
-import { ComingSoonOverlay } from '@/app/web/src/components/billing/ComingSoonOverlay';
-import { authFetch } from '@/lib/utils';
+import { ComingSoonOverlay } from "@/app/web/src/components/billing/ComingSoonOverlay";
+import {
+  IntegrationsConnectPanel,
+  type IntegrationStatusMap,
+} from "@/app/web/src/components/integrations/IntegrationsConnectPanel";
+import { ContentCalendar } from "@/app/web/src/components/dashboard/ContentCalendar";
+import { PerformanceChart, type PerformancePoint } from "@/app/web/src/components/dashboard/PerformanceChart";
+import { authFetch } from "@/lib/utils";
 import {
   Plus,
-  TrendingUp,
   DollarSign,
   MousePointerClick,
   Eye,
   Sparkles,
   AlertCircle,
+  RefreshCw,
+  ImageIcon,
+  Megaphone,
+  Target,
+  Send,
 } from "lucide-react";
 
-import colors from '@/lib/ui/colors';
-import { apiFetch } from '@/api/fetch';
-import { supabase } from '@/auth/supabase/client';
-import { campaignClient } from '@/database/client-helpers';
-import { SkeletonPageLoader, SkeletonCampaignRow } from '@/app/web/src/components/ui/skeletons';
+import colors from "@/lib/ui/colors";
+import { apiFetch } from "@/api/fetch";
+import { supabase } from "@/auth/supabase/client";
+import { campaignClient } from "@/database/client-helpers";
+import { SkeletonPageLoader, SkeletonCampaignRow } from "@/app/web/src/components/ui/skeletons";
+import {
+  buildActivity,
+  pipelineCounts,
+  type ActivityItem,
+  type CreativeActivityInput,
+  type SocialActivityInput,
+} from "@/lib/dashboard/activity";
 
-/* -------------------- Helpers & tokens -------------------- */
+function platformConnected(value: unknown): boolean {
+  if (typeof value === "object" && value !== null && "connected" in (value as object)) {
+    return !!(value as { connected?: boolean }).connected;
+  }
+  return !!value;
+}
+
 function hexToRgba(hex: string, alpha = 1) {
   try {
     const h = (hex || "").trim();
@@ -44,39 +66,31 @@ function hexToRgba(hex: string, alpha = 1) {
   }
 }
 
-const {
-  primary,
-  mutedForeground,
-  gradientPrimary,
-  primary10,
-  primary20,
-  shadowGlow,
-} = (colors as any) || {};
-
+const { primary, mutedForeground, primary20 } = (colors as any) || {};
 const primaryColor = typeof primary === "string" ? primary : undefined;
 const mutedFg = typeof mutedForeground === "string" ? mutedForeground : undefined;
+const primaryBorder10 = typeof primary20 === "string" ? primary20 : primaryColor ? hexToRgba(primaryColor, 0.1) : undefined;
 
-const primaryBg10 = typeof primary10 === "string" ? primary10 : primaryColor ? hexToRgba(primaryColor, 0.10) : undefined;
-const primaryBorder10 = typeof primary20 === "string" ? primary20 : primaryColor ? hexToRgba(primaryColor, 0.10) : undefined;
-
-/* -------------------- Types -------------------- */
 type MetaMetrics = {
   total_spend: number;
-  budget_estimate_daily: number | null;
   total_reach: number;
   avg_ctr: number;
   conversions: number;
   roas: number | null;
+  impressions?: number;
+  clicks?: number;
   purchase_value?: number;
 };
 
 type SummaryResp = {
   ok?: boolean;
+  source?: string;
   meta?: {
-    current?: MetaMetrics;
+    current?: MetaMetrics | null;
     change?: Record<string, number | null>;
+    time_series?: PerformancePoint[];
   };
-  [k: string]: any;
+  ranges?: { current?: { since?: string; until?: string } };
 };
 
 type Campaign = {
@@ -86,7 +100,6 @@ type Campaign = {
   image_url?: any;
   is_published?: boolean;
   created_at?: string;
-  _raw?: any;
 };
 
 type Recommendation = {
@@ -97,21 +110,34 @@ type Recommendation = {
   estimate?: string;
 };
 
-/* -------------------- Component -------------------- */
+const RANGE_OPTIONS = [
+  { id: "7d", label: "Last 7 days" },
+  { id: "30d", label: "Last 30 days" },
+  { id: "90d", label: "Last 90 days" },
+] as const;
+
+function greeting(date = new Date()) {
+  const hour = date.getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 17) return "Good afternoon";
+  return "Good evening";
+}
+
+function surfaceStyle(): React.CSSProperties {
+  return {
+    background: colors.gradientCard,
+    border: `1px solid ${colors.border}`,
+    boxShadow: colors.shadowSoft,
+  };
+}
+
 export default function DashboardPage(): JSX.Element {
   const router = useRouter();
-
   const [userId, setUserId] = useState<string | null>(null);
-
-  // Feature access checking
+  const [displayName, setDisplayName] = useState<string | null>(null);
   const [featureAccess, setFeatureAccess] = useState<{ enabled: boolean; comingSoon: boolean } | null>(null);
   const [checkingFeature, setCheckingFeature] = useState(true);
-
-  // statuses: per-user flags returned from /api/integrations/status and/or local cache
   const [statuses, setStatuses] = useState<Record<string, any> | null>(null);
-  const [statusLoading, setStatusLoading] = useState(false);
-
-  // Meta integration health status
   const [metaHealth, setMetaHealth] = useState<{
     connected: boolean;
     healthStatus?: string;
@@ -119,42 +145,36 @@ export default function DashboardPage(): JSX.Element {
     needsReconnect?: boolean;
     tokenExpiresAt?: string | null;
   } | null>(null);
-
   const [metaSummary, setMetaSummary] = useState<SummaryResp | null>(null);
+  const [series, setSeries] = useState<PerformancePoint[]>([]);
   const [loadingMeta, setLoadingMeta] = useState(false);
-
+  const [metaError, setMetaError] = useState<string | null>(null);
+  const [metricsRange, setMetricsRange] = useState<(typeof RANGE_OPTIONS)[number]["id"]>("7d");
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loadingCampaigns, setLoadingCampaigns] = useState(true);
-
-  // IMPORTANT: recommendations must NOT show until user explicitly clicks button.
-  // Start with no recommendations and centered prompt.
+  const [activityItems, setActivityItems] = useState<ActivityItem[]>([]);
+  const [creativeTotal, setCreativeTotal] = useState<number | null>(null);
+  const [publishSampleSize, setPublishSampleSize] = useState(0);
+  const [activityLoading, setActivityLoading] = useState(true);
+  const [activityError, setActivityError] = useState<string | null>(null);
   const [autoRecs, setAutoRecs] = useState<Recommendation[]>([]);
   const [recLoading, setRecLoading] = useState(false);
   const [recError, setRecError] = useState<string | null>(null);
+  const [recsRequested, setRecsRequested] = useState(false);
 
-  // show the centered prompt until user clicks the button
-  const [recsCentered, setRecsCentered] = useState<boolean>(true);
-
-  const metricsRange = "7d";
-
-  // namespaced localStorage key for statuses to avoid cross-user collisions
   const LS_KEY_FOR = (uid: string | null) => `integrations_status_v1:${uid ?? "anon"}`;
+  const rangeLabel = RANGE_OPTIONS.find((option) => option.id === metricsRange)?.label ?? "Last 7 days";
 
-  /* -------------------- Fetch statuses (user-scoped) -------------------- */
   async function fetchStatuses(uid: string | null) {
-    setStatusLoading(true);
     try {
       if (!uid) {
         setStatuses(null);
-        setStatusLoading(false);
         return;
       }
-
       const userScopedApi = (path: string) => {
         const sep = path.includes("?") ? "&" : "?";
         return `${path}${sep}userId=${encodeURIComponent(uid)}`;
       };
-
       try {
         const res = await apiFetch(userScopedApi("/api/integrations/status"));
         if (res.ok) {
@@ -162,80 +182,62 @@ export default function DashboardPage(): JSX.Element {
           const next: Record<string, boolean> = { meta: false };
           if (data && typeof data === "object") {
             Object.keys(data).forEach((k) => {
-              next[k] = !!data[k];
+              next[k] = platformConnected(data[k]);
             });
           }
           setStatuses(next);
-          try {
-            localStorage.setItem(LS_KEY_FOR(uid), JSON.stringify(next));
-          } catch {}
-          setStatusLoading(false);
+          try { localStorage.setItem(LS_KEY_FOR(uid), JSON.stringify(next)); } catch {}
           return;
-        } else {
-          console.warn("user-scoped /api/integrations/status returned non-ok", res.status);
         }
       } catch (err) {
         console.debug("user-scoped status fetch failed, falling back to local cache", err);
       }
-
       try {
         const raw = localStorage.getItem(LS_KEY_FOR(uid));
         if (raw) {
-          const parsed = JSON.parse(raw);
-          const normalized: Record<string, boolean> = { meta: false, ...(parsed || {}) };
-          setStatuses(normalized);
-          setStatusLoading(false);
+          setStatuses({ meta: false, ...(JSON.parse(raw) || {}) });
           return;
         }
       } catch (err) {
         console.debug("localStorage read failed:", err);
       }
-
       const initial: Record<string, boolean> = { meta: false };
       setStatuses(initial);
-      try {
-        localStorage.setItem(LS_KEY_FOR(uid), JSON.stringify(initial));
-      } catch {}
+      try { localStorage.setItem(LS_KEY_FOR(uid), JSON.stringify(initial)); } catch {}
     } catch (err) {
       console.error("fetchStatuses error:", err);
       setStatuses({ meta: false });
-    } finally {
-      setStatusLoading(false);
     }
   }
 
-  /* -------------------- Check Meta integration health -------------------- */
   async function checkMetaHealth(uid: string | null) {
     try {
       if (!uid) {
         setMetaHealth(null);
         return;
       }
-
-      const response = await apiFetch('/api/dashboard/health-check', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await apiFetch("/api/dashboard/health-check", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
       });
-
       if (response.ok) {
         const data = await response.json();
         setMetaHealth(data.meta || null);
       }
     } catch (err) {
-      console.error('Meta health check error:', err);
+      console.error("Meta health check error:", err);
     }
   }
 
-  /* -------------------- Fetch meta metrics (no cache), include supabase token if present (user-scoped) -------------------- */
-  async function fetchMetaMetricsAllTime(uid: string | null) {
+  async function fetchMetaMetrics(uid: string | null, range: string) {
     setLoadingMeta(true);
+    setMetaError(null);
     try {
       if (!uid) {
         setMetaSummary(null);
-        setLoadingMeta(false);
+        setSeries([]);
         return;
       }
-
       let token: string | null = null;
       try {
         const { data } = await supabase.auth.getSession();
@@ -243,81 +245,67 @@ export default function DashboardPage(): JSX.Element {
       } catch (e) {
         console.debug("supabase.getSession error (ignored):", e);
       }
-
       const headers: HeadersInit = {};
       if (token) headers["Authorization"] = `Bearer ${token}`;
-
       const q = new URLSearchParams();
-      q.set("range", metricsRange);
+      q.set("range", range);
       q.set("userId", uid);
-
-      const resp = await fetch(`/api/integrations/metrics?${q.toString()}`, { method: "GET", headers, cache: "no-store", credentials: "same-origin" });
-
-      if (resp.ok) {
-        const j = await resp.json();
-        setMetaSummary(j as SummaryResp);
-
-        const hasMeaningfulMetrics = Boolean(j?.meta?.current && (j.meta.current.total_spend !== undefined || j.meta.current.total_reach !== undefined));
-        if (hasMeaningfulMetrics) {
-          const normalized: Record<string, any> = { meta: true };
-          try {
-            const rawLs = localStorage.getItem(LS_KEY_FOR(uid));
-            if (rawLs) {
-              const prev = JSON.parse(rawLs);
-              Object.assign(normalized, prev);
-            }
-          } catch {}
-          setStatuses(normalized);
-          try { localStorage.setItem(LS_KEY_FOR(uid), JSON.stringify(normalized)); } catch {}
-        }
-
+      const resp = await fetch(`/api/integrations/metrics?${q.toString()}`, {
+        method: "GET",
+        headers,
+        cache: "no-store",
+        credentials: "same-origin",
+      });
+      if (!resp.ok) {
+        setMetaError("Couldn't load ad metrics for this range.");
         return;
-      } else {
-        console.warn("metrics fetch returned non-ok:", resp.status);
+      }
+      const j = (await resp.json()) as SummaryResp;
+      setMetaSummary(j);
+      const points = Array.isArray(j?.meta?.time_series) ? j.meta.time_series : [];
+      setSeries(points.filter((point) => point && typeof point.date === "string"));
+      const hasMeaningfulMetrics = Boolean(
+        j?.meta?.current &&
+          (j.meta.current.total_spend !== undefined || j.meta.current.total_reach !== undefined)
+      );
+      if (hasMeaningfulMetrics) {
+        const normalized: Record<string, any> = { meta: true };
+        try {
+          const rawLs = localStorage.getItem(LS_KEY_FOR(uid));
+          if (rawLs) Object.assign(normalized, JSON.parse(rawLs));
+        } catch {}
+        setStatuses(normalized);
+        try { localStorage.setItem(LS_KEY_FOR(uid), JSON.stringify(normalized)); } catch {}
       }
     } catch (err) {
-      console.error("fetchMetaMetricsAllTime error:", err);
+      console.error("fetchMetaMetrics error:", err);
+      setMetaError("Couldn't load ad metrics for this range.");
     } finally {
       setLoadingMeta(false);
     }
   }
 
-  /* -------------------- campaigns (only user's campaigns) -------------------- */
   async function fetchCampaigns(uid: string | null) {
     setLoadingCampaigns(true);
     try {
       if (!uid) {
         setCampaigns([]);
-        setLoadingCampaigns(false);
         return;
       }
-
-      // Use the campaignClient.list() which already handles user-scoped queries
       const result = await campaignClient.list();
-
       if (!result.success) {
-        console.debug('campaigns query error:', result.error);
         setCampaigns([]);
         return;
       }
-
-      const rows = result.data || [];
-
-      if (!rows || rows.length === 0) {
-        setCampaigns([]);
-        return;
-      }
-
-      const normalized = (rows || []).map((c) => ({
+      const normalized = (result.data || []).map((c: any) => ({
         id: c.id ?? (c.name || Math.random()).toString(),
         name: c.name ?? "Untitled",
         campaign_type: c.campaign_type ?? c.type ?? null,
         image_url: c.image_url ?? c.image_url_public ?? c.preview_url ?? null,
         is_published: !!c.is_published,
         created_at: c.created_at ?? undefined,
-        _raw: c,
       })) as Campaign[];
-
+      normalized.sort((a, b) => +new Date(b.created_at || 0) - +new Date(a.created_at || 0));
       setCampaigns(normalized);
     } catch (err) {
       console.error("fetchCampaigns exception:", err);
@@ -327,11 +315,36 @@ export default function DashboardPage(): JSX.Element {
     }
   }
 
-  /* -------------------- Candidates builder (same logic) -------------------- */
+  async function fetchActivity() {
+    setActivityLoading(true);
+    setActivityError(null);
+    try {
+      const [postsRes, creativesRes] = await Promise.all([
+        authFetch("/api/social/facebook/posts?limit=100"),
+        authFetch("/api/generated-contents/list?limit=100"),
+      ]);
+      if (!postsRes.ok || !creativesRes.ok) {
+        setActivityError("Couldn't load publishing activity.");
+        return;
+      }
+      const postsJson = await postsRes.json();
+      const creativesJson = await creativesRes.json();
+      const posts = (Array.isArray(postsJson?.posts) ? postsJson.posts : []) as SocialActivityInput[];
+      const creatives = (Array.isArray(creativesJson?.items) ? creativesJson.items : []) as CreativeActivityInput[];
+      setActivityItems(buildActivity(posts, creatives));
+      setCreativeTotal(typeof creativesJson?.total === "number" ? creativesJson.total : creatives.length);
+      setPublishSampleSize(posts.length);
+    } catch (err) {
+      console.error("fetchActivity error:", err);
+      setActivityError("Couldn't load publishing activity.");
+    } finally {
+      setActivityLoading(false);
+    }
+  }
+
   function buildDynamicCandidates(summary: SummaryResp | null, campaignsList: Campaign[]) {
     const meta = summary?.meta?.current ?? null;
     const change = summary?.meta?.change ?? null;
-
     const candidates: Array<{ r: Recommendation; score: number }> = [];
 
     if (meta) {
@@ -339,179 +352,109 @@ export default function DashboardPage(): JSX.Element {
         r: {
           title: "Reallocate budget to improve ROAS",
           impact: (meta.roas ?? 0) < 2 ? "High" : "Medium",
-          reason: `All-time ROAS is ${(meta.roas ?? 0).toFixed(2)}x — focus spend on best performers.`,
-          actions: ["Move budget to top ad sets", "Pause low-ROAS creatives", "Increase bid on winners"],
-          estimate: "Expected +10–40% ROAS uplift",
+          reason: `ROAS for this range is ${(meta.roas ?? 0).toFixed(2)}x. Shift spend toward the better performers.`,
+          actions: ["Move budget to top ad sets", "Pause low-ROAS creatives"],
+          estimate: "Based on the synced account totals",
         },
-        score: ((meta.roas ?? 0) < 2 ? 8 : 4),
+        score: (meta.roas ?? 0) < 2 ? 8 : 4,
       });
-
       candidates.push({
         r: {
           title: "Improve CTR with creative experiments",
           impact: (meta.avg_ctr ?? 0) < 2 ? "High" : "Medium",
-          reason: `Average CTR ${(meta.avg_ctr ?? 0).toFixed(2)}% suggests creative fatigue or weak hooks.`,
-          actions: ["Test short vs long primary text", "Swap thumbnails & headlines", "Try bold CTA variants"],
-          estimate: "Potential +10–30% CTR",
+          reason: `Average CTR is ${(meta.avg_ctr ?? 0).toFixed(2)}% for this range.`,
+          actions: ["Test new primary text", "Swap thumbnails and headlines"],
+          estimate: "Based on the synced account totals",
         },
-        score: ((meta.avg_ctr ?? 0) < 1 ? 7 : (meta.avg_ctr ?? 0) < 2 ? 4 : 1),
+        score: (meta.avg_ctr ?? 0) < 1 ? 7 : (meta.avg_ctr ?? 0) < 2 ? 4 : 1,
       });
-
       candidates.push({
         r: {
-          title: "Conversion & tracking audit",
-          impact: ((meta.total_spend ?? 0) > 1000 && (meta.conversions ?? 0) < 20) ? "High" : "Medium",
-          reason: `Spent ${fmtMoney(meta.total_spend)} with ${(meta.conversions ?? 0)} conversions — verify funnels & events.`,
-          actions: ["Verify pixel firing & server events", "Audit landing page UX", "Run CRO experiments"],
-          estimate: "Potential +15–60% conversions",
+          title: "Review conversion tracking",
+          impact: (meta.total_spend ?? 0) > 1000 && (meta.conversions ?? 0) < 20 ? "High" : "Medium",
+          reason: `Spent ${fmtMoney(meta.total_spend)} with ${meta.conversions ?? 0} conversions in this range.`,
+          actions: ["Check pixel and server events", "Review the landing page"],
+          estimate: "Based on the synced account totals",
         },
-        score: ((meta.total_spend ?? 0) > 1000 && (meta.conversions ?? 0) < 20 ? 9 : 3),
+        score: (meta.total_spend ?? 0) > 1000 && (meta.conversions ?? 0) < 20 ? 9 : 3,
       });
-
-      if (change) {
+      if (change && typeof change.roas_pct === "number" && change.roas_pct < 0) {
         candidates.push({
           r: {
-            title: "Address negative ROAS trend",
-            impact: (change.roas_pct ?? 0) < 0 ? "High" : "Low",
-            reason: `ROAS change: ${pctDisplay(change.roas_pct ?? null)} — check recent creative & audience changes.`,
-            actions: ["Rollback recent targeting tweaks", "Compare cohorts by date"],
-            estimate: "Stabilize ROAS",
+            title: "ROAS is down versus the previous period",
+            impact: "High",
+            reason: `ROAS changed ${pctDisplay(change.roas_pct)} compared with the previous window.`,
+            actions: ["Compare recent creative and audience changes"],
+            estimate: "Based on the synced comparison window",
           },
-          score: (change.roas_pct ?? 0) < 0 ? 6 : 1,
+          score: 6,
         });
       }
-    } else {
+    }
+
+    if (campaignsList.length < 3) {
       candidates.push({
         r: {
-          title: "Connect Meta account for accurate metrics",
-          impact: "High",
-          reason: "No Meta metrics available — connect to fetch real account data and recommendations.",
-          actions: ["Go to Integrations and connect Meta account"],
-          estimate: "Unlock full diagnostics",
+          title: "Add another campaign test",
+          impact: "Medium",
+          reason: `This workspace has ${campaignsList.length} campaign${campaignsList.length === 1 ? "" : "s"}.`,
+          actions: ["Create a campaign from Brand Studio or Ad Studio"],
+          estimate: "Uses your saved campaigns",
         },
-        score: 10,
+        score: 5,
       });
     }
 
-    candidates.push({
-      r: {
-        title: "Run more low-budget tests",
-        impact: campaignsList.length < 3 ? "Medium" : "Low",
-        reason: `You have ${campaignsList.length} campaigns — more tests increase chance to find winners.`,
-        actions: ["Launch 2–3 low-budget experiments", "Test new audiences & creatives"],
-        estimate: "Discover higher-performing segments",
-      },
-      score: campaignsList.length < 3 ? 5 : 1,
-    });
-
-    candidates.push({
-      r: {
-        title: "Audit audience overlap & frequency",
-        impact: "Medium",
-        reason: "Check frequency and audience overlap to reduce fatigue and wasted spend.",
-        actions: ["Check frequency by campaign", "Split overlapping audiences", "Rotate creatives weekly"],
-        estimate: "Improve efficiency & CTR",
-      },
-      score: 3,
-    });
-
     const unique: Record<string, { r: Recommendation; score: number }> = {};
-    for (const c of candidates) {
-      const key = (c.r.title ?? "").trim();
+    for (const candidate of candidates) {
+      const key = (candidate.r.title ?? "").trim();
       if (!key) continue;
-      if (!unique[key]) unique[key] = c;
-      else if (c.score > unique[key].score) unique[key] = c;
+      if (!unique[key] || candidate.score > unique[key].score) unique[key] = candidate;
     }
-    const sorted = Object.values(unique).sort((a, b) => b.score - a.score).map(v => v.r);
-    return sorted;
+    return Object.values(unique).sort((a, b) => b.score - a.score).map((entry) => entry.r);
   }
 
-  function pickTopPriorityRecommendations(all: Recommendation[], limit = 3): Recommendation[] {
-    const high = all.filter(a => (a.impact ?? "").toLowerCase() === "high");
-    if (high.length > 0) return high.slice(0, limit);
-    const medium = all.filter(a => (a.impact ?? "").toLowerCase() === "medium");
-    if (medium.length > 0) return medium.slice(0, limit);
-    return all.slice(0, limit);
-  }
-
-  /* -------------------- Generate & persist recommendations -------------------- */
-  // THIS is the updated function — it calls your server endpoint when connected
   async function handleGetRecommendations() {
     setRecLoading(true);
     setRecError(null);
-
-    // robust connected check:
-    const metaCurrent = metaSummary?.meta?.current ?? null;
-    const isConnected = Boolean(
+    setRecsRequested(true);
+    const metaCurrentNow = metaSummary?.meta?.current ?? null;
+    const isConnectedNow = Boolean(
       (statuses && statuses.meta === true) ||
-      (metaCurrent && (metaCurrent.total_spend !== undefined || metaCurrent.total_reach !== undefined))
+        (metaCurrentNow && (metaCurrentNow.total_spend !== undefined || metaCurrentNow.total_reach !== undefined))
     );
-
-    if (!isConnected) {
-      setRecError("Please connect Meta to get recommendations.");
+    if (!isConnectedNow) {
+      setRecError("Connect Meta before generating recommendations.");
       setAutoRecs([]);
-      setRecsCentered(false);
       setRecLoading(false);
       return;
     }
-
     try {
       let token: string | null = null;
       try {
         const { data } = await supabase.auth.getSession();
         token = (data as any)?.session?.access_token ?? null;
-      } catch (e) {
+      } catch {
         token = null;
       }
-
       if (!token) {
         setRecError("Not signed in.");
         setRecLoading(false);
         return;
       }
-
-      const payload = {
-        metrics: metaSummary?.meta ?? null,
-        range: metricsRange,
-      };
-
       const resp = await fetch("/api/recommendations", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(payload),
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ metrics: metaSummary?.meta ?? null, range: metricsRange }),
       });
-
       if (!resp.ok) {
-        // fallback to local builder (keeps existing UX)
-        try {
-          const all = buildDynamicCandidates(metaSummary, campaigns);
-          const chosen = pickTopPriorityRecommendations(all, 3);
-          setAutoRecs(chosen);
-          try {
-            sessionStorage.setItem("auto_recs_v1", JSON.stringify({
-              recs: chosen,
-              metaTotal: metaSummary?.meta?.current?.total_spend ?? null,
-              ts: Date.now(),
-            }));
-          } catch {}
-          setRecsCentered(false);
-          setRecError("Failed to fetch server recommendations — showing local suggestions.");
-        } catch (fallbackErr) {
-          console.error("fallback builder error", fallbackErr);
-          setAutoRecs([]);
-          setRecError("Failed to generate recommendations.");
-        } finally {
-          setRecLoading(false);
-        }
+        const chosen = buildDynamicCandidates(metaSummary, campaigns).slice(0, 3);
+        setAutoRecs(chosen);
+        setRecError(chosen.length ? "Showing suggestions from the metrics already loaded." : "Couldn't generate recommendations.");
         return;
       }
-
       const j = await resp.json();
       const recs = Array.isArray(j.recommendations) ? j.recommendations : [];
-      // backend returns minimal records (id,title,reason,impact,confidence,campaignId,created_at)
       const normalized: Recommendation[] = recs.slice(0, 3).map((r: any) => ({
         title: r.title ?? r.name ?? "Recommendation",
         reason: r.reason ?? undefined,
@@ -519,139 +462,115 @@ export default function DashboardPage(): JSX.Element {
         actions: r.actions ?? undefined,
         estimate: r.estimate ?? undefined,
       }));
-
       if (normalized.length === 0) {
-        // fallback to local builder (only if server returned empty)
-        const all = buildDynamicCandidates(metaSummary, campaigns);
-        const chosen = pickTopPriorityRecommendations(all, 3);
-        setAutoRecs(chosen);
-        try {
-          sessionStorage.setItem("auto_recs_v1", JSON.stringify({
-            recs: chosen,
-            metaTotal: metaSummary?.meta?.current?.total_spend ?? null,
-            ts: Date.now(),
-          }));
-        } catch {}
-        setRecsCentered(false);
-        setRecError(null);
+        setAutoRecs(buildDynamicCandidates(metaSummary, campaigns).slice(0, 3));
       } else {
         setAutoRecs(normalized);
-        try {
-          sessionStorage.setItem("auto_recs_v1", JSON.stringify({
-            recs: normalized,
-            metaTotal: metaSummary?.meta?.current?.total_spend ?? null,
-            ts: Date.now(),
-          }));
-        } catch {}
-        setRecsCentered(false);
-        setRecError(null);
       }
     } catch (err) {
       console.error("handleGetRecommendations error:", err);
-      // fallback to local builder on any exception
-      try {
-        const all = buildDynamicCandidates(metaSummary, campaigns);
-        const chosen = pickTopPriorityRecommendations(all, 3);
-        setAutoRecs(chosen);
-        try {
-          sessionStorage.setItem("auto_recs_v1", JSON.stringify({
-            recs: chosen,
-            metaTotal: metaSummary?.meta?.current?.total_spend ?? null,
-            ts: Date.now(),
-          }));
-        } catch {}
-        setRecsCentered(false);
-        setRecError("Failed to fetch recommendations — showing local suggestions.");
-      } catch {
-        setAutoRecs([]);
-        setRecError("Failed to generate recommendations.");
-      }
+      const chosen = buildDynamicCandidates(metaSummary, campaigns).slice(0, 3);
+      setAutoRecs(chosen);
+      setRecError(chosen.length ? "Showing suggestions from the metrics already loaded." : "Couldn't generate recommendations.");
     } finally {
       setRecLoading(false);
     }
   }
 
-  /* -------------------- lifecycle: load data -------------------- */
   useEffect(() => {
     (async () => {
       try {
-        // Check feature access first
         try {
-          const response = await authFetch('/api/features/access');
+          const response = await authFetch("/api/features/access");
           const data = await response.json();
           if (data.success && data.features) {
-            const dashboardAccess = data.features['dashboard'];
-            setFeatureAccess(dashboardAccess || { enabled: false, comingSoon: true });
+            setFeatureAccess(data.features.dashboard || { enabled: false, comingSoon: true });
           }
         } catch (err) {
-          console.error('Failed to check feature access:', err);
+          console.error("Failed to check feature access:", err);
           setFeatureAccess({ enabled: false, comingSoon: true });
         } finally {
           setCheckingFeature(false);
         }
 
         const { data: userData, error: userErr } = await supabase.auth.getUser();
-        if (userErr) {
-          console.error("Error getting user from supabase.auth:", userErr);
+        if (userErr || !(userData as any)?.user) {
           router.push("/auth/signin");
           return;
         }
-        const user = (userData as any)?.user ?? null;
-        if (!user) {
-          router.push("/auth/signin");
-          return;
-        }
+        const user = (userData as any).user;
         setUserId(user.id);
-
+        const rawName = user.user_metadata?.full_name || user.user_metadata?.name || user.email || "";
+        const first = String(rawName).split("@")[0].split(" ")[0];
+        setDisplayName(first || null);
         await Promise.all([
           fetchStatuses(user.id),
           fetchCampaigns(user.id),
-          fetchMetaMetricsAllTime(user.id),
           checkMetaHealth(user.id),
+          fetchActivity(),
         ]);
       } catch (err) {
         console.error("init dashboard error:", err);
       }
-
-      // NOTE: Deliberately DO NOT hydrate previous recommendations from sessionStorage
-      // per user's request: show NO recommendations until the user clicks the button.
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /* -------------------- helpers & UI -------------------- */
+  useEffect(() => {
+    if (!userId) return;
+    fetchMetaMetrics(userId, metricsRange);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, metricsRange]);
+
   function fmtMoney(n: number | null | undefined) {
-    if (n == null) return "—";
+    if (n == null || Number.isNaN(Number(n))) return "—";
     try {
-      return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", minimumFractionDigits: 0 }).format(Number(n));
+      return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(Number(n));
     } catch {
       return `₹${Number(n).toFixed(0)}`;
     }
   }
   function pctDisplay(n: number | null | undefined) {
-    if (n == null) return "—";
-    const r = Math.round((n as number) * 10) / 10;
-    const sign = r > 0 ? "+" : "";
-    return `${sign}${r}%`;
+    if (n == null || Number.isNaN(Number(n))) return null;
+    const rounded = Math.round(Number(n) * 10) / 10;
+    return `${rounded > 0 ? "+" : ""}${rounded}%`;
+  }
+  function fmtCount(n: number | null | undefined) {
+    if (n == null || Number.isNaN(Number(n))) return "—";
+    return Number(n).toLocaleString();
   }
 
   const metaCurrent = metaSummary?.meta?.current ?? null;
-
+  const metaChange = metaSummary?.meta?.change ?? null;
   const isConnected = Boolean(
-    (statuses && statuses.meta === true) ||
-    (metaCurrent && (metaCurrent.total_spend !== undefined || metaCurrent.total_reach !== undefined))
+    (statuses && platformConnected(statuses.meta)) ||
+      (metaCurrent && (metaCurrent.total_spend !== undefined || metaCurrent.total_reach !== undefined))
   );
+  const pipeline = pipelineCounts(activityItems, campaigns);
+  const publishedPosts = activityItems.filter((item) => item.status === "published" && item.kind === "post").length;
 
-  const stats = [
-    { label: "Total Campaigns", value: String(campaigns.length ?? 0), icon: Eye, connected: isConnected },
-    { label: "Total Spend (All time)", value: metaCurrent ? fmtMoney(metaCurrent.total_spend) : "—", icon: DollarSign, connected: isConnected },
-    { label: "Avg CTR (All time)", value: metaCurrent ? `${(metaCurrent.avg_ctr ?? 0).toFixed(2)}%` : "—", icon: MousePointerClick, connected: isConnected },
-    { label: "ROAS (All time)", value: metaCurrent && metaCurrent.roas ? `${metaCurrent.roas.toFixed(2)}x` : "—", icon: TrendingUp, connected: isConnected },
-  ];
+  function refreshAll() {
+    if (!userId) return;
+    fetchStatuses(userId);
+    fetchMetaMetrics(userId, metricsRange);
+    fetchCampaigns(userId);
+    checkMetaHealth(userId);
+    fetchActivity();
+  }
 
-  function goToIntegrations(platform?: string) {
-    if (platform) window.location.href = `/integrations?connected=${platform}`;
-    else window.location.href = "/integrations";
+  function handleIntegrationStatusesChange(next: IntegrationStatusMap) {
+    const normalized: Record<string, boolean> = {};
+    Object.keys(next).forEach((k) => {
+      normalized[k] = platformConnected(next[k]);
+    });
+    setStatuses(normalized);
+    if (userId) {
+      try { localStorage.setItem(LS_KEY_FOR(userId), JSON.stringify(normalized)); } catch {}
+      if (normalized.meta) {
+        fetchMetaMetrics(userId, metricsRange);
+        checkMetaHealth(userId);
+      }
+    }
   }
 
   const getCampaignImageUrl = (c: Campaign) => {
@@ -660,46 +579,26 @@ export default function DashboardPage(): JSX.Element {
     return String(c.image_url);
   };
 
-  const cardShadowStyle = shadowGlow ? { boxShadow: shadowGlow } : undefined;
-
-  /* -------------------- Render -------------------- */
-
-  // Loading state while checking feature access
   if (checkingFeature) {
     return (
       <div className="min-h-screen flex app-page">
         <Sidebar />
-        <main className="flex-1 p-10 flex items-center justify-center">
+        <main className="flex min-w-0 flex-1 items-center justify-center p-6">
           <SkeletonPageLoader variant="dashboard" />
         </main>
       </div>
     );
   }
 
-  // If feature is not enabled or is coming soon, show overlay
   if (!featureAccess?.enabled || featureAccess?.comingSoon) {
     return (
       <div className="min-h-screen flex app-page">
         <Sidebar />
-        <main className="flex-1 relative">
+        <main className="relative min-w-0 flex-1">
           <ComingSoonOverlay featureKey="dashboard">
-            <div className="p-10">
-              <div className="flex items-center justify-between mb-8">
-                <div>
-                  <h2 className="text-3xl font-extrabold" style={{ color: colors.foreground }}>Dashboard</h2>
-                  <p className="mt-1 text-sm" style={mutedFg ? { color: mutedFg } : undefined}>Overview — all-time metrics & actionable suggestions</p>
-                </div>
-              </div>
-              {/* Placeholder content for visual effect */}
-              <div className="space-y-6">
-                <div className="grid grid-cols-2 gap-6">
-                  {[1, 2, 3, 4].map((i) => (
-                    <div key={i} className="p-6 rounded-xl h-32" style={{ backgroundColor: colors.card, border: `1px solid ${colors.border}` }} />
-                  ))}
-                </div>
-                <div className="p-8 rounded-xl h-64" style={{ backgroundColor: colors.card, border: `1px solid ${colors.border}` }} />
-                <div className="p-8 rounded-xl h-64" style={{ backgroundColor: colors.card, border: `1px solid ${colors.border}` }} />
-              </div>
+            <div className="p-6 sm:p-8">
+              <h1 className="text-2xl font-semibold" style={{ color: colors.foreground }}>Dashboard</h1>
+              <p className="mt-1 text-sm" style={mutedFg ? { color: mutedFg } : undefined}>Workspace overview</p>
             </div>
           </ComingSoonOverlay>
         </main>
@@ -707,215 +606,352 @@ export default function DashboardPage(): JSX.Element {
     );
   }
 
+  const adsReady = isConnected && metaCurrent;
+  const kpis: Array<{
+    label: string;
+    value: string;
+    hint: string;
+    trend: string | null;
+    trendIntent?: "up-good";
+    icon: React.ComponentType<{ size?: number; strokeWidth?: number }>;
+  }> = [
+    {
+      label: "Campaigns",
+      value: loadingCampaigns ? "…" : String(campaigns.length),
+      hint: "Saved in this workspace",
+      trend: null,
+      icon: Megaphone,
+    },
+    {
+      label: "Creatives",
+      value: activityLoading ? "…" : creativeTotal == null ? "—" : String(creativeTotal),
+      hint: "Generated contents",
+      trend: null,
+      icon: ImageIcon,
+    },
+    {
+      label: "Published posts",
+      value: activityLoading ? "…" : String(publishedPosts),
+      hint: publishSampleSize >= 100 ? "Within the latest 100 posts" : "Facebook publish history",
+      trend: null,
+      icon: Send,
+    },
+    {
+      label: "Spend",
+      value: !isConnected ? "—" : loadingMeta ? "…" : adsReady ? fmtMoney(metaCurrent.total_spend) : "—",
+      hint: isConnected ? rangeLabel : "Connect Meta to load spend",
+      trend: isConnected ? pctDisplay(metaChange?.total_spend_pct) : null,
+      icon: DollarSign,
+    },
+    {
+      label: "Reach",
+      value: !isConnected ? "—" : loadingMeta ? "…" : adsReady ? fmtCount(metaCurrent.total_reach) : "—",
+      hint: isConnected ? rangeLabel : "Connect Meta to load reach",
+      trend: isConnected ? pctDisplay(metaChange?.total_reach_pct) : null,
+      icon: Eye,
+    },
+    {
+      label: "CTR",
+      value: !isConnected ? "—" : loadingMeta ? "…" : adsReady ? `${(metaCurrent.avg_ctr ?? 0).toFixed(2)}%` : "—",
+      hint: isConnected ? rangeLabel : "Connect Meta to load CTR",
+      trend: isConnected ? pctDisplay(metaChange?.avg_ctr_pct) : null,
+      trendIntent: "up-good",
+      icon: MousePointerClick,
+    },
+    {
+      label: "Conversions",
+      value: !isConnected ? "—" : loadingMeta ? "…" : adsReady ? fmtCount(metaCurrent.conversions) : "—",
+      hint: isConnected ? rangeLabel : "Connect Meta to load conversions",
+      trend: isConnected ? pctDisplay(metaChange?.conversions_pct) : null,
+      trendIntent: "up-good",
+      icon: Target,
+    },
+    {
+      label: "ROAS",
+      value: !isConnected ? "—" : loadingMeta ? "…" : adsReady && metaCurrent.roas != null ? `${metaCurrent.roas.toFixed(2)}x` : "—",
+      hint: isConnected ? (adsReady && metaCurrent.roas == null ? "No conversion value in this range" : rangeLabel) : "Connect Meta to load ROAS",
+      trend: isConnected ? pctDisplay(metaChange?.roas_pct) : null,
+      trendIntent: "up-good",
+      icon: Sparkles,
+    },
+  ];
+
   return (
     <div className="min-h-screen flex app-page">
       <Sidebar />
-      <main className="flex-1 p-10">
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h2 className="text-3xl font-extrabold" style={{ color: colors.foreground }}>Dashboard</h2>
-            <p className="mt-1 text-sm" style={mutedFg ? { color: mutedFg } : undefined}>Overview — all-time metrics & actionable suggestions</p>
-          </div>
-
-          <div className="flex items-center gap-4">
-            <Link href="/create-campaign" legacyBehavior>
-              <a>
-                <Button size="lg" className="!px-5 !py-3" style={primaryColor ? { background: gradientPrimary ?? primaryColor, color: "#fff" } : undefined}>
-                  <Plus className="w-5 h-5 mr-2" /> New Campaign
-                </Button>
-              </a>
-            </Link>
-            <button onClick={() => { fetchStatuses(userId); fetchMetaMetricsAllTime(userId); fetchCampaigns(userId); checkMetaHealth(userId); }} className="px-3 py-2 rounded-lg text-sm" style={{ border: `1px solid ${colors.border}`, backgroundColor: colors.card, color: colors.foreground }}>
-              Refresh
-            </button>
-          </div>
-        </div>
-
-        {/* -------------------- Meta reconnect banner -------------------- */}
-        {metaHealth?.needsReconnect && (
-          <Alert variant="destructive" className="mb-6">
-            <AlertCircle className="h-4 w-4" />
-            <AlertTitle>Meta Connection Issue</AlertTitle>
-            <AlertDescription className="flex items-center justify-between">
-              <span>{metaHealth.message || 'Your Facebook/Instagram connection needs to be refreshed. Please reconnect to continue using Meta features.'}</span>
-              <Link href="/integrations" legacyBehavior>
-                <a>
-                  <Button size="sm" className="ml-4">
-                    Reconnect
-                  </Button>
-                </a>
+      <main className="min-w-0 flex-1 overflow-x-hidden">
+        <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-5 px-4 py-5 sm:px-6 lg:px-8">
+          <header className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="min-w-0">
+              <h1 className="text-2xl font-semibold tracking-tight" style={{ color: colors.foreground }}>
+                {greeting()}{displayName ? `, ${displayName}` : ""}
+              </h1>
+              <p className="mt-1 text-sm" style={{ color: colors.mutedForeground }}>
+                Campaigns, creatives, and publishing for this workspace.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="sr-only" htmlFor="metrics-range">Metrics range</label>
+              <select
+                id="metrics-range"
+                className="skx-focus h-10 rounded-lg px-3 text-sm"
+                style={{ background: colors.card, color: colors.foreground, border: `1px solid ${colors.border}` }}
+                value={metricsRange}
+                onChange={(event) => setMetricsRange(event.target.value as (typeof RANGE_OPTIONS)[number]["id"])}
+              >
+                {RANGE_OPTIONS.map((option) => (
+                  <option key={option.id} value={option.id}>{option.label}</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={refreshAll}
+                className="skx-focus inline-flex h-10 items-center gap-2 rounded-lg px-3 text-sm"
+                style={{ background: colors.card, color: colors.foreground, border: `1px solid ${colors.border}` }}
+              >
+                <RefreshCw size={15} />
+                Refresh
+              </button>
+              <Link
+                href="/create-campaign"
+                className="skx-focus inline-flex h-10 items-center gap-2 rounded-lg px-4 text-sm font-medium"
+                style={{ background: colors.gradientPrimary, color: colors.primaryForeground, boxShadow: colors.shadowGlow }}
+              >
+                <Plus size={16} />
+                Create campaign
               </Link>
-            </AlertDescription>
-          </Alert>
-        )}
+            </div>
+          </header>
 
-        <div className="grid grid-cols-1 gap-8">
-          <div className="space-y-6">
-            {/* -------------------- Stats area -------------------- */}
-            {isConnected ? (
-              <div className="pt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
-                {stats.map((stat, i) => {
-                  const Icon = stat.icon;
-                  const connected = stat.connected;
-                  return (
-                    <Card key={i} className="glass-card transition-transform transform hover:-translate-y-1" style={{ boxShadow: "0 36px 90px rgba(2,6,23,0.16)", borderColor: primaryBorder10 ?? undefined, ...cardShadowStyle }}>
-                      <CardContent className="flex items-center justify-between gap-6 py-6">
-                        <div className="flex items-center gap-5">
-                          <div className="flex items-center justify-center rounded-md p-2 transition-shadow duration-200" style={{ color: primaryColor ?? "#0f172a" }}>
-                            <Icon className="w-6 h-6 hover:scale-110 hover:shadow-[0_8px_30px_rgba(59,130,246,0.18)]" strokeWidth={1.6} />
-                          </div>
+          {metaHealth?.needsReconnect ? (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>Meta connection issue</AlertTitle>
+              <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <span>{metaHealth.message || "Your Facebook connection needs to be refreshed."}</span>
+                <Link href="/integrations" className="skx-focus inline-flex rounded-lg px-3 py-1.5 text-sm font-medium" style={{ background: colors.primary, color: colors.primaryForeground }}>
+                  Reconnect
+                </Link>
+              </AlertDescription>
+            </Alert>
+          ) : null}
 
-                          <div>
-                            <div className="text-sm" style={{ color: mutedFg ?? undefined }}>{stat.label}</div>
-                            <div className="text-2xl font-semibold mt-1" style={{ color: colors.foreground }}>{stat.value}</div>
-                          </div>
-                        </div>
+          {metaError ? (
+            <p className="text-sm" role="alert" style={{ color: colors.destructive }}>{metaError}</p>
+          ) : null}
 
-                        <div className="flex flex-col items-end gap-2">
-                          {connected ? (
-                            <span className="text-xs px-3 py-1 rounded-full bg-green-100 text-green-800">Connected</span>
-                          ) : (
-                            <button onClick={() => goToIntegrations("meta")} className="px-3 py-1 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-700">
-                              Connect Meta
-                            </button>
-                          )}
-                          <div className="text-xs text-gray-500">{i === 1 && metaSummary?.meta?.change ? `Change: ${pctDisplay(metaSummary?.meta?.change.total_spend_pct ?? null)}` : ""}</div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  );
-                })}
-              </div>
-            ) : (
-              <Card className="glass-card" style={{ boxShadow: "0 36px 90px rgba(2,6,23,0.16)", borderColor: primaryBorder10 ?? undefined }}>
-                <CardContent className="py-12 flex flex-col items-center justify-center">
-                  <Sparkles className="w-8 h-8 mb-4" />
-                  <div className="text-lg font-semibold mb-2">Connect Meta</div>
-                  <div className="text-sm mb-6" style={mutedFg ? { color: mutedFg } : undefined}>Connect your Meta account to view accurate metrics and recommendations.</div>
-                  <div>
-                    <Button size="lg" onClick={() => goToIntegrations()} style={primaryColor ? { background: gradientPrimary ?? primaryColor, color: "#fff" } : undefined}>
-                      Connect
-                    </Button>
+          <section className="grid grid-cols-2 gap-3 xl:grid-cols-4" aria-label="Workspace metrics">
+            {kpis.map((kpi) => {
+              const Icon = kpi.icon;
+              const trendColor = kpi.trend && kpi.trendIntent === "up-good"
+                ? kpi.trend.startsWith("-") ? colors.destructive : kpi.trend.startsWith("+") ? colors.green600 : colors.mutedForeground
+                : colors.mutedForeground;
+              return (
+                <article key={kpi.label} className="rounded-2xl p-4" style={surfaceStyle()}>
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-xs" style={{ color: colors.mutedForeground }}>{kpi.label}</p>
+                    <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg" style={{ background: colors.accent, color: colors.primary }}>
+                      <Icon size={16} strokeWidth={1.75} />
+                    </span>
                   </div>
-                </CardContent>
-              </Card>
-            )}
+                  <p className="mt-3 text-2xl font-semibold tracking-tight" style={{ color: colors.foreground }}>{kpi.value}</p>
+                  <p className="mt-1 text-[11px]" style={{ color: colors.mutedForeground }}>{kpi.hint}</p>
+                  {kpi.trend ? (
+                    <p className="mt-2 text-[11px] font-medium" style={{ color: trendColor }}>{kpi.trend} vs previous period</p>
+                  ) : null}
+                </article>
+              );
+            })}
+          </section>
 
-            {/* -------------------- Recommendations -------------------- */}
-            <Card className="glass-card" style={{ boxShadow: "0 48px 120px rgba(2,6,23,0.18)", borderColor: primaryBorder10 ?? undefined }}>
-              <CardHeader className="flex items-center justify-between">
-                <CardTitle className="flex items-center gap-3 py-3">
-                  <Sparkles className="w-5 h-5" />
-                  <span className="text-lg font-semibold">Top Recommendations</span>
-                </CardTitle>
+          {!isConnected ? (
+            <IntegrationsConnectPanel
+              showHeader
+              showFooter
+              requireAuth={false}
+              oauthRedirectPath="/dashboard"
+              onStatusesChange={handleIntegrationStatusesChange}
+            />
+          ) : null}
 
-                {!recsCentered ? (
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
+            <div className="min-w-0 xl:col-span-8">
+              <ContentCalendar
+                items={activityItems}
+                loading={activityLoading}
+                error={activityError}
+                onRetry={fetchActivity}
+              />
+            </div>
+            <div className="flex min-w-0 flex-col gap-4 xl:col-span-4">
+              <PerformanceChart
+                points={series}
+                loading={loadingMeta}
+                connected={isConnected}
+                error={metaError}
+                rangeLabel={rangeLabel}
+              />
+              <section className="rounded-2xl p-4" style={{ ...surfaceStyle(), borderColor: primaryBorder10 ?? colors.border }} aria-labelledby="recommendations-heading">
+                <div className="flex items-start justify-between gap-3">
                   <div>
+                    <h2 id="recommendations-heading" className="flex items-center gap-2 text-sm font-semibold" style={{ color: colors.foreground }}>
+                      <Sparkles size={15} />
+                      Recommendations
+                    </h2>
+                    <p className="mt-0.5 text-xs" style={{ color: colors.mutedForeground }}>
+                      Generated from your ad metrics when you ask for them.
+                    </p>
+                  </div>
+                  {recsRequested ? (
                     <Button size="sm" onClick={handleGetRecommendations} disabled={recLoading}>
-                      {recLoading ? "Thinking…" : "Get Recommendations"}
+                      {recLoading ? "Thinking…" : "Refresh"}
                     </Button>
-                  </div>
-                ) : null}
-              </CardHeader>
-
-              <CardContent className="pt-1 pb-6">
-                {recsCentered && autoRecs.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-12">
-                    <div className="mb-4 text-sm text-slate-600">Generate prioritized recommendations for this account</div>
-                    <Button size="lg" onClick={handleGetRecommendations} disabled={recLoading}>
-                      {recLoading ? "Thinking…" : "Get Recommendations"}
-                    </Button>
+                  ) : null}
+                </div>
+                {!recsRequested ? (
+                  <div className="mt-4">
+                    <p className="text-sm leading-relaxed" style={{ color: colors.mutedForeground }}>
+                      {isConnected
+                        ? "Ask for a short list based on the metrics loaded for this range."
+                        : "Connect Meta to generate recommendations from account metrics. Campaign and creative work stays available without it."}
+                    </p>
+                    <div className="mt-3">
+                      {isConnected ? (
+                        <Button size="sm" onClick={handleGetRecommendations} disabled={recLoading}>
+                          {recLoading ? "Thinking…" : "Get recommendations"}
+                        </Button>
+                      ) : (
+                        <Link href="/integrations" className="skx-focus text-sm font-medium" style={{ color: colors.primary }}>
+                          Go to Integrations
+                        </Link>
+                      )}
+                    </div>
                   </div>
                 ) : (
-                  <>
+                  <div className="mt-4 space-y-3">
                     {recError ? (
-                      <div className="py-6 px-4 bg-yellow-50 border border-yellow-100 rounded text-sm text-amber-800">
+                      <p className="rounded-lg px-3 py-2 text-xs" style={{ background: colors.secondary, color: colors.foreground }} role="status">
                         {recError}
-                      </div>
+                      </p>
                     ) : null}
-
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-3">
-                      {autoRecs.map((r, idx) => {
-                        const impact = r.impact ?? "Medium";
-                        const impactClass = impact === "High" ? "bg-red-600 text-white" : impact === "Medium" ? "bg-orange-400 text-white" : "bg-gray-400 text-white";
-                        return (
-                          <div key={idx} className="rounded-lg bg-white p-5" style={{ boxShadow: "0 44px 90px rgba(15,23,42,0.18)" }}>
-                            <div className="flex items-start justify-between gap-4">
-                              <div className="min-w-0">
-                                <div className="text-sm font-semibold leading-tight">{r.title}</div>
-                                <div className="text-xs mt-2" style={mutedFg ? { color: mutedFg } : { color: "#6b7280" }}>{r.reason}</div>
-                                {r.actions && r.actions.length ? (
-                                  <ul className="list-disc ml-5 mt-3 text-sm">
-                                    {r.actions.map((a, i) => <li key={i}>{a}</li>)}
-                                  </ul>
-                                ) : null}
-                                {r.estimate ? <div className="text-xs text-gray-500 mt-3">{r.estimate}</div> : null}
-                              </div>
-
-                              <div className="flex-shrink-0">
-                                <span className={`text-xs px-3 py-1 rounded ${impactClass}`}>{impact}</span>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-
-                    <div className="mt-4 text-xs text-gray-500">Recommendations are generated from account metrics and campaign history. Click the top-right button to refresh.</div>
-                  </>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* -------------------- Recent Campaigns -------------------- */}
-            <Card className="glass-card" style={{ boxShadow: "0 36px 72px rgba(15,23,42,0.14)" }}>
-              <CardHeader>
-                <CardTitle className="py-3">Recent Campaigns</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {loadingCampaigns ? (
-                    <>
-                      <SkeletonCampaignRow />
-                      <SkeletonCampaignRow />
-                      <SkeletonCampaignRow />
-                    </>
-                  ) : campaigns.length === 0 ? <div className="text-sm text-gray-500">No campaigns yet. Create a campaign to get started.</div> : null}
-
-                  {campaigns.slice(0, 5).map((campaign) => (
-                    <div key={campaign.id} className="flex items-center justify-between p-3 rounded-lg hover:bg-muted/50 transition-colors">
-                      <div className="flex items-center gap-3">
-                        {getCampaignImageUrl(campaign) ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={getCampaignImageUrl(campaign)!} alt={campaign.name} className="w-16 h-12 object-cover rounded" />
-                        ) : (
-                          <div className="w-16 h-12 rounded bg-slate-100 flex items-center justify-center text-sm text-slate-400">No image</div>
-                        )}
-                        <div>
-                          <div className="font-medium">{campaign.name}</div>
-                          <div className="text-xs" style={mutedFg ? { color: mutedFg } : { color: "#6b7280" }}>{campaign.campaign_type || "General"}</div>
+                    {autoRecs.length === 0 && !recLoading ? (
+                      <p className="text-sm" style={{ color: colors.mutedForeground }}>No recommendations were returned.</p>
+                    ) : null}
+                    {autoRecs.map((rec, index) => (
+                      <article key={`${rec.title}-${index}`} className="rounded-xl p-3" style={{ background: colors.background, border: `1px solid ${colors.border}` }}>
+                        <div className="flex items-start justify-between gap-3">
+                          <h3 className="text-sm font-medium" style={{ color: colors.foreground }}>{rec.title}</h3>
+                          {rec.impact ? (
+                            <span className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold" style={{ background: colors.accent, color: colors.accentForeground }}>
+                              {rec.impact}
+                            </span>
+                          ) : null}
                         </div>
-                      </div>
+                        {rec.reason ? <p className="mt-1 text-xs leading-relaxed" style={{ color: colors.mutedForeground }}>{rec.reason}</p> : null}
+                        {rec.actions?.length ? (
+                          <ul className="mt-2 space-y-1 text-xs" style={{ color: colors.foreground }}>
+                            {rec.actions.map((action) => <li key={action}>{action}</li>)}
+                          </ul>
+                        ) : null}
+                      </article>
+                    ))}
+                  </div>
+                )}
+              </section>
+            </div>
+          </div>
 
-                      <div className="flex items-center gap-3">
-                        <div className={`text-xs px-2 py-1 rounded-full ${campaign.is_published ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-600"}`}>{campaign.is_published ? "Active" : "Draft"}</div>
-                        <div className="flex gap-2">
-                          {getCampaignImageUrl(campaign) ? (
-                            <a href={getCampaignImageUrl(campaign)!} target="_blank" rel="noopener noreferrer" className="px-3 py-1 text-sm border rounded-lg hover:bg-slate-100">View</a>
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+            <section className="rounded-2xl p-4 lg:col-span-7" style={surfaceStyle()} aria-labelledby="recent-campaigns-heading">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h2 id="recent-campaigns-heading" className="text-sm font-semibold" style={{ color: colors.foreground }}>Recent campaigns</h2>
+                <Link href="/library" className="skx-focus text-xs font-medium" style={{ color: colors.primary }}>Campaign Library</Link>
+              </div>
+              {loadingCampaigns ? (
+                <div className="space-y-2">
+                  <SkeletonCampaignRow />
+                  <SkeletonCampaignRow />
+                </div>
+              ) : campaigns.length === 0 ? (
+                <div className="py-8 text-center">
+                  <p className="text-sm" style={{ color: colors.foreground }}>No campaigns yet.</p>
+                  <Link href="/create-campaign" className="skx-focus mt-2 inline-flex text-sm font-medium" style={{ color: colors.primary }}>
+                    Create the first campaign
+                  </Link>
+                </div>
+              ) : (
+                <ul className="space-y-2">
+                  {campaigns.slice(0, 5).map((campaign) => {
+                    const image = getCampaignImageUrl(campaign);
+                    return (
+                      <li key={campaign.id} className="flex items-center justify-between gap-3 rounded-xl p-2" style={{ background: colors.background }}>
+                        <div className="flex min-w-0 items-center gap-3">
+                          {image ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={image} alt="" className="h-12 w-16 rounded-md object-cover" />
                           ) : (
-                            <a href={`/campaigns/${campaign.id}`} target="_blank" rel="noopener noreferrer" className="px-3 py-1 text-sm border rounded-lg hover:bg-slate-100">View</a>
+                            <div className="flex h-12 w-16 items-center justify-center rounded-md text-[10px]" style={{ background: colors.secondary, color: colors.mutedForeground }}>
+                              No image
+                            </div>
+                          )}
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium" style={{ color: colors.foreground }}>{campaign.name}</p>
+                            <p className="text-xs" style={{ color: colors.mutedForeground }}>{campaign.campaign_type || "General"}</p>
+                          </div>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-2">
+                          <span
+                            className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
+                            style={{
+                              background: campaign.is_published ? colors.green100 : colors.secondary,
+                              color: campaign.is_published ? colors.green600 : colors.mutedForeground,
+                            }}
+                          >
+                            {campaign.is_published ? "Published" : "Draft"}
+                          </span>
+                          {image ? (
+                            <a href={image} target="_blank" rel="noopener noreferrer" className="skx-focus text-xs" style={{ color: colors.primary }}>View</a>
+                          ) : (
+                            <Link href="/library" className="skx-focus text-xs" style={{ color: colors.primary }}>Open</Link>
                           )}
                         </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </section>
+
+            <section className="rounded-2xl p-4 lg:col-span-5" style={surfaceStyle()} aria-labelledby="pipeline-heading">
+              <h2 id="pipeline-heading" className="text-sm font-semibold" style={{ color: colors.foreground }}>Workspace pipeline</h2>
+              <p className="mt-0.5 text-xs" style={{ color: colors.mutedForeground }}>
+                Counts from saved campaigns and the publishing history loaded on this page.
+              </p>
+              <dl className="mt-4 grid grid-cols-2 gap-2">
+                {[
+                  ["Campaign drafts", pipeline.campaignDrafts],
+                  ["Campaigns published", pipeline.campaignPublished],
+                  ["Unpublished creatives", pipeline.unpublished],
+                  ["Post drafts", pipeline.drafts],
+                  ["Publishing", pipeline.publishing],
+                  ["Posts published", pipeline.published],
+                  ["Posts failed", pipeline.failed],
+                ].map(([label, value]) => (
+                  <div key={String(label)} className="rounded-xl px-3 py-2" style={{ background: colors.background }}>
+                    <dt className="text-[11px]" style={{ color: colors.mutedForeground }}>{label}</dt>
+                    <dd className="mt-1 text-lg font-semibold" style={{ color: colors.foreground }}>{value}</dd>
+                  </div>
+                ))}
+              </dl>
+              {campaigns.length === 0 && activityItems.length === 0 && !loadingCampaigns && !activityLoading ? (
+                <p className="mt-3 text-xs" style={{ color: colors.mutedForeground }}>
+                  Create a campaign or generate a creative to start filling this pipeline.
+                </p>
+              ) : null}
+            </section>
           </div>
         </div>
       </main>
     </div>
   );
 }
-

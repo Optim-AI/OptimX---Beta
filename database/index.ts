@@ -24,8 +24,20 @@ export { GenerationLocksDAO } from './models/GenerationLocks.dao';
 // Reports DAO
 export { ReportDAO } from './models/Report.dao';
 
+// Paid ads performance layer DAOs
+export { AdAccountDAO } from './models/AdAccount.dao';
+export {
+  AdMetricsDAO,
+  AdPlatformEntityDAO,
+  AdSyncRunDAO,
+} from './models/AdMetrics.dao';
+
+// Social publishing
+export { SocialPostDAO } from './models/SocialPost.dao';
+
+
 // Note: Removed DAOs for tables that don't exist in production:
-// - GoogleAdsDAO (google_ads_tokens table removed)
+// - GoogleAdsDAO (google_ads_tokens table removed — use integrations + ad_accounts)
 // - RecommendationDAO (recommendations table removed)
 // - IntegrationStatusDAO (integration_status table removed)
 // - UserDAO (users managed by Supabase Auth)
@@ -59,6 +71,10 @@ export {
   subscriptionCycles,
   // Reports
   reports,
+  // Paid ads performance layer
+  adPlatformEntities,
+  adMetricsDaily,
+  adSyncRuns,
 } from '@/database/schema';
 
 // Export inferred types
@@ -90,6 +106,9 @@ import {
   subscriptionCycles,
   // Reports
   reports,
+  adPlatformEntities,
+  adMetricsDaily,
+  adSyncRuns,
 } from '@/database/schema';
 
 // Note: User type removed - use auth.users directly via Supabase Auth
@@ -103,6 +122,9 @@ export type AppSettings = typeof appSettings.$inferSelect;
 export type GeneratedImage = typeof userGeneratedImage.$inferSelect;
 export type GeneratedImages = typeof userGeneratedImages.$inferSelect;
 export type AdAccount = typeof adAccounts.$inferSelect;
+export type AdPlatformEntity = typeof adPlatformEntities.$inferSelect;
+export type AdMetricsDaily = typeof adMetricsDaily.$inferSelect;
+export type AdSyncRun = typeof adSyncRuns.$inferSelect;
 export type IntegrationFlags = typeof integrationFlags.$inferSelect;
 export type IntegrationsBeta = typeof integrationsBeta.$inferSelect;
 export type TrainingArtifacts = typeof trainingArtifacts.$inferSelect;

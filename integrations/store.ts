@@ -1,6 +1,7 @@
 // lib/integrationStore.ts
 // REFACTORED: Now uses Prisma IntegrationDAO and SettingsDAO instead of direct Supabase
 import { IntegrationDAO, SettingsDAO } from '@/database';
+import { prepareTokensForStorage, revealTokens } from '@/lib/ads/crypto/tokens';
 
 export const PLATFORMS = ["meta", "google-ads", "whatsapp", "linkedin", "twitter"] as const;
 export type PlatformId = (typeof PLATFORMS)[number];
@@ -71,7 +72,15 @@ export async function saveIntegration(
     igUserId,
     adAccountIdRaw,
     savedAt: new Date().toISOString(),
+    ...(savedObj?.metadata || {}),
   };
+
+  const prepared = prepareTokensForStorage({
+    // Meta: page token in access_token, user token in refresh_token
+    // Google/LinkedIn: access in access_token, refresh in refresh_token
+    accessToken: pageAccessToken ?? savedObj?.accessToken ?? null,
+    refreshToken: userAccessToken ?? savedObj?.refreshToken ?? null,
+  });
 
   // If userId not provided, get latest for provider (admin mode)
   if (!userId) {
@@ -85,9 +94,10 @@ export async function saveIntegration(
         adAccountId: ad_account_id,
         pageId,
         igUserId,
-        accessToken: pageAccessToken,
-        refreshToken: userAccessToken,
-        tokenExpiresAt: savedObj?.token_expires_at || null,
+        accessToken: prepared.accessToken,
+        refreshToken: prepared.refreshToken,
+        tokenEncrypted: prepared.tokenEncrypted,
+        tokenExpiresAt: savedObj?.token_expires_at || savedObj?.tokenExpiresAt || null,
         scopes: savedObj?.scopes || null,
         raw: savedObj?.raw ?? savedObj,
         metadata,
@@ -103,12 +113,13 @@ export async function saveIntegration(
   return IntegrationDAO.upsert({
     userId,
     provider,
-    providerUserId: igUserId ?? pageId ?? null,
+    providerUserId: igUserId ?? pageId ?? savedObj?.providerUserId ?? null,
     adAccountId: ad_account_id,
     pageId,
     igUserId,
-    accessToken: pageAccessToken,
-    refreshToken: userAccessToken,
+    accessToken: prepared.accessToken,
+    refreshToken: prepared.refreshToken,
+    tokenEncrypted: prepared.tokenEncrypted,
     tokenExpiresAt: savedObj?.tokenExpiresAt || savedObj?.token_expires_at || null,
     scopes: savedObj?.scopes || null,
     pageName: savedObj?.pageName || null,
@@ -119,6 +130,7 @@ export async function saveIntegration(
     healthStatus: savedObj?.healthStatus || 'healthy',
     lastHealthCheck: savedObj?.lastHealthCheck || new Date().toISOString(),
     healthErrorMessage: savedObj?.healthErrorMessage || null,
+    syncStatus: savedObj?.syncStatus || 'idle',
   });
 }
 
@@ -143,23 +155,37 @@ export async function readSavedIntegration(options?: { userId?: string | null; p
 
   if (!integration) return null;
 
+  const revealed = revealTokens(integration);
+
   // Rebuild the expected format for backward compatibility
   const rebuilt = {
     createdAt: integration.createdAt,
-    pageAccessToken: integration.accessToken ?? (integration.metadata as any)?.pageAccessToken ?? null,
-    userAccessToken: integration.refreshToken ?? integration.accessToken ?? null,
+    pageAccessToken: revealed.accessToken ?? (integration.metadata as any)?.pageAccessToken ?? null,
+    userAccessToken: revealed.refreshToken ?? revealed.accessToken ?? null,
+    accessToken: revealed.accessToken,
+    refreshToken: revealed.refreshToken,
     pageId: integration.pageId ?? (integration.metadata as any)?.pageId ?? null,
+    pageName:
+      (integration as any).pageName ??
+      (integration.metadata as any)?.pageName ??
+      null,
     igUserId: integration.igUserId ?? (integration.metadata as any)?.igUserId ?? null,
     adAccountId: integration.adAccountId ? `act_${integration.adAccountId}` : ((integration.metadata as any)?.adAccountIdRaw ?? null),
-    longUserToken: integration.refreshToken ?? null,
+    longUserToken: revealed.refreshToken ?? null,
     raw: integration.raw ?? null,
     savedRowId: integration.id,
     user_id: integration.userId,
+    provider: integration.provider,
+    scopes: integration.scopes ?? null,
     // Health tracking fields
     tokenExpiresAt: integration.tokenExpiresAt ?? null,
     healthStatus: integration.healthStatus ?? 'healthy',
     lastHealthCheck: integration.lastHealthCheck ?? null,
     healthErrorMessage: integration.healthErrorMessage ?? null,
+    lastSyncedAt: (integration as any).lastSyncedAt ?? null,
+    syncStatus: (integration as any).syncStatus ?? 'idle',
+    syncErrorMessage: (integration as any).syncErrorMessage ?? null,
+    tokenEncrypted: (integration as any).tokenEncrypted ?? false,
   };
 
   return rebuilt;

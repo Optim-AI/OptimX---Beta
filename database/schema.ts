@@ -6,15 +6,24 @@ import { sql } from "drizzle-orm"
 // Matches production database exactly
 // ============================================================
 
-// ad_accounts table
+// ad_accounts table — advertising accounts linked to an integration
 export const adAccounts = pgTable("ad_accounts", {
 	id: uuid().primaryKey().notNull().defaultRandom(),
 	integrationId: uuid("integration_id").notNull(),
 	accountId: text("account_id").notNull(),
 	accountRaw: jsonb("account_raw"),
+	provider: text("provider"),
+	name: text("name"),
+	currency: text("currency"),
+	timezone: text("timezone"),
+	status: text("status"),
+	isSelected: boolean("is_selected").default(false),
+	lastSyncedAt: timestamp("last_synced_at", { withTimezone: true, mode: 'string' }),
+	metadata: jsonb("metadata"),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 }, (table) => [
 	index("idx_ad_accounts_integration_id").using("btree", table.integrationId.asc().nullsLast()),
+	uniqueIndex("uq_ad_accounts_integration_account").using("btree", table.integrationId.asc().nullsLast(), table.accountId.asc().nullsLast()),
 ]);
 
 // app_settings table
@@ -58,7 +67,7 @@ export const integrationFlags = pgTable("integration_flags", {
 	uniqueIndex("integration_flags_user_unique").using("btree", table.userId.asc().nullsLast()),
 ]);
 
-// integrations table
+// integrations table — connected advertising / social platform credentials
 export const integrations = pgTable("integrations", {
 	id: uuid().primaryKey().notNull().defaultRandom(),
 	userId: uuid("user_id").notNull(),
@@ -76,6 +85,10 @@ export const integrations = pgTable("integrations", {
 	healthStatus: text("health_status").default('healthy'),
 	healthErrorMessage: text("health_error_message"),
 	lastHealthCheck: timestamp("last_health_check", { withTimezone: true, mode: 'string' }),
+	tokenEncrypted: boolean("token_encrypted").default(false),
+	lastSyncedAt: timestamp("last_synced_at", { withTimezone: true, mode: 'string' }),
+	syncStatus: text("sync_status").default('idle'),
+	syncErrorMessage: text("sync_error_message"),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 }, (table) => [
@@ -399,18 +412,25 @@ export const vouchers = pgTable("vouchers", {
 	index("idx_vouchers_status").using("btree", table.status.asc().nullsLast()),
 ]);
 
-// user_generated_image table
+// user_generated_image table (Generated Contents library)
 export const userGeneratedImage = pgTable("user_generated_image", {
 	id: uuid().primaryKey().notNull().defaultRandom(),
 	userId: uuid("user_id").notNull(),
 	imageUrl: text("image_url").notNull(),
 	imagePath: text("image_path"),
 	source: text(),
+	mediaType: text("media_type").notNull().default("image"),
 	metadata: jsonb(),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 }, (table) => [
 	index("idx_user_generated_image_user_id").using("btree", table.userId.asc().nullsLast()),
+	index("idx_user_generated_image_user_media").using(
+		"btree",
+		table.userId.asc().nullsLast(),
+		table.mediaType.asc().nullsLast(),
+		table.createdAt.desc().nullsLast()
+	),
 ]);
 
 // user_generated_images table (plural - duplicate of singular in production)
@@ -734,6 +754,109 @@ export const creativeIntelligenceGoogleRanks = pgTable("creative_intelligence_go
  * Separate from creative_studio_sessions (UI shell). Linked via studio_session_id.
  * Does NOT replace generated_posters URL arrays on the studio session.
  */
+// ============================================================
+// PAID ADS PERFORMANCE LAYER
+// Platform campaigns/ads/metrics — NOT creative drafts (campaigns)
+// ============================================================
+
+export const adPlatformEntities = pgTable("ad_platform_entities", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	integrationId: uuid("integration_id").notNull(),
+	adAccountId: uuid("ad_account_id"),
+	provider: text().notNull(),
+	entityType: text("entity_type").notNull(),
+	externalId: text("external_id").notNull(),
+	parentExternalId: text("parent_external_id"),
+	name: text(),
+	status: text(),
+	objective: text(),
+	dailyBudget: text("daily_budget"), // stored as text/numeric string from APIs
+	lifetimeBudget: text("lifetime_budget"),
+	currency: text(),
+	raw: jsonb(),
+	metadata: jsonb(),
+	firstSeenAt: timestamp("first_seen_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+	lastSeenAt: timestamp("last_seen_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (table) => [
+	uniqueIndex("uq_ad_platform_entities_ext").using(
+		"btree",
+		table.integrationId.asc().nullsLast(),
+		table.entityType.asc().nullsLast(),
+		table.externalId.asc().nullsLast()
+	),
+	index("idx_ad_platform_entities_account").using("btree", table.adAccountId.asc().nullsLast()),
+	index("idx_ad_platform_entities_provider_type").using(
+		"btree",
+		table.provider.asc().nullsLast(),
+		table.entityType.asc().nullsLast()
+	),
+]);
+
+export const adMetricsDaily = pgTable("ad_metrics_daily", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	integrationId: uuid("integration_id").notNull(),
+	adAccountId: uuid("ad_account_id"),
+	provider: text().notNull(),
+	entityType: text("entity_type").notNull().default("account"),
+	entityExternalId: text("entity_external_id").notNull(),
+	metricDate: text("metric_date").notNull(), // YYYY-MM-DD
+	spend: text("spend").default("0"),
+	impressions: integer("impressions").default(0),
+	reach: integer("reach").default(0),
+	frequency: text("frequency"),
+	clicks: integer("clicks").default(0),
+	ctr: text("ctr"),
+	cpc: text("cpc"),
+	cpm: text("cpm"),
+	conversions: text("conversions").default("0"),
+	conversionValue: text("conversion_value").default("0"),
+	cpa: text("cpa"),
+	cpl: text("cpl"),
+	roas: text("roas"),
+	currency: text(),
+	raw: jsonb(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+}, (table) => [
+	uniqueIndex("uq_ad_metrics_daily_grain").using(
+		"btree",
+		table.integrationId.asc().nullsLast(),
+		table.entityType.asc().nullsLast(),
+		table.entityExternalId.asc().nullsLast(),
+		table.metricDate.asc().nullsLast()
+	),
+	index("idx_ad_metrics_daily_account_date").using(
+		"btree",
+		table.adAccountId.asc().nullsLast(),
+		table.metricDate.desc().nullsLast()
+	),
+	index("idx_ad_metrics_daily_provider_date").using(
+		"btree",
+		table.provider.asc().nullsLast(),
+		table.metricDate.desc().nullsLast()
+	),
+]);
+
+export const adSyncRuns = pgTable("ad_sync_runs", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	integrationId: uuid("integration_id").notNull(),
+	adAccountId: uuid("ad_account_id"),
+	provider: text().notNull(),
+	triggerSource: text("trigger_source").notNull().default("manual"),
+	status: text().notNull().default("running"),
+	startedAt: timestamp("started_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+	finishedAt: timestamp("finished_at", { withTimezone: true, mode: 'string' }),
+	sinceDate: text("since_date"),
+	untilDate: text("until_date"),
+	entitiesUpserted: integer("entities_upserted").default(0),
+	metricsUpserted: integer("metrics_upserted").default(0),
+	errorMessage: text("error_message"),
+	details: jsonb(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+});
+
 export const posterGenerationSessions = pgTable("poster_generation_sessions", {
 	id: uuid().primaryKey().notNull().defaultRandom(),
 	userId: uuid("user_id").notNull(),
@@ -781,4 +904,31 @@ export const onboardingGuestSessions = pgTable("onboarding_guest_sessions", {
 }, (table) => [
 	uniqueIndex("onboarding_guest_sessions_token_hash_key").using("btree", table.tokenHash.asc().nullsLast()),
 	uniqueIndex("onboarding_guest_sessions_profile_id_key").using("btree", table.profileId.asc().nullsLast()),
+]);
+
+// social_posts — organic publishing history (Facebook Page first; no tokens)
+export const socialPosts = pgTable("social_posts", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	userId: uuid("user_id").notNull(),
+	integrationId: uuid("integration_id"),
+	provider: text().notNull().default("meta-publish"),
+	destinationPageId: text("destination_page_id"),
+	destinationPageName: text("destination_page_name"),
+	sourceImageId: uuid("source_image_id"),
+	sourceImageUrl: text("source_image_url").notNull(),
+	sourceImagePath: text("source_image_path"),
+	caption: text(),
+	status: text().notNull().default("draft"),
+	metaPostId: text("meta_post_id"),
+	metaPhotoId: text("meta_photo_id"),
+	permalink: text(),
+	errorMessage: text("error_message"),
+	publishedAt: timestamp("published_at", { withTimezone: true, mode: "string" }),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).defaultNow(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }).defaultNow(),
+	metadata: jsonb().default({}),
+}, (table) => [
+	index("idx_social_posts_user_created").using("btree", table.userId.asc().nullsLast(), table.createdAt.desc().nullsLast()),
+	index("idx_social_posts_user_status").using("btree", table.userId.asc().nullsLast(), table.status.asc().nullsLast()),
+	index("idx_social_posts_integration").using("btree", table.integrationId.asc().nullsLast()),
 ]);

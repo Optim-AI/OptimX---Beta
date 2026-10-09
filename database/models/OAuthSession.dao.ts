@@ -1,7 +1,7 @@
 // lib/db/models/OAuthSession.dao.ts
 import { db } from '../client';
 import { oauthSessions } from '@/database/schema';
-import { eq, lt, desc } from 'drizzle-orm';
+import { and, eq, gt, lt, desc } from 'drizzle-orm';
 
 // Type inference from Drizzle schema
 type OAuthSession = typeof oauthSessions.$inferSelect;
@@ -96,5 +96,28 @@ export class OAuthSessionDAO {
       .from(oauthSessions)
       .where(eq(oauthSessions.userId, userId))
       .orderBy(desc(oauthSessions.createdAt));
+  }
+
+  /**
+   * Latest non-expired OAuth session for a user + provider (no token filtering here).
+   */
+  static async findLatestActiveByUserProvider(
+    userId: string,
+    provider: string
+  ): Promise<OAuthSession | null> {
+    const now = new Date().toISOString();
+    const rows = await db
+      .select()
+      .from(oauthSessions)
+      .where(
+        and(
+          eq(oauthSessions.userId, userId),
+          eq(oauthSessions.provider, provider),
+          gt(oauthSessions.expiresAt, now)
+        )
+      )
+      .orderBy(desc(oauthSessions.createdAt))
+      .limit(1);
+    return rows[0] || null;
   }
 }

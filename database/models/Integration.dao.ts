@@ -109,7 +109,7 @@ export class IntegrationDAO {
     accessToken?: string | null;
     refreshToken?: string | null;
     tokenExpiresAt?: Date | string | null;
-    scopes?: string | null;
+    scopes?: string | string[] | null;
     credentials?: any;
     pageName?: string | null;
     pageCategory?: string | null;
@@ -119,6 +119,10 @@ export class IntegrationDAO {
     healthStatus?: string | null;
     lastHealthCheck?: string | null;
     healthErrorMessage?: string | null;
+    tokenEncrypted?: boolean | null;
+    lastSyncedAt?: string | null;
+    syncStatus?: string | null;
+    syncErrorMessage?: string | null;
   }): Promise<Integration> {
     const { userId, provider, pageId, igUserId } = data;
     const now = new Date().toISOString();
@@ -166,6 +170,15 @@ export class IntegrationDAO {
       if (byIgUserId[0]) existingId = byIgUserId[0].id;
     }
 
+    // Fold non-column fields into metadata (schema has no pageName/pageCategory/allPages/credentials)
+    const metadata = {
+      ...((data.metadata as object) || {}),
+      ...(data.pageName ? { pageName: data.pageName } : {}),
+      ...(data.pageCategory ? { pageCategory: data.pageCategory } : {}),
+      ...(data.allPages ? { allPages: data.allPages } : {}),
+      ...(data.credentials ? { credentials: data.credentials } : {}),
+    };
+
     const integrationData = {
       userId,
       provider,
@@ -176,16 +189,20 @@ export class IntegrationDAO {
       accessToken: data.accessToken ?? null,
       refreshToken: data.refreshToken ?? null,
       tokenExpiresAt: data.tokenExpiresAt ? new Date(data.tokenExpiresAt).toISOString() : null,
-      scopes: data.scopes ? (Array.isArray(data.scopes) ? data.scopes : [data.scopes]) : null,
-      credentials: data.credentials ?? null,
-      pageName: data.pageName ?? null,
-      pageCategory: data.pageCategory ?? null,
-      allPages: data.allPages ?? null,
+      scopes: data.scopes
+        ? Array.isArray(data.scopes)
+          ? data.scopes
+          : [data.scopes]
+        : null,
       raw: data.raw ?? null,
-      metadata: data.metadata ?? null,
-      healthStatus: data.healthStatus ?? 'healthy',
+      metadata,
+      healthStatus: data.healthStatus ?? "healthy",
       healthErrorMessage: data.healthErrorMessage ?? null,
       lastHealthCheck: data.lastHealthCheck ?? now,
+      tokenEncrypted: data.tokenEncrypted ?? false,
+      lastSyncedAt: data.lastSyncedAt ?? null,
+      syncStatus: data.syncStatus ?? "idle",
+      syncErrorMessage: data.syncErrorMessage ?? null,
       updatedAt: now,
     };
 

@@ -71,6 +71,7 @@ export const NOINDEX_PATH_PREFIXES = [
   "/create-campaign",
   "/analytics",
   "/image-library",
+  "/generated-contents",
   "/library",
   "/integrations",
   "/notifications",

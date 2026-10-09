@@ -29,6 +29,7 @@ export default function robots(): MetadataRoute.Robots {
           "/create-campaign",
           "/analytics",
           "/image-library",
+          "/generated-contents",
           "/library",
           "/integrations",
           "/integrationsGoogle",

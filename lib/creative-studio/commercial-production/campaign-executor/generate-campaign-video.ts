@@ -253,7 +253,13 @@ export async function generateCampaignVideo(
         if (!input.skipStorage) {
           try {
             const { uploadVideoBuffer } = await import("@/lib/creative-studio/video-delivery");
-            videoUrl = await uploadVideoBuffer(buf);
+            videoUrl = await uploadVideoBuffer(buf, {
+              userId: (input as any)?.userId ?? (input as any)?.spec?.userId ?? null,
+              metadata: {
+                source: "campaign-executor",
+                campaignId: spec.campaignId,
+              },
+            });
           } catch (e) {
             // Storage failed after Runway succeeded — NEVER spend more Runway credits.
             throw new CampaignExecutorError(

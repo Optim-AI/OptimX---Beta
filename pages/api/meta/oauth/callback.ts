@@ -3,6 +3,12 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { decodeState } from '@/auth/helpers';
 import { supabaseAdmin } from '@/auth/supabase/admin';
 import { storeOAuthSession } from '@/integrations/meta/oauth-session';
+import { getMetaOAuthRedirectUri } from "@/lib/ads/providers/meta/client";
+import {
+  fetchMetaAdAccountsForOAuth,
+  fetchMetaPagesForOAuth,
+  logMetaOAuthDiag,
+} from "@/lib/ads/providers/meta/oauth-assets";
 
 const VERSION = process.env.FACEBOOK_API_VERSION || "23.0";
 const DEBUG = process.env.DEBUG_CALLBACK === "true";
@@ -17,8 +23,11 @@ function safeStringify(obj: any) {
 
 /**
  * Meta OAuth callback handler.
- * Exchanges authorization code for tokens and saves integration credentials.
- * This replaces /api/auth/instagram/callback
+ * Exchanges authorization code for tokens, stores a temporary selection session,
+ * and redirects to asset selection. Does not finalize the integration.
+ *
+ * Pages API convention: send the response via `res.*` and return `void`
+ * (do not `return res.redirect(...)` — that triggers a Next.js dev warning).
  */
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   let stage = "start";
@@ -26,13 +35,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Handle OAuth cancellation/errors
     if (req.query.error) {
       const errorReason = req.query.error_reason || req.query.error_description || "";
-      return res.redirect(`/integrations/meta/cancelled?reason=${encodeURIComponent(String(errorReason))}`);
+      res.redirect(`/integrations/meta/cancelled?reason=${encodeURIComponent(String(errorReason))}`);
+      return;
     }
 
     // 1. Read authorization code
     stage = "read_code";
     const code = Array.isArray(req.query.code) ? req.query.code[0] : req.query.code;
-    if (!code) return res.status(400).send("missing code");
+    if (!code) {
+      res.status(400).send("missing code");
+      return;
+    }
 
     // 2. Decode state to get Supabase token
     stage = "decode_state";
@@ -54,8 +67,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (!error && data?.user?.id) resolvedUserId = data.user.id;
       else
         console.warn("supabase getUser returned no user or error", {
-          error,
-          data,
+          error: error ? { message: (error as any).message } : null,
+          hasUser: !!data?.user,
         });
     }
 
@@ -65,22 +78,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     if (!resolvedUserId) {
-      return res.status(400).json({
+      res.status(400).json({
         error: "missing_supabase_user_id",
         message:
           "No Supabase user could be resolved. Ensure you pass the Supabase access token as `sb` to /api/meta/oauth/start or set SUPABASE_INTEGRATION_USER_ID.",
       });
+      return;
     }
 
     // 4. Validate environment variables
     stage = "read_env";
     const appId = process.env.FACEBOOK_APP_ID;
     const appSecret = process.env.FACEBOOK_APP_SECRET;
-    const redirectUri = `${process.env.NEXT_PUBLIC_APP_URL}/api/meta/oauth/callback`;
 
     if (!appId || !appSecret || !process.env.NEXT_PUBLIC_APP_URL) {
-      return res.status(500).json({ error: "server_misconfiguration" });
+      res.status(500).json({ error: "server_misconfiguration" });
+      return;
     }
+
+    // Must match start.ts and Meta "Valid OAuth Redirect URIs" exactly
+    const redirectUri = getMetaOAuthRedirectUri();
 
     // 5. Exchange authorization code for access token
     stage = "exchange_token";
@@ -94,11 +111,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const tokenJson = await tokenResp.json();
 
     if (tokenJson.error) {
-      if (DEBUG) return res.status(500).json({ stage, tokenJson });
-      return res.status(500).json({
+      logMetaOAuthDiag("token_exchange_failed", {
+        httpOk: tokenResp.ok,
+        errorCode: tokenJson.error?.code,
+        errorMessage: tokenJson.error?.message,
+        errorType: tokenJson.error?.type,
+      });
+      if (DEBUG) {
+        res.status(500).json({ stage, error: tokenJson.error?.message });
+        return;
+      }
+      res.status(500).json({
         error: "token_exchange_failed",
         details: tokenJson.error?.message ?? "see server logs",
       });
+      return;
     }
 
     // 6. Exchange short-lived token for long-lived token (60 days)
@@ -114,76 +141,123 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const userAccessToken = exchangeJson.access_token || tokenJson.access_token;
 
     if (!userAccessToken) {
-      if (DEBUG) return res.status(500).json({ stage, tokenJson, exchangeJson });
-      return res.status(500).json({
+      if (DEBUG) {
+        res.status(500).json({ stage, error: "no_user_token" });
+        return;
+      }
+      res.status(500).json({
         error: "no_user_token",
         details: "Failed to obtain user access token",
       });
+      return;
     }
 
-    // 7. Get user's Facebook Pages with extended fields
+    // 7. Get user's Facebook Pages (retry once — Graph can lag right after grant)
     stage = "get_pages";
-    const pagesResp = await fetch(
-      `https://graph.facebook.com/v${VERSION}/me/accounts?fields=id,name,category,access_token,tasks,instagram_business_account&access_token=${encodeURIComponent(userAccessToken)}`
-    );
-    const pagesJson = await pagesResp.json();
+    let pagesResult = await fetchMetaPagesForOAuth(userAccessToken);
+    if (!pagesResult.error && pagesResult.data.length === 0) {
+      await new Promise((r) => setTimeout(r, 1500));
+      pagesResult = await fetchMetaPagesForOAuth(userAccessToken);
+      logMetaOAuthDiag("pages_retry", {
+        count: pagesResult.data.length,
+        errorCode: pagesResult.error?.code,
+        errorMessage: pagesResult.error?.message,
+      });
+    }
 
     // Calculate token expiration (long-lived tokens last 60 days)
     const tokenExpiresAt = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000);
 
     // Handle error from Graph API
-    if (pagesJson.error) {
-      console.error("Failed to fetch pages:", pagesJson.error);
-      return res.redirect(`/integrations/meta/error?type=pages_fetch_failed`);
+    if (pagesResult.error) {
+      logMetaOAuthDiag("pages_fetch_failed", {
+        errorCode: pagesResult.error.code,
+        errorMessage: pagesResult.error.message,
+        errorType: pagesResult.error.type,
+        errorSubcode: pagesResult.error.error_subcode,
+      });
+      res.redirect(`/integrations/meta/error?type=pages_fetch_failed`);
+      return;
     }
 
     // ERROR: No Facebook Pages found
-    if (!pagesJson?.data?.length) {
-      // Store session for potential retry after page creation
+    if (!pagesResult.data.length) {
       try {
         const sessionId = await storeOAuthSession(resolvedUserId, {
           userAccessToken,
           pages: [],
+          adAccounts: [],
           errorType: "NO_PAGES",
         });
-        return res.redirect(`/integrations/meta/no-pages?sessionId=${sessionId}`);
+        // 307 Temporary Redirect is Next.js default for res.redirect(url) — intentional
+        res.redirect(`/integrations/meta/no-pages?sessionId=${sessionId}`);
+        return;
       } catch (err) {
         console.error("Failed to store no-pages session:", err);
-        return res.redirect(`/integrations/meta/no-pages`);
+        res.redirect(`/integrations/meta/no-pages`);
+        return;
       }
     }
 
-    // 8. Get Ad Accounts
+    // 8. Get Ad Accounts (rich fields for selection UI — never auto-pick)
     stage = "get_adaccounts";
-    const adAccountsResp = await fetch(
-      `https://graph.facebook.com/v${VERSION}/me/adaccounts?access_token=${encodeURIComponent(userAccessToken)}`
-    );
-    const adAccountsJson = await adAccountsResp.json();
+    let adAccountsResult = await fetchMetaAdAccountsForOAuth(userAccessToken);
+    if (!adAccountsResult.error && adAccountsResult.data.length === 0) {
+      await new Promise((r) => setTimeout(r, 1500));
+      adAccountsResult = await fetchMetaAdAccountsForOAuth(userAccessToken);
+      logMetaOAuthDiag("adaccounts_retry", {
+        count: adAccountsResult.data.length,
+        errorCode: adAccountsResult.error?.code,
+        errorMessage: adAccountsResult.error?.message,
+      });
+    }
+
+    if (adAccountsResult.error) {
+      logMetaOAuthDiag("adaccounts_fetch_failed", {
+        errorCode: adAccountsResult.error.code,
+        errorMessage: adAccountsResult.error.message,
+        errorType: adAccountsResult.error.type,
+        errorSubcode: adAccountsResult.error.error_subcode,
+      });
+      // Continue — selection UI will show empty state / permission guidance
+    }
+
+    const adAccounts = adAccountsResult.data;
 
     // 9. Store temporary OAuth session
     stage = "store_session";
     try {
       const sessionId = await storeOAuthSession(resolvedUserId, {
         userAccessToken,
-        pages: pagesJson.data,
-        adAccounts: adAccountsJson?.data || [],
+        pages: pagesResult.data,
+        adAccounts,
         tokenExpiresAt: tokenExpiresAt.toISOString(),
       });
 
-      // 10. Redirect to page selection UI
-      return res.redirect(`/integrations/meta/select-page?sessionId=${sessionId}`);
+      logMetaOAuthDiag("session_stored", {
+        pagesCount: pagesResult.data.length,
+        adAccountsCount: adAccounts.length,
+        hasPaging: pagesResult.hasPaging || adAccountsResult.hasPaging,
+      });
+
+      // 10. Redirect to asset selection (page + ad account — explicit choice required)
+      res.redirect(`/integrations/meta/select-assets?sessionId=${sessionId}`);
+      return;
     } catch (sessionErr) {
       console.error("Failed to store OAuth session:", sessionErr);
-      return res.redirect(`/integrations/meta/error?type=session_storage_failed`);
+      res.redirect(`/integrations/meta/error?type=session_storage_failed`);
+      return;
     }
   } catch (err: any) {
     console.error("meta oauth callback error (stage:", stage, "):", err);
-    if (DEBUG)
-      return res.status(500).json({
+    if (DEBUG) {
+      res.status(500).json({
         error: "callback_error_debug",
         stage,
-        details: safeStringify(err),
+        details: safeStringify({ message: err?.message }),
       });
-    return res.redirect(`/integrations/meta/error?type=callback_error&stage=${stage}`);
+      return;
+    }
+    res.redirect(`/integrations/meta/error?type=callback_error&stage=${stage}`);
   }
 }

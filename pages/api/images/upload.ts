@@ -27,15 +27,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ error: 'imageUrl is required' });
     }
 
-    const generatedImage = await GeneratedImageDAO.insert(
-      userId,
-      imageUrl,
-      imagePath || null
+    const { recordGeneratedCreative } = await import(
+      "@/lib/social/generated-contents/record"
     );
+    const recorded = await recordGeneratedCreative({
+      userId,
+      mediaUrl: imageUrl,
+      storagePath: imagePath || null,
+      mediaType: "image",
+      source: "images-upload",
+    });
+
+    const generatedImage = recorded
+      ? await GeneratedImageDAO.getById(recorded.id)
+      : await GeneratedImageDAO.insert(userId, imageUrl, imagePath || null);
 
     return res.status(201).json({
       success: true,
-      data: generatedImage
+      data: generatedImage,
+      created: recorded?.created ?? true,
     });
   } catch (error: any) {
     console.error('Image upload record error:', error);

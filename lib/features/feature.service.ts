@@ -63,9 +63,9 @@ const NO_SUBSCRIPTION_ACCESS: Record<FeatureKey, FeatureAccess> = {
   brand_analysis: { enabled: false, comingSoon: false, reason: 'Subscription required' },
   competitive_analysis: { enabled: false, comingSoon: false, reason: 'Subscription required' },
 
-  // Dashboard and integrations - coming soon (Meta integration pending approval)
-  dashboard: { enabled: false, comingSoon: true, reason: 'Coming soon' },
-  integrations: { enabled: false, comingSoon: false, reason: 'Subscription required' },
+  // Dashboard + ad platform connect — available for new / pay-as-you-go users
+  dashboard: { enabled: true, comingSoon: false },
+  integrations: { enabled: true, comingSoon: false },
 
   // Campaign features - disabled for pay-as-you-go users
   create_campaigns: { enabled: false, comingSoon: false, reason: 'Subscription required' },

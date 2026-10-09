@@ -15,6 +15,7 @@ import axios from "axios";
 import sharp from "sharp";
 import { withRetryOnGeminiTransient } from "@/lib/gemini-retry";
 import { GEMINI_REST_BASE } from "@/lib/gemini-config";
+import { detectImageFormatFromBuffer } from "@/lib/media/image-format";
 
 export const GEMINI_IMAGE_UNSUPPORTED_MIMES = [
   "image/svg+xml",
@@ -169,6 +170,7 @@ export function extractImageFromGeminiResponse(respJson: any): {
   kind: "inline" | "url" | null;
   data?: string;
   url?: string;
+  mimeType?: string;
 } {
   try {
     const candidates =
@@ -182,11 +184,31 @@ export function extractImageFromGeminiResponse(respJson: any): {
         const parts = c?.content?.parts ?? c?.content ?? c?.parts ?? null;
         if (Array.isArray(parts)) {
           for (const p of parts) {
-            if (p?.inline_data?.data) return { kind: "inline", data: p.inline_data.data };
-            if (p?.inlineData?.data) return { kind: "inline", data: p.inlineData.data };
+            if (p?.inline_data?.data) {
+              return {
+                kind: "inline",
+                data: p.inline_data.data,
+                mimeType:
+                  p.inline_data.mime_type || p.inline_data.mimeType || undefined,
+              };
+            }
+            if (p?.inlineData?.data) {
+              return {
+                kind: "inline",
+                data: p.inlineData.data,
+                mimeType:
+                  p.inlineData.mimeType || p.inlineData.mime_type || undefined,
+              };
+            }
             if (p?.files && Array.isArray(p.files) && p.files.length > 0) {
               const f = p.files[0];
-              if (f?.data) return { kind: "inline", data: f.data };
+              if (f?.data) {
+                return {
+                  kind: "inline",
+                  data: f.data,
+                  mimeType: f.mime_type || f.mimeType || undefined,
+                };
+              }
               if (f?.uri) return { kind: "url", url: f.uri };
             }
             if (p?.data && typeof p.data === "string") {
@@ -206,7 +228,11 @@ export function extractImageFromGeminiResponse(respJson: any): {
         if (f.startsWith("data:")) return { kind: "inline", data: f };
         if (f.startsWith("http")) return { kind: "url", url: f };
       } else if (f?.data) {
-        return { kind: "inline", data: f.data };
+        return {
+          kind: "inline",
+          data: f.data,
+          mimeType: f.mime_type || f.mimeType || undefined,
+        };
       } else if (f?.uri) {
         return { kind: "url", url: f.uri };
       }
@@ -265,6 +291,8 @@ export interface GenerateGeminiImageInput {
 export interface GenerateGeminiImageResult {
   buffer: Buffer;
   dataUrl: string;
+  /** Actual MIME from provider metadata or magic bytes — not assumed PNG. */
+  mimeType: string;
   model: string;
   provider: "nano_banana";
   aspectRatio: GeminiImageAspectRatio;
@@ -340,11 +368,15 @@ export async function generateGeminiImage(
 
   const createJson = createResp.data;
   let imageBuffer: Buffer | null = null;
+  let providerMime: string | undefined;
 
   const extracted = extractImageFromGeminiResponse(createJson);
   if (extracted.kind === "inline" && extracted.data) {
     const maybe = extracted.data;
+    providerMime = extracted.mimeType;
     if (typeof maybe === "string" && maybe.startsWith("data:")) {
+      const m = maybe.match(/^data:([^;]+);base64,/);
+      if (m?.[1]) providerMime = providerMime || m[1];
       imageBuffer = dataUrlToBuffer(maybe);
     } else {
       imageBuffer = Buffer.from(maybe, "base64");
@@ -357,6 +389,8 @@ export async function generateGeminiImage(
     const asString = JSON.stringify(createJson || {});
     const dataUrlMatch = asString.match(/data:image\/[a-zA-Z]+;base64,[A-Za-z0-9+/=]+/);
     if (dataUrlMatch) {
+      const m = dataUrlMatch[0].match(/^data:([^;]+);base64,/);
+      if (m?.[1]) providerMime = providerMime || m[1];
       imageBuffer = dataUrlToBuffer(dataUrlMatch[0]);
     }
   }
@@ -365,10 +399,17 @@ export async function generateGeminiImage(
     throw new Error("No image returned from Gemini (unable to extract).");
   }
 
-  const dataUrl = `data:image/png;base64,${imageBuffer.toString("base64")}`;
+  const detected = detectImageFormatFromBuffer(imageBuffer);
+  const mimeType =
+    detected?.mimeType ||
+    (providerMime && providerMime.startsWith("image/")
+      ? providerMime.split(";")[0].trim()
+      : "image/png");
+  const dataUrl = `data:${mimeType};base64,${imageBuffer.toString("base64")}`;
   return {
     buffer: imageBuffer,
     dataUrl,
+    mimeType,
     model,
     provider: "nano_banana",
     aspectRatio,

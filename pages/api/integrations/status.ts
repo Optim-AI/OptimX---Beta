@@ -7,6 +7,9 @@ import {
   readSavedIntegration,
   PLATFORMS,
 } from '@/integrations/store';
+import { getMetaPendingSelection } from "@/lib/ads/meta/pending-session";
+import { AdAccountDAO } from "@/database/models/AdAccount.dao";
+import { AdMetricsDAO } from "@/database/models/AdMetrics.dao";
 
 /**
  * Returns which platforms are connected.
@@ -38,6 +41,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         result[p] = !!userFlags[p];
       });
 
+      const metaPending = await getMetaPendingSelection(userId).catch(() => null);
+
       // Additionally ensure that if an integration row exists for this user/provider we mark it true.
       // Also include health status information for Meta
       await Promise.all(
@@ -45,26 +50,70 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           try {
             const saved = await readSavedIntegration({ userId, provider });
             if (saved) {
-              // For Meta, include detailed health information
-              if (provider === 'meta') {
-                const unhealthyStatuses = ['expired', 'revoked', 'invalid'];
-                const needsReconnect = unhealthyStatuses.includes(saved.healthStatus || '');
+              const unhealthyStatuses = ["expired", "revoked", "invalid", "unhealthy"];
+              const needsReconnect = unhealthyStatuses.includes(
+                saved.healthStatus || ""
+              );
+
+              // Rich status for all advertising providers (tokens never included)
+              if (
+                provider === "meta" ||
+                provider === "google-ads" ||
+                provider === "linkedin"
+              ) {
+                let selectedAccountCount = saved.adAccountId ? 1 : 0;
+                let hasMetrics = false;
+                try {
+                  if (saved.savedRowId) {
+                    const accounts = await AdAccountDAO.listByIntegration(
+                      saved.savedRowId
+                    );
+                    selectedAccountCount = accounts.filter((a) => a.isSelected).length;
+                    hasMetrics = await AdMetricsDAO.hasData(saved.savedRowId);
+                  }
+                } catch {
+                  // keep defaults
+                }
 
                 result[provider] = {
                   connected: !needsReconnect,
-                  healthStatus: saved.healthStatus || 'healthy',
-                  healthMessage: saved.healthErrorMessage || 'Connected and working normally',
+                  healthStatus: saved.healthStatus || "healthy",
+                  healthMessage:
+                    saved.healthErrorMessage ||
+                    saved.syncErrorMessage ||
+                    "Connected and working normally",
                   tokenExpiresAt: saved.tokenExpiresAt || null,
                   lastChecked: saved.lastHealthCheck || null,
+                  lastSyncedAt: saved.lastSyncedAt || null,
+                  syncStatus: saved.syncStatus || "idle",
+                  syncErrorMessage: saved.syncErrorMessage || null,
                   needsReconnect,
-                  // Add flags for Facebook and Instagram availability
-                  hasFacebook: !!saved.pageId,
-                  hasInstagram: !!saved.igUserId,
+                  adAccountId: saved.adAccountId || null,
+                  selectedAccountCount,
+                  hasMetrics,
+                  pendingSelection: null,
+                  ...(provider === "meta"
+                    ? {
+                        hasFacebook: !!saved.pageId,
+                        hasInstagram: !!saved.igUserId,
+                      }
+                    : {}),
                 };
               } else {
-                // For other providers, just return boolean
                 result[provider] = true;
               }
+            } else if (provider === "meta" && metaPending) {
+              // OAuth completed; integration not finalized until asset selection
+              result.meta = {
+                connected: false,
+                pendingSelection: metaPending,
+                syncStatus: "idle",
+                hasMetrics: false,
+                selectedAccountCount: 0,
+                needsReconnect: false,
+                healthStatus: "pending_selection",
+                healthMessage: "Select a Facebook Page and Ad Account to finish connecting",
+              };
             }
           } catch (err) {
             // ignore per-provider errors

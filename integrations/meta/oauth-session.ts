@@ -44,9 +44,12 @@ export async function storeOAuthSession(
     adAccounts?: any[];
     errorType?: string;
     tokenExpiresAt?: string;
-  }
+  },
+  options?: { provider?: string; sessionPrefix?: string }
 ): Promise<string> {
-  const sessionId = `oauth_meta_${userId}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+  const provider = options?.provider ?? "meta";
+  const prefix = options?.sessionPrefix ?? `oauth_${provider}`;
+  const sessionId = `${prefix}_${userId}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
   const session: OAuthSession = {
@@ -61,7 +64,7 @@ export async function storeOAuthSession(
   };
 
   try {
-    await OAuthSessionDAO.store(sessionId, userId, "meta", session, expiresAt);
+    await OAuthSessionDAO.store(sessionId, userId, provider, session, expiresAt);
     return sessionId;
   } catch (error: any) {
     console.error("[storeOAuthSession] Failed to store OAuth session:", error);
@@ -84,11 +87,16 @@ export async function getOAuthSession(
       return null;
     }
 
-    // Parse the expiration timestamp
-    // Database returns: "2026-01-04 11:43:39.535"
-    // We need to convert to Date object for comparison
-    const expiresAt = new Date(session.expiresAt.replace(' ', 'T') + 'Z');
+    // Parse expiration without corrupting already-offset timestamps
+    // (appending "Z" to values like "2026-10-09 11:53:59.87+00" yields Invalid Date).
+    const expiresAt = parseOAuthSessionExpiry(session.expiresAt);
     const now = new Date();
+
+    if (!expiresAt || Number.isNaN(expiresAt.getTime())) {
+      console.warn("[getOAuthSession] Unparseable expiresAt; treating as expired");
+      await OAuthSessionDAO.delete(sessionId);
+      return null;
+    }
 
     // Check if expired
     if (now > expiresAt) {
@@ -101,6 +109,27 @@ export async function getOAuthSession(
     console.error("[getOAuthSession] Error retrieving OAuth session:", error);
     return null;
   }
+}
+
+/** Exported for unit tests — parse oauth_sessions.expires_at safely. */
+export function parseOAuthSessionExpiry(raw: string | Date | null | undefined): Date | null {
+  if (!raw) return null;
+  if (raw instanceof Date) return raw;
+  const s = String(raw).trim();
+  if (!s) return null;
+
+  // Postgres often returns "YYYY-MM-DD HH:MM:SS.ms+00".
+  // Never append "Z" onto an existing numeric offset (produces Invalid Date).
+  const hasZone = /[zZ]|[+-]\d{2}(:?\d{2})?$/.test(s);
+  let normalized = s.replace(" ", "T");
+  if (hasZone) {
+    normalized = normalized.replace(/([+-]\d{2})$/, "$1:00"); // +00 → +00:00
+  } else if (!/[zZ]$/.test(normalized)) {
+    normalized = `${normalized}Z`; // naive → UTC
+  }
+
+  const parsed = new Date(normalized);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
 /**

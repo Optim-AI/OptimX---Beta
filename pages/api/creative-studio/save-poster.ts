@@ -109,22 +109,31 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     }
 
-    // Insert into user_generated_image table (only if authenticated)
+    // Upsert into Generated Contents library (only if authenticated)
     if (userId) {
       try {
-        // Use DAO to insert - it handles ID generation properly
-        const record = await GeneratedImageDAO.insert(
-          userId,
-          publicUrl,
-          uploadedPath || null,
-          metadata || undefined
+        const { recordGeneratedCreative } = await import(
+          "@/lib/social/generated-contents/record"
         );
+        const recorded = await recordGeneratedCreative({
+          userId,
+          mediaUrl: publicUrl,
+          storagePath: uploadedPath || null,
+          mediaType: "image",
+          source: "save-poster",
+          metadata: metadata || undefined,
+        });
+
+        const record = recorded
+          ? await GeneratedImageDAO.getById(recorded.id)
+          : null;
 
         return res.status(200).json({
           ok: true,
           imageUrl: publicUrl,
           imagePath: uploadedPath,
-          record: record,
+          record,
+          created: recorded?.created ?? false,
         });
       } catch (e: any) {
         console.error("Save poster error:", e);

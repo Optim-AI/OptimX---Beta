@@ -242,7 +242,7 @@ export default function ReportPage() {
   };
 
   return (
-    <div className="flex min-h-screen" style={{ backgroundColor: colors.background }}>
+    <div className="flex min-h-screen app-page" style={{ backgroundColor: colors.background }}>
       <Sidebar />
       <main className="flex-1 p-6 md:p-8 lg:p-10">
         <div className="mx-auto max-w-2xl">

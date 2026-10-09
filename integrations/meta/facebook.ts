@@ -19,25 +19,66 @@ export type FacebookComment = {
   from?: { name: string; id: string };
 };
 
+export type CreateFacebookPostInput = {
+  pageId: string;
+  message?: string;
+  /** Public HTTPS URL for Meta to fetch (never localhost). */
+  imageUrl?: string;
+  /** Raw image bytes for multipart `source` upload. */
+  imageBuffer?: Buffer | Uint8Array;
+  imageContentType?: string;
+  imageFilename?: string;
+  link?: string;
+  accessToken: string;
+};
+
 /**
- * Create a Facebook Page post with text and/or image
+ * Create a Facebook Page post with text and/or image.
+ * Photos: use multipart `source` when `imageBuffer` is set; otherwise `url`.
  */
 export async function createFacebookPost({
   pageId,
   message,
   imageUrl,
+  imageBuffer,
+  imageContentType,
+  imageFilename,
   link,
   accessToken,
-}: {
-  pageId: string;
-  message?: string;
-  imageUrl?: string;
-  link?: string;
-  accessToken: string;
-}): Promise<{ id: string; post_id?: string }> {
-  // Use /photos endpoint if image is provided, otherwise /feed
-  const endpoint = imageUrl ? "photos" : "feed";
+}: CreateFacebookPostInput): Promise<{ id: string; post_id?: string }> {
+  const hasMultipart = Boolean(imageBuffer && imageBuffer.byteLength > 0);
+  const hasUrl = Boolean(imageUrl);
+  const endpoint = hasMultipart || hasUrl ? "photos" : "feed";
   const url = `https://graph.facebook.com/v${VERSION}/${encodeURIComponent(pageId)}/${endpoint}`;
+
+  if (hasMultipart) {
+    const form = new FormData();
+    form.append("access_token", accessToken);
+    if (message) form.append("caption", message);
+    const mime = imageContentType || "application/octet-stream";
+    const name = imageFilename || "photo.jpg";
+    const bytes =
+      imageBuffer instanceof Buffer
+        ? imageBuffer
+        : Buffer.from(imageBuffer as Uint8Array);
+    form.append(
+      "source",
+      new Blob([new Uint8Array(bytes)], { type: mime }),
+      name
+    );
+
+    const response = await fetch(url, {
+      method: "POST",
+      body: form,
+    });
+    const json = await response.json();
+    if (json.error) {
+      throw new Error(
+        `Facebook post creation failed: ${json.error.message || JSON.stringify(json.error)}`
+      );
+    }
+    return json;
+  }
 
   const params = new URLSearchParams({
     access_token: accessToken,
@@ -59,7 +100,9 @@ export async function createFacebookPost({
   const json = await response.json();
 
   if (json.error) {
-    throw new Error(`Facebook post creation failed: ${json.error.message || JSON.stringify(json.error)}`);
+    throw new Error(
+      `Facebook post creation failed: ${json.error.message || JSON.stringify(json.error)}`
+    );
   }
 
   return json;

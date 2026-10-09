@@ -51,6 +51,8 @@ import {
 import { authFetch, safeResponseJson } from '@/lib/utils';
 import PosterEditModal from '@/app/web/src/components/content-studio/PosterEditModal';
 import type { PosterGenerationSession } from '@/lib/creative-studio/poster-generation/types';
+import { PublishComposer } from '@/app/web/src/components/generated-contents/PublishComposer';
+import type { PublishableCreative } from '@/app/web/src/components/generated-contents/PublishComposer';
 
 /** Download image to user's device - works for data URLs and remote URLs (blob-based for reliable download) */
 async function downloadImageToLocal(url: string, filename: string): Promise<void> {
@@ -151,6 +153,9 @@ export default function PosterSessionPage() {
 
   // Poster edit modal state
   const [editingPosterIndex, setEditingPosterIndex] = useState<number | null>(null);
+
+  // Social publish composer (Facebook Page organic)
+  const [publishCreative, setPublishCreative] = useState<PublishableCreative | null>(null);
 
   // Phase 7.5 — new poster engine session (server source of truth)
   const [engineSessionId, setEngineSessionId] = useState<string | null>(null);
@@ -1450,6 +1455,32 @@ export default function PosterSessionPage() {
         });
       } catch {
         /* non-fatal */
+      }
+
+      // Auto-save successful posters into Generated Contents (deduped by path/URL)
+      for (let i = 0; i < results.length; i++) {
+        const url = results[i];
+        if (!url || url.startsWith("data:")) continue;
+        try {
+          await authFetch("/api/creative-studio/save-poster", {
+            method: "POST",
+            body: JSON.stringify({
+              imageUrl: url,
+              name: `poster_${Date.now()}_${i}`,
+              metadata: {
+                prompt: posterPrompt,
+                theme: config.theme,
+                aspectRatio: config.aspectRatio,
+                brandName: brand?.name,
+                sessionId,
+                generationId: meta[i]?.generationId,
+                source: "poster-auto-save",
+              },
+            }),
+          });
+        } catch {
+          /* non-fatal — generation already succeeded */
+        }
       }
     } catch (err: any) {
       console.error("Poster engine generate failed", err);
@@ -2822,6 +2853,13 @@ export default function PosterSessionPage() {
               config={config}
               onConfigChange={setConfig}
               onSavePoster={savePoster}
+              onPublishPoster={(url) =>
+                setPublishCreative({
+                  mediaUrl: url,
+                  mediaType: "image",
+                  label: brand?.name || posterPrompt || "Poster",
+                })
+              }
               onCreateCampaign={createCampaignFromPoster}
               onRegenerate={hasInsufficientCredits ? undefined : handleRegenerateClick}
               onUseAsReference={hasInsufficientCredits ? undefined : handleUseAsReference}
@@ -2970,6 +3008,12 @@ export default function PosterSessionPage() {
           </div>
         )}
 
+        <PublishComposer
+          open={Boolean(publishCreative)}
+          creative={publishCreative}
+          onClose={() => setPublishCreative(null)}
+        />
+
         {/* Poster Edit Modal */}
         {editingPosterIndex !== null && generatedPosters[editingPosterIndex] && (
           <PosterEditModal
@@ -3022,6 +3066,7 @@ function PosterGrid({
   config,
   onConfigChange,
   onSavePoster,
+  onPublishPoster,
   onCreateCampaign,
   onRegenerate,
   onUseAsReference,
@@ -3052,6 +3097,7 @@ function PosterGrid({
   config: PosterConfig;
   onConfigChange: (config: PosterConfig) => void;
   onSavePoster: (url: string, index: number) => Promise<void>;
+  onPublishPoster?: (url: string, index: number) => void;
   onCreateCampaign: (url: string, index: number) => Promise<void>;
   onRegenerate?: () => void;
   onUseAsReference?: (url: string, index: number) => void;
@@ -3208,6 +3254,19 @@ function PosterGrid({
             >
               {savingPoster === previewIndex ? 'Saving…' : 'Save'}
             </button>
+            {onPublishPoster && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onPublishPoster(previewImage, previewIndex);
+                  setPreviewIndex(null);
+                }}
+                className="px-4 py-2 rounded-lg text-sm font-medium shadow-lg transition-colors text-white"
+                style={{ background: colors.gradientPrimary }}
+              >
+                Publish
+              </button>
+            )}
             {onEditPoster && (
               <button
                 onClick={(e) => {
@@ -3623,6 +3682,21 @@ function PosterGrid({
                             </svg>
                             {savingPoster === idx ? 'Saving...' : 'Save to Library'}
                           </button>
+                          {onPublishPoster && (
+                          <button
+                            onClick={() => {
+                              onPublishPoster(poster, idx);
+                              setOpenMenuIndex(null);
+                            }}
+                            className="w-full text-left px-4 py-2.5 text-sm transition-colors flex items-center gap-2"
+                            style={{ color: colors.primary }}
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                            </svg>
+                            Publish
+                          </button>
+                          )}
                           {onUseAsReference && (
                           <>
                           <div className="my-1" style={{ borderTop: `1px solid ${colors.border}` }} />
@@ -3647,9 +3721,18 @@ function PosterGrid({
                   </div>
                 </div>
 
-                {/* Action Button below image */}
-                {canCreateCampaigns && (
-                  <div className="mt-2.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                {/* Action buttons below image */}
+                <div className="mt-2.5 flex flex-col gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                  {onPublishPoster && (
+                    <button
+                      onClick={() => onPublishPoster(poster, idx)}
+                      className="w-full px-3 py-2 rounded-lg text-[12px] font-semibold text-white transition-colors"
+                      style={{ background: colors.gradientPrimary }}
+                    >
+                      Publish
+                    </button>
+                  )}
+                  {canCreateCampaigns && (
                     <button
                       onClick={() => onCreateCampaign(poster, idx)}
                       disabled={creatingCampaign === idx}
@@ -3662,8 +3745,8 @@ function PosterGrid({
                     >
                       {creatingCampaign === idx ? 'Creating…' : 'Use in campaign'}
                     </button>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             );
             })}

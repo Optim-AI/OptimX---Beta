@@ -1,20 +1,16 @@
 // pages/api/meta/oauth/start.ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import { encodeState } from '@/auth/helpers';
-import { cleanupExpiredSessions } from '@/integrations/meta/oauth-session';
+import { encodeState } from "@/auth/helpers";
+import { buildMetaAdsOAuthDialogUrl } from "@/lib/ads/providers/meta/client";
 
 /**
- * Initiates Meta OAuth flow for Facebook + Instagram.
- * This replaces /api/auth/instagram/start
+ * Initiates Meta OAuth for the existing "SkalX Ads" Facebook Login for Business
+ * configuration (explicit scopes, or optional FACEBOOK_LOGIN_CONFIG_ID).
+ * Preserves existing Supabase auth — does not use Instagram publishing scopes.
  */
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  // Skip cleanup if DATABASE_URL not configured (sessions expire naturally after 10min)
-  // cleanupExpiredSessions().catch((err) => {
-  //   console.warn("Failed to cleanup expired sessions:", err);
-  // });
   const appId = process.env.FACEBOOK_APP_ID;
   const version = process.env.FACEBOOK_API_VERSION || "23.0";
-  const redirectUri = `${process.env.NEXT_PUBLIC_APP_URL}/api/meta/oauth/callback`;
 
   if (!appId) {
     return res.status(500).json({ error: "FACEBOOK_APP_ID not configured" });
@@ -24,44 +20,28 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(500).json({ error: "NEXT_PUBLIC_APP_URL not configured" });
   }
 
-  // Extract Supabase session token from query params (passed from frontend)
   const supabaseToken = Array.isArray(req.query.sb)
     ? req.query.sb[0]
     : (req.query.sb as string | undefined);
 
-  // Encode state with random string and optional Supabase token
-  const statePayload: any = { r: Math.random().toString(36).slice(2, 9) };
+  const statePayload: Record<string, string> = {
+    r: Math.random().toString(36).slice(2, 12),
+    p: "meta",
+  };
   if (supabaseToken) statePayload.t = supabaseToken;
 
   const state = encodeState(statePayload);
 
-  // Request comprehensive permissions for Facebook, Instagram, and Ads
-  const scopes = [
-    // Instagram permissions
-    "instagram_basic",
-    "instagram_content_publish",
-    "instagram_manage_comments",
-    // Facebook Page permissions
-    "pages_show_list",
-    "pages_read_engagement",
-    "pages_read_user_content",
-    "pages_manage_posts",
-    // Business management - REQUIRED for pages connected to Instagram Business accounts
-    // Without this, /me/accounts returns empty when Instagram permissions are requested
-    "business_management",
-    // Ads permissions
-    "ads_read",
-    "ads_management",
-    "leads_retrieval",
-  ].join(",");
-
-  const oauthUrl =
-    `https://www.facebook.com/v${version}/dialog/oauth` +
-    `?client_id=${encodeURIComponent(appId)}` +
-    `&redirect_uri=${encodeURIComponent(redirectUri)}` +
-    `&scope=${encodeURIComponent(scopes)}` +
-    `&response_type=code` +
-    `&state=${encodeURIComponent(state)}`;
-
-  res.redirect(oauthUrl);
+  try {
+    const oauthUrl = buildMetaAdsOAuthDialogUrl({
+      appId,
+      state,
+      version,
+    });
+    res.redirect(oauthUrl);
+  } catch (e: any) {
+    return res.status(500).json({
+      error: e?.message || "Failed to build Meta OAuth URL",
+    });
+  }
 }

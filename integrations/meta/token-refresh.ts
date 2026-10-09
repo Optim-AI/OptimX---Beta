@@ -114,15 +114,30 @@ export async function ensureValidToken(integration: any): Promise<any> {
   });
 
   try {
+    const { prepareTokensForStorage, decryptToken } = await import(
+      "@/lib/ads/crypto/tokens"
+    );
+    const currentPageToken =
+      decryptToken(integration.pageAccessToken) ||
+      decryptToken(integration.accessToken) ||
+      integration.pageAccessToken;
+
     // Refresh the token
-    const refreshResult = await refreshFacebookToken(integration.pageAccessToken);
+    const refreshResult = await refreshFacebookToken(currentPageToken);
+
+    const prepared = prepareTokensForStorage({
+      accessToken: refreshResult.accessToken,
+      refreshToken: integration.userAccessToken || integration.refreshToken || null,
+    });
 
     // Update database
     await IntegrationDAO.update(integration.savedRowId, {
-      accessToken: refreshResult.accessToken,
+      accessToken: prepared.accessToken,
+      refreshToken: prepared.refreshToken,
+      tokenEncrypted: prepared.tokenEncrypted,
       tokenExpiresAt: refreshResult.expiresAt.toISOString(),
       updatedAt: new Date().toISOString(),
-    });
+    } as any);
 
     console.log('[Token Refresh] Token refreshed successfully', {
       integrationId: integration.savedRowId,
@@ -133,6 +148,7 @@ export async function ensureValidToken(integration: any): Promise<any> {
     return {
       ...integration,
       pageAccessToken: refreshResult.accessToken,
+      accessToken: refreshResult.accessToken,
       tokenExpiresAt: refreshResult.expiresAt.toISOString(),
     };
   } catch (error: any) {

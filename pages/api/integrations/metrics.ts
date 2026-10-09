@@ -69,6 +69,184 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(401).json({ ok: false, error: "missing_user", details: "Auth session missing!" });
     }
 
+    // Prefer warehouse-backed metrics when synced data exists (no live Graph needed)
+    try {
+      const provider = String(req.query.provider || "meta");
+      const { AdMetricsDAO, AdPlatformEntityDAO } = await import(
+        "@/database/models/AdMetrics.dao"
+      );
+      const {
+        daysAgo,
+        isoDate,
+        deriveMetricRates,
+        emptyAggregatedMetrics,
+      } = await import("@/lib/ads/types");
+      const warehouseIntegration = await IntegrationDAO.findByUserAndProvider(
+        userId,
+        provider
+      );
+      if (
+        warehouseIntegration &&
+        (await AdMetricsDAO.hasData(warehouseIntegration.id))
+      ) {
+        let since: string;
+        let until: string;
+        if (req.query.start && req.query.end) {
+          since = String(req.query.start);
+          until = String(req.query.end);
+        } else {
+          const preset = String(req.query.range || "7d");
+          const days = daysForPreset(preset) || 7;
+          until = daysAgo(1);
+          since = daysAgo(days);
+        }
+        const msPerDay = 24 * 60 * 60 * 1000;
+        const sinceDate = new Date(since + "T00:00:00Z");
+        const untilDate = new Date(until + "T00:00:00Z");
+        const lengthDays =
+          Math.round((untilDate.getTime() - sinceDate.getTime()) / msPerDay) + 1;
+        const prevUntil = new Date(sinceDate.getTime() - msPerDay);
+        const prevSince = new Date(
+          prevUntil.getTime() - (lengthDays - 1) * msPerDay
+        );
+        const current = await AdMetricsDAO.aggregateRange(
+          warehouseIntegration.id,
+          since,
+          until,
+          "account"
+        );
+        const previous = await AdMetricsDAO.aggregateRange(
+          warehouseIntegration.id,
+          isoDate(prevSince),
+          isoDate(prevUntil),
+          "account"
+        );
+        const campaignRows = await AdMetricsDAO.listCampaignMetrics(
+          warehouseIntegration.id,
+          since,
+          until
+        );
+        const byCampaign = new Map<string, ReturnType<typeof emptyAggregatedMetrics>>();
+        for (const row of campaignRows) {
+          const id = row.entityExternalId;
+          const agg = byCampaign.get(id) || emptyAggregatedMetrics();
+          agg.spend += Number(row.spend || 0);
+          agg.impressions += Number(row.impressions || 0);
+          agg.reach += Number(row.reach || 0);
+          agg.clicks += Number(row.clicks || 0);
+          agg.conversions += Number(row.conversions || 0);
+          agg.conversionValue += Number(row.conversionValue || 0);
+          byCampaign.set(id, agg);
+        }
+        const entities = await AdPlatformEntityDAO.listByIntegration(
+          warehouseIntegration.id,
+          "campaign"
+        );
+        const nameById = new Map(entities.map((e) => [e.externalId, e.name]));
+        const campaigns = [...byCampaign.entries()].map(([id, agg]) => {
+          const d = deriveMetricRates(agg);
+          return {
+            id,
+            name: nameById.get(id) || id,
+            spend: d.spend,
+            impressions: d.impressions,
+            clicks: d.clicks,
+            conversions: d.conversions,
+            ctr: d.ctr,
+            roas: d.roas,
+          };
+        });
+        const dailyRows = await AdMetricsDAO.listAccountDaily(
+          warehouseIntegration.id,
+          since,
+          until
+        );
+        const byDate = new Map<
+          string,
+          {
+            date: string;
+            spend: number;
+            impressions: number;
+            reach: number;
+            clicks: number;
+            conversions: number;
+          }
+        >();
+        for (const row of dailyRows) {
+          const key = String(row.metricDate);
+          const cur = byDate.get(key) || {
+            date: key,
+            spend: 0,
+            impressions: 0,
+            reach: 0,
+            clicks: 0,
+            conversions: 0,
+          };
+          cur.spend += Number(row.spend || 0);
+          cur.impressions += Number(row.impressions || 0);
+          cur.reach += Number(row.reach || 0);
+          cur.clicks += Number(row.clicks || 0);
+          cur.conversions += Number(row.conversions || 0);
+          byDate.set(key, cur);
+        }
+        const time_series = [...byDate.values()]
+          .sort((a, b) => a.date.localeCompare(b.date))
+          .map((d) => ({
+            ...d,
+            ctr: d.impressions > 0 ? (d.clicks / d.impressions) * 100 : null,
+          }));
+        const changePct = (c: number | null, p: number | null) =>
+          c == null || p == null || p === 0
+            ? null
+            : ((c - p) / Math.abs(p)) * 100;
+
+        return res.status(200).json({
+          ok: true,
+          meta: {
+            current: {
+              total_spend: current.spend,
+              total_reach: current.reach,
+              avg_ctr: current.ctr,
+              conversions: current.conversions,
+              roas: current.roas,
+              purchase_value: current.conversionValue,
+              impressions: current.impressions,
+              clicks: current.clicks,
+              cpc: current.cpc,
+              cpm: current.cpm,
+              cpa: current.cpa,
+              frequency: current.frequency,
+            },
+            previous: {
+              total_spend: previous.spend,
+              total_reach: previous.reach,
+              avg_ctr: previous.ctr,
+              conversions: previous.conversions,
+              roas: previous.roas,
+              purchase_value: previous.conversionValue,
+            },
+            change: {
+              total_spend_pct: changePct(current.spend, previous.spend),
+              total_reach_pct: changePct(current.reach, previous.reach),
+              avg_ctr_pct: changePct(current.ctr, previous.ctr),
+              conversions_pct: changePct(current.conversions, previous.conversions),
+              roas_pct: changePct(current.roas, previous.roas),
+            },
+            time_series,
+          },
+          campaigns,
+          ranges: {
+            current: { since, until },
+            previous: { since: isoDate(prevSince), until: isoDate(prevUntil) },
+          },
+          source: "warehouse",
+          provider,
+        });
+      }
+    } catch (warehouseErr) {
+      console.warn("warehouse metrics fallback to live Graph:", warehouseErr);
+    }
+
     // Fetch only this user's meta integration row (user-scoped)
     const integration = await IntegrationDAO.findByUserAndProvider(userId, "meta");
 
@@ -82,8 +260,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
 
-    // prefer refreshToken (long user token) -> accessToken (page token) -> metadata fields -> raw.tokenJson.access_token
-    const userAccessToken = integration.refreshToken ?? integration.accessToken ?? (integration.metadata as any)?.userAccessToken ?? (integration.metadata as any)?.pageAccessToken ?? (integration.raw as any)?.tokenJson?.access_token ?? null;
+    // Decrypt at-rest tokens, then prefer user (refresh) token for Ads Insights
+    const { revealTokens } = await import("@/lib/ads/crypto/tokens");
+    const revealed = revealTokens(integration);
+    const userAccessToken =
+      revealed.refreshToken ??
+      revealed.accessToken ??
+      (integration.metadata as any)?.userAccessToken ??
+      (integration.metadata as any)?.pageAccessToken ??
+      (integration.raw as any)?.tokenJson?.access_token ??
+      null;
 
     // Do NOT fall back to global env ad account — require per-user ad account. If missing, return safe meta null
     const rawAdAccount = integration.adAccountId ?? (integration.metadata as any)?.adAccountId ?? (integration.raw as any)?.adAccountsJson?.data?.[0]?.account_id ?? null;

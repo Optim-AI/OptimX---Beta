@@ -351,6 +351,7 @@ async function generatePostersForSessionUnlocked(
             sessionId: session.id,
             generationId: spec.generationId,
             buffer: result.imageBuffer,
+            contentType: result.mimeType || undefined,
           });
           imageUrl = stored.publicUrl;
           storagePath = stored.storagePath;

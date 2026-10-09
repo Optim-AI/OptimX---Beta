@@ -495,6 +495,7 @@ async function executePosterIterationForSessionUnlocked(
         sessionId: options.sessionId,
         generationId: updatedSpec.generationId,
         buffer: result.imageBuffer,
+        contentType: result.mimeType || undefined,
       });
       imageUrl = stored.publicUrl;
       storagePath = stored.storagePath;

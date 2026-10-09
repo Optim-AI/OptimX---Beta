@@ -72,10 +72,19 @@ export async function storeShotVideoBuffer(input: {
   shotId: string;
   generationVersion: string;
   attempt: number;
+  userId?: string | null;
 }): Promise<{ url: string; bytes: number; delivery: "storage" } | null> {
   try {
     const { uploadVideoBuffer } = await import("@/lib/creative-studio/video-delivery");
-    const url = await uploadVideoBuffer(input.buffer);
+    const url = await uploadVideoBuffer(input.buffer, {
+      userId: input.userId,
+      metadata: {
+        source: "shot-video",
+        campaignId: input.campaignId,
+        shotId: input.shotId,
+        generationVersion: input.generationVersion,
+      },
+    });
     return { url, bytes: input.buffer.length, delivery: "storage" };
   } catch (e) {
     console.warn("[video-executor] shot video storage failed:", e);

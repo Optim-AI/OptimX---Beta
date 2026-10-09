@@ -11,7 +11,13 @@ const CAMPAIGN_ASSETS_BUCKET = "campaign-assets";
 /** Soft check matching production campaign-assets limit (200 MiB). */
 const STORAGE_SOFT_LIMIT_BYTES = 209715200;
 
-export async function uploadVideoBuffer(buf: Buffer): Promise<string> {
+export async function uploadVideoBuffer(
+  buf: Buffer,
+  options?: {
+    userId?: string | null;
+    metadata?: Record<string, unknown>;
+  }
+): Promise<string> {
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY && !process.env.SUPABASE_SERVICE_ROLE) {
     throw new Error(
       "SUPABASE_SERVICE_ROLE_KEY is not configured. Extended (16s) videos must be uploaded to storage — add this env var in production."
@@ -86,6 +92,24 @@ export async function uploadVideoBuffer(buf: Buffer): Promise<string> {
     downloadedMB,
   });
 
+  if (options?.userId) {
+    try {
+      const { recordGeneratedCreative } = await import(
+        "@/lib/social/generated-contents/record"
+      );
+      await recordGeneratedCreative({
+        userId: options.userId,
+        mediaUrl: publicUrl,
+        storagePath: objectPath,
+        mediaType: "video",
+        source: "video-generation",
+        metadata: options.metadata || {},
+      });
+    } catch (e) {
+      console.warn("[video-delivery] library record skipped:", e);
+    }
+  }
+
   return publicUrl;
 }
 
@@ -95,7 +119,11 @@ export async function uploadVideoBuffer(buf: Buffer): Promise<string> {
  */
 export async function resolveVideoDeliveryUrl(
   dataUrl: string,
-  options: { forceUpload?: boolean } = {}
+  options: {
+    forceUpload?: boolean;
+    userId?: string | null;
+    metadata?: Record<string, unknown>;
+  } = {}
 ): Promise<{ videoUrl: string; delivery: "storage" | "inline"; bytes: number }> {
   const buf = parseVideoDataUrl(dataUrl);
   if (!buf) {
@@ -107,6 +135,9 @@ export async function resolveVideoDeliveryUrl(
     return { videoUrl: dataUrl, delivery: "inline", bytes: buf.length };
   }
 
-  const publicUrl = await uploadVideoBuffer(buf);
+  const publicUrl = await uploadVideoBuffer(buf, {
+    userId: options.userId,
+    metadata: options.metadata,
+  });
   return { videoUrl: publicUrl, delivery: "storage", bytes: buf.length };
 }

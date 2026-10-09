@@ -249,13 +249,25 @@ export async function generateCommercialVideoFromRequest(
   let videoUrl: string;
   let delivery: "storage" | "inline";
   let bytes = buf.length;
+  const libraryUserId =
+    typeof body.userId === "string"
+      ? body.userId
+      : typeof body.user_id === "string"
+        ? body.user_id
+        : null;
+
   try {
-    videoUrl = await uploadVideoBuffer(buf);
+    videoUrl = await uploadVideoBuffer(buf, {
+      userId: libraryUserId,
+      metadata: { source: "commercial-video", duration, aspectRatio },
+    });
     delivery = "storage";
   } catch {
     const dataUrl = `data:video/mp4;base64,${buf.toString("base64")}`;
     const resolvedDelivery = await resolveVideoDeliveryUrl(dataUrl, {
       forceUpload: bytes > 3 * 1024 * 1024,
+      userId: libraryUserId,
+      metadata: { source: "commercial-video", duration, aspectRatio },
     });
     videoUrl = resolvedDelivery.videoUrl;
     delivery = resolvedDelivery.delivery;

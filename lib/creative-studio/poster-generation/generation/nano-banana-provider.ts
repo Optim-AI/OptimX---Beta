@@ -153,7 +153,7 @@ export class NanoBananaImageProvider implements ImageGenerationProvider {
         ok: true,
         imageDataUrl: result.dataUrl,
         imageBuffer: result.buffer,
-        mimeType: "image/png",
+        mimeType: result.mimeType,
         provider: result.provider,
         model: result.model,
         durationMs: Date.now() - started,

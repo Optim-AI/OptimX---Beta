@@ -26,10 +26,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ error: "invalid_platform" });
     }
 
-    // Delete integration rows for this user + provider only (user-scoped)
+    // Delete integration rows for this user + provider only (user-scoped).
+    // Cascades: ad_accounts / ad_platform_entities / ad_metrics_daily / ad_sync_runs
+    // via DB ON DELETE CASCADE where configured; also clear ad_accounts explicitly.
     try {
       const integration = await IntegrationDAO.findByUserAndProvider(userId, platform);
       if (integration) {
+        try {
+          const { AdAccountDAO } = await import("@/database/models/AdAccount.dao");
+          await AdAccountDAO.deleteByIntegration(integration.id);
+        } catch (e) {
+          console.warn("ad_accounts cleanup on disconnect:", e);
+        }
         await IntegrationDAO.delete(integration.id);
       }
     } catch (deleteError: any) {
