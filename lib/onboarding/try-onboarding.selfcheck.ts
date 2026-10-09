@@ -34,7 +34,7 @@ assert.deepEqual(
     brandSnapshot: null,
     onboarding: null,
   }),
-  { kind: 'try' }
+  { kind: 'try', step: 'brand' }
 );
 
 assert.deepEqual(
@@ -52,8 +52,29 @@ assert.deepEqual(
     authenticated: true,
     hasActiveSubscription: false,
     brandSnapshot: null,
+    onboarding: { status: 'pricing_seen' },
+  }),
+  { kind: 'try', step: 'pricing' }
+);
+
+assert.deepEqual(
+  resolveTryEntry({
+    authenticated: true,
+    hasActiveSubscription: false,
+    brandSnapshot: null,
     onboarding: null,
     businessName: 'Legacy Co',
+  }),
+  { kind: 'workspace' }
+);
+
+assert.deepEqual(
+  resolveTryEntry({
+    authenticated: true,
+    hasActiveSubscription: false,
+    hasCapturedPayment: true,
+    brandSnapshot: null,
+    onboarding: { status: 'pricing_seen' },
   }),
   { kind: 'workspace' }
 );

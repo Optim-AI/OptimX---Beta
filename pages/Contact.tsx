@@ -21,6 +21,7 @@ import { Mail } from "lucide-react";
 
 // *** Import your color tokens exactly as requested (path unchanged) ***
 import colors from '@/lib/ui/colors';
+import PageSeo from "@/components/seo/PageSeo";
 
 /** tiny helper to add slash-style alpha to simple hsl(...) tokens */
 const withAlpha = (token: string | undefined, alpha: number) => {
@@ -36,25 +37,9 @@ const withAlpha = (token: string | undefined, alpha: number) => {
 };
 
 /**
- * Metadata export — Next.js will use this when present in a server page/layout.
- * Keeping it here so the SEO data exists in the module (you can move it to a server wrapper if you prefer).
+ * Contact page for SkalX AI.
+ * SEO is applied via PageSeo (Pages Router). Do not use App Router `metadata` exports here.
  */
-export const metadata = {
-  title: "Contact Oli AI - AI Marketing Automation & Campaign Management",
-  description:
-    "Get in touch with Oli AI for AI-powered marketing automation solutions. Contact our expert team for personalized marketing campaigns, SEO Optimisation, and business growth strategies.",
-  keywords:
-    "contact Oli AI, AI marketing consultation, marketing automation support, campaign management contact, digital marketing help, business growth solutions, marketing strategy consultation",
-  openGraph: {
-    title: "Contact Oli AI - AI Marketing Automation Expert Support",
-    description:
-      "Ready to transform your business with AI-powered marketing? Contact Oli AI's expert team for personalized marketing automation solutions and campaign management.",
-    type: "website",
-    url: "https://optim.com/contact",
-  },
-  alternates: { canonical: "https://optim.com/contact" },
-};
-
 const Contact = () => {
   const [formData, setFormData] = useState({
     name: "",
@@ -140,6 +125,11 @@ const Contact = () => {
       className="min-h-screen"
       style={{ background: colors.background, color: colors.foreground }}
     >
+      <PageSeo
+        title="Contact SkalX AI"
+        description="Contact SkalX AI for questions about AI ad creatives, poster generation, video ads, billing, or partnership. Reach the SkalX team for product support."
+        path="/Contact"
+      />
       <Header />
 
       <main className="pt-20">
@@ -165,16 +155,15 @@ const Contact = () => {
                 WebkitTextFillColor: "transparent", // <- webkit fallback
               }}
             >
-              Contact Our AI Marketing Experts
+              Contact SkalX AI
             </h1>
 
             <p
               className="text-xl max-w-3xl mx-auto"
               style={{ color: colors.mutedForeground }}
             >
-              Ready to transform your business with AI-powered marketing
-              automation? Get personalized consultation and start optimizing
-              your campaigns today.
+              Questions about AI ad creatives, posters, video ads, or getting started with
+              SkalX AI? Send a message and our team will help.
             </p>
           </div>
         </section>
@@ -199,7 +188,7 @@ const Contact = () => {
                     Get Your Free Marketing Consultation
                   </CardTitle>
                   <CardDescription style={{ color: colors.mutedForeground }}>
-                    Tell us about your business needs and discover how Oli AI&apos;s
+                    Tell us about your business needs and discover how SkalX AI&apos;s
                     AI can revolutionize your marketing strategy. Our experts
                     will respond within 24 hours.
                   </CardDescription>

@@ -72,6 +72,7 @@ export function compileCampaignGeneration(
   const { campaignPrompt, negativePrompt } = buildCampaignPrompt({
     blueprint,
     shotPlan,
+    suppressSpokenVoiceover: Boolean(input.suppressSpokenVoiceover),
   });
 
   const concept = blueprint.selectedConcept;

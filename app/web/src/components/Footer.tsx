@@ -2,12 +2,74 @@
 
 import React from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/router';
+import { Facebook } from 'lucide-react';
 import colors from '@/lib/ui/colors';
 
+type LinkItem = { name: string; href: string; type: 'route' | 'section' };
+
 /**
- * Minimal marketing footer — legal + entry, no long link grids.
+ * Marketing footer. Uses Pages Router (`next/router`) so it can SSR under `pages/`.
+ * Section items are real <Link> anchors (crawlable) with smooth-scroll on the homepage.
  */
 const Footer: React.FC = () => {
+  const router = useRouter();
+  const pathname = router.pathname;
+
+  const footerLinks: Record<string, LinkItem[]> = {
+    Product: [
+      { name: 'AI Ad Generator', href: '/ai-ad-generator', type: 'route' },
+      { name: 'AI Poster Generator', href: '/#product', type: 'section' },
+      { name: 'AI Video Ads', href: '/#product', type: 'section' },
+      { name: 'How It Works', href: '/#how-it-works', type: 'section' },
+      { name: 'Use Cases', href: '/#built-for', type: 'section' },
+    ],
+    Company: [
+      { name: 'About SkalX AI', href: '/About', type: 'route' },
+      { name: 'Contact', href: '/Contact', type: 'route' },
+      { name: 'FAQ', href: '/#faq', type: 'section' },
+    ],
+    Legal: [
+      { name: 'Privacy', href: '/privacy-policy', type: 'route' },
+      { name: 'Terms', href: '/terms-and-conditions', type: 'route' },
+      { name: 'Cookies', href: '/cpolicy', type: 'route' },
+      { name: 'AI Disclosure', href: '/ai-disclosure', type: 'route' },
+    ],
+    Support: [
+      { name: 'Contact', href: '/Contact', type: 'route' },
+      { name: 'Help Center', href: '/help-center', type: 'route' },
+    ],
+  };
+
+  /**
+   * Only include verified official SkalX social profiles.
+   * Instagram/LinkedIn OptimX URLs removed — no confirmed SkalX handles in repo.
+   * Facebook share URL retained (same profile referenced in Organization sameAs).
+   */
+  const socialLinks = [
+    {
+      name: 'Facebook',
+      icon: Facebook,
+      href: 'https://www.facebook.com/share/1BNxZDcfRe/?mibextid=wwXIfr',
+    },
+  ];
+
+  const handleSectionClick = (
+    e: React.MouseEvent<HTMLAnchorElement>,
+    href: string
+  ) => {
+    if (pathname !== '/') return;
+    e.preventDefault();
+    const selector = href.startsWith('/#')
+      ? `#${href.substring(2)}`
+      : href.startsWith('#')
+        ? href
+        : href.replace('/#', '#');
+    const element = document.querySelector(selector);
+    if (element) element.scrollIntoView({ behavior: 'smooth' });
+    else if (selector.startsWith('#')) window.location.hash = selector;
+  };
+
   return (
     <footer style={{ backgroundColor: '#121212', borderTop: `1px solid ${colors.border}` }}>
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-10 max-w-5xl">
@@ -22,23 +84,76 @@ const Footer: React.FC = () => {
               Get Started →
             </Link>
           </div>
-          <nav className="flex flex-wrap gap-x-5 gap-y-2 text-sm" aria-label="Legal">
-            <Link href="/privacy-policy" style={{ color: colors.mutedForeground, textDecoration: 'none' }}>
-              Privacy
-            </Link>
-            <Link href="/terms-and-conditions" style={{ color: colors.mutedForeground, textDecoration: 'none' }}>
-              Terms
-            </Link>
-            <Link href="/cpolicy" style={{ color: colors.mutedForeground, textDecoration: 'none' }}>
-              Cookies
-            </Link>
-            <Link href="/Contact" style={{ color: colors.mutedForeground, textDecoration: 'none' }}>
-              Contact
-            </Link>
-            <Link href="/help-center" style={{ color: colors.mutedForeground, textDecoration: 'none' }}>
-              Support
-            </Link>
-          </nav>
+
+          {Object.entries(footerLinks).map(([category, links]) => (
+            <div key={category}>
+              <h3 className="font-semibold mb-4" style={{ color: colors.foreground }}>
+                {category}
+              </h3>
+              <ul className="space-y-3">
+                {links.map((link) => (
+                  <li key={`${category}-${link.name}`}>
+                    <Link
+                      href={link.href}
+                      className="transition-colors duration-200"
+                      style={{ color: colors.mutedForeground, textDecoration: 'none' }}
+                      onClick={
+                        link.type === 'section'
+                          ? (e) => handleSectionClick(e, link.href)
+                          : undefined
+                      }
+                      onMouseEnter={(e) =>
+                        ((e.currentTarget as HTMLElement).style.color = colors.primary)
+                      }
+                      onMouseLeave={(e) =>
+                        ((e.currentTarget as HTMLElement).style.color = colors.mutedForeground)
+                      }
+                    >
+                      {link.name}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-10 flex gap-3">
+          {socialLinks.map((social) => {
+            const Icon = social.icon;
+            return (
+              <a
+                key={social.name}
+                href={social.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={social.name}
+                className="flex items-center justify-center w-10 h-10 rounded-xl transition-all duration-300"
+                style={{ backgroundColor: colors.muted, color: colors.foreground }}
+                onMouseEnter={(e) => {
+                  const el = e.currentTarget as HTMLElement;
+                  el.style.backgroundColor = colors.primary;
+                  el.style.color = colors.primaryForeground;
+                }}
+                onMouseLeave={(e) => {
+                  const el = e.currentTarget as HTMLElement;
+                  el.style.backgroundColor = colors.muted;
+                  el.style.color = colors.foreground;
+                }}
+              >
+                <Icon className="h-5 w-5" />
+              </a>
+            );
+          })}
+        </div>
+
+        <div
+          className="mt-12 pt-8 flex flex-col md:flex-row items-center justify-between"
+          style={{ borderTop: `1px solid ${colors.border}`, gap: 12 }}
+        >
+          <div style={{ color: colors.mutedForeground, fontSize: 14 }}>
+            © {new Date().getFullYear()} SkalX AI. All rights reserved.
+          </div>
         </div>
         <p className="mt-8 text-sm" style={{ color: colors.mutedForeground }}>
           © {new Date().getFullYear()} SkalX AI. All rights reserved.

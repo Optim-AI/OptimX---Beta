@@ -12,23 +12,31 @@ import colors from '@/lib/ui/colors';
  * Brand Studio (posters), Ad Studio, commercial video, Creative Intelligence,
  * campaign flows, analytics (coming soon / gated).
  */
-const GROUPS = [
+type ProductItem = {
+  icon: typeof Palette;
+  title: string;
+  desc: string;
+  href?: string;
+};
+
+const GROUPS: { label: string; items: ProductItem[] }[] = [
   {
     label: 'Create',
     items: [
       {
         icon: Palette,
-        title: 'AI posters',
+        title: 'AI poster generator',
         desc: 'Generate on-brand poster creatives from your brand kit and product imagery.',
       },
       {
         icon: LayoutTemplate,
-        title: 'AI ad creatives',
+        title: 'AI ad generator',
         desc: 'Build scroll-stopping ad visuals and copy for campaign-ready assets.',
+        href: '/ai-ad-generator',
       },
       {
         icon: Clapperboard,
-        title: 'AI videos',
+        title: 'AI video ad generator',
         desc: 'Produce short-form marketing videos from your product and brand context.',
       },
     ],
@@ -73,7 +81,7 @@ const GROUPS = [
       },
     ],
   },
-] as const;
+];
 
 const ProductSection: React.FC = () => {
   const { elementRef: titleRef, isVisible: titleVisible } = useScrollAnimation();
@@ -97,10 +105,11 @@ const ProductSection: React.FC = () => {
             className="text-4xl md:text-[46px] font-normal leading-tight mb-4"
             style={{ color: colors.foreground }}
           >
-            The SkalX product
+            AI ad creatives, posters, and video ads
           </h2>
           <p className="text-xl font-extralight" style={{ color: colors.mutedForeground }}>
-            Create, plan, and improve marketing creatives from one AI marketing platform.
+            Create, plan, and improve marketing creatives from one AI marketing platform —
+            SkalX AI.
           </p>
         </div>
 
@@ -135,7 +144,13 @@ const ProductSection: React.FC = () => {
                         </div>
                         <div>
                           <h3 className="text-lg font-medium mb-1" style={{ color: colors.foreground }}>
-                            {item.title}
+                            {item.href ? (
+                              <Link href={item.href} style={{ color: 'inherit' }}>
+                                {item.title}
+                              </Link>
+                            ) : (
+                              item.title
+                            )}
                           </h3>
                           <p className="text-sm leading-relaxed" style={{ color: colors.mutedForeground }}>
                             {item.desc}

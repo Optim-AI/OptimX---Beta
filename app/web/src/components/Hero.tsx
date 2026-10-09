@@ -118,80 +118,26 @@ const Hero: React.FC = () => {
             aria-hidden
           />
 
-          <div className="relative flex items-end justify-center gap-2 sm:gap-4 md:gap-5">
-            {CREATIVES.map((card, index) => {
-              const isPrimary = card.role === 'primary';
-              return (
-                <motion.div
-                  key={card.src}
-                  className={
-                    isPrimary
-                      ? 'relative z-10 w-[42%] max-w-[240px] sm:w-[38%] sm:max-w-[280px]'
-                      : 'relative z-[1] w-[28%] max-w-[160px] sm:w-[26%] sm:max-w-[200px]'
-                  }
-                  initial={reduceMotion ? false : { opacity: 0, y: 28 }}
-                  animate={
-                    reduceMotion
-                      ? { opacity: 1 }
-                      : {
-                          opacity: 1,
-                          y: isPrimary ? [0, -5, 0] : [0, -3, 0],
-                        }
-                  }
-                  transition={
-                    reduceMotion
-                      ? { duration: 0 }
-                      : {
-                          opacity: {
-                            duration: 0.6,
-                            delay: 0.28 + index * 0.1,
-                            ease: EASE,
-                          },
-                          y: {
-                            duration: isPrimary ? 5.5 : 6.2,
-                            delay: 0.9 + index * 0.15,
-                            repeat: Infinity,
-                            ease: 'easeInOut',
-                          },
-                        }
-                  }
-                >
-                  <div
-                    className="relative aspect-[4/5] w-full overflow-hidden rounded-2xl"
-                    style={{
-                      transform: `rotate(${card.rotate}deg)`,
-                      border: isPrimary
-                        ? '1px solid hsl(213 100% 55% / 0.35)'
-                        : '1px solid rgba(255,255,255,0.1)',
-                      boxShadow: isPrimary
-                        ? '0 24px 56px rgba(0,0,0,0.5), 0 0 32px hsl(213 100% 55% / 0.15)'
-                        : '0 16px 40px rgba(0,0,0,0.4)',
-                    }}
-                  >
-                    <Image
-                      src={card.src}
-                      alt={`SkalX ${card.label} example`}
-                      fill
-                      className="object-cover"
-                      sizes={isPrimary ? '(max-width: 640px) 42vw, 280px' : '(max-width: 640px) 28vw, 200px'}
-                      priority={isPrimary}
-                    />
-                    <span
-                      className="absolute bottom-2 left-2 rounded-md px-2 py-0.5 text-[10px] uppercase tracking-wider"
-                      style={{
-                        background: 'rgba(0,0,0,0.6)',
-                        color: colors.foreground,
-                        backdropFilter: 'blur(6px)',
-                      }}
-                    >
-                      {card.label}
-                    </span>
-                  </div>
-                </motion.div>
-              );
-            })}
+      <ParallaxLayer speed={0.08} className="relative" style={{ zIndex: 10 }}>
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10 w-full max-w-6xl">
+          <div
+            className="text-center mb-4 mx-auto max-w-6xl animate-[fadeUp_0.7s_cubic-bezier(0.16,1,0.3,1)_both"
+            style={{ animationDelay: "0.1s" }}
+          >
+            <h1
+              className="text-4xl sm:text-[46px] font-normal leading-tight tracking-tight md:whitespace-nowrap"
+              style={{ color: colors.foreground }}
+            >
+              SkalX AI — Your AI Marketing Partner.
+            </h1>
           </div>
-        </motion.div>
+          <p
+            className="text-center text-xl mb-8 max-w-3xl mx-auto font-extralight animate-[fadeUp_0.7s_cubic-bezier(0.16,1,0.3,1)_both"
+            style={{ color: colors.mutedForeground, animationDelay: "0.25s" }}
+          >
+            SkalX AI understands your brand and creates marketing creatives — ad creatives,
+            posters, and short video ads — so campaigns move faster.
+          </p>
 
         {/* 3. Brand input — dedicated panel below artwork */}
         <motion.form

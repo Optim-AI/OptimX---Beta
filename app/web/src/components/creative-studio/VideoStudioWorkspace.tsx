@@ -28,6 +28,13 @@ import {
   CAMPAIGN_GOALS,
   VIDEO_DURATIONS,
 } from './utils';
+import {
+  VOICEOVER_CTA_OPTIONS,
+  VOICEOVER_LANGUAGE_LABELS,
+  VOICEOVER_LANGUAGES,
+  usesGeminiTts,
+  type VoiceoverLanguage,
+} from '@/lib/creative-studio/commercial-production/audio/voiceover-languages';
 
 const PURPLE = '#A855F7';
 const PURPLE_SOFT = 'rgba(168, 85, 247, 0.16)';
@@ -198,6 +205,7 @@ export default function VideoStudioWorkspace({
     enabled: true,
     language: 'english' as const,
     tone: 'Energetic' as const,
+    ctaEnabled: true,
   };
   const product = adBuilderData?.product ?? null;
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -209,6 +217,10 @@ export default function VideoStudioWorkspace({
   const [showCreativePlan, setShowCreativePlan] = useState(true);
   const [showRegenConfirm, setShowRegenConfirm] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [videoDuration, setVideoDuration] = useState(0);
+  const [controlsVisible, setControlsVisible] = useState(true);
+  const controlsHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [stageOpened, setStageOpened] = useState(false);
   const [isEnhancingPrompt, setIsEnhancingPrompt] = useState(false);
   const [promptBeforeEnhance, setPromptBeforeEnhance] = useState<string | null>(null);
@@ -319,20 +331,61 @@ export default function VideoStudioWorkspace({
 
   useEffect(() => {
     setIsPlaying(false);
+    setCurrentTime(0);
+    setVideoDuration(0);
+    setControlsVisible(true);
   }, [selectedVideo?.id]);
 
   useEffect(() => {
     if (isBusy || hasVideo) setStageOpened(true);
   }, [isBusy, hasVideo]);
 
+  useEffect(() => {
+    return () => {
+      if (controlsHideTimerRef.current) clearTimeout(controlsHideTimerRef.current);
+    };
+  }, []);
+
+  function formatVideoTime(seconds: number): string {
+    if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
+    const whole = Math.floor(seconds);
+    const m = Math.floor(whole / 60);
+    const s = whole % 60;
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  }
+
+  function revealControls(sticky = false) {
+    setControlsVisible(true);
+    if (controlsHideTimerRef.current) {
+      clearTimeout(controlsHideTimerRef.current);
+      controlsHideTimerRef.current = null;
+    }
+    if (sticky) return;
+    const el = videoRef.current;
+    if (el && !el.paused) {
+      controlsHideTimerRef.current = setTimeout(() => setControlsVisible(false), 2200);
+    }
+  }
+
   function togglePlayback() {
     const el = videoRef.current;
     if (!el) return;
     if (el.paused) {
       el.play().catch(() => undefined);
+      revealControls();
     } else {
       el.pause();
+      revealControls(true);
     }
+  }
+
+  function seekVideo(nextSeconds: number) {
+    const el = videoRef.current;
+    if (!el || !Number.isFinite(nextSeconds)) return;
+    const capped = Math.max(0, Math.min(nextSeconds, el.duration || videoDuration || 0));
+    el.currentTime = capped;
+    setCurrentTime(capped);
+    revealControls();
   }
 
   function patchProduct(partial: Partial<NonNullable<AdBuilderData['product']>>) {
@@ -704,7 +757,7 @@ export default function VideoStudioWorkspace({
         <p className="text-[12px] mb-2" style={{ color: MUTED }}>
           Aspect ratio
         </p>
-        <div className="flex gap-2">
+        <div className="flex gap-2 mb-4">
           {(['9:16', '16:9'] as const).map((ratio) => {
             const selected = adSetup.aspect_ratio === ratio;
             return (
@@ -725,6 +778,123 @@ export default function VideoStudioWorkspace({
             );
           })}
         </div>
+
+        <p className="text-[12px] mb-2" style={{ color: MUTED }}>
+          Voiceover language
+        </p>
+        <div className="flex flex-wrap gap-1.5 mb-2">
+          {VOICEOVER_LANGUAGES.map((lang) => {
+            const selected = (voiceover.language || 'english') === lang;
+            return (
+              <button
+                key={lang}
+                type="button"
+                onClick={() =>
+                  onAdBuilderChange({
+                    ...adBuilderData,
+                    voiceover: {
+                      ...voiceover,
+                      language: lang,
+                      enabled: true,
+                    },
+                  })
+                }
+                className="px-2.5 py-1.5 rounded-lg text-[12px] font-medium"
+                style={{
+                  background: selected ? PURPLE_SOFT : SURFACE,
+                  border: `1px solid ${selected ? PURPLE_BORDER : LINE}`,
+                  color: selected ? '#F4F4F7' : MUTED,
+                }}
+              >
+                {VOICEOVER_LANGUAGE_LABELS[lang]}
+              </button>
+            );
+          })}
+        </div>
+        <p className="text-[11px] mb-4 leading-relaxed" style={{ color: MUTED }}>
+          {usesGeminiTts(voiceover.language)
+            ? `${VOICEOVER_LANGUAGE_LABELS[(voiceover.language || 'tamil') as VoiceoverLanguage]} uses Gemini 3.8 Flash TTS — Seedance stays silent for speech.`
+            : 'English uses Seedance native voiceover audio.'}
+        </p>
+
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-[12px]" style={{ color: MUTED }}>
+            CTA
+          </p>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={voiceover.ctaEnabled !== false}
+            onClick={() =>
+              onAdBuilderChange({
+                ...adBuilderData,
+                voiceover: {
+                  ...voiceover,
+                  ctaEnabled: voiceover.ctaEnabled === false,
+                },
+              })
+            }
+            className="relative w-10 h-6 rounded-full transition-colors"
+            style={{
+              background:
+                voiceover.ctaEnabled === false ? SURFACE_2 : PURPLE_SOFT,
+              border: `1px solid ${
+                voiceover.ctaEnabled === false ? LINE : PURPLE_BORDER
+              }`,
+            }}
+          >
+            <span
+              className="absolute top-0.5 w-4 h-4 rounded-full transition-transform"
+              style={{
+                left: voiceover.ctaEnabled === false ? 2 : 18,
+                background: voiceover.ctaEnabled === false ? MUTED : PURPLE,
+              }}
+            />
+          </button>
+        </div>
+        {voiceover.ctaEnabled !== false && (
+          <>
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {VOICEOVER_CTA_OPTIONS.map((ctaOption) => {
+                const selected =
+                  (voiceover.cta || adBuilderData.creativeStrategy?.cta || '') ===
+                  ctaOption;
+                return (
+                  <button
+                    key={ctaOption}
+                    type="button"
+                    onClick={() =>
+                      onAdBuilderChange({
+                        ...adBuilderData,
+                        voiceover: { ...voiceover, cta: ctaOption, ctaEnabled: true },
+                      })
+                    }
+                    className="px-2.5 py-1.5 rounded-lg text-[12px] font-medium"
+                    style={{
+                      background: selected ? PURPLE_SOFT : SURFACE,
+                      border: `1px solid ${selected ? PURPLE_BORDER : LINE}`,
+                      color: selected ? '#F4F4F7' : MUTED,
+                    }}
+                  >
+                    {ctaOption}
+                  </button>
+                );
+              })}
+            </div>
+            <input
+              value={voiceover.cta || adBuilderData.creativeStrategy?.cta || ''}
+              onChange={(e) =>
+                onAdBuilderChange({
+                  ...adBuilderData,
+                  voiceover: { ...voiceover, cta: e.target.value, ctaEnabled: true },
+                })
+              }
+              placeholder="Custom CTA…"
+              className="w-full px-3 py-2.5 rounded-xl text-[13px] outline-none"
+              style={{ background: SURFACE, border: `1px solid ${LINE}`, color: '#F4F4F7' }}
+            />
+          </>
+        )}
       </section>
 
       {(selectedConcept || adBuilderData.adAngle) && (
@@ -1261,6 +1431,115 @@ export default function VideoStudioWorkspace({
                           })}
                         </div>
                       </div>
+                      <div className="col-span-2">
+                        <p className="text-[11px] tracking-[0.14em] uppercase mb-2" style={{ color: MUTED }}>
+                          Voiceover language
+                        </p>
+                        <div className="flex flex-wrap gap-1.5 mb-2">
+                          {VOICEOVER_LANGUAGES.map((lang) => {
+                            const selected = (voiceover.language || 'english') === lang;
+                            return (
+                              <button
+                                key={lang}
+                                type="button"
+                                onClick={() =>
+                                  onAdBuilderChange({
+                                    ...adBuilderData,
+                                    voiceover: {
+                                      ...voiceover,
+                                      language: lang,
+                                      enabled: true,
+                                    },
+                                  })
+                                }
+                                className="px-2.5 py-1.5 rounded-lg text-[12px] font-medium"
+                                style={{
+                                  background: selected ? PURPLE_SOFT : SURFACE,
+                                  border: `1px solid ${selected ? PURPLE_BORDER : LINE}`,
+                                  color: selected ? '#F4F4F7' : MUTED,
+                                }}
+                              >
+                                {VOICEOVER_LANGUAGE_LABELS[lang]}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <p className="text-[11px] mb-3" style={{ color: MUTED }}>
+                          {usesGeminiTts(voiceover.language)
+                            ? 'Gemini 3.8 Flash TTS · Seedance silent for speech'
+                            : 'Seedance native English voiceover'}
+                        </p>
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="text-[11px] tracking-[0.14em] uppercase" style={{ color: MUTED }}>
+                            CTA
+                          </p>
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={voiceover.ctaEnabled !== false}
+                            onClick={() =>
+                              onAdBuilderChange({
+                                ...adBuilderData,
+                                voiceover: {
+                                  ...voiceover,
+                                  ctaEnabled: voiceover.ctaEnabled === false,
+                                },
+                              })
+                            }
+                            className="relative w-10 h-6 rounded-full transition-colors"
+                            style={{
+                              background:
+                                voiceover.ctaEnabled === false ? SURFACE_2 : PURPLE_SOFT,
+                              border: `1px solid ${
+                                voiceover.ctaEnabled === false ? LINE : PURPLE_BORDER
+                              }`,
+                            }}
+                          >
+                            <span
+                              className="absolute top-0.5 w-4 h-4 rounded-full transition-transform"
+                              style={{
+                                left: voiceover.ctaEnabled === false ? 2 : 18,
+                                background:
+                                  voiceover.ctaEnabled === false ? MUTED : PURPLE,
+                              }}
+                            />
+                          </button>
+                        </div>
+                        {voiceover.ctaEnabled !== false && (
+                          <div className="flex flex-wrap gap-1.5">
+                            {VOICEOVER_CTA_OPTIONS.map((ctaOption) => {
+                              const selected =
+                                (voiceover.cta ||
+                                  adBuilderData.creativeStrategy?.cta ||
+                                  '') === ctaOption;
+                              return (
+                                <button
+                                  key={ctaOption}
+                                  type="button"
+                                  onClick={() =>
+                                    onAdBuilderChange({
+                                      ...adBuilderData,
+                                      voiceover: {
+                                        ...voiceover,
+                                        cta: ctaOption,
+                                        ctaEnabled: true,
+                                      },
+                                    })
+                                  }
+                                  className="px-2.5 py-1.5 rounded-lg text-[12px] font-medium"
+                                  style={{
+                                    background: selected ? PURPLE_SOFT : SURFACE,
+                                    border: `1px solid ${selected ? PURPLE_BORDER : LINE}`,
+                                    color: selected ? '#F4F4F7' : MUTED,
+                                  }}
+                                >
+                                  {ctaOption}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
                     </div>
                     <div className="sm:pl-2 sm:border-l flex-shrink-0" style={{ borderColor: LINE }}>
                       <p className="text-[12px] mb-2 hidden sm:block" style={{ color: MUTED }}>
@@ -1340,7 +1619,7 @@ export default function VideoStudioWorkspace({
               >
                 <div className="absolute inset-0 flex items-center justify-center">
                   <div
-                    className="relative bg-black"
+                    className="relative bg-black group/player"
                     style={{
                       aspectRatio: aspect,
                       width: isLandscape ? '100%' : undefined,
@@ -1348,6 +1627,15 @@ export default function VideoStudioWorkspace({
                       maxWidth: '100%',
                       maxHeight: '100%',
                     }}
+                    onMouseEnter={() => revealControls(true)}
+                    onMouseLeave={() => {
+                      if (videoRef.current && !videoRef.current.paused) {
+                        setControlsVisible(false);
+                      } else {
+                        setControlsVisible(true);
+                      }
+                    }}
+                    onMouseMove={() => revealControls()}
                   >
                     {hasVideo && selectedVideo ? (
                       <video
@@ -1357,8 +1645,28 @@ export default function VideoStudioWorkspace({
                         className="absolute inset-0 w-full h-full object-contain"
                         playsInline
                         crossOrigin="anonymous"
-                        onPlay={() => setIsPlaying(true)}
-                        onPause={() => setIsPlaying(false)}
+                        onPlay={() => {
+                          setIsPlaying(true);
+                          revealControls();
+                        }}
+                        onPause={() => {
+                          setIsPlaying(false);
+                          revealControls(true);
+                        }}
+                        onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime || 0)}
+                        onLoadedMetadata={(e) => {
+                          const d = e.currentTarget.duration;
+                          setVideoDuration(Number.isFinite(d) ? d : selectedVideo.duration || durationSeconds);
+                          setCurrentTime(e.currentTarget.currentTime || 0);
+                        }}
+                        onDurationChange={(e) => {
+                          const d = e.currentTarget.duration;
+                          if (Number.isFinite(d) && d > 0) setVideoDuration(d);
+                        }}
+                        onEnded={() => {
+                          setIsPlaying(false);
+                          revealControls(true);
+                        }}
                         onClick={togglePlayback}
                       />
                     ) : product?.hero_image ? (
@@ -1387,31 +1695,105 @@ export default function VideoStudioWorkspace({
                     )}
 
                     {hasVideo && !isBusy && (
-                      <button
-                        type="button"
-                        onClick={togglePlayback}
-                        className="absolute inset-0 flex items-center justify-center group"
-                        aria-label={isPlaying ? 'Pause' : 'Play'}
-                      >
-                        <span
-                          className={`w-16 h-16 rounded-full flex items-center justify-center transition-opacity ${isPlaying ? 'opacity-0 group-hover:opacity-100' : 'opacity-100'}`}
+                      <>
+                        {/* Large center play when paused */}
+                        {!isPlaying && (
+                          <button
+                            type="button"
+                            onClick={togglePlayback}
+                            className="absolute inset-0 flex items-center justify-center z-[1]"
+                            aria-label="Play"
+                          >
+                            <span
+                              className="w-16 h-16 rounded-full flex items-center justify-center"
+                              style={{
+                                background: 'rgba(0,0,0,0.45)',
+                                border: '1px solid rgba(255,255,255,0.16)',
+                              }}
+                            >
+                              <Play size={26} fill="white" className="ml-0.5" />
+                            </span>
+                          </button>
+                        )}
+
+                        {/* Hover / focus control bar */}
+                        <div
+                          className={`absolute inset-x-0 bottom-0 z-[2] px-3 pb-3 pt-10 transition-opacity duration-200 ${
+                            controlsVisible || !isPlaying
+                              ? 'opacity-100'
+                              : 'opacity-0 pointer-events-none group-hover/player:opacity-100 group-hover/player:pointer-events-auto'
+                          }`}
                           style={{
-                            background: 'rgba(0,0,0,0.45)',
-                            border: '1px solid rgba(255,255,255,0.16)',
+                            background:
+                              'linear-gradient(180deg, transparent 0%, rgba(0,0,0,0.55) 45%, rgba(0,0,0,0.82) 100%)',
                           }}
+                          onClick={(e) => e.stopPropagation()}
                         >
-                          {isPlaying ? (
-                            <Pause size={26} fill="white" />
-                          ) : (
-                            <Play size={26} fill="white" className="ml-0.5" />
-                          )}
-                        </span>
-                      </button>
+                          <input
+                            type="range"
+                            min={0}
+                            max={Math.max(videoDuration || selectedVideo?.duration || durationSeconds, 0.1)}
+                            step={0.05}
+                            value={Math.min(currentTime, videoDuration || currentTime)}
+                            aria-label="Seek"
+                            onChange={(e) => seekVideo(Number(e.target.value))}
+                            className="w-full h-1.5 mb-2.5 appearance-none rounded-full cursor-pointer accent-[#A855F7]"
+                            style={{
+                              background: `linear-gradient(to right, ${PURPLE} ${
+                                videoDuration > 0 ? (currentTime / videoDuration) * 100 : 0
+                              }%, rgba(255,255,255,0.22) 0%)`,
+                            }}
+                          />
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={togglePlayback}
+                              className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                              style={{
+                                background: 'rgba(255,255,255,0.08)',
+                                border: '1px solid rgba(255,255,255,0.12)',
+                                color: '#F4F4F7',
+                              }}
+                              aria-label={isPlaying ? 'Pause' : 'Play'}
+                            >
+                              {isPlaying ? (
+                                <Pause size={14} fill="currentColor" />
+                              ) : (
+                                <Play size={14} fill="currentColor" className="ml-0.5" />
+                              )}
+                            </button>
+                            <span
+                              className="text-[11px] tabular-nums font-medium min-w-[72px]"
+                              style={{ color: 'rgba(244,244,247,0.88)' }}
+                            >
+                              {formatVideoTime(currentTime)} /{' '}
+                              {formatVideoTime(
+                                videoDuration || selectedVideo?.duration || durationSeconds
+                              )}
+                            </span>
+                            <div className="flex-1" />
+                            <button
+                              type="button"
+                              onClick={() => selectedVideo && onDownload(selectedVideo)}
+                              className="h-8 px-2.5 rounded-lg inline-flex items-center gap-1.5 text-[11px] font-medium shrink-0"
+                              style={{
+                                background: 'rgba(255,255,255,0.08)',
+                                border: '1px solid rgba(255,255,255,0.12)',
+                                color: '#F4F4F7',
+                              }}
+                              aria-label="Download video"
+                            >
+                              <Download size={13} />
+                              Download
+                            </button>
+                          </div>
+                        </div>
+                      </>
                     )}
 
                     {isBusy && (
                       <div
-                        className="absolute inset-0 flex flex-col items-center justify-center px-8"
+                        className="absolute inset-0 flex flex-col items-center justify-center px-8 z-[3]"
                         style={{ background: 'rgba(5,5,7,0.72)' }}
                       >
                         <div className="w-10 h-10 rounded-full border-2 border-white/20 border-t-white animate-spin mb-4" />

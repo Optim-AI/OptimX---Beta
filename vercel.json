@@ -1,0 +1,16 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "redirects": [
+    {
+      "source": "/:path*",
+      "has": [
+        {
+          "type": "host",
+          "value": "www.skalxai.app"
+        }
+      ],
+      "destination": "https://skalxai.app/:path*",
+      "statusCode": 308
+    }
+  ]
+}

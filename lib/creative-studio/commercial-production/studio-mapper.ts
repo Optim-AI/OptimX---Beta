@@ -10,6 +10,7 @@ import {
 } from "./campaign/campaign-duration";
 import type { StoredAssetRef } from "./assets";
 import type { AvailableCampaignAssets } from "./reference-engine/types";
+import { normalizeVoiceoverLanguage } from "./audio/voiceover-languages";
 
 /** Minimal UI shape — avoids importing React UI modules into the production lib. */
 export interface StudioFormProduct {
@@ -47,6 +48,17 @@ export interface StudioFormBrand {
   offering?: string;
 }
 
+export interface StudioFormVoiceover {
+  enabled?: boolean;
+  language?: string;
+  tone?: string;
+  key_message?: string;
+  cta?: string;
+  /** When false, omit hard CTA from Gemini TTS script. Default true. */
+  ctaEnabled?: boolean;
+  script?: string;
+}
+
 export interface StudioFormInput {
   campaignId: string;
   userId?: string;
@@ -55,6 +67,7 @@ export interface StudioFormInput {
   brand?: StudioFormBrand | null;
   /** Creative Direction textarea */
   userDescription?: string;
+  voiceover?: StudioFormVoiceover;
   voiceoverCta?: string;
   voiceoverKeyMessage?: string;
   offer?: string;
@@ -243,6 +256,21 @@ export function mapStudioFormToCampaignBrief(input: StudioFormInput): CampaignBr
         : undefined,
     creativeStrategy: input.creativeStrategy,
     selectedConcept: input.selectedConcept,
+    voiceover: {
+      enabled: input.voiceover?.enabled !== false,
+      language: normalizeVoiceoverLanguage(input.voiceover?.language),
+      tone: input.voiceover?.tone,
+      keyMessage:
+        input.voiceover?.key_message?.trim() ||
+        input.voiceoverKeyMessage?.trim() ||
+        undefined,
+      cta:
+        input.voiceover?.cta?.trim() ||
+        input.voiceoverCta?.trim() ||
+        undefined,
+      ctaEnabled: input.voiceover?.ctaEnabled !== false,
+      script: input.voiceover?.script?.trim() || undefined,
+    },
   };
 
   return brief;

@@ -18,6 +18,8 @@ export const config = {
     bodyParser: {
       sizeLimit: '50mb',
     },
+    // Session JSON can include compressed brand/product images > default 4MB response cap
+    responseLimit: false,
   },
 };
 

@@ -31,6 +31,28 @@ export function getGeminiApiKeySource(): string | undefined {
   return undefined;
 }
 
+/**
+ * Voiceover / Gemini 3.8 Flash TTS — prefers a dedicated TTS key so commercial
+ * planning can keep using GEMINI_API_KEY unchanged.
+ */
+export function getGeminiTtsApiKey(): string | undefined {
+  const candidates = [
+    process.env.GEMINI_TTS_API_KEY,
+    process.env.GEMINI_API_KEY,
+    process.env.GEMINI_VEO_API_KEY,
+    process.env.NANO_API_KEY,
+  ];
+  for (const key of candidates) {
+    if (isUsableApiKey(key)) return key.trim();
+  }
+  return undefined;
+}
+
+export function getGeminiTtsApiKeySource(): string | undefined {
+  if (isUsableApiKey(process.env.GEMINI_TTS_API_KEY)) return "GEMINI_TTS_API_KEY";
+  return getGeminiApiKeySource();
+}
+
 /** Veo video generation — prefers dedicated Veo key, falls back to general Gemini key. */
 export function getVeoApiKey(): string | undefined {
   const candidates = [

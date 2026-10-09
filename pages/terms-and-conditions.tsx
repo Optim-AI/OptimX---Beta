@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { Button } from "../app/web/src/components/ui/button";
 import colors from "@/lib/ui/colors";
+import PageSeo from "@/components/seo/PageSeo";
 
 const TOC_ITEMS = [
   { id: "acceptance", label: "Acceptance of Terms" },
@@ -183,6 +184,11 @@ const TermsAndConditions: React.FC = () => {
       className="min-h-screen pb-24 pt-20 relative"
       style={{ backgroundColor: colors.background, color: colors.foreground }}
     >
+      <PageSeo
+        title="Terms and Conditions"
+        description="Review the SkalX AI Terms and Conditions governing use of our AI marketing platform, credits, and related services."
+        path="/terms-and-conditions"
+      />
       {/* Subtle flat background */}
       <div
         className="absolute inset-0 pointer-events-none"
@@ -1121,7 +1127,7 @@ const TermsAndConditions: React.FC = () => {
                 className="text-[15px] leading-[1.7]"
                 style={{ color: colors.foreground }}
               >
-                Email: info@optimx.app
+                Email: info@skalxai.app
               </p>
             </SectionBlock>
 

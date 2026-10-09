@@ -3,6 +3,8 @@
  * Rejects open redirects (external URLs, protocol-relative, etc.).
  */
 
+import { CANONICAL_HOST, SITE_ORIGIN, WWW_HOST } from '@/lib/seo/site';
+
 export function getSafeNextPath(
   next: unknown,
   fallback = '/welcome'
@@ -12,6 +14,8 @@ export function getSafeNextPath(
   if (!trimmed.startsWith('/')) return fallback;
   if (trimmed.startsWith('//')) return fallback;
   if (trimmed.includes('://')) return fallback;
+  // Block protocol-relative tricks and nested absolute URLs in the path.
+  if (trimmed.includes('\\')) return fallback;
   return trimmed;
 }
 
@@ -35,6 +39,25 @@ export function getConfiguredSiteOrigin(): string {
   throw new Error(
     'NEXT_PUBLIC_APP_URL or NEXT_PUBLIC_SITE_URL must be configured in production'
   );
+}
+
+/**
+ * Origin used for Supabase Auth OAuth / magic-link redirects.
+ * Production always uses the canonical apex host so PKCE verifiers are not
+ * stranded across www → apex redirects.
+ */
+export function getCanonicalAuthOrigin(): string {
+  if (process.env.NODE_ENV === 'production') {
+    return SITE_ORIGIN;
+  }
+  if (typeof window !== 'undefined') {
+    const host = window.location.hostname.toLowerCase();
+    if (host === WWW_HOST || host === CANONICAL_HOST) {
+      return SITE_ORIGIN;
+    }
+    return window.location.origin.replace(/\/$/, '');
+  }
+  return getConfiguredSiteOrigin();
 }
 
 type OriginRequest = {
@@ -77,11 +100,35 @@ export function resolveRequestOrigin(req: OriginRequest): string {
   return getConfiguredSiteOrigin();
 }
 
-/** Absolute URL for OAuth / magic-link emailRedirectTo. */
+/** Absolute URL for OAuth / magic-link emailRedirectTo (legacy path-based). */
 export function getAuthRedirectUrl(nextPath: string): string {
   const path = getSafeNextPath(nextPath, '/welcome');
-  if (typeof window !== 'undefined') {
-    return `${window.location.origin}${path}`;
-  }
-  return `${getConfiguredSiteOrigin()}${path}`;
+  return `${getCanonicalAuthOrigin()}${path}`;
+}
+
+/**
+ * Canonical Supabase OAuth return URL.
+ * Always lands on /auth/callback so Google and email use the same resolver.
+ */
+export function getOAuthCallbackUrl(nextPath?: unknown): string {
+  const next = getSafeNextPath(nextPath, '/try');
+  const origin = getCanonicalAuthOrigin();
+  return `${origin}/auth/callback?next=${encodeURIComponent(next)}`;
+}
+
+/**
+ * If the browser is on www, move to the apex host before starting OAuth so the
+ * PKCE code verifier and code exchange share one origin.
+ * Returns true when a redirect was started (caller should stop).
+ */
+export function redirectWwwToCanonicalForOAuth(): boolean {
+  if (typeof window === 'undefined') return false;
+  const host = window.location.hostname.toLowerCase();
+  if (host !== WWW_HOST) return false;
+  const url = new URL(window.location.href);
+  url.protocol = 'https:';
+  url.hostname = CANONICAL_HOST;
+  url.port = '';
+  window.location.replace(url.toString());
+  return true;
 }

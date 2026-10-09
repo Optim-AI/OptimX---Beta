@@ -30,6 +30,11 @@ function joinSentences(parts: Array<string | undefined | null | false>): string 
 export function buildCampaignPrompt(input: {
   blueprint: CommercialBlueprintCore;
   shotPlan: ShotPlan;
+  /**
+   * When true (Tamil / Hindi / Malayalam / Kannada), Seedance must NOT generate
+   * spoken voiceover — Gemini TTS is muxed after.
+   */
+  suppressSpokenVoiceover?: boolean;
 }): { campaignPrompt: string; negativePrompt: string } {
   const { blueprint, shotPlan } = input;
   const concept = blueprint.selectedConcept;
@@ -103,6 +108,10 @@ export function buildCampaignPrompt(input: {
       ? `End with a controlled brand/product resolve. Prefer a clean product hero or brand lock; do not invent complex on-screen typography or hallucinated logos.`
       : `Conclude on the product/brand resolve established by the final beat.`;
 
+  const audioDirective = input.suppressSpokenVoiceover
+    ? `AUDIO (CRITICAL): Do NOT generate spoken voiceover, dialogue, narration, or lip-synced speech. Music bed and subtle ambient SFX only. Mouths stay closed or non-speaking. Voiceover will be added in post in another language.`
+    : `AUDIO: Include a clear native English commercial voiceover that sells the product — hook, brand+product, benefit, CTA. Music ducked under speech.`;
+
   const campaignPrompt = joinSentences([
     `Create ONE continuous ${duration}-second commercial advertisement as a single unbroken take of narrative time (not separate clips to stitch).`,
     `Aspect ratio ${blueprint.aspectRatio}.`,
@@ -135,6 +144,7 @@ export function buildCampaignPrompt(input: {
     beatNarrative ? `Chronological visual beats inside this one continuous commercial: ${beatNarrative}` : undefined,
     platform.firstFrameHook ? `Opening hook: ${platform.firstFrameHook}.` : undefined,
     continuityNotes.length ? `Continuity lock: ${continuityNotes.join("; ")}.` : undefined,
+    audioDirective,
     ending,
     artifactAvoid.length
       ? `Artifact mitigation: ${artifactAvoid.join("; ")}.`
@@ -147,6 +157,9 @@ export function buildCampaignPrompt(input: {
     "extra limbs, morphing faces, identity drift, duplicate products",
     "generic stock-ad look, random camera whip, inconsistent wardrobe",
     "invented packaging, wrong brand colors",
+    input.suppressSpokenVoiceover
+      ? "spoken voiceover, dialogue, narration, talking mouths, lip sync speech"
+      : undefined,
     artifactAvoid.slice(0, 3).join(", "),
   ]);
 

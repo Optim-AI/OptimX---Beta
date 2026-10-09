@@ -4,15 +4,13 @@
  */
 import assert from 'node:assert/strict';
 import {
+  getCanonicalAuthOrigin,
   getConfiguredSiteOrigin,
+  getOAuthCallbackUrl,
   getSafeNextPath,
   resolveRequestOrigin,
 } from './safe-next';
-
-assert.equal(getSafeNextPath('/welcome'), '/welcome');
-assert.equal(getSafeNextPath('https://evil.com'), '/welcome');
-assert.equal(getSafeNextPath('//evil.com'), '/welcome');
-console.log('PASS: getSafeNextPath rejects open redirects');
+import { SITE_ORIGIN } from '@/lib/seo/site';
 
 function withEnv(patch: Record<string, string | undefined>, fn: () => void) {
   const prev: Record<string, string | undefined> = {};
@@ -30,6 +28,31 @@ function withEnv(patch: Record<string, string | undefined>, fn: () => void) {
     }
   }
 }
+
+assert.equal(getSafeNextPath('/welcome'), '/welcome');
+assert.equal(getSafeNextPath('https://evil.com'), '/welcome');
+assert.equal(getSafeNextPath('//evil.com'), '/welcome');
+console.log('PASS: getSafeNextPath rejects open redirects');
+
+withEnv(
+  {
+    NODE_ENV: 'production',
+    NEXT_PUBLIC_APP_URL: 'https://wrong.example.com',
+    NEXT_PUBLIC_SITE_URL: undefined,
+  },
+  () => {
+    assert.equal(getCanonicalAuthOrigin(), SITE_ORIGIN);
+    assert.equal(
+      getOAuthCallbackUrl('/try'),
+      `${SITE_ORIGIN}/auth/callback?next=${encodeURIComponent('/try')}`
+    );
+    assert.equal(
+      getOAuthCallbackUrl('https://evil.com'),
+      `${SITE_ORIGIN}/auth/callback?next=${encodeURIComponent('/try')}`
+    );
+    console.log('PASS: production OAuth callback uses canonical apex origin');
+  }
+);
 
 withEnv(
   {

@@ -18,17 +18,18 @@ const Header: React.FC = () => {
     { name: 'Contact', href: '/Contact', type: 'route' as const },
   ];
 
-  const handleSectionClick = (href: string) => {
-    if (pathname !== '/') {
-      router.push(href);
+  const handleSectionClick = (
+    e: React.MouseEvent<HTMLAnchorElement>,
+    href: string
+  ) => {
+    if (pathname !== '/') return;
+    e.preventDefault();
+    const elementId = href.startsWith('/#') ? href.substring(2) : href.replace('#', '');
+    const element = document.getElementById(elementId);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth' });
     } else {
-      const elementId = href.startsWith('/#') ? href.substring(2) : href.replace('#', '');
-      const element = document.getElementById(elementId);
-      if (element) {
-        element.scrollIntoView({ behavior: 'smooth' });
-      } else {
-        window.location.hash = `#${elementId}`;
-      }
+      window.location.hash = `#${elementId}`;
     }
   };
 
@@ -52,15 +53,17 @@ const Header: React.FC = () => {
             {navItems.map((item) => {
               if (item.type === 'section') {
                 return (
-                  <button
+                  <Link
                     key={item.name}
-                    onClick={() => handleSectionClick(item.href)}
+                    href={item.href}
+                    onClick={(e) => handleSectionClick(e, item.href)}
                     className="transition-all duration-300 font-medium relative after:content-[''] after:absolute after:w-full after:scale-x-0 after:h-0.5 after:bottom-0 after:left-0 after:origin-bottom-right after:transition-transform after:duration-300 hover:after:scale-x-100 hover:after:origin-bottom-left"
                     style={{
                       color: colors.foreground,
                       background: 'transparent',
                       padding: 0,
                       border: 0,
+                      textDecoration: 'none',
                     }}
                     onMouseEnter={(e) => {
                       (e.currentTarget as HTMLElement).style.color = colors.primary;
@@ -70,7 +73,7 @@ const Header: React.FC = () => {
                     }}
                   >
                     {item.name}
-                  </button>
+                  </Link>
                 );
               }
 
@@ -147,10 +150,11 @@ const Header: React.FC = () => {
               {navItems.map((item) => {
                 if (item.type === 'section') {
                   return (
-                    <button
+                    <Link
                       key={item.name}
-                      onClick={() => {
-                        handleSectionClick(item.href);
+                      href={item.href}
+                      onClick={(e) => {
+                        handleSectionClick(e, item.href);
                         setIsMenuOpen(false);
                       }}
                       className="block w-full text-left px-3 py-2 transition-all duration-300 font-medium rounded-md"
@@ -158,6 +162,7 @@ const Header: React.FC = () => {
                         color: colors.foreground,
                         background: 'transparent',
                         border: 'none',
+                        textDecoration: 'none',
                       }}
                       onMouseEnter={(e) => {
                         (e.currentTarget as HTMLElement).style.color = colors.primary;
@@ -170,7 +175,7 @@ const Header: React.FC = () => {
                       }}
                     >
                       {item.name}
-                    </button>
+                    </Link>
                   );
                 }
 

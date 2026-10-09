@@ -34,6 +34,7 @@ import { supabase } from '@/auth/supabase/client';
 import { imagesClient, profileClient, chatClient } from '@/database/client-helpers';
 import { apiFetch } from '@/api/fetch';
 import { storageClient } from '@/lib/storage/client';
+import { SITE_SUPPORT_EMAIL } from '@/lib/seo/site';
 
 /* -------------------- Mic Recorder -------------------- */
 type MicRecorderProps = {
@@ -2091,7 +2092,7 @@ const showAcknowledgement =
               <p className="text-sm mb-6" style={{ color: colors.mutedForeground }}>
                 It looks like your credits have reached zero. To continue creating campaigns and generating images, please purchase credits.
                 <br />
-                For help, email us at <a href="mailto:info@optimx.app" className="underline">info@optimx.app</a>
+                For help, email us at <a href={`mailto:${SITE_SUPPORT_EMAIL}`} className="underline">{SITE_SUPPORT_EMAIL}</a>
               </p>
               <div className="flex justify-center gap-3">
                 <Button

@@ -5,6 +5,7 @@ import { Sparkles, Zap, Info, ShieldCheck, Mail, ArrowRight } from "lucide-react
 import { Button } from "../app/web/src/components/ui/button";
 import colors from '@/lib/ui/colors';
 import Link from 'next/link';
+import PageSeo from "@/components/seo/PageSeo";
 
 function withAlpha(token: string, alpha: number) {
   const hslMatch = token.match(/hsl\(\s*([\d.]+)\s+([\d.]+)%\s+([\d.]+)%\s*\)/i);
@@ -32,6 +33,11 @@ const AIUseDisclosure: React.FC = () => {
       className="min-h-screen pb-24 pt-20 relative overflow-hidden"
       style={{ backgroundColor: colors.background, color: colors.foreground }}
     >
+      <PageSeo
+        title="AI Use Disclosure"
+        description="How SkalX AI uses artificial intelligence to generate marketing creatives, and what users should know about AI-assisted outputs."
+        path="/ai-disclosure"
+      />
       <style jsx>{`
         .animation-float { animation: floatY 6s ease-in-out infinite alternate; }
         @keyframes floatY { from { transform: translateY(-8px);} to { transform: translateY(8px);} }
@@ -129,7 +135,7 @@ const AIUseDisclosure: React.FC = () => {
               </p>
 
               <p>
-                If you opt in, you may withdraw consent at any time; we will exclude your data from future training datasets and efforts. Requests to opt-out or delete training contributions can be made via <strong>info@optimx.app</strong>.
+                If you opt in, you may withdraw consent at any time; we will exclude your data from future training datasets and efforts. Requests to opt-out or delete training contributions can be made via <strong>info@skalxai.app</strong>.
               </p>
 
               <h3 className="font-bold mt-8">5. Sensitive data &amp; prohibited uses</h3>
@@ -157,13 +163,13 @@ const AIUseDisclosure: React.FC = () => {
               <h3 className="font-bold mt-8">9. Your choices</h3>
               <ul className="list-disc ml-4">
                 <li>You can choose not to use AI features. Manual upload and publishing workflows remain available.</li>
-                <li>You can opt into the training program (explicit consent) and withdraw later via <strong>info@optimx.app</strong>.</li>
+                <li>You can opt into the training program (explicit consent) and withdraw later via <strong>info@skalxai.app</strong>.</li>
                 <li>You can request deletion of AI generation logs related to your account; contact support for assistance.</li>
               </ul>
 
               <h3 className="font-bold mt-8">10. Contact &amp; concerns</h3>
               <p>
-                If you have questions about how we use AI, want to opt-out of training, or request deletion of data used for model improvement, email us at <strong>info@optimx.app</strong>. For urgent security concerns, contact us via the support channel in the dashboard.
+                If you have questions about how we use AI, want to opt-out of training, or request deletion of data used for model improvement, email us at <strong>info@skalxai.app</strong>. For urgent security concerns, contact us via the support channel in the dashboard.
               </p>
 
             </article>

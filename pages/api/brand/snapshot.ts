@@ -6,6 +6,7 @@ import { getOnboardingActor } from "@/lib/onboarding/actor";
 import { db } from "@/database/client";
 import { profiles } from "@/database/schema";
 import { eq } from "drizzle-orm";
+import { ensureProfile } from "@/lib/auth/ensure-profile";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
@@ -14,6 +15,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!userId) {
       return res.status(401).json({ ok: false, error: "Authentication required" });
     }
+
+    // Ensure profile exists before UPDATE so onboarding state is never silently dropped.
+    await ensureProfile(userId);
 
     if (req.method === "GET") {
       return handleGetBrandSnapshot(res, userId);

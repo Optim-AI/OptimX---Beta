@@ -70,19 +70,16 @@ export async function safeResponseJson<T = unknown>(response: Response): Promise
  */
 export async function authFetch(url: string, options: RequestInit = {}): Promise<Response> {
   const token = await getAuthToken();
-  const existingHeaders: Record<string, string> = {};
-  if (options.headers) {
-    const h = options.headers instanceof Headers
-      ? options.headers
-      : new Headers(options.headers as Record<string, string>);
-    h.forEach((value, key) => { existingHeaders[key] = value; });
+  // Headers is case-insensitive. A plain object is not, so setting both
+  // "Content-Type" and "content-type" sends the header twice. Next.js then
+  // skips JSON parsing and the API sees a raw string body.
+  const headers = new Headers(options.headers);
+  const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
+  if (!isFormData && !headers.has('content-type')) {
+    headers.set('content-type', 'application/json');
   }
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...existingHeaders,
-  };
   if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
+    headers.set('authorization', `Bearer ${token}`);
   }
   return fetch(url, {
     ...options,

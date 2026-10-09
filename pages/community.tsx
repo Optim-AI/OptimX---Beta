@@ -2,16 +2,14 @@
 
 import React, { useRef, useEffect } from "react";
 import { 
-  Instagram,
   Facebook,
-  Linkedin,
-  MessageCircle,
   Bell,
   Sparkles,
 } from "lucide-react";
 import { Button } from "../app/web/src/components/ui/button";
 import colors from '@/lib/ui/colors';
 import Link from 'next/link';
+import PageSeo from "@/components/seo/PageSeo";
 
 function withAlpha(token: string, alpha: number) {
   const hslMatch = token.match(/hsl\(\s*([\d.]+)\s+([\d.]+)%\s+([\d.]+)%\s*\)/i);
@@ -30,11 +28,10 @@ const Community: React.FC = () => {
     topRef.current?.scrollTo({ top: 0 });
   }, []);
 
-  // Company social links (update to real handles as needed)
+  // Only include verified official SkalX social profiles.
+  // Instagram/LinkedIn OptimX URLs removed — no confirmed SkalX handles in repo.
   const handles = {
-    instagram: "https://www.instagram.com/optimx.ai?igsh=MW4wcjN6NXByMmFqbg==",
     facebook: "https://www.facebook.com/share/1BNxZDcfRe/?mibextid=wwXIfr",
-    linkedin: "https://www.linkedin.com/company/optimx-app",
     whatsapp: "https://wa.me/919003815101",
   } as const;
 
@@ -44,6 +41,11 @@ const Community: React.FC = () => {
       className="min-h-screen pb-24 pt-20 relative overflow-hidden"
       style={{ backgroundColor: colors.background, color: colors.foreground }}
     >
+      <PageSeo
+        title="Community"
+        description="Connect with the SkalX AI community on social channels and stay updated on AI marketing creatives and product news."
+        path="/community"
+      />
       <style jsx>{`
         .animation-float { animation: floatY 6s ease-in-out infinite alternate; }
         @keyframes floatY { from { transform: translateY(-8px);} to { transform: translateY(8px);} }
@@ -107,29 +109,13 @@ const Community: React.FC = () => {
             </div>
 
             <div className="mt-6 social-grid">
-              {/* Primary social buttons */}
-        
-              <a href={handles.instagram} target="_blank" rel="noreferrer" className="flex items-center gap-3 p-4 rounded-lg border" style={{ borderColor: withAlpha(colors.border, 0.6), background: colors.card }}>
-                <Instagram className="h-6 w-6" style={{ color: colors.primary }} />
-                <div>
-                  <div style={{ color: colors.foreground, fontWeight: 700 }}>Instagram</div>
-                  <div style={{ color: colors.mutedForeground, fontSize: 13 }}>@optimx.app</div>
-                </div>
-              </a>
+              {/* Primary social buttons — verified profiles only */}
 
               <a href={handles.facebook} target="_blank" rel="noreferrer" className="flex items-center gap-3 p-4 rounded-lg border" style={{ borderColor: withAlpha(colors.border, 0.6), background: colors.card }}>
                 <Facebook className="h-6 w-6" style={{ color: colors.primary }} />
                 <div>
                   <div style={{ color: colors.foreground, fontWeight: 700 }}>Facebook</div>
-                  <div style={{ color: colors.mutedForeground, fontSize: 13 }}>fb.com/optimx.app</div>
-                </div>
-              </a>
-
-              <a href={handles.linkedin} target="_blank" rel="noreferrer" className="flex items-center gap-3 p-4 rounded-lg border" style={{ borderColor: withAlpha(colors.border, 0.6), background: colors.card }}>
-                <Linkedin className="h-6 w-6" style={{ color: colors.primary }} />
-                <div>
-                  <div style={{ color: colors.foreground, fontWeight: 700 }}>LinkedIn</div>
-                  <div style={{ color: colors.mutedForeground, fontSize: 13 }}>Company page</div>
+                  <div style={{ color: colors.mutedForeground, fontSize: 13 }}>Facebook page</div>
                 </div>
               </a>
 
@@ -154,12 +140,12 @@ const Community: React.FC = () => {
               <div>
                 <h3 style={{ color: colors.foreground }}>Need help?</h3>
                 <p style={{ color: colors.mutedForeground }}>
-                  Email: <strong>info@optimx.app</strong>
+                  Email: <strong>info@skalxai.app</strong>
                   <br /> Join our Discord for real-time help and product announcements.
                 </p>
                 <div className="mt-3 flex gap-3">
-                  <Button size="sm" style={{ background: colors.gradientPrimary, color: colors.primaryForeground }}>
-                    <a href="/support" className="flex items-center gap-2">Contact Support</a>
+                  <Button size="sm" asChild style={{ background: colors.gradientPrimary, color: colors.primaryForeground }}>
+                    <Link href="/help-center" className="flex items-center gap-2">Contact Support</Link>
                   </Button>
                 </div>
               </div>

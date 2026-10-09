@@ -4,6 +4,7 @@ import React, { useRef, useEffect } from "react";
 import { Sparkles, ArrowRight } from "lucide-react";
 import { Button } from "../app/web/src/components/ui/button";
 import colors from '@/lib/ui/colors';
+import PageSeo from "@/components/seo/PageSeo";
 
 /** Convert "hsl(H S% L%)" -> "hsla(H, S%, L%, a)" for inline usage */
 function withAlpha(token: string, alpha: number) {
@@ -30,6 +31,11 @@ const DataHandlingSecurity: React.FC = () => {
       className="min-h-screen pb-24 pt-20 relative overflow-hidden"
       style={{ backgroundColor: colors.background, color: colors.foreground }}
     >
+      <PageSeo
+        title="Data Handling & Security"
+        description="Learn how SkalX AI handles customer data and security practices for our AI marketing platform."
+        path="/data-handling-security"
+      />
       <style jsx>{`
         .animation-float { animation: floatY 6s ease-in-out infinite alternate; }
         @keyframes floatY { from { transform: translateY(-8px);} to { transform: translateY(8px);} }
@@ -176,7 +182,7 @@ const DataHandlingSecurity: React.FC = () => {
                 <li>Download their data (on request)</li>
               </ul>
 
-              <p>Requests are processed via <strong>info@optimx.app</strong> within 15 days.</p>
+              <p>Requests are processed via <strong>info@skalxai.app</strong> within 15 days.</p>
             </article>
 
             <div className="mt-8 flex justify-between items-center">

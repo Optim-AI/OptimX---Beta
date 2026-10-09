@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/app/web/src/components/ui/button";
 import colors from "@/lib/ui/colors";
+import PageSeo from "@/components/seo/PageSeo";
 
 const TOC_ITEMS = [
   { id: "what-are-cookies", label: "What Are Cookies?" },
@@ -134,6 +135,11 @@ const CookiePolicy: React.FC = () => {
       className="min-h-screen pb-24 pt-20 relative"
       style={{ backgroundColor: colors.background, color: colors.foreground }}
     >
+      <PageSeo
+        title="Cookie Policy"
+        description="Learn how SkalX AI uses cookies and similar technologies on skalxai.app and related services."
+        path="/cpolicy"
+      />
       <div
         className="absolute inset-0 pointer-events-none"
         style={{
@@ -441,7 +447,7 @@ const CookiePolicy: React.FC = () => {
                 For questions regarding this Cookie Policy or data practices:
               </p>
               <p className="text-[15px] leading-[1.7] mt-2" style={{ color: colors.foreground }}>
-                Email: info@optimx.app
+                Email: info@skalxai.app
               </p>
             </SectionBlock>
 

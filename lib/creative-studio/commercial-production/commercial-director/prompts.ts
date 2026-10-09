@@ -8,6 +8,10 @@ import {
   classifyProduct,
   productIntelligenceToPromptBlock,
 } from "../../product-intelligence";
+import {
+  usesGeminiTts,
+  voiceoverLanguageDisplayName,
+} from "../audio/voiceover-languages";
 
 export function buildDirectorSystemPrompt(): string {
   return `You are the Commercial Director for SkalX AI Ad Video Production.
@@ -64,6 +68,26 @@ export function buildDirectorUserPrompt(brief: CampaignBrief): string {
       ? "Use 5–7 visual beats spanning 0–30s"
       : "Use 4–6 visual beats spanning 0–15s";
 
+  const externalTts = usesGeminiTts(brief.voiceover?.language);
+  const voLanguage = voiceoverLanguageDisplayName(brief.voiceover?.language);
+  const voiceoverBlock = externalTts
+    ? `VOICEOVER ROUTING (CRITICAL):
+language: ${voLanguage}
+provider: Gemini 3.8 Flash TTS (post-production)
+Seedance must NOT invent spoken dialogue or English/native voiceover.
+In soundDesignIntent.voiceover write: "none — external ${voLanguage} TTS added after generation".
+Prefer non-speaking characters / closed mouths. Music + ambience only in the video model.
+CTA enabled: ${brief.voiceover?.ctaEnabled !== false ? "yes" : "no"}${
+        brief.voiceover?.cta ? `\npreferred CTA: ${brief.voiceover.cta}` : ""
+      }`
+    : `VOICEOVER ROUTING:
+language: English
+provider: Seedance native spoken audio
+Plan for a clear English commercial VO in soundDesignIntent.
+CTA enabled: ${brief.voiceover?.ctaEnabled !== false ? "yes" : "no"}${
+        brief.voiceover?.cta ? `\npreferred CTA: ${brief.voiceover.cta}` : ""
+      }`;
+
   return `CAMPAIGN BRIEF
 campaignId: ${brief.campaignId}
 durationSeconds: ${duration} (finished commercial length — NOT a single provider clip)
@@ -75,6 +99,8 @@ campaignMessage: ${brief.campaignMessage || "not provided"}
 offer: ${brief.offer || brief.product.offer || "not provided"}
 userConcept: ${brief.userConcept || "not provided"}
 hookType: ${brief.hookType || brief.creativeStrategy?.hookType || "not provided"}
+
+${voiceoverBlock}
 
 BRAND
 name: ${brief.brand.name}
