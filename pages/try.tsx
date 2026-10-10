@@ -31,14 +31,11 @@ import {
   type MarketingPlanId,
 } from '@/lib/billing/marketing-plans';
 import TryPricingExperience from '@/app/web/src/components/onboarding/TryPricingExperience';
-import BrandDiscoveryStage from '@/app/web/src/components/onboarding/BrandDiscoveryStage';
-import BrandDnaReveal from '@/app/web/src/components/onboarding/BrandDnaReveal';
+import BrandAnalysisProgress from '@/app/web/src/components/onboarding/BrandAnalysisProgress';
+import BrandIntelligenceReveal from '@/app/web/src/components/onboarding/BrandIntelligenceReveal';
 import DemoChoicePanel from '@/app/web/src/components/onboarding/DemoChoicePanel';
-import CreativeAssemblyStage from '@/app/web/src/components/onboarding/CreativeAssemblyStage';
-import CreativeShowcase from '@/app/web/src/components/onboarding/CreativeShowcase';
-import OnboardingAuthPanel from '@/app/web/src/components/onboarding/OnboardingAuthPanel';
-import { classifyHeroInput } from '@/lib/onboarding/entry-input';
-import type { BrandAnalysisStage } from '@/lib/onboarding/try-onboarding';
+import DemoGeneratingProgress from '@/app/web/src/components/onboarding/DemoGeneratingProgress';
+import DemoCreativeGallery from '@/app/web/src/components/onboarding/DemoCreativeGallery';
 
 type Screen =
   | 'loading'
@@ -48,14 +45,20 @@ type Screen =
   | 'demo'
   | 'demo_generating'
   | 'demo_result'
-  | 'auth'
   | 'pricing';
 
 type AnalysisPhase = 'idle' | 'started' | 'processing' | 'complete' | 'error';
 
+function normalizeWebsiteUrl(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return '';
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
+}
+
 function isLikelyUrl(raw: string): boolean {
-  const result = classifyHeroInput(raw);
-  return result.ok && result.entry.kind === 'website';
+  const t = raw.trim();
+  return /^https?:\/\//i.test(t) || /^[a-z0-9.-]+\.[a-z]{2,}/i.test(t);
 }
 
 /**
@@ -79,15 +82,10 @@ export default function TryPage() {
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [revealError, setRevealError] = useState<string | null>(null);
   const [selectedPlanId, setSelectedPlanId] = useState<MarketingPlanId | null>(null);
-  const [authed, setAuthed] = useState(false);
-  const [analysisStage, setAnalysisStage] = useState<BrandAnalysisStage | null>(null);
   const [hasActiveSubscription, setHasActiveSubscription] = useState(false);
   const [activePlanName, setActivePlanName] = useState<string | null>(null);
   const [checkoutContinuing, setCheckoutContinuing] = useState(false);
   const demoRequestInFlight = React.useRef(false);
-  const analysisInFlight = React.useRef(false);
-  const authedRef = React.useRef(false);
-  const analysisAbort = React.useRef<AbortController | null>(null);
 
   const queryPrefillDone = React.useRef(false);
 
@@ -139,62 +137,8 @@ export default function TryPage() {
     const { data } = await supabase.auth.getUser();
     const user = data?.user ?? null;
 
-    setAuthed(Boolean(user));
-    authedRef.current = Boolean(user);
-
-    if (user) {
-      try {
-        await authFetch('/api/onboarding/claim', { method: 'POST' });
-      } catch {
-        /* guest claim is best-effort */
-      }
-    }
-
     if (!user) {
-      await fetch('/api/onboarding/session', { method: 'POST' });
-      let snapshot: BrandSnapshot | null = null;
-      try {
-        const snapRes = await authFetch('/api/brand/snapshot');
-        const snapData = await snapRes.json();
-        if (snapData?.ok && snapData.brandSnapshot) {
-          snapshot = snapData.brandSnapshot as BrandSnapshot;
-          setBrandSnapshot(snapshot);
-        }
-      } catch {
-        /* ignore */
-      }
-
-      let onboarding: TryOnboardingState | null = null;
-      try {
-        const prefRes = await authFetch('/api/user/preferences');
-        const prefData = await prefRes.json();
-        if (prefData?.ok) onboarding = parseTryOnboarding(prefData.preferences);
-      } catch {
-        /* ignore */
-      }
-
-      if (onboarding?.brandName) setBrandName(onboarding.brandName);
-      if (onboarding?.websiteUrl) setWebsiteUrl(onboarding.websiteUrl);
-      if (onboarding?.demo) setDemoState(onboarding.demo);
-      if (onboarding?.catalogProducts?.length) setCatalogProducts(onboarding.catalogProducts);
-      if (onboarding?.selectedProduct) setSelectedProduct(onboarding.selectedProduct);
-      if (onboarding?.analysisStage) setAnalysisStage(onboarding.analysisStage);
-
-      const status = onboarding?.status;
-      if (isOnboardingDemoComplete(onboarding?.demo)) {
-        setScreen('demo_result');
-        return;
-      }
-      if (status === 'analyzing') {
-        setScreen('analyzing');
-        setAnalysisStage(onboarding?.analysisStage || 'connecting');
-        return;
-      }
-      if (status === 'brand_analyzed' || status === 'demo_ready' || status === 'demo_pending') {
-        setScreen(status === 'brand_analyzed' ? 'reveal' : 'demo');
-        return;
-      }
-      setScreen('brand');
+      router.replace('/auth/signin?next=/try');
       return;
     }
 
@@ -277,33 +221,6 @@ export default function TryPage() {
     bootstrap();
   }, [router.isReady, bootstrap]);
 
-  useEffect(() => {
-    if (screen !== 'analyzing') return;
-    const id = window.setInterval(async () => {
-      if (analysisInFlight.current) return;
-      try {
-        const prefRes = await authFetch('/api/user/preferences');
-        const prefData = await prefRes.json();
-        const onboarding = parseTryOnboarding(prefData?.preferences);
-        if (onboarding?.analysisStage) setAnalysisStage(onboarding.analysisStage);
-        if (onboarding?.status === 'brand_analyzed') {
-          const snapRes = await authFetch('/api/brand/snapshot');
-          const snapData = await snapRes.json();
-          if (snapData?.ok && snapData.brandSnapshot) {
-            setBrandSnapshot(snapData.brandSnapshot);
-          }
-          if (onboarding.catalogProducts?.length) setCatalogProducts(onboarding.catalogProducts);
-          if (onboarding.selectedProduct) setSelectedProduct(onboarding.selectedProduct);
-          if (onboarding.brandName) setBrandName(onboarding.brandName);
-          setScreen('reveal');
-        }
-      } catch {
-        /* ignore */
-      }
-    }, 2500);
-    return () => window.clearInterval(id);
-  }, [screen]);
-
   // Prefill from hero query params once
   useEffect(() => {
     if (!router.isReady || queryPrefillDone.current) return;
@@ -315,27 +232,11 @@ export default function TryPage() {
       setWebsiteUrl(website);
       queryPrefillDone.current = true;
     } else if (brand) {
-      if (isLikelyUrl(brand)) {
-        const classified = classifyHeroInput(brand);
-        if (classified.ok && classified.entry.kind === 'website') {
-          setWebsiteUrl(classified.entry.url);
-        }
-      } else setBrandName(brand);
+      if (isLikelyUrl(brand)) setWebsiteUrl(normalizeWebsiteUrl(brand));
+      else setBrandName(brand);
       queryPrefillDone.current = true;
     }
   }, [router.isReady, router.query.website, router.query.brand]);
-
-  const autoAnalyzeStarted = React.useRef(false);
-  useEffect(() => {
-    if (screen !== 'brand' || autoAnalyzeStarted.current) return;
-    if (typeof router.query.website !== 'string' || !router.query.website.trim()) return;
-    if (!websiteUrl.trim()) return;
-    if (brandSnapshot?.name) return;
-    autoAnalyzeStarted.current = true;
-    void runWebsiteAnalysis();
-    // runWebsiteAnalysis is recreated each render; the ref guards a single start.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [screen, websiteUrl, router.query.website, brandSnapshot?.name]);
 
   const onFileChange = async (file: File | null) => {
     if (!file) return;
@@ -358,25 +259,16 @@ export default function TryPage() {
   };
 
   const runWebsiteAnalysis = async () => {
-    const classified = classifyHeroInput(websiteUrl);
-    if (!classified.ok || classified.entry.kind !== 'website') {
-      setError(classified.ok ? 'Paste a website URL, or upload a product image instead.' : classified.error);
+    const name = brandName.trim();
+    const url = normalizeWebsiteUrl(websiteUrl);
+    if (!name) {
+      setError('Enter your brand or company name.');
       return;
     }
-    const url = classified.entry.url;
-    let hostName = '';
-    try {
-      hostName = new URL(url).hostname.replace(/^www\./, '');
-    } catch {
-      hostName = '';
+    if (!url) {
+      setError('Paste a website URL, or upload a product image instead.');
+      return;
     }
-    const name = brandName.trim() || hostName || 'Your brand';
-
-    if (analysisInFlight.current) return;
-    analysisInFlight.current = true;
-    const controller = new AbortController();
-    analysisAbort.current = controller;
-    let pollId = 0;
 
     setError(null);
     setSaving(true);
@@ -384,15 +276,12 @@ export default function TryPage() {
     setRevealError(null);
     setScreen('analyzing');
     setAnalysisPhase('started');
-    setAnalysisStage('connecting');
 
     try {
-      if (authedRef.current) {
-        await authFetch('/api/profile/upsert', {
-          method: 'POST',
-          body: JSON.stringify({ businessName: name }),
-        });
-      }
+      await authFetch('/api/profile/upsert', {
+        method: 'POST',
+        body: JSON.stringify({ businessName: name }),
+      });
 
       await persistOnboarding({
         status: 'analyzing',
@@ -400,49 +289,31 @@ export default function TryPage() {
         websiteUrl: url,
         source: 'website',
         productImagePreview: null,
-        analysisStage: 'connecting',
       });
 
-      const pollIdLocal = window.setInterval(async () => {
-        try {
-          const prefRes = await authFetch('/api/user/preferences');
-          const prefData = await prefRes.json();
-          const onboarding = parseTryOnboarding(prefData?.preferences);
-          if (onboarding?.analysisStage) setAnalysisStage(onboarding.analysisStage);
-        } catch {
-          /* ignore */
-        }
-      }, 2000);
+      setAnalysisPhase('processing');
 
-      pollId = pollIdLocal;
+      const analyzePromise = authFetch('/api/brand/fullAnalyze', {
+        method: 'POST',
+        body: JSON.stringify({ url }),
+      });
+      // Same catalogue path as Ad Studio / Content Studio
+      const scanPromise = authFetch('/api/content-studio/scan', {
+        method: 'POST',
+        body: JSON.stringify({ url }),
+      }).catch(() => null);
 
-      try {
-        const analyzeResponse = await authFetch('/api/brand/fullAnalyze', {
-          method: 'POST',
-          body: JSON.stringify({ url, onboarding: true }),
-          signal: controller.signal,
-        });
-        const data = await analyzeResponse.json();
-        if (!analyzeResponse.ok || !data?.result) {
-          throw new Error(data?.error || data?.details || 'Brand analysis failed');
-        }
+      const [analyzeResponse, scanResponse] = await Promise.all([
+        analyzePromise,
+        scanPromise,
+      ]);
 
-        setAnalysisStage('products');
-        await persistOnboarding({
-          status: 'analyzing',
-          brandName: name,
-          websiteUrl: url,
-          source: 'website',
-          analysisStage: 'products',
-        });
+      const data = await analyzeResponse.json();
+      if (!analyzeResponse.ok || !data?.result) {
+        throw new Error(data?.error || data?.details || 'Brand analysis failed');
+      }
 
-        const scanResponse = await authFetch('/api/content-studio/scan', {
-          method: 'POST',
-          body: JSON.stringify({ url }),
-          signal: controller.signal,
-        }).catch(() => null);
-
-        const mapped = mapFullAnalyzeToBrandSnapshot(data.result);
+      const mapped = mapFullAnalyzeToBrandSnapshot(data.result);
       if (!mapped.name || mapped.name === 'Unknown Brand') {
         mapped.name = name;
       }
@@ -474,7 +345,6 @@ export default function TryPage() {
         }
       }
 
-      setAnalysisStage('dna');
       await saveBrandSnapshot(mapped);
       setBrandSnapshot(mapped);
       setCatalogProducts(products);
@@ -486,27 +356,17 @@ export default function TryPage() {
         brandName: mapped.name || name,
         websiteUrl: url,
         source: 'website',
-        analysisStage: 'dna',
         catalogProducts: products.slice(0, 24),
         selectedProduct: products[0] || null,
       });
 
       setAnalysisPhase('complete');
       setScreen('reveal');
-      } finally {
-        window.clearInterval(pollId);
-      }
     } catch (e: any) {
-      if (e?.name === 'AbortError') {
-        setScreen('brand');
-        return;
-      }
       setAnalysisPhase('error');
       setError(e?.message || 'Something went wrong analyzing your website.');
-      setScreen('analyzing');
+      setScreen('brand');
     } finally {
-      analysisInFlight.current = false;
-      analysisAbort.current = null;
       setSaving(false);
       setCatalogLoading(false);
     }
@@ -529,12 +389,10 @@ export default function TryPage() {
     setAnalysisPhase('started');
 
     try {
-      if (authedRef.current) {
-        await authFetch('/api/profile/upsert', {
-          method: 'POST',
-          body: JSON.stringify({ businessName: name }),
-        });
-      }
+      await authFetch('/api/profile/upsert', {
+        method: 'POST',
+        body: JSON.stringify({ businessName: name }),
+      });
 
       await persistOnboarding({
         status: 'analyzing',
@@ -605,7 +463,7 @@ export default function TryPage() {
     setRevealError(null);
     if (catalogProducts.length > 0 && !selectedProduct) {
       setRevealError('Select a product to continue.');
-      return false;
+      return;
     }
 
     let nextSnapshot = brandSnapshot;
@@ -638,7 +496,6 @@ export default function TryPage() {
       selectedProduct: selectedProduct || null,
     });
     setScreen('demo');
-    return true;
   };
 
   const requestPosterDemo = async () => {
@@ -726,10 +583,6 @@ export default function TryPage() {
   };
 
   const goToNextAfterDemo = async () => {
-    if (!authedRef.current) {
-      setScreen('auth');
-      return;
-    }
     await persistOnboarding({
       status: 'pricing_seen',
       brandName: brandSnapshot?.name || brandName,
@@ -777,35 +630,6 @@ export default function TryPage() {
     } finally {
       setCheckoutContinuing(false);
     }
-  };
-
-  const finishAuth = async () => {
-    authedRef.current = true;
-    setAuthed(true);
-    try {
-      await authFetch('/api/onboarding/claim', { method: 'POST' });
-    } catch {
-      /* claim retries on next load */
-    }
-    let subscribed = false;
-    try {
-      const subRes = await authFetch('/api/billing/subscriptions/current');
-      const subData = await subRes.json();
-      subscribed = Boolean(
-        subData?.success &&
-          subData?.hasSubscription &&
-          (subData?.subscription?.status === 'active' || subData?.subscription?.status === 'trialing')
-      );
-      setHasActiveSubscription(subscribed);
-      setActivePlanName(subData?.subscription?.plan?.name || null);
-    } catch {
-      subscribed = false;
-    }
-    if (subscribed) {
-      router.replace(WORKSPACE_PATH);
-      return;
-    }
-    setScreen('pricing');
   };
 
   const demoCreatives = useMemo(
@@ -874,15 +698,13 @@ export default function TryPage() {
           screen === 'demo' ||
           screen === 'demo_generating' ||
           screen === 'demo_result' ||
-          screen === 'auth' ||
           screen === 'pricing') && (
           <button
             type="button"
             onClick={() => {
               if (screen === 'demo' || screen === 'demo_generating') setScreen('reveal');
               else if (screen === 'demo_result') setScreen('demo');
-              else if (screen === 'auth') setScreen('demo_result');
-              else if (screen === 'pricing') setScreen(authed ? 'demo_result' : 'auth');
+              else if (screen === 'pricing') setScreen('demo_result');
               else setScreen('brand');
             }}
             className="inline-flex items-center gap-2 text-sm"
@@ -1046,46 +868,25 @@ export default function TryPage() {
         )}
 
         {screen === 'analyzing' && (
-          <BrandDiscoveryStage
+          <BrandAnalysisProgress
             brandName={brandName}
-            stage={analysisStage}
-            error={analysisPhase === 'error' ? error : null}
-            onRetry={() => {
-              setError(null);
-              setAnalysisPhase('started');
-              runWebsiteAnalysis();
-            }}
-            onCancel={() => {
-              analysisAbort.current?.abort();
-              setScreen('brand');
-            }}
+            analysisPhase={analysisPhase}
           />
         )}
 
         {screen === 'reveal' && (
-          <BrandDnaReveal
+          <BrandIntelligenceReveal
             brand={brandSnapshot}
             brandName={brandName}
-            websiteUrl={websiteUrl}
             products={catalogProducts}
             selectedProduct={selectedProduct}
             onSelectProduct={(p) => {
               setSelectedProduct(p);
               setRevealError(null);
             }}
-            onChangeBrand={(next) => {
-              setBrandSnapshot(next);
-              setBrandName(next.name || brandName);
-              void saveBrandSnapshot(next);
-            }}
-            onContinue={() => {
-              void (async () => {
-                const ready = await goToDemo();
-                if (ready) await requestPosterDemo();
-              })();
-            }}
-            continueError={revealError || error}
-            continuing={saving || demoRequestInFlight.current}
+            onContinue={goToDemo}
+            continueError={revealError}
+            catalogLoading={catalogLoading}
           />
         )}
 
@@ -1101,23 +902,18 @@ export default function TryPage() {
         )}
 
         {screen === 'demo_generating' && (
-          <CreativeAssemblyStage
+          <DemoGeneratingProgress
             progressStage={demoState?.progressStage}
             creativeCount={demoState?.creatives?.length || 0}
-            error={null}
           />
         )}
 
         {screen === 'demo_result' && demoCreatives.length > 0 && (
-          <CreativeShowcase
+          <DemoCreativeGallery
             brandName={brandSnapshot?.name || brandName || 'your brand'}
             creatives={demoCreatives}
             onContinue={goToNextAfterDemo}
           />
-        )}
-
-        {screen === 'auth' && (
-          <OnboardingAuthPanel onAuthenticated={finishAuth} />
         )}
 
         {screen === 'pricing' && (

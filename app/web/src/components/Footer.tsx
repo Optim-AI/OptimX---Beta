@@ -72,16 +72,21 @@ const Footer: React.FC = () => {
 
   return (
     <footer style={{ backgroundColor: '#121212', borderTop: `1px solid ${colors.border}` }}>
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-10 max-w-5xl">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6">
-          <div className="flex items-center gap-4">
-            <img
-              src="/images/SkalX_Logo.png"
-              alt="SkalX AI"
-              className="h-5 w-auto object-contain"
-            />
+      <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-16">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-8">
+          <div className="col-span-2 md:col-span-1">
+            <div className="flex items-center space-x-2 mb-4">
+              <img
+                src="/images/SkalX_Logo.png"
+                alt="SkalX AI Logo"
+                className="h-8 w-auto object-contain"
+              />
+            </div>
+            <p className="text-sm leading-relaxed mb-4" style={{ color: colors.mutedForeground }}>
+              An AI Marketing Team — Without Expanding Headcount.
+            </p>
             <Link href="/try" className="text-sm font-medium" style={{ color: colors.primary }}>
-              Get Started →
+              Try Now →
             </Link>
           </div>
 
@@ -155,9 +160,6 @@ const Footer: React.FC = () => {
             © {new Date().getFullYear()} SkalX AI. All rights reserved.
           </div>
         </div>
-        <p className="mt-8 text-sm" style={{ color: colors.mutedForeground }}>
-          © {new Date().getFullYear()} SkalX AI. All rights reserved.
-        </p>
       </div>
     </footer>
   );

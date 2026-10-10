@@ -2,60 +2,25 @@
 
 import React, { useState, useRef, useEffect, memo } from 'react';
 import Image from 'next/image';
-import { motion, useReducedMotion } from 'framer-motion';
 import colors from '@/lib/ui/colors';
 import { useScrollAnimation } from '../hooks/use-scroll-animation';
 
-type CarouselMediaItem =
-  | { type: 'image'; src: string; label: string }
-  | { type: 'video'; src: string; label: string };
+type CarouselMediaItem = { type: 'image'; src: string } | { type: 'video'; src: string };
 
-const GALLERY: CarouselMediaItem[] = [
-  {
-    type: 'image',
-    src: '/images/partners/boat-stone-350-deadpool.png',
-    label: 'Poster',
-  },
-  {
-    type: 'video',
-    src: '/videos/1772472492670_video.mp4',
-    label: 'AI video',
-  },
-  {
-    type: 'image',
-    src: '/images/partners/jimmys-cocktails-green-apple-martini.png',
-    label: 'Social creative',
-  },
-  {
-    type: 'video',
-    src: '/videos/1772472655830_video.mp4',
-    label: 'AI video',
-  },
-  {
-    type: 'image',
-    src: '/images/partners/plum-cc332b6e-16f6-42a6-937c-cca1d9a11816.png',
-    label: 'Product ad',
-  },
-  {
-    type: 'image',
-    src: '/images/partners/bombay-shaving-legend-365.png',
-    label: 'Poster',
-  },
-  {
-    type: 'video',
-    src: '/videos/1772472814538_video.mp4',
-    label: 'AI video',
-  },
-  {
-    type: 'image',
-    src: '/images/partners/wild_date-a0935436-0c67-4d06-a04a-92172fdb7fd9.png',
-    label: 'Social creative',
-  },
-  {
-    type: 'image',
-    src: '/images/partners/download_dark_choco-b1dee636-d24e-4528-840a-9cee4a332923.png',
-    label: 'Product ad',
-  },
+const AD_CREATIVE_IMAGES = [
+  '/images/partners/download__5_-2d306f55-d9c8-4c5b-acbd-5b6812d25c56.png',
+  '/images/partners/jimmys-cocktails-green-apple-martini.png',
+  '/images/partners/download__2_-df378dbd-3706-431d-bbfd-8f2286e45de1.png',
+  '/images/partners/plum-cc332b6e-16f6-42a6-937c-cca1d9a11816.png',
+  '/images/partners/eaa4a0c4-064b-487b-8d58-a28b77d2a015_1763752969200_gen-b7af8568-d936-4c20-a335-9a90a4f28709.png',
+  '/images/partners/download_dark_choco-b1dee636-d24e-4528-840a-9cee4a332923.png',
+  '/images/partners/download__23_-5bb7c097-7ed8-4e26-9f09-b2c3c0dab73f.png',
+  '/images/partners/download__24_-f934ff9b-83a1-48c1-a07b-1bdd9ceb13a9.png',
+  '/images/partners/download__8_-acc0be34-f324-4ae1-a42b-803835bca987.png',
+  '/images/partners/wild_date-a0935436-0c67-4d06-a04a-92172fdb7fd9.png',
+  '/images/partners/download__10_-0c8442ce-4905-42ec-a447-17f470161620.png',
+  '/images/partners/bombay-shaving-legend-365.png',
+  '/images/partners/boat-stone-350-deadpool.png',
 ];
 
 const AD_CREATIVE_VIDEOS: string[] = [
@@ -108,7 +73,6 @@ function mediaAlt(item: CarouselMediaItem, ordinal: number): string {
 const LazyVideo = memo(function LazyVideo({ src, label }: { src: string; label: string }) {
   const ref = useRef<HTMLVideoElement>(null);
   const [isVisible, setIsVisible] = useState(false);
-  const reduceMotion = useReducedMotion();
 
   useEffect(() => {
     const el = ref.current;
@@ -133,7 +97,7 @@ const LazyVideo = memo(function LazyVideo({ src, label }: { src: string; label: 
       muted
       loop
       playsInline
-      autoPlay={isVisible && !reduceMotion}
+      autoPlay={isVisible}
       preload="none"
       className="absolute inset-0 w-full h-full object-cover"
       aria-label={label}
@@ -142,16 +106,16 @@ const LazyVideo = memo(function LazyVideo({ src, label }: { src: string; label: 
 });
 
 /**
- * Compact gallery of real SkalX-supported outputs.
+ * Extracted from Hero — same assets, lazy video, and CSS scroll animation.
+ * Mounted once on the homepage as the creative proof section.
  */
 const CreativeShowcase: React.FC = () => {
   const { elementRef, isVisible } = useScrollAnimation({ threshold: 0.1 });
-  const reduceMotion = useReducedMotion();
 
   return (
     <section
       id="showcase"
-      className="py-14 md:py-20 relative overflow-hidden"
+      className="py-16 md:py-24 relative overflow-hidden section-solid"
       style={{ backgroundColor: '#121212' }}
     >
       <style jsx>{`
@@ -164,7 +128,7 @@ const CreativeShowcase: React.FC = () => {
           }
         }
         .showcase-ad-carousel-track {
-          animation: adCarouselScroll 42s linear infinite;
+          animation: adCarouselScroll 45s linear infinite;
         }
         @media (prefers-reduced-motion: reduce) {
           .showcase-ad-carousel-track {
@@ -176,26 +140,23 @@ const CreativeShowcase: React.FC = () => {
       <div
         ref={elementRef}
         className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10"
+        style={{
+          opacity: isVisible ? 1 : 0,
+          transform: isVisible ? 'translateY(0)' : 'translateY(20px)',
+          transition: 'opacity 0.7s cubic-bezier(0.16,1,0.3,1), transform 0.7s cubic-bezier(0.16,1,0.3,1)',
+        }}
       >
-        <motion.div
-          className="text-center mb-8 max-w-lg mx-auto"
-          initial={reduceMotion ? false : { opacity: 0, y: 16 }}
-          animate={isVisible || reduceMotion ? { opacity: 1, y: 0 } : { opacity: 0, y: 16 }}
-          transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-        >
-          <p
-            className="text-xs uppercase tracking-[0.2em] mb-3"
-            style={{ color: colors.primary }}
-          >
-            What you can create
-          </p>
+        <div className="text-center mb-10 max-w-2xl mx-auto">
           <h2
-            className="text-3xl md:text-4xl font-normal leading-tight"
+            className="text-3xl md:text-[40px] font-normal leading-tight mb-4"
             style={{ color: colors.foreground }}
           >
-            Posters. Social. Video.
+            From product to campaign-ready creative.
           </h2>
-        </motion.div>
+          <p className="text-lg font-extralight" style={{ color: colors.mutedForeground }}>
+            Create personalized marketing content across products, formats, and campaigns.
+          </p>
+        </div>
 
         <div className="relative overflow-hidden -mx-4 sm:mx-0">
           <div className="showcase-ad-carousel-track flex gap-4 w-max" style={{ width: 'max-content' }}>
@@ -204,11 +165,11 @@ const CreativeShowcase: React.FC = () => {
               const alt = mediaAlt(item, ordinal);
               return (
               <div
-                key={`${item.src}-${index}`}
-                className="group flex-shrink-0 w-[160px] sm:w-[200px] md:w-[220px] rounded-2xl overflow-hidden transition-transform duration-300 hover:-translate-y-1"
+                key={index}
+                className="flex-shrink-0 w-[220px] sm:w-[260px] md:w-[280px] rounded-[16px] overflow-hidden"
                 style={{
                   border: '1px solid rgba(255,255,255,0.08)',
-                  boxShadow: '0 8px 24px hsl(0 0% 0% / 0.35)',
+                  boxShadow: '0 4px 12px hsl(0 0% 0% / 0.3)',
                 }}
               >
                 <div className="relative aspect-[3/4] w-full">
@@ -218,7 +179,7 @@ const CreativeShowcase: React.FC = () => {
                       alt={alt}
                       fill
                       className="object-cover"
-                      sizes="(max-width: 640px) 160px, 220px"
+                      sizes="(max-width: 640px) 220px, (max-width: 768px) 260px, 280px"
                     />
                   ) : (
                     <LazyVideo
@@ -226,16 +187,6 @@ const CreativeShowcase: React.FC = () => {
                       label={alt}
                     />
                   )}
-                  <span
-                    className="absolute left-2 bottom-2 text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-md"
-                    style={{
-                      background: 'rgba(0,0,0,0.6)',
-                      color: colors.foreground,
-                      backdropFilter: 'blur(6px)',
-                    }}
-                  >
-                    {item.label}
-                  </span>
                 </div>
               </div>
               );

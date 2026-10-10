@@ -21,12 +21,13 @@ const Header = dynamic(() => import("../app/web/src/components/Header"), {
   ssr: true,
   loading: HeaderSkeleton,
 });
+const ParallaxBackground = dynamic(
+  () => import("../app/web/src/components/ParallaxBackground"),
+  { ssr: false }
+);
 const Hero = dynamic(() => import("../app/web/src/components/Hero"), {
   ssr: true,
   loading: HeroSkeleton,
-});
-const BrandJourney = dynamic(() => import("../app/web/src/components/BrandJourney"), {
-  ssr: false,
 });
 const CreativeShowcase = dynamic(
   () => import("../app/web/src/components/CreativeShowcase"),
@@ -73,9 +74,12 @@ const Home: React.FC = () => {
       <Header />
       <main className="relative z-10">
         <Hero />
-        <BrandJourney />
         <CreativeShowcase />
-        <HowItWorks />
+        <HowCreditsWork />
+        <ProductSection />
+        <BuiltFor />
+        <AboutPreview />
+        <FAQ />
         <FinalCTA />
       </main>
       <Footer />
