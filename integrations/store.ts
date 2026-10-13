@@ -177,6 +177,7 @@ export async function readSavedIntegration(options?: { userId?: string | null; p
     user_id: integration.userId,
     provider: integration.provider,
     scopes: integration.scopes ?? null,
+    metadata: integration.metadata ?? null,
     // Health tracking fields
     tokenExpiresAt: integration.tokenExpiresAt ?? null,
     healthStatus: integration.healthStatus ?? 'healthy',

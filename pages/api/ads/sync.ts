@@ -55,13 +55,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             triggerSource: "cron",
             lookbackDays: Number(req.body?.lookbackDays || req.query.lookbackDays) || 7,
           });
-          results.push({ userId: row.userId, provider, ...r });
+          results.push({
+            userId: row.userId,
+            provider,
+            ok: r.ok,
+            status: r.status,
+            runId: r.runId,
+            entitiesUpserted: r.entitiesUpserted,
+            metricsUpserted: r.metricsUpserted,
+            errorMessage: r.errorMessage || null,
+            warnings: r.warnings,
+          });
         } catch (e: any) {
           results.push({
             userId: row.userId,
             provider,
             ok: false,
+            status: "error",
             error: e?.message,
+            errorMessage: e?.message,
           });
         }
       }
@@ -94,11 +106,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       triggerSource: "manual",
     });
 
+    // Partial syncs are HTTP 200 with status:"partial"; hard failures use 500.
+    if (result.status === "error" || !result.ok) {
+      return res.status(500).json(result);
+    }
     return res.status(200).json(result);
   } catch (err: any) {
     console.error("ads sync error:", err);
     return res.status(500).json({
       ok: false,
+      status: "error",
       error: err?.message || "sync_failed",
     });
   }

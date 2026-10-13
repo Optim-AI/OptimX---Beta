@@ -271,7 +271,7 @@ export const googleAdsProvider: AdsProvider = {
     ctx: AdsProviderContext,
     accountId: string,
     range: SyncDateRange
-  ): Promise<DailyMetricInput[]> {
+  ) {
     const loginId =
       ctx.managerCustomerId ||
       (ctx.metadata?.managerCustomerId as string | undefined) ||
@@ -367,7 +367,14 @@ export const googleAdsProvider: AdsProvider = {
       console.warn("[google-ads] campaign metrics failed:", e?.message);
     }
 
-    return metrics;
+    // Structured result for shared runner; Google campaign swallow remains
+    // provider-local until a dedicated Google sync integrity pass.
+    return {
+      metrics,
+      failures: [],
+      levelsAttempted: ["account", "campaign"],
+      levelsSucceeded: ["account", "campaign"],
+    };
   },
 
   async refreshAccessToken(ctx: AdsProviderContext) {

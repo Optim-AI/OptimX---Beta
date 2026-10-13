@@ -84,10 +84,40 @@ export interface SyncDateRange {
   until: string;
 }
 
+/** Insight / metrics fetch failure for one independent operation (level). */
+export type MetricsFetchFailure = {
+  level: string;
+  message: string;
+  code?: string | number;
+  /** True when pagination stopped early (max pages) rather than a hard API error */
+  truncated?: boolean;
+};
+
+/**
+ * Structured daily-metrics fetch result.
+ * Empty `metrics` with empty `failures` = legitimate empty date range (success).
+ * Non-empty `failures` = partial or total insight failure (never silent success).
+ */
+export interface FetchDailyMetricsResult {
+  metrics: DailyMetricInput[];
+  failures: MetricsFetchFailure[];
+  levelsAttempted: string[];
+  levelsSucceeded: string[];
+}
+
+export type AdsSyncRunStatus = "success" | "partial" | "error";
+
 export interface SyncResult {
+  ok: boolean;
+  status: AdsSyncRunStatus;
+  runId?: string;
+  since?: string;
+  until?: string;
+  accountId?: string;
   entitiesUpserted: number;
   metricsUpserted: number;
   warnings?: string[];
+  errorMessage?: string | null;
   details?: Record<string, unknown>;
 }
 

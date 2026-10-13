@@ -47,7 +47,7 @@ import { deriveMetaUiState } from "@/lib/ads/meta/ui-state";
   assert.strictEqual(s.hasMetrics, false);
 }
 
-// Syncing (separate from connection)
+// Syncing (separate from connection) — DB uses "syncing", API may use "running"
 {
   const s = deriveMetaUiState({
     connected: true,
@@ -58,6 +58,15 @@ import { deriveMetaUiState } from "@/lib/ads/meta/ui-state";
   assert.strictEqual(s.phase, "syncing");
   assert.strictEqual(s.isConnected, true);
   assert.strictEqual(s.primaryAction, "none");
+
+  const s2 = deriveMetaUiState({
+    connected: true,
+    adAccountId: "123",
+    selectedAccountCount: 1,
+    syncStatus: "syncing",
+  });
+  assert.strictEqual(s2.phase, "syncing");
+  assert.strictEqual(s2.primaryAction, "none");
 }
 
 // Sync failed while still connected
@@ -73,6 +82,38 @@ import { deriveMetaUiState } from "@/lib/ads/meta/ui-state";
   assert.strictEqual(s.primaryAction, "retry_sync");
   assert.strictEqual(s.isConnected, true);
   assert.ok(s.syncErrorMessage?.includes("rate limit"));
+}
+
+// Partial sync — dedicated phase, retry available (never report as success)
+{
+  const s = deriveMetaUiState({
+    connected: true,
+    adAccountId: "123",
+    selectedAccountCount: 1,
+    syncStatus: "partial",
+    syncErrorMessage: "campaign: rate limit",
+    hasMetrics: true,
+    lastSyncedAt: "2026-04-01T12:00:00.000Z",
+  });
+  assert.strictEqual(s.phase, "sync_partial");
+  assert.strictEqual(s.primaryAction, "retry_sync");
+  assert.ok(s.statusLabel.toLowerCase().includes("partial"));
+  assert.ok(s.lastSyncedLabel);
+}
+
+// Successful sync surfaces last sync time
+{
+  const s = deriveMetaUiState({
+    connected: true,
+    adAccountId: "123",
+    selectedAccountCount: 1,
+    syncStatus: "success",
+    lastSyncedAt: "2026-04-01T12:00:00.000Z",
+    hasMetrics: true,
+  });
+  assert.strictEqual(s.phase, "connected");
+  assert.strictEqual(s.primaryAction, "manage_accounts");
+  assert.ok(s.statusLabel.toLowerCase().includes("succeeded"));
 }
 
 // Needs reconnect

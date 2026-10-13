@@ -35,6 +35,7 @@ import { apiFetch } from "@/api/fetch";
 import { supabase } from "@/auth/supabase/client";
 import { campaignClient } from "@/database/client-helpers";
 import { SkeletonPageLoader, SkeletonCampaignRow } from "@/app/web/src/components/ui/skeletons";
+import { formatMoneyAmount } from "@/lib/ads/analytics/currency";
 import {
   buildActivity,
   pipelineCounts,
@@ -523,12 +524,14 @@ export default function DashboardPage(): JSX.Element {
   }, [userId, metricsRange]);
 
   function fmtMoney(n: number | null | undefined) {
-    if (n == null || Number.isNaN(Number(n))) return "—";
-    try {
-      return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(Number(n));
-    } catch {
-      return `₹${Number(n).toFixed(0)}`;
+    const currency =
+      (metaSummary as any)?.meta?.current?.currency ??
+      (metaSummary as any)?.currency ??
+      null;
+    if ((metaSummary as any)?.meta?.current?.mixed_currency || (metaSummary as any)?.mixed_currency) {
+      return "—";
     }
+    return formatMoneyAmount(n, currency);
   }
   function pctDisplay(n: number | null | undefined) {
     if (n == null || Number.isNaN(Number(n))) return null;
@@ -713,7 +716,7 @@ export default function DashboardPage(): JSX.Element {
                 Refresh
               </button>
               <Link
-                href="/create-campaign"
+                href="/content-studio"
                 className="skx-focus inline-flex h-10 items-center gap-2 rounded-lg px-4 text-sm font-medium"
                 style={{ background: colors.gradientPrimary, color: colors.primaryForeground, boxShadow: colors.shadowGlow }}
               >
@@ -875,7 +878,7 @@ export default function DashboardPage(): JSX.Element {
               ) : campaigns.length === 0 ? (
                 <div className="py-8 text-center">
                   <p className="text-sm" style={{ color: colors.foreground }}>No campaigns yet.</p>
-                  <Link href="/create-campaign" className="skx-focus mt-2 inline-flex text-sm font-medium" style={{ color: colors.primary }}>
+                  <Link href="/content-studio" className="skx-focus mt-2 inline-flex text-sm font-medium" style={{ color: colors.primary }}>
                     Create the first campaign
                   </Link>
                 </div>

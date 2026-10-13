@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import {
   Home,
-  PlusCircle,
   BarChart3,
   UploadCloud,
   Link2,
@@ -24,6 +23,7 @@ import {
   Flag,
   Brain,
   LayoutGrid,
+  Megaphone,
   Menu,
   X,
 } from 'lucide-react';
@@ -69,9 +69,14 @@ const NAV_GROUPS: NavGroup[] = [
     id: 'campaigns',
     label: 'Campaigns',
     items: [
-      { href: '/create-campaign', label: 'Create Campaign', Icon: PlusCircle, featureKey: 'create_campaigns' },
       { href: '/library', label: 'Campaign Library', Icon: Folder, featureKey: 'campaign_library' },
       { href: '/generated-contents', label: 'Generated Contents', Icon: UploadCloud },
+      {
+        href: '/ads/meta/drafts',
+        label: 'Meta Ads',
+        Icon: Megaphone,
+        betaBadge: true,
+      },
     ],
   },
   {
@@ -178,6 +183,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     ) {
       return true;
     }
+    if (href === '/ads/meta/drafts' && pathname.startsWith('/ads/meta/')) return true;
     return false;
   };
 

@@ -48,7 +48,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const accounts = await AdAccountDAO.listByIntegration(integration.id);
     const selected = accounts.find((a) => a.isSelected) || null;
     const recentSyncs = await AdSyncRunDAO.listRecent(integration.id, 3);
-    const hasMetrics = await AdMetricsDAO.hasData(integration.id);
+    const hasMetrics = selected
+      ? await AdMetricsDAO.hasData(integration.id, selected.id)
+      : false;
     const unhealthyStatuses = ["expired", "revoked", "invalid", "unhealthy"];
     const needsReconnect = unhealthyStatuses.includes(integration.healthStatus || "");
 
@@ -87,6 +89,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         status: s.status,
         startedAt: s.startedAt,
         finishedAt: s.finishedAt,
+        entitiesUpserted: s.entitiesUpserted,
         metricsUpserted: s.metricsUpserted,
         errorMessage: s.errorMessage,
       })),

@@ -247,7 +247,7 @@ export function ContentCalendar({ items, loading, error, onRetry }: ContentCalen
             Open Generated Contents
           </Link>{" "}
           to publish, or{" "}
-          <Link href="/create-campaign" className="skx-focus font-medium" style={{ color: colors.primary }}>
+          <Link href="/content-studio" className="skx-focus font-medium" style={{ color: colors.primary }}>
             create a campaign
           </Link>
           .
@@ -349,7 +349,7 @@ function DayList({ day, items }: { day: Date; items: ActivityItem[] }) {
           <Link href="/generated-contents" className="skx-focus text-sm font-medium" style={{ color: colors.primary }}>
             Open Generated Contents
           </Link>
-          <Link href="/create-campaign" className="skx-focus text-sm font-medium" style={{ color: colors.mutedForeground }}>
+          <Link href="/content-studio" className="skx-focus text-sm font-medium" style={{ color: colors.mutedForeground }}>
             Create a campaign
           </Link>
         </div>

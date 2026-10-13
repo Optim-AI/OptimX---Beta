@@ -4,7 +4,7 @@ import { userGeneratedImage } from "@/database/schema";
 import { and, desc, eq, ilike, or, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
-type GeneratedImage = typeof userGeneratedImage.$inferSelect;
+export type GeneratedImage = typeof userGeneratedImage.$inferSelect;
 
 /**
  * Data Access Object for GeneratedImage (AI-generated posters / videos)
@@ -68,6 +68,33 @@ export class GeneratedImageDAO {
       )
       .limit(1);
     return byUrl[0] || null;
+  }
+
+  /**
+   * Find any library row for a storage path or public URL, regardless of owner.
+   * Used to reject cross-user ensure / claim of another account's creative.
+   */
+  static async findAnyByPathOrUrl(opts: {
+    imagePath?: string | null;
+    imageUrl?: string | null;
+  }): Promise<GeneratedImage | null> {
+    if (opts.imagePath) {
+      const byPath = await db
+        .select()
+        .from(userGeneratedImage)
+        .where(eq(userGeneratedImage.imagePath, opts.imagePath))
+        .limit(1);
+      if (byPath[0]) return byPath[0];
+    }
+    if (opts.imageUrl) {
+      const byUrl = await db
+        .select()
+        .from(userGeneratedImage)
+        .where(eq(userGeneratedImage.imageUrl, opts.imageUrl))
+        .limit(1);
+      if (byUrl[0]) return byUrl[0];
+    }
+    return null;
   }
 
   static async updateMetadata(

@@ -1,92 +1,18 @@
 import type { AdsProvider, AdsProviderContext } from "@/lib/ads/providers/types";
 import type {
-  DailyMetricInput,
   DiscoveredAdAccount,
   DiscoveredAsset,
+  FetchDailyMetricsResult,
   PlatformEntityInput,
   SyncDateRange,
 } from "@/lib/ads/types";
-import { deriveMetricRates, emptyAggregatedMetrics } from "@/lib/ads/types";
 import {
   ensureActPrefix,
   metaGraphGet,
   metaGraphGetAll,
-  META_INSIGHT_FIELDS,
   stripActPrefix,
 } from "@/lib/ads/providers/meta/client";
-
-function num(v: unknown): number {
-  if (v == null) return 0;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : 0;
-}
-
-function parseActions(row: any): { conversions: number; conversionValue: number } {
-  let conversions = 0;
-  let conversionValue = 0;
-  if (Array.isArray(row.actions)) {
-    for (const a of row.actions) {
-      const t = String(a.action_type || "").toLowerCase();
-      if (
-        ["purchase", "lead", "omni_purchase", "offsite_conversion", "conversion"].some((k) =>
-          t.includes(k)
-        )
-      ) {
-        conversions += num(a.value);
-      }
-    }
-  }
-  if (Array.isArray(row.action_values)) {
-    for (const av of row.action_values) {
-      const t = String(av.action_type || "").toLowerCase();
-      if (["purchase", "offsite_conversion", "omni_purchase"].some((k) => t.includes(k))) {
-        conversionValue += num(av.value);
-      }
-    }
-  }
-  return { conversions, conversionValue };
-}
-
-function insightToMetric(
-  row: any,
-  entityType: DailyMetricInput["entityType"],
-  entityExternalId: string
-): DailyMetricInput {
-  const { conversions, conversionValue } = parseActions(row);
-  const base = emptyAggregatedMetrics();
-  base.spend = num(row.spend);
-  base.impressions = num(row.impressions);
-  base.reach = num(row.reach);
-  base.clicks = num(row.clicks);
-  base.conversions = conversions;
-  base.conversionValue = conversionValue;
-  base.frequency = row.frequency != null ? num(row.frequency) : null;
-  const derived = deriveMetricRates(base);
-  // Prefer API-provided rates when present
-  if (row.ctr != null) derived.ctr = num(row.ctr);
-  if (row.cpc != null) derived.cpc = num(row.cpc);
-  if (row.cpm != null) derived.cpm = num(row.cpm);
-
-  return {
-    entityType,
-    entityExternalId,
-    metricDate: String(row.date_start || row.date_stop).slice(0, 10),
-    spend: derived.spend,
-    impressions: derived.impressions,
-    reach: derived.reach,
-    frequency: derived.frequency,
-    clicks: derived.clicks,
-    ctr: derived.ctr,
-    cpc: derived.cpc,
-    cpm: derived.cpm,
-    conversions: derived.conversions,
-    conversionValue: derived.conversionValue,
-    cpa: derived.cpa,
-    cpl: derived.cpl,
-    roas: derived.roas,
-    raw: row,
-  };
-}
+import { collectMetaDailyMetrics } from "@/lib/ads/providers/meta/fetch-daily-metrics";
 
 export const metaAdsProvider: AdsProvider = {
   id: "meta",
@@ -250,72 +176,13 @@ export const metaAdsProvider: AdsProvider = {
     ctx: AdsProviderContext,
     accountId: string,
     range: SyncDateRange
-  ): Promise<DailyMetricInput[]> {
-    const act = ensureActPrefix(accountId);
-    if (!act) throw new Error("Invalid Meta ad account id");
-    const timeRange = JSON.stringify({ since: range.since, until: range.until });
-    const metrics: DailyMetricInput[] = [];
-
-    // Account-level daily
-    try {
-      const accountRows = await metaGraphGetAll<any>(`${act}/insights`, ctx.accessToken, {
-        fields: META_INSIGHT_FIELDS,
-        time_range: timeRange,
-        time_increment: 1,
-        level: "account",
-        limit: 500,
-      });
-      for (const row of accountRows) {
-        metrics.push(
-          insightToMetric(row, "account", stripActPrefix(accountId) || accountId)
-        );
-      }
-    } catch (e: any) {
-      console.warn("[meta] account insights failed:", e?.message);
-    }
-
-    // Campaign-level daily
-    try {
-      const campaignRows = await metaGraphGetAll<any>(`${act}/insights`, ctx.accessToken, {
-        fields: META_INSIGHT_FIELDS + ",campaign_id,campaign_name",
-        time_range: timeRange,
-        time_increment: 1,
-        level: "campaign",
-        limit: 500,
-      });
-      for (const row of campaignRows) {
-        const id = String(row.campaign_id || "");
-        if (!id) continue;
-        metrics.push(insightToMetric(row, "campaign", id));
-      }
-    } catch (e: any) {
-      console.warn("[meta] campaign insights failed:", e?.message);
-    }
-
-    // Ad-level (optional, may be large)
-    try {
-      const adRows = await metaGraphGetAll<any>(
-        `${act}/insights`,
-        ctx.accessToken,
-        {
-          fields: META_INSIGHT_FIELDS + ",ad_id,ad_name",
-          time_range: timeRange,
-          time_increment: 1,
-          level: "ad",
-          limit: 500,
-        },
-        5
-      );
-      for (const row of adRows) {
-        const id = String(row.ad_id || "");
-        if (!id) continue;
-        metrics.push(insightToMetric(row, "ad", id));
-      }
-    } catch (e: any) {
-      console.warn("[meta] ad insights failed:", e?.message);
-    }
-
-    return metrics;
+  ): Promise<FetchDailyMetricsResult> {
+    return collectMetaDailyMetrics({
+      accountId,
+      accessToken: ctx.accessToken,
+      range,
+      currency: ctx.accountCurrency ?? null,
+    });
   },
 };
 

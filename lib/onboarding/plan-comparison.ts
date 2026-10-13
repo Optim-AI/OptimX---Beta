@@ -103,9 +103,9 @@ export const PLAN_COMPARISON_ROWS: PlanComparisonRow[] = [
     id: 'analytics',
     label: 'Analytics & optimization',
     values: {
-      skalx_starter: 'coming_soon',
-      skalx_growth: 'coming_soon',
-      skalx_pro: 'coming_soon',
+      skalx_starter: true,
+      skalx_growth: true,
+      skalx_pro: true,
     },
   },
   {

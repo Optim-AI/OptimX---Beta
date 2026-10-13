@@ -1,8 +1,7 @@
 // pages/api/auth/instagram/callback.ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import { decodeState } from '@/auth/helpers';
-import { supabaseAdmin } from '@/auth/supabase/admin';
 import { saveIntegration, setStatus } from '@/integrations/store';
+import { resolveOAuthCallbackUserFromRequest } from "@/lib/auth/resolve-oauth-callback-user";
 
 const VERSION = process.env.FACEBOOK_API_VERSION || "23.0";
 const DEBUG = process.env.DEBUG_CALLBACK === "true";
@@ -16,30 +15,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const code = Array.isArray(req.query.code) ? req.query.code[0] : req.query.code;
     if (!code) return res.status(400).send("missing code");
 
-    stage = "decode_state";
-    const stateObj = decodeState(req.query.state);
-    const supabaseTokenFromState = stateObj?.t ?? null;
-
-    const authHeader = req.headers.authorization;
-    const tokenFromHeader = authHeader && String(authHeader).startsWith("Bearer ") ? String(authHeader).slice(7) : null;
-    const token = supabaseTokenFromState ?? tokenFromHeader ?? null;
-
-    let resolvedUserId: string | null = null;
-    if (token) {
-      stage = "resolve_supabase_user";
-      const { data, error } = await supabaseAdmin.auth.getUser(token);
-      if (!error && data?.user?.id) resolvedUserId = data.user.id;
-      else console.warn("supabase getUser returned no user or error", { error, data });
-    }
-
-    if (!resolvedUserId && process.env.SUPABASE_INTEGRATION_USER_ID) resolvedUserId = process.env.SUPABASE_INTEGRATION_USER_ID;
-
-    if (!resolvedUserId) {
-      return res.status(400).json({
-        error: "missing_supabase_user_id",
-        message: "No Supabase user could be resolved. Ensure you pass the Supabase access token as `sb` to /api/auth/instagram/start or set SUPABASE_INTEGRATION_USER_ID.",
+    stage = "resolve_supabase_user";
+    // Legacy start does not set state.p — do not enforce expectedStateProvider here.
+    const identity = await resolveOAuthCallbackUserFromRequest({
+      state: req.query.state,
+      authorizationHeader: req.headers.authorization,
+    });
+    if (!identity.ok) {
+      return res.status(identity.status).json({
+        error: identity.code,
+        message: identity.error,
       });
     }
+    const resolvedUserId = identity.userId;
 
     stage = "read_env";
     const appId = process.env.FACEBOOK_APP_ID;

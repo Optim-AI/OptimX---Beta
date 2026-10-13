@@ -3,6 +3,24 @@
 
 import { PlansDAO } from '@/database/models/Plans.dao';
 import { SubscriptionsDAO } from '@/database/models/Subscriptions.dao';
+import {
+  classifyAnalyticsBillingCohort,
+  decideBasicAnalyticsAccess,
+  isFeatureEntitled,
+} from '@/lib/features/access';
+import {
+  ADVANCED_ANALYTICS_STILL_GATED_CONTRACT,
+  BASIC_ANALYTICS_DENIED_CONTRACT,
+} from '@/lib/features/feature-access.contract';
+
+export {
+  isFeatureEntitled,
+  featureBlockReason,
+  decideBasicAnalyticsAccess,
+  classifyAnalyticsBillingCohort,
+  enforceBasicAnalyticsForMetricsApi,
+  basicAnalyticsForbiddenBody,
+} from '@/lib/features/access';
 
 export type FeatureKey = 
   | 'image_generation'
@@ -53,9 +71,10 @@ const NO_SUBSCRIPTION_ACCESS: Record<FeatureKey, FeatureAccess> = {
   fast_generation: { enabled: false, comingSoon: false, reason: 'Subscription required' },
   priority_generation: { enabled: false, comingSoon: false, reason: 'Subscription required' },
 
-  // Analytics - coming soon
-  basic_analytics: { enabled: false, comingSoon: true, reason: 'Coming soon' },
-  advanced_analytics: { enabled: false, comingSoon: true, reason: 'Coming soon' },
+  // basic_analytics is decided separately (PAYG vs subscriber vs history).
+  // Fail closed in this map so a missed override cannot grant Analytics.
+  basic_analytics: { ...BASIC_ANALYTICS_DENIED_CONTRACT },
+  advanced_analytics: { ...ADVANCED_ANALYTICS_STILL_GATED_CONTRACT },
 
   // Advanced features - require subscription
   social_posting: { enabled: false, comingSoon: false, reason: 'Subscription required' },
@@ -83,8 +102,15 @@ export class FeatureService {
     const subscription = await SubscriptionsDAO.getActiveByUserId(userId);
 
     if (!subscription) {
+      const features = { ...NO_SUBSCRIPTION_ACCESS };
+      const analytics = await this.resolveBasicAnalyticsAccess(userId, null);
+      features.basic_analytics = {
+        enabled: analytics.enabled,
+        comingSoon: analytics.comingSoon,
+        reason: analytics.reason,
+      };
       return {
-        features: NO_SUBSCRIPTION_ACCESS,
+        features,
         plan: null,
         subscription: null,
       };
@@ -113,6 +139,13 @@ export class FeatureService {
       }
     }
 
+    const analytics = await this.resolveBasicAnalyticsAccess(userId, subscription);
+    features.basic_analytics = {
+      enabled: analytics.enabled,
+      comingSoon: analytics.comingSoon,
+      reason: analytics.reason,
+    };
+
     return {
       features: features as Record<FeatureKey, FeatureAccess>,
       plan: {
@@ -133,6 +166,16 @@ export class FeatureService {
    * Check if a specific feature is accessible
    */
   static async checkFeatureAccess(userId: string, featureKey: FeatureKey): Promise<FeatureAccess> {
+    if (featureKey === 'basic_analytics') {
+      const subscription = await SubscriptionsDAO.getActiveByUserId(userId);
+      const decided = await this.resolveBasicAnalyticsAccess(userId, subscription);
+      return {
+        enabled: decided.enabled,
+        comingSoon: decided.comingSoon,
+        reason: decided.reason,
+      };
+    }
+
     const subscription = await SubscriptionsDAO.getActiveByUserId(userId);
 
     if (!subscription) {
@@ -146,6 +189,45 @@ export class FeatureService {
       comingSoon: access.comingSoon,
       reason: access.comingSoon ? 'Coming soon' : (access.enabled ? undefined : 'Not included in plan'),
     };
+  }
+
+  /**
+   * PAYG = zero subscription rows. Active/trialing → plan flags.
+   * Expired/cancelled/pending (history, no active) → deny Analytics.
+   */
+  static async resolveBasicAnalyticsAccess(
+    userId: string,
+    activeSubscription: { planId: string } | null
+  ) {
+    if (activeSubscription) {
+      const flag = await PlansDAO.isFeatureEnabled(
+        activeSubscription.planId,
+        'basic_analytics'
+      );
+      return decideBasicAnalyticsAccess({
+        cohort: 'active_subscriber',
+        planFlag: flag,
+      });
+    }
+
+    const history = await SubscriptionsDAO.getAllByUserId(userId);
+    const cohort = classifyAnalyticsBillingCohort({
+      hasActiveOrTrialingSubscription: false,
+      subscriptionRowCount: history.length,
+    });
+    return decideBasicAnalyticsAccess({ cohort });
+  }
+
+  /**
+   * True when the user may use the feature (enabled and not coming soon).
+   * Prefer this over checking flags independently in API handlers.
+   */
+  static async requireFeatureEntitled(
+    userId: string,
+    featureKey: FeatureKey
+  ): Promise<FeatureAccess & { entitled: boolean }> {
+    const access = await this.checkFeatureAccess(userId, featureKey);
+    return { ...access, entitled: isFeatureEntitled(access) };
   }
 
   /**
@@ -213,7 +295,6 @@ export class FeatureService {
     // These are controlled by feature flags
     if (access.features.dashboard.enabled) visibleItems.push('dashboard');
     if (access.features.integrations.enabled) visibleItems.push('integrations');
-    if (access.features.create_campaigns.enabled) visibleItems.push('create-campaigns');
     if (access.features.campaign_library.enabled) visibleItems.push('campaigns');
 
     return visibleItems;

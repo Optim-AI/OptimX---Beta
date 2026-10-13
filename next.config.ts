@@ -6,6 +6,7 @@ const nextConfig = {
       { source: '/refund-cancellation', destination: '/terms-and-conditions', permanent: true },
       { source: '/cookie-policy', destination: '/cpolicy', permanent: true },
       { source: '/cookiepolicy', destination: '/cpolicy', permanent: true },
+      { source: '/create-campaign', destination: '/content-studio', permanent: false },
     ];
   },
   // Middleware clones request bodies (default 10MB). Video session PUTs can

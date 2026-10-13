@@ -8,6 +8,14 @@ import { apiFetch } from '@/api/fetch';
 import { supabase } from '@/auth/supabase/client';
 import { ComingSoonOverlay } from '@/app/web/src/components/billing/ComingSoonOverlay';
 import { authFetch } from '@/lib/utils';
+import type { AdsAnalyticsAvailability } from '@/lib/ads/analytics/availability';
+import {
+  availabilityBanner,
+  availabilityFromPayload,
+  buildOverviewCards,
+} from '@/lib/ads/analytics/ui-state';
+import { formatMoneyAmount } from '@/lib/ads/analytics/currency';
+import { isFeatureEntitled } from '@/lib/features/access';
 
 import { Card, CardContent, CardHeader, CardTitle } from "../app/web/src/components/ui/card";
 import { Button } from "../app/web/src/components/ui/button";
@@ -34,12 +42,17 @@ import {
 /* ---------------- TYPE DEFINITIONS ---------------- */
 
 type MetaMetrics = {
-  total_spend: number;
+  total_spend: number | null;
   budget_estimate_daily: number | null;
-  total_reach: number;
-  avg_ctr: number;
-  conversions: number;
+  total_reach: number | null;
+  avg_ctr: number | null;
+  conversions: number | null;
   roas: number | null;
+  impressions?: number | null;
+  clicks?: number | null;
+  currency?: string | null;
+  mixed_currency?: boolean;
+  spend_by_currency?: Record<string, number>;
 };
 
 type TimeSeriesPoint = {
@@ -47,16 +60,18 @@ type TimeSeriesPoint = {
   impressions?: number;
   clicks?: number;
   spend?: number;
-  ctr?: number;
+  ctr?: number | null;
   conversions?: number;
   roas?: number | null;
 };
 
 type SummaryResp = {
   ok: boolean;
+  source?: string;
+  availability?: AdsAnalyticsAvailability;
   meta?: {
-    current?: MetaMetrics;
-    change?: Record<string, number | null>;
+    current?: MetaMetrics | null;
+    change?: Record<string, number | null> | null;
     time_series?: TimeSeriesPoint[];
   };
   [k: string]: any;
@@ -96,18 +111,12 @@ const LS_KEY = "integrations_status_v1";
 
 /* -------------------- helpers -------------------- */
 
-function fmtMoneyINR(n: number | null | undefined) {
-  if (n == null) return "—";
-  try {
-    return new Intl.NumberFormat("en-IN", {
-      style: "currency",
-      currency: "INR",
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(Number(n));
-  } catch {
-    return `₹${Number(n).toFixed(0)}`;
-  }
+/** Format spend using the account/metric currency — never assume INR. */
+function fmtMoney(
+  n: number | null | undefined,
+  currency?: string | null
+) {
+  return formatMoneyAmount(n, currency);
 }
 
 function pctDisplay(n: number | null | undefined) {
@@ -144,6 +153,7 @@ export default function Analytics(): JSX.Element {
   const [statusLoading, setStatusLoading] = useState(false);
 
   const [metaSummary, setMetaSummary] = useState<SummaryResp | null>(null);
+  const [metricsError, setMetricsError] = useState<string | null>(null);
   const [loadingMeta, setLoadingMeta] = useState(false);
 
   // Feature access checking
@@ -313,15 +323,17 @@ export default function Analytics(): JSX.Element {
 
   // fetchMetrics accepts explicit options so clicks update immediately
   async function fetchMetrics(opts?: { range?: string; start?: string; end?: string }) {
-    // If not connected, do NOT fetch, do NOT show dummy data.
+    // If not connected, do NOT fetch, do NOT invent zeros.
     if (!isMetaConnectedLocal()) {
       setMetaSummary(null);
+      setMetricsError(null);
       setSeries([]);
       setLoadingMeta(false);
       return;
     }
 
     setLoadingMeta(true);
+    setMetricsError(null);
     let token: string | null = null;
 
     try {
@@ -346,79 +358,24 @@ export default function Analytics(): JSX.Element {
         headers,
       });
 
-      // if ok and payload has current -> use it
       if (resp.ok) {
         const j = await resp.json();
-
-        // If metrics are missing or empty => persist zeros (no alert)
-        const hasCurr = !!(j?.meta && j.meta.current);
-        if (!hasCurr) {
-          // create zeroed meta but keep shape
-          const zeroMeta: SummaryResp = {
-            ok: true,
-            meta: {
-              current: {
-                total_spend: 0,
-                budget_estimate_daily: null,
-                total_reach: 0,
-                avg_ctr: 0,
-                conversions: 0,
-                roas: null,
-              },
-              change: {
-                total_reach_pct: 0,
-                avg_ctr_pct: 0,
-                total_spend_pct: 0,
-                conversions_pct: 0,
-              },
-              time_series: [],
-            }
-          };
-          setMetaSummary(zeroMeta);
-          hydrateUiFromMeta(zeroMeta);
-        } else {
-          setMetaSummary(j);
-          hydrateUiFromMeta(j);
-        }
+        setMetaSummary(j);
+        hydrateUiFromMeta(j);
+        setMetricsError(null);
       } else {
-        // non-ok -> treat as empty range: show zeros (persisted), no alert
-        const zeroMeta: SummaryResp = {
-          ok: false,
-          meta: {
-            current: {
-              total_spend: 0,
-              budget_estimate_daily: null,
-              total_reach: 0,
-              avg_ctr: 0,
-              conversions: 0,
-              roas: null,
-            },
-            change: {},
-            time_series: [],
-          }
-        };
-        setMetaSummary(zeroMeta);
-        hydrateUiFromMeta(zeroMeta);
+        // HTTP failure → error state, never fabricate $0 performance
+        setMetaSummary(null);
+        setSeries([]);
+        setMetricsError(
+          `Could not load metrics (${resp.status}). Try again or re-sync Ads.`
+        );
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error("fetchMetrics error", e);
-      const zeroMeta: SummaryResp = {
-        ok: false,
-        meta: {
-          current: {
-            total_spend: 0,
-            budget_estimate_daily: null,
-            total_reach: 0,
-            avg_ctr: 0,
-            conversions: 0,
-            roas: null,
-          },
-          change: {},
-          time_series: [],
-        }
-      };
-      setMetaSummary(zeroMeta);
-      hydrateUiFromMeta(zeroMeta);
+      setMetaSummary(null);
+      setSeries([]);
+      setMetricsError(e?.message || "Could not load metrics. Check your connection and try again.");
     } finally {
       setLoadingMeta(false);
     }
@@ -430,91 +387,29 @@ export default function Analytics(): JSX.Element {
     return Number.isFinite(n) ? n : fallback;
   }
 
-  function generateDateLabels(count = 7, endDate?: Date) {
-    const end = endDate ? new Date(endDate) : new Date();
-    const labels: string[] = [];
-    for (let i = count - 1; i >= 0; i--) {
-      const d = new Date(end);
-      d.setDate(end.getDate() - i);
-      labels.push(d.toLocaleDateString("en-IN", { day: "numeric", month: "short" }));
-    }
-    return labels;
-  }
-
-  function inferLatestActivityDate(campaigns: Campaign[]) {
-    const dates = campaigns
-      .map(c => c.created_at ? new Date(c.created_at) : null)
-      .filter(Boolean) as Date[];
-
-    if (dates.length === 0) return null;
-    return new Date(Math.max(...dates.map(d => d.getTime())));
-  }
-
   function hydrateUiFromMeta(summary: SummaryResp | null) {
-    // If disconnected/summary null -> keep series empty
+    // Only plot dates that the API returned — never invent zero-filled or synthetic series.
     if (!summary || !summary.meta) {
       setSeries([]);
       return;
     }
 
-    // if time_series present and non-empty: map and set
-    if (summary.meta.time_series && summary.meta.time_series.length > 0) {
-      const ordered = summary.meta.time_series.map((p: any) => ({
+    const ts = summary.meta.time_series || (summary as any).time_series;
+    if (ts && ts.length > 0) {
+      const ordered = ts.map((p: any) => ({
         date: new Date(p.date).toLocaleDateString("en-IN", { day: "numeric", month: "short" }),
-        impressions: safeNum(p.impressions),
-        clicks: safeNum(p.clicks),
-        spend: safeNum(p.spend),
-        ctr: p.ctr != null ? safeNum(p.ctr) : 0,
-        conversions: safeNum(p.conversions),
+        impressions: p.impressions != null ? safeNum(p.impressions) : undefined,
+        clicks: p.clicks != null ? safeNum(p.clicks) : undefined,
+        spend: p.spend != null ? safeNum(p.spend) : undefined,
+        ctr: p.ctr != null ? safeNum(p.ctr) : null,
+        conversions: p.conversions != null ? safeNum(p.conversions) : undefined,
         roas: p.roas ?? null,
       }));
       setSeries(ordered);
       return;
     }
 
-    // else: produce zero-series if meta.current exists (even if ok:false)
-    const pointCount = 7;
-    const lastActivity = inferLatestActivityDate(campaigns);
-    const endDate = lastActivity ?? new Date();
-    const labels = generateDateLabels(pointCount, endDate);
-
-    const cur = summary.meta.current ?? {
-      total_reach: 0,
-      total_spend: 0,
-      avg_ctr: 0,
-      conversions: 0,
-      roas: null,
-    };
-
-    const allZero =
-      (cur.total_reach ?? 0) === 0 &&
-      (cur.total_spend ?? 0) === 0 &&
-      (cur.conversions ?? 0) === 0;
-
-    if (allZero) {
-      const zeroSeries = labels.map((lab) => ({
-        date: lab,
-        impressions: 0,
-        clicks: 0,
-        spend: 0,
-        ctr: 0,
-        conversions: 0,
-        roas: null,
-      }));
-      setSeries(zeroSeries);
-    } else {
-      const weights = [0.08, 0.09, 0.14, 0.16, 0.18, 0.17, 0.18];
-      const synth = labels.map((lab, i) => ({
-        date: lab,
-        impressions: Math.round((cur.total_reach ?? 0) * weights[i]),
-        clicks: Math.round(((cur.total_reach ?? 0) * ((cur.avg_ctr ?? 0) / 100)) * weights[i]),
-        spend: Math.round((cur.total_spend ?? 0) * weights[i]),
-        ctr: cur.avg_ctr ?? 0,
-        conversions: Math.round((cur.conversions ?? 0) * weights[i]),
-        roas: cur.roas,
-      }));
-      setSeries(synth);
-    }
+    setSeries([]);
   }
 
   // ---------- Recommendations (USER-SPECIFIC) ----------
@@ -655,56 +550,44 @@ export default function Analytics(): JSX.Element {
     window.location.href = "/integrations";
   }
 
-  const metaSpend = metaSummary?.meta?.current?.total_spend ?? 0;
-  const metaBudgetDaily = metaSummary?.meta?.current?.budget_estimate_daily ?? null;
+  const availability =
+    availabilityFromPayload(metaSummary) ||
+    (metaSummary?.availability as AdsAnalyticsAvailability | undefined) ||
+    null;
+  const banner = availabilityBanner(availability?.state, {
+    mixedCurrency:
+      Boolean((metaSummary?.meta?.current as MetaMetrics | undefined)?.mixed_currency) ||
+      Boolean((metaSummary as any)?.mixed_currency),
+  });
+  const currentForCards =
+    metaSummary?.meta?.current ??
+    (metaSummary as any)?.current ??
+    null;
+  const changeForCards =
+    metaSummary?.meta?.change ??
+    (metaSummary as any)?.change ??
+    null;
+  const displayCurrency =
+    currentForCards?.currency ??
+    (metaSummary as any)?.currency ??
+    null;
+  const mixedCurrency =
+    Boolean(currentForCards?.mixed_currency) ||
+    Boolean((metaSummary as any)?.mixed_currency);
+  const spendByCurrency: Record<string, number> =
+    currentForCards?.spend_by_currency ||
+    (metaSummary as any)?.spend_by_currency ||
+    {};
 
-  const overallMetrics = [
-    {
-      label: "Impressions",
-      value: metaSummary?.meta?.current?.total_reach
-        ? `${Math.round(metaSummary!.meta!.current!.total_reach / 1000)}K`
-        : "0",
-      change: pctDisplay(metaSummary?.meta?.change?.total_reach_pct),
-      trend: (metaSummary?.meta?.change?.total_reach_pct ?? 0) > 0 ? "up" : "down",
-    },
-    {
-      label: "Clicks",
-      value: metaSummary?.meta?.current?.avg_ctr
-        ? `${Math.round(
-            ((metaSummary!.meta!.current!.total_reach ?? 0) *
-              ((metaSummary!.meta!.current!.avg_ctr ?? 0) / 100))
-          ).toLocaleString()}`
-      : "0",
-      change: pctDisplay(metaSummary?.meta?.change?.avg_ctr_pct),
-      trend: (metaSummary?.meta?.change?.avg_ctr_pct ?? 0) > 0 ? "up" : "down",
-    },
-    {
-      label: "CTR",
-      value: metaSummary?.meta?.current?.avg_ctr
-        ? `${metaSummary!.meta!.current!.avg_ctr.toFixed(2)}%`
-        : "0%",
-      change: pctDisplay(metaSummary?.meta?.change?.avg_ctr_pct),
-      trend: (metaSummary?.meta?.change?.avg_ctr_pct ?? 0) > 0 ? "up" : "down",
-    },
-    {
-      label: "Spend",
-      value: fmtMoneyINR(metaSpend),
-      change: pctDisplay(metaSummary?.meta?.change?.total_spend_pct),
-      trend: (metaSummary?.meta?.change?.total_spend_pct ?? 0) > 0 ? "up" : "down",
-    },
-    {
-      label: "Budget (daily est.)",
-      value: metaBudgetDaily ? fmtMoneyINR(metaBudgetDaily) : "—",
-      change: "—",
-      trend: "up",
-    },
-    {
-      label: "Conversions",
-      value: (metaSummary?.meta?.current?.conversions ?? 0).toString(),
-      change: pctDisplay(metaSummary?.meta?.change?.conversions_pct),
-      trend: (metaSummary?.meta?.change?.conversions_pct ?? 0) > 0 ? "up" : "down",
-    },
-  ];
+  const fmtMoneyForCards = (n: number | null | undefined) =>
+    mixedCurrency ? "—" : fmtMoney(n, displayCurrency);
+
+  const overallMetrics = buildOverviewCards(
+    currentForCards,
+    changeForCards,
+    fmtMoneyForCards,
+    pctDisplay
+  );
 
   const filteredCampaigns = campaigns.filter((c) => {
     if (!query) return true;
@@ -734,18 +617,13 @@ export default function Analytics(): JSX.Element {
 
   const metaConnected = isMetaConnectedLocal();
 
-  // ---- NEW: compute "all metrics empty" condition (strict) ----
-  const currentMetrics = metaSummary?.meta?.current ?? null;
-  const allMetricsEmpty = Boolean(
-    currentMetrics &&
-      safeNum((currentMetrics as any).total_reach) === 0 &&
-      safeNum((currentMetrics as any).avg_ctr) === 0 &&
-      safeNum((currentMetrics as any).total_spend) === 0 &&
-      ((currentMetrics as any).budget_estimate_daily == null || safeNum((currentMetrics as any).budget_estimate_daily) === 0) &&
-      safeNum((currentMetrics as any).conversions) === 0 &&
-      ((currentMetrics as any).roas == null)
-  );
-  const noDataInSelectedRange = metaConnected && !loadingMeta && series.length === 0 && allMetricsEmpty;
+  const noDataInSelectedRange =
+    metaConnected &&
+    !loadingMeta &&
+    !metricsError &&
+    (availability?.state === "empty_range" ||
+      availability?.state === "no_data" ||
+      (!currentForCards && series.length === 0));
 
   // Loading state while checking feature access
   if (checkingFeature) {
@@ -760,7 +638,8 @@ export default function Analytics(): JSX.Element {
   }
 
   // If feature is not enabled or is coming soon, show overlay
-  if (!featureAccess?.enabled || featureAccess?.comingSoon) {
+  // Entitled = enabled && !comingSoon. Hiding UI is not authorization — APIs also gate.
+  if (!isFeatureEntitled(featureAccess)) {
     return (
       <div className="min-h-screen flex app-page">
         <Sidebar />
@@ -806,8 +685,21 @@ export default function Analytics(): JSX.Element {
 
           <div className="flex items-center gap-3">
             <div className="text-right mr-4">
-              <div className="text-sm" style={{ color: colors.mutedForeground }}>Total Spend (All platforms)</div>
-              <div className="text-xl font-semibold" style={{ color: colors.foreground }}>{fmtMoneyINR(metaSpend)}</div>
+              <div className="text-sm" style={{ color: colors.mutedForeground }}>
+                {mixedCurrency
+                  ? "Spend by currency"
+                  : displayCurrency
+                    ? `Total Spend (${displayCurrency})`
+                    : "Total Spend"}
+              </div>
+              <div className="text-xl font-semibold" style={{ color: colors.foreground }}>
+                {mixedCurrency
+                  ? Object.entries(spendByCurrency)
+                      .filter(([code]) => code !== "UNKNOWN")
+                      .map(([code, amount]) => fmtMoney(amount, code))
+                      .join(" · ") || "—"
+                  : fmtMoney(currentForCards?.total_spend, displayCurrency)}
+              </div>
             </div>
 
             <button
@@ -895,8 +787,34 @@ export default function Analytics(): JSX.Element {
             ) : loadingMeta ? (
               <SkeletonMetricGrid columns={6} />
             ) : (
-              // Always show overview — if metrics empty we set zeros in state
               <div>
+                {(metricsError || banner.text) && (
+                  <div
+                    className="mb-3 rounded px-3 py-2 text-sm"
+                    style={{
+                      border: `1px solid ${colors.border}`,
+                      backgroundColor: colors.muted,
+                      color:
+                        metricsError || banner.tone === "error"
+                          ? colors.destructive
+                          : colors.foreground,
+                    }}
+                  >
+                    {metricsError || banner.text}
+                    {(availability?.state === "partial" ||
+                      availability?.state === "stale" ||
+                      availability?.state === "unavailable" ||
+                      metricsError) && (
+                      <button
+                        type="button"
+                        className="ml-3 underline text-xs"
+                        onClick={() => void fetchMetrics({ range: selectedRange })}
+                      >
+                        Retry
+                      </button>
+                    )}
+                  </div>
+                )}
                 <div className="grid grid-cols-6 gap-4">
                   {overallMetrics.map((m, i) => (
                     <div key={i} className="p-4 rounded" style={{ backgroundColor: colors.muted, border: `1px solid ${colors.border}` }}>
@@ -904,7 +822,14 @@ export default function Analytics(): JSX.Element {
                       <div className="text-xl font-bold" style={{ color: colors.foreground }}>{m.value}</div>
                       <div
                         className="text-xs mt-1"
-                        style={{ color: m.trend === "up" ? colors.green600 : colors.destructive }}
+                        style={{
+                          color:
+                            m.trend === "up"
+                              ? colors.green600
+                              : m.trend === "down"
+                                ? colors.destructive
+                                : colors.mutedForeground,
+                        }}
                       >
                         {m.change}
                       </div>
@@ -912,10 +837,9 @@ export default function Analytics(): JSX.Element {
                   ))}
                 </div>
 
-                {/* NEW: show global no-data message under Overview when all metrics empty */}
-                {noDataInSelectedRange && (
-                  <div className="text-center text-sm mt-3" style={{ color: colors.destructive }}>
-                    No data in the selected time range.
+                {noDataInSelectedRange && !banner.text && (
+                  <div className="text-center text-sm mt-3" style={{ color: colors.mutedForeground }}>
+                    No metrics available for the selected time range.
                   </div>
                 )}
               </div>
@@ -1034,7 +958,17 @@ export default function Analytics(): JSX.Element {
                           <CartesianGrid strokeDasharray="3 3" />
                           <XAxis dataKey="date" hide />
                           <YAxis />
-                          <Bar dataKey="spend" name="Spend (INR)" fill="#3FA7FF" />
+                          <Bar
+                            dataKey="spend"
+                            name={
+                              mixedCurrency
+                                ? "Spend (mixed currencies)"
+                                : displayCurrency
+                                  ? `Spend (${displayCurrency})`
+                                  : "Spend"
+                            }
+                            fill="#3FA7FF"
+                          />
                         </BarChart>
                       </ResponsiveContainer>
                     </div>
@@ -1144,10 +1078,9 @@ export default function Analytics(): JSX.Element {
                 </Card>
               </div>
 
-              {/* NEW: show small alert when all metrics empty and series is empty */}
               {noDataInSelectedRange && (
-                <div className="text-center text-sm mt-2" style={{ color: colors.destructive }}>
-                  No data in the selected time range.
+                <div className="text-center text-sm mt-2" style={{ color: colors.mutedForeground }}>
+                  No chart data for this range (missing days are not shown as zero).
                 </div>
               )}
             </div>

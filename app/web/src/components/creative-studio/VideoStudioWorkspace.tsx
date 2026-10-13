@@ -10,6 +10,7 @@ import {
   Play,
   Plus,
   Save,
+  Share2,
   Sparkles,
   Upload,
 } from 'lucide-react';
@@ -153,6 +154,7 @@ type VideoStudioWorkspaceProps = {
   onKeepVersion: () => void;
   onSaveDraft: () => void;
   onDownload: (video: GeneratedVideo) => void;
+  onPublish?: (video: GeneratedVideo) => void;
   onUpdateAspectRatio: (ratio: '9:16' | '16:9') => void;
 };
 
@@ -189,6 +191,7 @@ export default function VideoStudioWorkspace({
   onKeepVersion,
   onSaveDraft,
   onDownload,
+  onPublish,
   onUpdateAspectRatio,
 }: VideoStudioWorkspaceProps) {
   const router = useRouter();
@@ -1016,6 +1019,18 @@ export default function VideoStudioWorkspace({
               Download
             </GhostButton>
           )}
+          {showStage && onPublish && (
+            <button
+              type="button"
+              onClick={() => selectedVideo && onPublish(selectedVideo)}
+              disabled={!selectedVideo}
+              className="h-8 px-3 rounded-lg inline-flex items-center gap-1.5 text-[12px] font-medium disabled:opacity-40"
+              style={{ background: PURPLE, color: 'white' }}
+            >
+              <Share2 size={13} />
+              Publish
+            </button>
+          )}
           {showStage && generateButton}
         </div>
       </div>
@@ -1786,6 +1801,18 @@ export default function VideoStudioWorkspace({
                               <Download size={13} />
                               Download
                             </button>
+                            {onPublish && (
+                              <button
+                                type="button"
+                                onClick={() => selectedVideo && onPublish(selectedVideo)}
+                                className="h-8 px-2.5 rounded-lg inline-flex items-center gap-1.5 text-[11px] font-medium shrink-0"
+                                style={{ background: PURPLE, color: 'white' }}
+                                aria-label="Publish video"
+                              >
+                                <Share2 size={13} />
+                                Publish
+                              </button>
+                            )}
                           </div>
                         </div>
                       </>
@@ -1876,6 +1903,17 @@ export default function VideoStudioWorkspace({
                     )}
 
                     <div className="flex flex-wrap gap-2 mt-3">
+                      {onPublish && (qcDecision === 'accept' || !qcDecision) && (
+                        <button
+                          type="button"
+                          onClick={() => onPublish(selectedVideo)}
+                          className="px-3 py-1.5 rounded-lg text-[12px] font-medium inline-flex items-center gap-1.5"
+                          style={{ background: PURPLE, color: 'white' }}
+                        >
+                          <Share2 size={13} />
+                          Publish
+                        </button>
+                      )}
                       {(qcDecision === 'regenerate' || pendingRegeneration) && (
                         <button
                           type="button"

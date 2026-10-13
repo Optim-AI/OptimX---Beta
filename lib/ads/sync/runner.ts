@@ -11,7 +11,12 @@ import {
 } from "@/database/models/AdMetrics.dao";
 import { getAdsProvider } from "@/lib/ads/providers";
 import { revealTokens, prepareTokensForStorage } from "@/lib/ads/crypto/tokens";
-import { daysAgo, isoDate, type AdsProviderId } from "@/lib/ads/types";
+import { daysAgo, isoDate, type AdsProviderId, type SyncResult } from "@/lib/ads/types";
+import {
+  classifyAdsSyncOutcome,
+  normalizeFetchDailyMetricsResult,
+} from "@/lib/ads/sync/outcome";
+import { normalizeCurrencyCode } from "@/lib/ads/analytics/currency";
 
 export interface RunSyncOptions {
   userId: string;
@@ -23,7 +28,7 @@ export interface RunSyncOptions {
   lookbackDays?: number;
 }
 
-export async function runAdsSync(options: RunSyncOptions) {
+export async function runAdsSync(options: RunSyncOptions): Promise<SyncResult> {
   const {
     userId,
     provider,
@@ -45,7 +50,12 @@ export async function runAdsSync(options: RunSyncOptions) {
   }
 
   const adsProvider = getAdsProvider(provider);
-  let token = accessToken || "";
+  // Meta Ads: user token lives in refresh_token (see token-contract.ts).
+  // Prefer it for Marketing API reads; do not use organic publish credentials.
+  let token =
+    provider === "meta"
+      ? String(refreshToken || accessToken || "").trim()
+      : String(accessToken || "").trim();
   let currentRefresh = refreshToken;
 
   // Refresh if provider supports it and access token missing/near expiry
@@ -118,6 +128,7 @@ export async function runAdsSync(options: RunSyncOptions) {
     accessToken: token,
     refreshToken: currentRefresh,
     selectedAccountId: selected.accountId,
+    accountCurrency: selected.currency ?? null,
     managerCustomerId:
       (selected.metadata as any)?.managerId ||
       (integration.metadata as any)?.managerCustomerId ||
@@ -138,41 +149,99 @@ export async function runAdsSync(options: RunSyncOptions) {
       entities
     );
 
-    const metrics = await adsProvider.fetchDailyMetrics(ctx, selected.accountId, {
-      since,
-      until,
-    });
+    const metricsRaw = await adsProvider.fetchDailyMetrics(
+      ctx,
+      selected.accountId,
+      { since, until }
+    );
+    const metricsResult = normalizeFetchDailyMetricsResult(metricsRaw);
+
+    // Ensure spend rows carry the selected account currency (providers may omit it)
+    const accountCurrency = normalizeCurrencyCode(selected.currency);
+    const metricsForUpsert = metricsResult.metrics.map((m) => ({
+      ...m,
+      currency: normalizeCurrencyCode(m.currency) || accountCurrency,
+    }));
+
+    // Persist whatever metrics we successfully retrieved before classifying outcome
     const metricsUpserted = await AdMetricsDAO.upsertDaily(
       integration.id,
       selected.id,
       provider,
-      metrics
+      metricsForUpsert
     );
 
-    await AdAccountDAO.markSynced(selected.id);
-    await IntegrationDAO.update(integration.id, {
-      syncStatus: "success",
-      syncErrorMessage: null,
-      lastSyncedAt: new Date().toISOString(),
-      healthStatus: "healthy",
-      lastHealthCheck: new Date().toISOString(),
-    } as any);
-
-    await AdSyncRunDAO.finish(run.id, {
-      status: "success",
+    const outcome = classifyAdsSyncOutcome({
       entitiesUpserted,
       metricsUpserted,
-      details: { since, until, accountId: selected.accountId },
+      metricsResult,
     });
 
+    const details = {
+      since,
+      until,
+      accountId: selected.accountId,
+      currency: accountCurrency,
+      levelsAttempted: metricsResult.levelsAttempted,
+      levelsSucceeded: metricsResult.levelsSucceeded,
+      failures: metricsResult.failures,
+      metricsFetched: metricsResult.metrics.length,
+    };
+
+    if (outcome.status === "success") {
+      await AdAccountDAO.markSynced(selected.id);
+      await IntegrationDAO.update(integration.id, {
+        syncStatus: "success",
+        syncErrorMessage: null,
+        lastSyncedAt: new Date().toISOString(),
+        healthStatus: "healthy",
+        lastHealthCheck: new Date().toISOString(),
+      } as any);
+    } else if (outcome.status === "partial") {
+      await AdAccountDAO.markSynced(selected.id);
+      await IntegrationDAO.update(integration.id, {
+        syncStatus: "partial",
+        syncErrorMessage: outcome.errorMessage,
+        lastSyncedAt: new Date().toISOString(),
+        // Partial is not a token health failure
+        healthStatus: "healthy",
+        healthErrorMessage: null,
+        lastHealthCheck: new Date().toISOString(),
+      } as any);
+    } else {
+      await IntegrationDAO.update(integration.id, {
+        syncStatus: "error",
+        syncErrorMessage: outcome.errorMessage,
+        healthStatus: "unhealthy",
+        healthErrorMessage: outcome.errorMessage,
+        lastHealthCheck: new Date().toISOString(),
+      } as any);
+    }
+
+    await AdSyncRunDAO.finish(run.id, {
+      status: outcome.status,
+      entitiesUpserted,
+      metricsUpserted,
+      errorMessage: outcome.errorMessage,
+      details,
+    });
+
+    // Classified outcomes (success / partial / error) are returned — not thrown —
+    // so API/cron can report status without double-finishing the run.
     return {
-      ok: true,
+      ok: outcome.ok,
+      status: outcome.status,
       runId: run.id,
       since,
       until,
       entitiesUpserted,
       metricsUpserted,
       accountId: selected.accountId,
+      errorMessage: outcome.errorMessage,
+      warnings: metricsResult.failures.map(
+        (f) => `${f.level}: ${f.message}`
+      ),
+      details,
     };
   } catch (err: any) {
     const message = err?.message || String(err);

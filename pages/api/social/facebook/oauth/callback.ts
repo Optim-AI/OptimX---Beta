@@ -1,7 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { decodeState } from "@/auth/helpers";
-import { supabaseAdmin } from "@/auth/supabase/admin";
 import { storeOAuthSession } from "@/integrations/meta/oauth-session";
+import { resolveOAuthCallbackUserFromRequest } from "@/lib/auth/resolve-oauth-callback-user";
 import { fetchMetaPagesForOAuth } from "@/lib/ads/providers/meta/oauth-assets";
 import {
   getMetaPublishRedirectUri,
@@ -33,36 +32,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return;
     }
 
-    stage = "decode_state";
-    const stateObj = decodeState(req.query.state);
-    const supabaseTokenFromState = stateObj?.t ?? null;
-
-    const authHeader = req.headers.authorization;
-    const tokenFromHeader =
-      authHeader && String(authHeader).startsWith("Bearer ")
-        ? String(authHeader).slice(7)
-        : null;
-    const token = supabaseTokenFromState ?? tokenFromHeader ?? null;
-
-    let resolvedUserId: string | null = null;
-    if (token) {
-      stage = "resolve_supabase_user";
-      const { data, error } = await supabaseAdmin.auth.getUser(token);
-      if (!error && data?.user?.id) resolvedUserId = data.user.id;
-    }
-
-    if (!resolvedUserId && process.env.SUPABASE_INTEGRATION_USER_ID) {
-      resolvedUserId = process.env.SUPABASE_INTEGRATION_USER_ID;
-    }
-
-    if (!resolvedUserId) {
-      res.status(400).json({
-        error: "missing_supabase_user_id",
-        message:
-          "No Supabase user could be resolved. Pass the access token as `sb` to /api/social/facebook/oauth/start.",
+    stage = "resolve_supabase_user";
+    const identity = await resolveOAuthCallbackUserFromRequest({
+      state: req.query.state,
+      authorizationHeader: req.headers.authorization,
+      expectedStateProvider: META_PUBLISH_PROVIDER,
+    });
+    if (!identity.ok) {
+      res.status(identity.status).json({
+        error: identity.code,
+        message: identity.error,
       });
       return;
     }
+    const resolvedUserId = identity.userId;
 
     stage = "read_env";
     const appId = process.env.FACEBOOK_APP_ID;

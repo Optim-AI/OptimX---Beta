@@ -97,7 +97,7 @@ export const linkedInAdsProvider: AdsProvider = {
     ctx: AdsProviderContext,
     accountId: string,
     range: SyncDateRange
-  ): Promise<DailyMetricInput[]> {
+  ) {
     const urn = accountId.startsWith("urn:")
       ? accountId
       : `urn:li:sponsoredAccount:${accountId}`;
@@ -137,8 +137,20 @@ export const linkedInAdsProvider: AdsProvider = {
       );
       const json = await resp.json();
       if (!resp.ok) {
-        console.warn("[linkedin] adAnalytics error:", json?.message || resp.status);
-        return metrics;
+        const message = String(json?.message || resp.status);
+        console.warn("[linkedin] adAnalytics error:", message);
+        return {
+          metrics,
+          failures: [
+            {
+              level: "account",
+              message,
+              code: resp.status,
+            },
+          ],
+          levelsAttempted: ["account"],
+          levelsSucceeded: [],
+        };
       }
       for (const el of json.elements || []) {
         const start = el.dateRange?.start;
@@ -161,10 +173,28 @@ export const linkedInAdsProvider: AdsProvider = {
         });
       }
     } catch (e: any) {
-      console.warn("[linkedin] metrics fetch failed:", e?.message);
+      const message = e?.message || "metrics_fetch_failed";
+      console.warn("[linkedin] metrics fetch failed:", message);
+      return {
+        metrics,
+        failures: [
+          {
+            level: "account",
+            message: String(message).slice(0, 300),
+            code: "insights_error",
+          },
+        ],
+        levelsAttempted: ["account"],
+        levelsSucceeded: metrics.length > 0 ? ["account"] : [],
+      };
     }
 
-    return metrics;
+    return {
+      metrics,
+      failures: [],
+      levelsAttempted: ["account"],
+      levelsSucceeded: ["account"],
+    };
   },
 
   async refreshAccessToken(ctx: AdsProviderContext) {

@@ -91,13 +91,6 @@ export default function IntegrationsInstagram() {
   const [mediaIdForComment, setMediaIdForComment] = useState("");
   const [comment, setComment] = useState("");
 
-  // ad states
-  const [campaignName, setCampaignName] = useState("");
-  const [dailyBudget, setDailyBudget] = useState("");
-  const [adSetName, setAdSetName] = useState("");
-  const [creativeImageUrl, setCreativeImageUrl] = useState("");
-  const [creativeCaption, setCreativeCaption] = useState("");
-
   // results / logs
   const [result, setResult] = useState<any>(null);
 
@@ -283,31 +276,6 @@ export default function IntegrationsInstagram() {
       setResult({ error: String(err) });
     } finally {
       setGeneratingCaption(false);
-    }
-  }
-
-  // ---------------- Run Ad (simplified example) ----------------
-  async function handleRunAd(e: React.FormEvent) {
-    e.preventDefault();
-    setResult(null);
-    try {
-      const r = await apiFetch("/api/auth/facebook/ads", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          campaignName,
-          budget: Number(dailyBudget),
-          adSetName,
-          targeting: {},
-          creativeImageUrl,
-          creativeCaption,
-        }),
-      });
-      const j = await r.json();
-      setResult(j);
-      setTimeout(() => fetchCampaigns(), 1500);
-    } catch (err: any) {
-      setResult({ error: String(err) });
     }
   }
 
@@ -810,18 +778,7 @@ export default function IntegrationsInstagram() {
           <button className="px-4 py-2 bg-green-600 text-white rounded">Post Comment</button>
         </form>
 
-        {/* Run an Ad */}
-        <div className="mb-6">
-          <h3 className="font-medium mb-2">Run an Ad</h3>
-          <form onSubmit={handleRunAd}>
-            <input value={campaignName} onChange={(e) => setCampaignName(e.target.value)} placeholder="Campaign Name" className="w-full p-2 border rounded mb-2" />
-            <input value={dailyBudget} onChange={(e) => setDailyBudget(e.target.value)} placeholder="Daily Budget" type="number" className="w-full p-2 border rounded mb-2" />
-            <input value={adSetName} onChange={(e) => setAdSetName(e.target.value)} placeholder="Ad Set Name" className="w-full p-2 border rounded mb-2" />
-            <input value={creativeImageUrl} onChange={(e) => setCreativeImageUrl(e.target.value)} placeholder="Creative Image URL" className="w-full p-2 border rounded mb-2" />
-            <textarea value={creativeCaption} onChange={(e) => setCreativeCaption(e.target.value)} placeholder="Creative Caption / Message" className="w-full p-2 border rounded mb-2" />
-            <button className="px-4 py-2 bg-purple-600 text-white rounded">Create Ad</button>
-          </form>
-        </div>
+        {/* Legacy paid Ads creation UI removed (PR W1.1); endpoint returns 410 Gone. */}
 
         {/* Leads Management */}
         <div className="mb-6">

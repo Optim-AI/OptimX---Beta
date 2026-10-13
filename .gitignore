@@ -29,3 +29,6 @@ tsconfig.tsbuildinfo
 
 # Supabase
 supabase/.temp/
+
+# Production reset reports contain account emails
+scripts/production/beta-reset/out/

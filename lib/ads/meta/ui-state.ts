@@ -3,11 +3,18 @@
  * Connection status is separate from Insights sync status.
  */
 
+import {
+  formatLastSyncedAt,
+  normalizeSyncStatus,
+  sanitizeSyncErrorMessage,
+} from "@/lib/ads/meta/sync-feedback";
+
 export type MetaUiPhase =
   | "disconnected"
   | "pending_selection"
   | "connected"
   | "syncing"
+  | "sync_partial"
   | "sync_failed"
   | "needs_reconnect";
 
@@ -43,6 +50,8 @@ export type MetaUiState = {
   syncStatus: string;
   syncErrorMessage: string | null;
   lastSyncedAt: string | null;
+  /** Locale-friendly last sync time, or null */
+  lastSyncedLabel: string | null;
   hasMetrics: boolean;
   primaryAction:
     | "connect"
@@ -75,9 +84,14 @@ export function deriveMetaUiState(input: MetaStatusPayload | null | undefined): 
         ? 1
         : 0;
 
-  const syncStatus = String(p.syncStatus || "idle").toLowerCase();
+  const syncStatus = normalizeSyncStatus(p.syncStatus);
   const isConnected = !!p.connected && !needsReconnect;
   const awaitingAccountSelection = !isConnected && !!pending?.sessionId;
+  const lastSyncedAt = p.lastSyncedAt ?? null;
+  const lastSyncedLabel = formatLastSyncedAt(lastSyncedAt);
+  const syncErrorMessage = p.syncErrorMessage
+    ? sanitizeSyncErrorMessage(p.syncErrorMessage)
+    : null;
 
   let phase: MetaUiPhase = "disconnected";
   let primaryAction: MetaUiState["primaryAction"] = "connect";
@@ -95,10 +109,14 @@ export function deriveMetaUiState(input: MetaStatusPayload | null | undefined): 
     phase = "syncing";
     primaryAction = "none";
     statusLabel = "Syncing performance…";
-  } else if (isConnected && (syncStatus === "failed" || syncStatus === "error")) {
+  } else if (isConnected && syncStatus === "error") {
     phase = "sync_failed";
     primaryAction = "retry_sync";
-    statusLabel = "Connected — sync failed";
+    statusLabel = "Connected — last sync failed";
+  } else if (isConnected && syncStatus === "partial") {
+    phase = "sync_partial";
+    primaryAction = "retry_sync";
+    statusLabel = "Connected — last sync was partial";
   } else if (isConnected) {
     phase = "connected";
     primaryAction = "manage_accounts";
@@ -106,6 +124,11 @@ export function deriveMetaUiState(input: MetaStatusPayload | null | undefined): 
       selectedAccountCount > 0
         ? `Connected · ${selectedAccountCount} ad account selected`
         : "Connected — select an ad account";
+    if (syncStatus === "success" && lastSyncedLabel) {
+      statusLabel = `Connected — last sync succeeded ${lastSyncedLabel}`;
+    } else if (lastSyncedLabel) {
+      statusLabel = `${statusLabel} · last synced ${lastSyncedLabel}`;
+    }
     if (!selectedAccountId) {
       primaryAction = "select_accounts";
     }
@@ -124,8 +147,9 @@ export function deriveMetaUiState(input: MetaStatusPayload | null | undefined): 
     selectedAccountName: p.selectedAccount?.name ?? null,
     sessionId: pending?.sessionId ?? null,
     syncStatus,
-    syncErrorMessage: p.syncErrorMessage ?? null,
-    lastSyncedAt: p.lastSyncedAt ?? null,
+    syncErrorMessage,
+    lastSyncedAt,
+    lastSyncedLabel,
     hasMetrics: !!p.hasMetrics,
     primaryAction,
     statusLabel,

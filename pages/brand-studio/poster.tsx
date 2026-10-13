@@ -53,6 +53,7 @@ import PosterEditModal from '@/app/web/src/components/content-studio/PosterEditM
 import type { PosterGenerationSession } from '@/lib/creative-studio/poster-generation/types';
 import { PublishComposer } from '@/app/web/src/components/generated-contents/PublishComposer';
 import type { PublishableCreative } from '@/app/web/src/components/generated-contents/PublishComposer';
+import { storagePathFromPublicUrl } from '@/lib/social/generated-contents/ensure-ownership';
 
 /** Download image to user's device - works for data URLs and remote URLs (blob-based for reliable download) */
 async function downloadImageToLocal(url: string, filename: string): Promise<void> {
@@ -2142,6 +2143,59 @@ export default function PosterSessionPage() {
     }
   }
 
+  /**
+   * Mirror video-studio ensure: register storage-backed poster in Generated Contents
+   * before opening PublishComposer so Instagram ownership checks succeed.
+   */
+  async function handlePublishPoster(url: string) {
+    if (!url) {
+      showError('No poster available to publish.');
+      return;
+    }
+    if (url.startsWith('data:') || url.startsWith('blob:')) {
+      showError(
+        'This poster is still inline and not in storage yet. Save it or regenerate, then publish.'
+      );
+      return;
+    }
+
+    const label = brand?.name || posterPrompt || 'Poster';
+    const storagePath = storagePathFromPublicUrl(url);
+
+    try {
+      const resp = await authFetch('/api/generated-contents/ensure', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mediaUrl: url,
+          mediaType: 'image',
+          source: 'poster-studio',
+        }),
+      });
+      const json = await safeResponseJson<{
+        id?: string;
+        storagePath?: string;
+        error?: string;
+        code?: string;
+      }>(resp);
+
+      if (!resp.ok) {
+        throw new Error(json?.error || 'Could not prepare poster for publishing');
+      }
+
+      setPublishCreative({
+        id: json?.id || null,
+        mediaUrl: url,
+        mediaType: 'image',
+        storagePath: json?.storagePath || storagePath,
+        label,
+      });
+    } catch (err: any) {
+      // Surface ensure failures — do not open a composer that will 403 not_owned.
+      showError(err?.message || 'Could not open publish composer for this poster.');
+    }
+  }
+
   async function createCampaignFromPoster(url: string, index: number) {
     setCreatingCampaign(index);
     
@@ -2158,7 +2212,7 @@ export default function PosterSessionPage() {
       const data = await response.json();
       
       if (data.ok && data.campaignId) {
-        router.push(`/create-campaign?id=${data.campaignId}`);
+        router.push('/library');
       } else {
         showError('Failed to create campaign: ' + (data.error || 'Unknown error'));
       }
@@ -2853,13 +2907,9 @@ export default function PosterSessionPage() {
               config={config}
               onConfigChange={setConfig}
               onSavePoster={savePoster}
-              onPublishPoster={(url) =>
-                setPublishCreative({
-                  mediaUrl: url,
-                  mediaType: "image",
-                  label: brand?.name || posterPrompt || "Poster",
-                })
-              }
+              onPublishPoster={(url) => {
+                void handlePublishPoster(url);
+              }}
               onCreateCampaign={createCampaignFromPoster}
               onRegenerate={hasInsufficientCredits ? undefined : handleRegenerateClick}
               onUseAsReference={hasInsufficientCredits ? undefined : handleUseAsReference}

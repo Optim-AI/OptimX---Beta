@@ -823,6 +823,7 @@ export const adMetricsDaily = pgTable("ad_metrics_daily", {
 	uniqueIndex("uq_ad_metrics_daily_grain").using(
 		"btree",
 		table.integrationId.asc().nullsLast(),
+		table.adAccountId.asc().nullsLast(),
 		table.entityType.asc().nullsLast(),
 		table.entityExternalId.asc().nullsLast(),
 		table.metricDate.asc().nullsLast()
@@ -904,6 +905,66 @@ export const onboardingGuestSessions = pgTable("onboarding_guest_sessions", {
 }, (table) => [
 	uniqueIndex("onboarding_guest_sessions_token_hash_key").using("btree", table.tokenHash.asc().nullsLast()),
 	uniqueIndex("onboarding_guest_sessions_profile_id_key").using("btree", table.profileId.asc().nullsLast()),
+]);
+
+/**
+ * meta_ads_drafts — local Meta Ads creation drafts (PR W2.0).
+ * Not creative `campaigns`. Not synced `ad_platform_entities`.
+ * Meta object ids are nullable and must not be fabricated for local drafts.
+ */
+export const metaAdsDrafts = pgTable("meta_ads_drafts", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	userId: uuid("user_id").notNull(),
+	integrationId: uuid("integration_id").notNull(),
+	adAccountId: uuid("ad_account_id").notNull(),
+	status: text().notNull().default("draft"),
+	name: text(),
+	objective: text(),
+	dailyBudgetMajor: text("daily_budget_major"),
+	currency: text().notNull(),
+	scheduleStart: timestamp("schedule_start", { withTimezone: true, mode: "string" }),
+	scheduleEnd: timestamp("schedule_end", { withTimezone: true, mode: "string" }),
+	targeting: jsonb().default({}),
+	placements: jsonb().default({}),
+	sourceImageId: uuid("source_image_id"),
+	sourceImageUrl: text("source_image_url"),
+	primaryText: text("primary_text"),
+	headline: text(),
+	destinationUrl: text("destination_url"),
+	callToAction: text("call_to_action"),
+	metaCampaignId: text("meta_campaign_id"),
+	metaAdsetId: text("meta_adset_id"),
+	metaCreativeId: text("meta_creative_id"),
+	metaAdId: text("meta_ad_id"),
+	idempotencyKey: text("idempotency_key"),
+	createAttemptId: text("create_attempt_id"),
+	lastErrorCode: text("last_error_code"),
+	lastErrorMessage: text("last_error_message"),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).defaultNow(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }).defaultNow(),
+	createdOnMetaAt: timestamp("created_on_meta_at", { withTimezone: true, mode: "string" }),
+	metadata: jsonb().default({}),
+}, (table) => [
+	index("idx_meta_ads_drafts_user_created").using(
+		"btree",
+		table.userId.asc().nullsLast(),
+		table.createdAt.desc().nullsLast()
+	),
+	index("idx_meta_ads_drafts_user_status").using(
+		"btree",
+		table.userId.asc().nullsLast(),
+		table.status.asc().nullsLast()
+	),
+	index("idx_meta_ads_drafts_integration").using(
+		"btree",
+		table.integrationId.asc().nullsLast()
+	),
+	index("idx_meta_ads_drafts_ad_account").using(
+		"btree",
+		table.adAccountId.asc().nullsLast()
+	),
+	// Partial unique index lives in SQL migration
+	// (uq_meta_ads_drafts_user_idempotency WHERE idempotency_key IS NOT NULL).
 ]);
 
 // social_posts — organic publishing history (Facebook Page first; no tokens)

@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/database/client";
 import { socialPosts } from "@/database/schema";
 
@@ -64,6 +64,34 @@ export class SocialPostDAO {
         updatedAt: new Date().toISOString(),
       } as any)
       .where(and(eq(socialPosts.id, id), eq(socialPosts.userId, userId)))
+      .returning();
+    return row ?? null;
+  }
+
+  /**
+   * Atomically claim a draft/failed row for Graph publish.
+   * Returns null if another request already claimed it (or status is not claimable).
+   */
+  static async claimForPublish(
+    id: string,
+    userId: string,
+    patch: Partial<SocialPostInsert> = {}
+  ) {
+    const [row] = await db
+      .update(socialPosts)
+      .set({
+        ...patch,
+        status: "publishing",
+        errorMessage: null,
+        updatedAt: new Date().toISOString(),
+      } as any)
+      .where(
+        and(
+          eq(socialPosts.id, id),
+          eq(socialPosts.userId, userId),
+          inArray(socialPosts.status, ["draft", "failed"])
+        )
+      )
       .returning();
     return row ?? null;
   }

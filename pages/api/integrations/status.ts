@@ -68,8 +68,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                     const accounts = await AdAccountDAO.listByIntegration(
                       saved.savedRowId
                     );
+                    const selected = accounts.find((a) => a.isSelected) || null;
                     selectedAccountCount = accounts.filter((a) => a.isSelected).length;
-                    hasMetrics = await AdMetricsDAO.hasData(saved.savedRowId);
+                    hasMetrics = selected
+                      ? await AdMetricsDAO.hasData(saved.savedRowId, selected.id)
+                      : false;
                   }
                 } catch {
                   // keep defaults

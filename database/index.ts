@@ -35,6 +35,9 @@ export {
 // Social publishing
 export { SocialPostDAO } from './models/SocialPost.dao';
 
+// Meta Ads local drafts (W2.0 — no Graph writes)
+export { MetaAdsDraftDAO } from './models/MetaAdsDraft.dao';
+
 
 // Note: Removed DAOs for tables that don't exist in production:
 // - GoogleAdsDAO (google_ads_tokens table removed — use integrations + ad_accounts)
@@ -75,6 +78,7 @@ export {
   adPlatformEntities,
   adMetricsDaily,
   adSyncRuns,
+  metaAdsDrafts,
 } from '@/database/schema';
 
 // Export inferred types
@@ -109,6 +113,7 @@ import {
   adPlatformEntities,
   adMetricsDaily,
   adSyncRuns,
+  metaAdsDrafts,
 } from '@/database/schema';
 
 // Note: User type removed - use auth.users directly via Supabase Auth
@@ -125,6 +130,7 @@ export type AdAccount = typeof adAccounts.$inferSelect;
 export type AdPlatformEntity = typeof adPlatformEntities.$inferSelect;
 export type AdMetricsDaily = typeof adMetricsDaily.$inferSelect;
 export type AdSyncRun = typeof adSyncRuns.$inferSelect;
+export type MetaAdsDraft = typeof metaAdsDrafts.$inferSelect;
 export type IntegrationFlags = typeof integrationFlags.$inferSelect;
 export type IntegrationsBeta = typeof integrationsBeta.$inferSelect;
 export type TrainingArtifacts = typeof trainingArtifacts.$inferSelect;

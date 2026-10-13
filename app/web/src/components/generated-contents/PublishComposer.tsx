@@ -10,6 +10,7 @@ import colors from "@/lib/ui/colors";
 import { authFetch } from "@/lib/utils";
 import { supabase } from "@/auth/supabase/client";
 import { toast } from "sonner";
+import { buildPublishRequestBody } from "@/lib/social/publishing/social-post-guards";
 
 export type PublishableCreative = {
   id?: string | null;
@@ -17,6 +18,8 @@ export type PublishableCreative = {
   mediaType: "image" | "video";
   storagePath?: string | null;
   label?: string | null;
+  /** Resume an existing social_posts row (draft / failed retry). */
+  socialPostId?: string | null;
 };
 
 type PlatformId = "facebook" | "instagram";
@@ -36,15 +39,24 @@ export function PublishComposer({ open, creative, onClose, onPublished }: Props)
   const [fbCanPublish, setFbCanPublish] = React.useState(false);
   const [fbWarning, setFbWarning] = React.useState<string | null>(null);
   const [fbPageName, setFbPageName] = React.useState<string | null>(null);
-  const [igAvailable, setIgAvailable] = React.useState(false);
+  const [igConnected, setIgConnected] = React.useState(false);
+  const [igCanPublish, setIgCanPublish] = React.useState(false);
+  const [igUsername, setIgUsername] = React.useState<string | null>(null);
+  const [igWarning, setIgWarning] = React.useState<string | null>(null);
   const [igReason, setIgReason] = React.useState<string | null>(null);
   const [loadingStatus, setLoadingStatus] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
+  const [socialPostId, setSocialPostId] = React.useState<string | null>(null);
+  /** Prior ambiguous outcome — block Publish until user acknowledges. */
+  const [ambiguousLock, setAmbiguousLock] = React.useState(false);
+  const [forceRetryAck, setForceRetryAck] = React.useState(false);
+  const [publishedLock, setPublishedLock] = React.useState(false);
   const [status, setStatus] = React.useState<{
     type: "success" | "error" | "info" | null;
     text: string;
   } | null>(null);
   const [connectLoading, setConnectLoading] = React.useState(false);
+  const submitGenerationRef = React.useRef(0);
 
   const refreshStatus = React.useCallback(async () => {
     setLoadingStatus(true);
@@ -67,15 +79,21 @@ export function PublishComposer({ open, creative, onClose, onPublished }: Props)
       }
       if (igRes.ok) {
         const ig = await igRes.json();
-        setIgAvailable(Boolean(ig.available && ig.canPublish));
+        setIgConnected(Boolean(ig.connected));
+        setIgCanPublish(Boolean(ig.connected && ig.canPublish));
+        setIgUsername(ig.igUsername || null);
+        setIgWarning(ig.warning || null);
         setIgReason(ig.reason || null);
       } else {
-        setIgAvailable(false);
-        setIgReason("Instagram publishing is not available yet.");
+        setIgConnected(false);
+        setIgCanPublish(false);
+        setIgUsername(null);
+        setIgReason("Could not load Instagram status.");
       }
     } catch {
       setFbConnected(false);
-      setIgAvailable(false);
+      setIgConnected(false);
+      setIgCanPublish(false);
     } finally {
       setLoadingStatus(false);
     }
@@ -85,17 +103,34 @@ export function PublishComposer({ open, creative, onClose, onPublished }: Props)
     if (!open) return;
     setCaption("");
     setHashtags("");
-    setPlatform("facebook");
+    // Videos/Reels → Instagram; Facebook Page publish is photos-only today
+    setPlatform(creative?.mediaType === "video" ? "instagram" : "facebook");
+    setSocialPostId(creative?.socialPostId || null);
+    setAmbiguousLock(false);
+    setForceRetryAck(false);
+    setPublishedLock(false);
     setStatus(null);
+    submitGenerationRef.current = 0;
     void refreshStatus();
-  }, [open, creative?.mediaUrl, refreshStatus]);
+  }, [open, creative?.mediaUrl, creative?.mediaType, creative?.socialPostId, refreshStatus]);
+
+  const selectPlatform = (next: PlatformId) => {
+    if (next === platform) return;
+    setPlatform(next);
+    // New platform → new social_posts row (provider isolation).
+    setSocialPostId(null);
+    setAmbiguousLock(false);
+    setForceRetryAck(false);
+    setPublishedLock(false);
+    setStatus(null);
+  };
 
   React.useEffect(() => {
     if (!open) return;
     const onMessage = (event: MessageEvent) => {
       const data = event.data;
-      if (!data || data.platform !== "meta-publish") return;
-      if (data.status === "success") {
+      if (!data) return;
+      if (data.platform === "meta-publish" && data.status === "success") {
         void refreshStatus();
         toast.success(
           data.pageName
@@ -103,23 +138,51 @@ export function PublishComposer({ open, creative, onClose, onPublished }: Props)
             : "Facebook Page connected for publishing"
         );
       }
+      if (data.platform === "meta-instagram" && data.status === "success") {
+        void refreshStatus();
+        toast.success(
+          data.igUsername
+            ? `Connected @${data.igUsername}`
+            : "Instagram account connected"
+        );
+      }
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
   }, [open, refreshStatus]);
 
-  const connectFacebook = async () => {
+  const openOAuthPopup = async (
+    path: string,
+    windowName: string,
+    signInMessage: string
+  ) => {
     setConnectLoading(true);
     try {
       const { data } = await supabase.auth.getSession();
       const token = (data as any)?.session?.access_token;
       if (!token) {
-        toast.error("Sign in to connect Facebook Page publishing");
+        toast.error(signInMessage);
         return;
       }
+      // Preflight Instagram start: surface missing FLB config instead of Meta Invalid Scopes
+      if (path.includes("/instagram/oauth/start")) {
+        const pre = await fetch(
+          `${path}?sb=${encodeURIComponent(token)}`,
+          { method: "GET", redirect: "manual" }
+        );
+        // 302/307 → config present (do not follow here; popup will). 4xx → show message.
+        if (pre.status >= 400 && pre.status < 500) {
+          const json = await pre.json().catch(() => ({}));
+          toast.error(
+            json.message ||
+              "Instagram Login configuration is missing. Set FACEBOOK_INSTAGRAM_LOGIN_CONFIG_ID."
+          );
+          return;
+        }
+      }
       const popup = window.open(
-        `/api/social/facebook/oauth/start?sb=${encodeURIComponent(token)}`,
-        "skalx_facebook_publish",
+        `${path}?sb=${encodeURIComponent(token)}`,
+        windowName,
         "width=720,height=720,menubar=no,toolbar=no"
       );
       if (!popup) toast.error("Popup blocked. Allow popups and try again.");
@@ -132,87 +195,194 @@ export function PublishComposer({ open, creative, onClose, onPublished }: Props)
     .filter(Boolean)
     .join("\n\n");
 
-  const canPublishNow =
+  const fbReady =
     platform === "facebook" &&
     fbCanPublish &&
     creative?.mediaType === "image" &&
     Boolean(creative?.mediaUrl);
 
-  const videoBlocked =
+  const igReady =
+    platform === "instagram" &&
+    igCanPublish &&
+    Boolean(creative?.mediaUrl) &&
+    (creative?.mediaType === "image" || creative?.mediaType === "video");
+
+  const canPublishNow = fbReady || igReady;
+
+  const videoBlockedOnFacebook =
     platform === "facebook" && creative?.mediaType === "video";
-  const igBlocked = platform === "instagram";
 
   const submit = async (draft: boolean) => {
     if (!creative?.mediaUrl) return;
+    // Ignore duplicate clicks / concurrent submits from the same composer.
+    if (busy || submitGenerationRef.current > 0) return;
+    if (!draft && publishedLock) {
+      setStatus({
+        type: "error",
+        text: "This post was already published from this composer session.",
+      });
+      return;
+    }
+    if (!draft && ambiguousLock && !forceRetryAck) {
+      setStatus({
+        type: "error",
+        text:
+          "A previous publish attempt had an unclear result. Check the platform for a possible duplicate, then acknowledge Retry anyway.",
+      });
+      return;
+    }
+
     setStatus(null);
 
     if (platform === "instagram") {
-      setStatus({
-        type: "error",
-        text:
-          igReason ||
-          "Instagram publishing is not available yet. Select Facebook instead.",
-      });
-      return;
+      if (!igConnected) {
+        setStatus({
+          type: "error",
+          text: "Connect an Instagram professional account before publishing.",
+        });
+        return;
+      }
+      if (!igCanPublish) {
+        setStatus({
+          type: "error",
+          text:
+            igReason ||
+            "Instagram publishing permission is incomplete. Reconnect with instagram_content_publish.",
+        });
+        return;
+      }
+    } else {
+      if (creative.mediaType === "video") {
+        setStatus({
+          type: "error",
+          text:
+            "Facebook Page publishing currently supports photos only. Switch to Instagram for Reels, or use an image creative.",
+        });
+        return;
+      }
+      if (!fbConnected) {
+        setStatus({
+          type: "error",
+          text: "Connect a Facebook Page before publishing.",
+        });
+        return;
+      }
     }
 
-    if (creative.mediaType === "video") {
-      setStatus({
-        type: "error",
-        text:
-          "Facebook video publishing is not enabled yet. This endpoint currently supports Page photo posts only.",
-      });
-      return;
-    }
-
-    if (!fbConnected) {
-      setStatus({
-        type: "error",
-        text: "Connect a Facebook Page before publishing.",
-      });
-      return;
-    }
+    const endpoint =
+      platform === "instagram"
+        ? "/api/social/instagram/publish"
+        : "/api/social/facebook/publish";
+    const platformLabel = platform === "instagram" ? "Instagram" : "Facebook Page";
 
     setBusy(true);
+    submitGenerationRef.current += 1;
     try {
-      const resp = await authFetch("/api/social/facebook/publish", {
+      let activePostId = socialPostId;
+
+      // Ensure a durable social_posts row before Graph publish so retries reuse it.
+      if (!draft && !activePostId) {
+        const draftBody = buildPublishRequestBody({
+          platform,
+          mediaUrl: creative.mediaUrl,
+          mediaType: creative.mediaType,
+          caption: composedCaption,
+          sourceImageId: creative.id,
+          sourceImagePath: creative.storagePath,
+          draft: true,
+        });
+        const draftResp = await authFetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(draftBody),
+        });
+        const draftJson = await draftResp.json().catch(() => ({}));
+        if (!draftResp.ok) {
+          throw new Error(draftJson.error || "Could not create publish record");
+        }
+        activePostId = draftJson.socialPost?.id || null;
+        if (activePostId) setSocialPostId(activePostId);
+        if (!activePostId) {
+          throw new Error("Publish record missing id — aborting to avoid duplicates");
+        }
+      }
+
+      const body = buildPublishRequestBody({
+        platform,
+        mediaUrl: creative.mediaUrl,
+        mediaType: creative.mediaType,
+        caption: composedCaption,
+        sourceImageId: creative.id,
+        sourceImagePath: creative.storagePath,
+        socialPostId: activePostId,
+        draft,
+        forceRetry: !draft && forceRetryAck,
+      });
+
+      const resp = await authFetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          imageUrl: creative.mediaUrl,
-          caption: composedCaption,
-          sourceImageId: creative.id || undefined,
-          sourceImagePath: creative.storagePath || undefined,
-          draft,
-        }),
+        body: JSON.stringify(body),
       });
       const json = await resp.json().catch(() => ({}));
+
+      const returnedId = json.socialPost?.id as string | undefined;
+      if (returnedId) setSocialPostId(returnedId);
+
       if (!resp.ok) {
-        if (json.ambiguous) {
+        if (
+          json.code === "already_published" ||
+          json.code === "publish_in_progress" ||
+          json.code === "ambiguous_prior" ||
+          json.ambiguous
+        ) {
+          if (json.code === "already_published") setPublishedLock(true);
+          if (json.ambiguous || json.code === "ambiguous_prior" || json.code === "publish_in_progress") {
+            setAmbiguousLock(true);
+            setForceRetryAck(false);
+          }
           throw new Error(
-            `${json.error || "Publish result unclear"}. Do not retry automatically — check your Page for a possible duplicate.`
+            json.ambiguous || json.code === "ambiguous_prior" || json.code === "publish_in_progress"
+              ? `${json.error || "Publish result unclear"}. Do not retry automatically — check ${platformLabel} for a possible duplicate.`
+              : json.error || "Publish blocked"
           );
         }
-        throw new Error(json.error || "Publish failed");
+        if (
+          json.code === "media_host_not_configured" ||
+          json.code === "media_host_insecure"
+        ) {
+          throw new Error(
+            json.error ||
+              "Instagram media hosting is not configured. Set INSTAGRAM_MEDIA_HOST_SUPABASE_URL to a public HTTPS Supabase project (and its service role key) for local development."
+          );
+        }
+        if (json.code === "localhost_or_insecure" || json.code === "mirror_upload_failed") {
+          throw new Error(
+            json.error ||
+              "Could not produce a public HTTPS media URL for Instagram. Check hosted storage configuration."
+          );
+        }
+        throw new Error(json.error || `${platformLabel} publish failed`);
       }
 
       if (draft) {
         setStatus({ type: "success", text: "Draft saved." });
       } else {
+        setPublishedLock(true);
+        setAmbiguousLock(false);
+        setForceRetryAck(false);
         setStatus({
           type: "success",
           text: json.permalink
-            ? `Published. ${json.permalink}`
-            : "Published to your Facebook Page.",
+            ? `Published to ${platformLabel}. ${json.permalink}`
+            : `Published to ${platformLabel}.`,
         });
         onPublished?.();
       }
     } catch (e: any) {
-      setStatus({
-        type: "error",
-        text: e?.message || "Publish failed",
-      });
+      setStatus({ type: "error", text: e?.message || "Publish failed" });
     } finally {
+      submitGenerationRef.current = Math.max(0, submitGenerationRef.current - 1);
       setBusy(false);
     }
   };
@@ -280,7 +450,11 @@ export function PublishComposer({ open, creative, onClose, onPublished }: Props)
                 Platform preview
               </p>
               <p className="font-medium text-sm mb-1">
-                {platform === "facebook" ? "Facebook Page post" : "Instagram feed"}
+                {platform === "facebook"
+                  ? "Facebook Page post"
+                  : creative.mediaType === "video"
+                    ? "Instagram Reel"
+                    : "Instagram feed"}
               </p>
               <p className="text-sm whitespace-pre-wrap" style={{ color: colors.mutedForeground }}>
                 {composedCaption || "Your caption will appear here…"}
@@ -294,7 +468,7 @@ export function PublishComposer({ open, creative, onClose, onPublished }: Props)
               <div className="mt-2 grid grid-cols-2 gap-2">
                 <button
                   type="button"
-                  onClick={() => setPlatform("facebook")}
+                  onClick={() => selectPlatform("facebook")}
                   className="flex items-center gap-2 rounded-lg border px-3 py-2.5 text-sm transition"
                   style={{
                     borderColor: platform === "facebook" ? colors.primary : colors.border,
@@ -313,7 +487,7 @@ export function PublishComposer({ open, creative, onClose, onPublished }: Props)
                 </button>
                 <button
                   type="button"
-                  onClick={() => setPlatform("instagram")}
+                  onClick={() => selectPlatform("instagram")}
                   className="flex items-center gap-2 rounded-lg border px-3 py-2.5 text-sm transition"
                   style={{
                     borderColor: platform === "instagram" ? colors.primary : colors.border,
@@ -322,9 +496,13 @@ export function PublishComposer({ open, creative, onClose, onPublished }: Props)
                 >
                   <Instagram size={16} />
                   Instagram
-                  <span className="ml-auto text-[10px]" style={{ color: colors.mutedForeground }}>
-                    {igAvailable ? "Ready" : "Soon"}
-                  </span>
+                  {igConnected ? (
+                    <CheckCircle2 size={14} className="ml-auto text-green-500" />
+                  ) : (
+                    <span className="ml-auto text-[10px]" style={{ color: colors.mutedForeground }}>
+                      {loadingStatus ? "…" : "Connect"}
+                    </span>
+                  )}
                 </button>
               </div>
             </div>
@@ -344,7 +522,13 @@ export function PublishComposer({ open, creative, onClose, onPublished }: Props)
                     size="sm"
                     variant="outline"
                     disabled={connectLoading}
-                    onClick={() => void connectFacebook()}
+                    onClick={() =>
+                      void openOAuthPopup(
+                        "/api/social/facebook/oauth/start",
+                        "skalx_facebook_publish",
+                        "Sign in to connect Facebook Page publishing"
+                      )
+                    }
                   >
                     {connectLoading ? "Opening…" : fbConnected ? "Reconnect" : "Connect Page"}
                   </Button>
@@ -355,27 +539,56 @@ export function PublishComposer({ open, creative, onClose, onPublished }: Props)
               </div>
             )}
 
-            {igBlocked && (
-              <div
-                className="flex gap-2 rounded-lg border px-3 py-2 text-sm text-amber-200"
-                style={{ borderColor: "rgba(245,158,11,0.35)", background: "rgba(245,158,11,0.08)" }}
-              >
-                <AlertCircle size={16} className="shrink-0 mt-0.5" />
-                <span>
-                  {igReason ||
-                    "Instagram is not publish-ready yet. Selecting it will not call Facebook publishing."}
-                </span>
+            {platform === "instagram" && (
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center gap-2 text-sm">
+                  {igConnected ? (
+                    <span className={igCanPublish ? "text-green-500" : "text-amber-400"}>
+                      Destination: @{igUsername || "Instagram"}
+                      {!igCanPublish ? " (publish permission incomplete)" : ""}
+                    </span>
+                  ) : (
+                    <span className="text-amber-400">Instagram not connected</span>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={connectLoading}
+                    onClick={() =>
+                      void openOAuthPopup(
+                        "/api/social/instagram/oauth/start",
+                        "skalx_instagram_publish",
+                        "Sign in to connect Instagram"
+                      )
+                    }
+                  >
+                    {connectLoading
+                      ? "Opening…"
+                      : igConnected
+                        ? "Reconnect"
+                        : "Connect Instagram"}
+                  </Button>
+                </div>
+                {igWarning && (
+                  <p className="text-xs text-amber-300">{igWarning}</p>
+                )}
+                <p className="text-xs" style={{ color: colors.mutedForeground }}>
+                  Instagram needs a Meta-reachable HTTPS media URL. Local creatives are mirrored to hosted
+                  Supabase when{" "}
+                  <code className="text-[10px]">INSTAGRAM_MEDIA_HOST_SUPABASE_URL</code> is configured
+                  (or when primary storage is already public HTTPS).
+                </p>
               </div>
             )}
 
-            {videoBlocked && (
+            {videoBlockedOnFacebook && (
               <div
                 className="flex gap-2 rounded-lg border px-3 py-2 text-sm text-amber-200"
                 style={{ borderColor: "rgba(245,158,11,0.35)", background: "rgba(245,158,11,0.08)" }}
               >
                 <AlertCircle size={16} className="shrink-0 mt-0.5" />
                 <span>
-                  This creative is a video. Facebook Page publishing currently supports photos only.
+                  This creative is a video. Facebook Page publishing supports photos only — use Instagram for Reels.
                 </span>
               </div>
             )}
@@ -406,9 +619,29 @@ export function PublishComposer({ open, creative, onClose, onPublished }: Props)
               />
             </div>
 
+            {ambiguousLock && (
+              <label className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={forceRetryAck}
+                  onChange={(e) => setForceRetryAck(e.target.checked)}
+                />
+                <span>
+                  I checked the platform for a possible duplicate and want to retry this publish
+                  deliberately.
+                </span>
+              </label>
+            )}
+
             <div className="flex flex-col gap-2 pt-2">
               <Button
-                disabled={busy || !canPublishNow}
+                disabled={
+                  busy ||
+                  !canPublishNow ||
+                  publishedLock ||
+                  (ambiguousLock && !forceRetryAck)
+                }
                 onClick={() => void submit(false)}
                 style={{
                   background: colors.gradientPrimary,
@@ -420,6 +653,10 @@ export function PublishComposer({ open, creative, onClose, onPublished }: Props)
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                     Publishing…
                   </>
+                ) : publishedLock ? (
+                  "Already published"
+                ) : ambiguousLock && !forceRetryAck ? (
+                  "Publish blocked (unclear prior result)"
                 ) : (
                   "Publish Now"
                 )}
@@ -427,7 +664,11 @@ export function PublishComposer({ open, creative, onClose, onPublished }: Props)
               <div className="grid grid-cols-2 gap-2">
                 <Button
                   variant="outline"
-                  disabled={busy || !fbConnected || platform !== "facebook"}
+                  disabled={
+                    busy ||
+                    (platform === "facebook" && !fbConnected) ||
+                    (platform === "instagram" && !igConnected)
+                  }
                   onClick={() => void submit(true)}
                 >
                   Save Draft

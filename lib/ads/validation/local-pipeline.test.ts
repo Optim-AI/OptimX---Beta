@@ -156,6 +156,7 @@ async function main() {
 
     const agg = await AdMetricsDAO.aggregateRange(
       integrationId,
+      selected!.id,
       "2026-04-01",
       "2026-04-01",
       "account"
@@ -183,9 +184,14 @@ async function main() {
     assert.ok(recent.length >= 1);
     assert.strictEqual(recent[0].status, "success");
 
-    // Ownership isolation: other user's aggregate empty
-    const other = await AdMetricsDAO.hasData(randomUUID());
+    // Ownership isolation: other integration + other account have no data
+    const other = await AdMetricsDAO.hasData(randomUUID(), selected!.id);
     assert.strictEqual(other, false);
+    const otherAccount = await AdMetricsDAO.hasData(
+      integrationId,
+      randomUUID()
+    );
+    assert.strictEqual(otherAccount, false);
 
     console.log("PASS lib/ads/validation/local-pipeline.test.ts");
   } finally {

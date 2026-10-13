@@ -20,8 +20,10 @@ import {
   PublishComposer,
   type PublishableCreative,
 } from "@/app/web/src/components/generated-contents/PublishComposer";
+import { InstagramEngagementPanel } from "@/app/web/src/components/generated-contents/InstagramEngagementPanel";
 
 type MediaFilter = "all" | "image" | "video";
+type ViewTab = "library" | "instagram";
 
 type LibraryItem = {
   id: string;
@@ -70,6 +72,7 @@ export function GeneratedContentsLibrary() {
   const [composerOpen, setComposerOpen] = React.useState(false);
   const [composerCreative, setComposerCreative] =
     React.useState<PublishableCreative | null>(null);
+  const [viewTab, setViewTab] = React.useState<ViewTab>("library");
 
   React.useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search.trim()), 300);
@@ -162,6 +165,41 @@ export function GeneratedContentsLibrary() {
             </div>
           </div>
 
+          <div
+            className="inline-flex rounded-lg p-1 gap-0 mb-5"
+            style={{ background: colors.muted, border: `1px solid ${colors.border}` }}
+          >
+            {(
+              [
+                { id: "library" as const, label: "Library" },
+                { id: "instagram" as const, label: "Instagram engagement" },
+              ]
+            ).map(({ id, label }) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setViewTab(id)}
+                className="px-3.5 py-2 rounded-md text-sm font-medium transition-colors"
+                style={{
+                  background: viewTab === id ? colors.primary : "transparent",
+                  color:
+                    viewTab === id
+                      ? colors.primaryForeground
+                      : colors.mutedForeground,
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {viewTab === "instagram" && (
+            <div className="mb-8">
+              <InstagramEngagementPanel />
+            </div>
+          )}
+
+          {viewTab === "library" && (
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-5">
             <div
               className="inline-flex rounded-lg p-1 gap-0"
@@ -207,22 +245,23 @@ export function GeneratedContentsLibrary() {
               />
             </div>
           </div>
+          )}
 
-          {loading && (
+          {viewTab === "library" && loading && (
             <div className="flex items-center justify-center py-24 gap-2" style={{ color: colors.mutedForeground }}>
               <Loader2 className="animate-spin" size={18} />
               Loading your library…
             </div>
           )}
 
-          {!loading && error && (
+          {viewTab === "library" && !loading && error && (
             <div className="rounded-xl border p-6 text-center" style={{ borderColor: colors.border }}>
               <p className="text-red-400 mb-3">{error}</p>
               <Button onClick={() => void load({ offset: 0 })}>Retry</Button>
             </div>
           )}
 
-          {!loading && !error && items.length === 0 && (
+          {viewTab === "library" && !loading && !error && items.length === 0 && (
             <div
               className="rounded-2xl border border-dashed px-6 py-16 text-center"
               style={{ borderColor: colors.border, background: colors.card }}
@@ -248,7 +287,7 @@ export function GeneratedContentsLibrary() {
             </div>
           )}
 
-          {!loading && !error && items.length > 0 && (
+          {viewTab === "library" && !loading && !error && items.length > 0 && (
             <>
               <p className="text-xs mb-3" style={{ color: colors.mutedForeground }}>
                 Showing {items.length} of {total}

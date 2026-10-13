@@ -9,6 +9,7 @@ import {
 import { publishFacebookPagePhoto } from "@/lib/social/facebook-publish/publish";
 import { mapPublishPermissionError } from "@/lib/social/facebook-publish/permissions";
 import { META_PUBLISH_PROVIDER } from "@/lib/social/facebook-publish/scopes";
+import { evaluateSocialPostForPublish } from "@/lib/social/publishing/social-post-guards";
 
 /**
  * POST /api/social/facebook/publish
@@ -18,7 +19,8 @@ import { META_PUBLISH_PROVIDER } from "@/lib/social/facebook-publish/scopes";
  *   sourceImageId?: string;
  *   sourceImagePath?: string;
  *   draft?: boolean;
- *   socialPostId?: string; // resume a draft
+ *   socialPostId?: string; // resume a draft / reuse publish attempt
+ *   forceRetry?: boolean; // deliberate retry after ambiguous prior
  * }
  *
  * Never auto-retries Meta publish on ambiguous failures.
@@ -47,6 +49,7 @@ export default async function handler(
       sourceImagePath,
       draft,
       socialPostId,
+      forceRetry,
     } = req.body ?? {};
 
     const mediaCheck = await validatePublishableImageUrl(imageUrl);
@@ -91,11 +94,27 @@ export default async function handler(
           userId
         );
         if (!existing) {
-          res.status(404).json({ error: "Draft not found" });
+          res.status(404).json({ error: "Draft not found", code: "not_found" });
+          return;
+        }
+        if (existing.provider && existing.provider !== META_PUBLISH_PROVIDER) {
+          res.status(400).json({
+            error: "This social post belongs to a different platform.",
+            code: "provider_mismatch",
+          });
           return;
         }
         if (existing.status === "published") {
           res.status(400).json({ error: "Cannot edit a published post as draft" });
+          return;
+        }
+        if (existing.status === "publishing") {
+          res.status(409).json({
+            error: "A publish is already in progress for this post.",
+            code: "publish_in_progress",
+            ambiguous: true,
+            socialPost: sanitizePost(existing),
+          });
           return;
         }
         row = await SocialPostDAO.update(socialPostId, userId, {
@@ -107,6 +126,7 @@ export default async function handler(
           destinationPageId: integration.pageId,
           destinationPageName: integration.pageName,
           integrationId: integration.integrationId || null,
+          provider: META_PUBLISH_PROVIDER,
         });
       } else {
         row = await SocialPostDAO.create({
@@ -131,58 +151,75 @@ export default async function handler(
       return;
     }
 
-    // Prevent duplicate publish of an already-published record
+    // Prevent duplicate / concurrent publish when resuming a known row
+    let postRow;
     if (socialPostId) {
       const existing = await SocialPostDAO.findByIdForUser(socialPostId, userId);
       if (!existing) {
-        res.status(404).json({ error: "Social post not found" });
+        res.status(404).json({ error: "Social post not found", code: "not_found" });
         return;
       }
-      if (existing.status === "published" && existing.metaPostId) {
-        res.status(409).json({
-          error: "This post was already published",
-          code: "already_published",
+      const guard = evaluateSocialPostForPublish({
+        existing,
+        expectedProvider: META_PUBLISH_PROVIDER,
+        userId,
+        sourceImageId: sourceImageId ? String(sourceImageId) : null,
+        forceRetry: forceRetry === true,
+      });
+      if (!guard.ok) {
+        res.status(guard.status).json({
+          error: guard.error,
+          code: guard.code,
+          ambiguous: guard.ambiguous,
+          retrySafe: guard.retrySafe,
           socialPost: sanitizePost(existing),
         });
         return;
       }
-      if (existing.status === "publishing") {
+
+      postRow = await SocialPostDAO.claimForPublish(socialPostId, userId, {
+        caption: cap.caption,
+        sourceImageUrl: mediaCheck.url,
+        sourceImageId: sourceImageId || undefined,
+        sourceImagePath: sourceImagePath || undefined,
+        destinationPageId: integration.pageId,
+        destinationPageName: integration.pageName,
+        integrationId: integration.integrationId || null,
+        provider: META_PUBLISH_PROVIDER,
+        metadata: {
+          ...(typeof existing.metadata === "object" && existing.metadata
+            ? (existing.metadata as object)
+            : {}),
+          ambiguous: false,
+          forceRetry: forceRetry === true,
+        },
+      });
+      if (!postRow) {
+        const raced = await SocialPostDAO.findByIdForUser(socialPostId, userId);
         res.status(409).json({
           error:
             "A publish is already in progress for this post. Do not retry until status is known.",
           code: "publish_in_progress",
-          socialPost: sanitizePost(existing),
           ambiguous: true,
+          retrySafe: false,
+          socialPost: sanitizePost(raced),
         });
         return;
       }
+    } else {
+      postRow = await SocialPostDAO.create({
+        userId,
+        integrationId: integration.integrationId || null,
+        provider: META_PUBLISH_PROVIDER,
+        destinationPageId: integration.pageId,
+        destinationPageName: integration.pageName,
+        sourceImageId: sourceImageId || null,
+        sourceImageUrl: mediaCheck.url,
+        sourceImagePath: sourceImagePath || null,
+        caption: cap.caption,
+        status: "publishing",
+      });
     }
-
-    let postRow =
-      socialPostId
-        ? await SocialPostDAO.update(socialPostId, userId, {
-            status: "publishing",
-            caption: cap.caption,
-            sourceImageUrl: mediaCheck.url,
-            sourceImageId: sourceImageId || undefined,
-            sourceImagePath: sourceImagePath || undefined,
-            destinationPageId: integration.pageId,
-            destinationPageName: integration.pageName,
-            integrationId: integration.integrationId || null,
-            errorMessage: null,
-          })
-        : await SocialPostDAO.create({
-            userId,
-            integrationId: integration.integrationId || null,
-            provider: META_PUBLISH_PROVIDER,
-            destinationPageId: integration.pageId,
-            destinationPageName: integration.pageName,
-            sourceImageId: sourceImageId || null,
-            sourceImageUrl: mediaCheck.url,
-            sourceImagePath: sourceImagePath || null,
-            caption: cap.caption,
-            status: "publishing",
-          });
 
     if (!postRow) {
       res.status(500).json({ error: "Failed to create publishing record" });

@@ -26,6 +26,11 @@ import { authFetch, safeResponseJson } from '@/lib/utils';
 import { supabase } from '@/auth/supabase/client';
 import StudioErrorBoundary from '@/app/web/src/components/creative-studio/StudioErrorBoundary';
 import {
+  PublishComposer,
+  type PublishableCreative,
+} from '@/app/web/src/components/generated-contents/PublishComposer';
+import { storagePathFromPublicUrl } from '@/lib/social/generated-contents/ensure-ownership';
+import {
   assertNativeDurationInvariant,
   buildStudioAvailableAssets,
   mapStudioFormToCampaignBrief,
@@ -280,6 +285,7 @@ export default function VideoSessionPage() {
   const [adBuilderData, setAdBuilderData] = useState<AdBuilderData>(DEFAULT_AD_BUILDER_DATA);
   const [generatedVideos, setGeneratedVideos] = useState<GeneratedVideo[]>([]);
   const [selectedVideoId, setSelectedVideoId] = useState<string | null>(null);
+  const [publishCreative, setPublishCreative] = useState<PublishableCreative | null>(null);
 
   // Loading states
   const [isScrapingProduct, setIsScrapingProduct] = useState(false);
@@ -1611,6 +1617,69 @@ export default function VideoSessionPage() {
     }
   }
 
+  async function handlePublishVideo(video: GeneratedVideo) {
+    if (!video?.url) {
+      showError('No video available to publish.');
+      return;
+    }
+    if (video.url.startsWith('data:') || video.url.startsWith('blob:')) {
+      showError(
+        'This video is still inline and not in storage yet. Regenerate or wait for storage upload, then publish.'
+      );
+      return;
+    }
+
+    const label =
+      adBuilderData.product?.product_name ||
+      session?.name ||
+      brand?.name ||
+      'Video commercial';
+    const storagePath = storagePathFromPublicUrl(video.url);
+
+    try {
+      const resp = await authFetch('/api/generated-contents/ensure', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mediaUrl: video.url,
+          mediaType: 'video',
+          source: 'video-studio',
+        }),
+      });
+      const json = await safeResponseJson<{
+        id?: string;
+        storagePath?: string;
+        error?: string;
+      }>(resp);
+
+      if (!resp.ok) {
+        throw new Error(json?.error || 'Could not prepare video for publishing');
+      }
+
+      setPublishCreative({
+        id: json?.id || null,
+        mediaUrl: video.url,
+        mediaType: 'video',
+        storagePath: json?.storagePath || storagePath,
+        label,
+      });
+    } catch (err: any) {
+      // Still open composer with URL if ensure failed but storage path exists —
+      // ownership may already be recorded from generation.
+      if (storagePath) {
+        setPublishCreative({
+          id: null,
+          mediaUrl: video.url,
+          mediaType: 'video',
+          storagePath,
+          label,
+        });
+        return;
+      }
+      showError(err?.message || 'Could not open publish composer for this video.');
+    }
+  }
+
   // ============== Aspect Ratio ==============
 
   function updateAspectRatio(ratio: '9:16' | '16:9') {
@@ -1857,9 +1926,16 @@ export default function VideoSessionPage() {
             }}
             onSaveDraft={saveSession}
             onDownload={handleDownloadVideo}
+            onPublish={handlePublishVideo}
             onUpdateAspectRatio={updateAspectRatio}
           />
         </StudioErrorBoundary>
+
+        <PublishComposer
+          open={Boolean(publishCreative)}
+          creative={publishCreative}
+          onClose={() => setPublishCreative(null)}
+        />
         {showBrandOnboarding && !brand && (
           <BrandOnboarding
             mode={onboardingMode}

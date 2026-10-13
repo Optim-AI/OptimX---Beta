@@ -1,8 +1,7 @@
 // pages/api/meta/oauth/callback.ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import { decodeState } from '@/auth/helpers';
-import { supabaseAdmin } from '@/auth/supabase/admin';
 import { storeOAuthSession } from '@/integrations/meta/oauth-session';
+import { resolveOAuthCallbackUserFromRequest } from "@/lib/auth/resolve-oauth-callback-user";
 import { getMetaOAuthRedirectUri } from "@/lib/ads/providers/meta/client";
 import {
   fetchMetaAdAccountsForOAuth,
@@ -47,44 +46,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return;
     }
 
-    // 2. Decode state to get Supabase token
-    stage = "decode_state";
-    const stateObj = decodeState(req.query.state);
-    const supabaseTokenFromState = stateObj?.t ?? null;
-
-    const authHeader = req.headers.authorization;
-    const tokenFromHeader =
-      authHeader && String(authHeader).startsWith("Bearer ")
-        ? String(authHeader).slice(7)
-        : null;
-    const token = supabaseTokenFromState ?? tokenFromHeader ?? null;
-
-    // 3. Resolve Supabase user ID
-    let resolvedUserId: string | null = null;
-    if (token) {
-      stage = "resolve_supabase_user";
-      const { data, error } = await supabaseAdmin.auth.getUser(token);
-      if (!error && data?.user?.id) resolvedUserId = data.user.id;
-      else
-        console.warn("supabase getUser returned no user or error", {
-          error: error ? { message: (error as any).message } : null,
-          hasUser: !!data?.user,
-        });
-    }
-
-    // Fallback to env var (for testing only)
-    if (!resolvedUserId && process.env.SUPABASE_INTEGRATION_USER_ID) {
-      resolvedUserId = process.env.SUPABASE_INTEGRATION_USER_ID;
-    }
-
-    if (!resolvedUserId) {
-      res.status(400).json({
-        error: "missing_supabase_user_id",
-        message:
-          "No Supabase user could be resolved. Ensure you pass the Supabase access token as `sb` to /api/meta/oauth/start or set SUPABASE_INTEGRATION_USER_ID.",
+    // 2–3. Resolve owning user from flow-bound OAuth state (never env fallback)
+    stage = "resolve_supabase_user";
+    const identity = await resolveOAuthCallbackUserFromRequest({
+      state: req.query.state,
+      authorizationHeader: req.headers.authorization,
+      expectedStateProvider: "meta",
+    });
+    if (!identity.ok) {
+      res.status(identity.status).json({
+        error: identity.code,
+        message: identity.error,
       });
       return;
     }
+    const resolvedUserId = identity.userId;
 
     // 4. Validate environment variables
     stage = "read_env";

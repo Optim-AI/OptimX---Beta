@@ -87,9 +87,11 @@ function main() {
   assert.equal(videoRow!.values.skalx_starter, '1,200');
   assert.ok(!String(videoRow!.values.skalx_starter).toLowerCase().includes('second'));
 
-  // Analytics marked coming soon honestly
+  // Basic analytics entitled on all SkalX plans (PR I); advanced remains gated separately
   const analytics = PLAN_COMPARISON_ROWS.find((r) => r.id === 'analytics');
-  assert.equal(analytics?.values.skalx_starter, 'coming_soon');
+  assert.equal(analytics?.values.skalx_starter, true);
+  assert.equal(analytics?.values.skalx_growth, true);
+  assert.equal(analytics?.values.skalx_pro, true);
 
   // Priority generation only on Pro
   const priority = PLAN_COMPARISON_ROWS.find((r) => r.id === 'priority_generation');

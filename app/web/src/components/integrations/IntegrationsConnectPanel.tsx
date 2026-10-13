@@ -24,6 +24,10 @@ import {
   type MetaStatusPayload,
   type MetaUiState,
 } from "@/lib/ads/meta/ui-state";
+import {
+  interpretAdsSyncResponse,
+  type SyncFeedbackTone,
+} from "@/lib/ads/meta/sync-feedback";
 
 const META_AUTH_PATH = "/api/meta/oauth/start";
 const LS_KEY = "integrations_status_v1";
@@ -73,9 +77,11 @@ export function IntegrationsConnectPanel({
   const [metaStatus, setMetaStatus] = useState<MetaStatusPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
+  const [messageTone, setMessageTone] = useState<SyncFeedbackTone>("info");
   const [syncBusy, setSyncBusy] = useState(false);
   const popupRef = useRef<Window | null>(null);
   const pollRef = useRef<number | null>(null);
+  const syncInFlightRef = useRef(false);
   const onStatusesChangeRef = useRef(onStatusesChange);
   onStatusesChangeRef.current = onStatusesChange;
 
@@ -280,7 +286,13 @@ export function IntegrationsConnectPanel({
   };
 
   const handleSync = async () => {
+    // Prevent duplicate sync while one is already in flight (button or status)
+    if (syncInFlightRef.current || syncBusy || ui.phase === "syncing") {
+      return;
+    }
+    syncInFlightRef.current = true;
     setSyncBusy(true);
+    setMessageTone("info");
     setMessage("Syncing Meta Ads performance…");
     try {
       const res = await apiFetch("/api/ads/sync", {
@@ -288,20 +300,26 @@ export function IntegrationsConnectPanel({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ provider: "meta", lookbackDays: 30 }),
       });
-      const json = await res.json();
-      if (!res.ok || json.ok === false) {
-        throw new Error(json.error || "Sync failed");
+      let json: any = null;
+      try {
+        json = await res.json();
+      } catch {
+        json = null;
       }
-      setMessage(
-        `Sync complete (${json.metricsUpserted ?? 0} metric rows)`
-      );
-      await fetchStatuses();
+      const feedback = interpretAdsSyncResponse(res.ok, json);
+      setMessageTone(feedback.tone);
+      setMessage(feedback.message);
+      if (feedback.shouldRefreshStatus) {
+        await fetchStatuses();
+      }
     } catch (e: any) {
+      setMessageTone("error");
       setMessage(e?.message || "Sync failed");
       await fetchStatuses();
     } finally {
+      syncInFlightRef.current = false;
       setSyncBusy(false);
-      setTimeout(() => setMessage(null), 4000);
+      setTimeout(() => setMessage(null), 6000);
     }
   };
 
@@ -454,9 +472,23 @@ export function IntegrationsConnectPanel({
     ? { background: gradientPrimary, border: "none" }
     : undefined;
 
-  const statusIconConnected = ui.isConnected || ui.phase === "syncing" || ui.phase === "sync_failed";
+  const statusIconConnected =
+    ui.isConnected ||
+    ui.phase === "syncing" ||
+    ui.phase === "sync_partial" ||
+    ui.phase === "sync_failed";
   const statusBg = statusIconConnected ? green100 : muted;
   const statusIconColor = statusIconConnected ? green600 : mutedForeground;
+  const syncActionDisabled =
+    syncBusy || syncInFlightRef.current || ui.phase === "syncing";
+  const messageColor =
+    messageTone === "error"
+      ? "#f87171"
+      : messageTone === "warning"
+        ? "#fbbf24"
+        : messageTone === "success"
+          ? "#22c55e"
+          : colors.mutedForeground;
 
   return (
     <div className="space-y-6">
@@ -535,6 +567,19 @@ export function IntegrationsConnectPanel({
                   <Loader2 className="w-3 h-3 animate-spin" />
                   Syncing
                 </Badge>
+              ) : ui.phase === "sync_partial" ? (
+                <Badge
+                  variant="outline"
+                  className="flex items-center gap-1"
+                  style={{
+                    background: "hsl(45 93% 47% / 0.15)",
+                    borderColor: "hsl(45 93% 47% / 0.4)",
+                    color: "hsl(45 93% 60%)",
+                  }}
+                >
+                  <AlertCircle className="w-3 h-3" />
+                  Partial sync
+                </Badge>
               ) : ui.phase === "sync_failed" ? (
                 <Badge variant="destructive" className="flex items-center gap-1">
                   <AlertCircle className="w-3 h-3" />
@@ -551,7 +596,7 @@ export function IntegrationsConnectPanel({
                   }}
                 >
                   <Check className="w-3 h-3" />
-                  Connected
+                  {ui.syncStatus === "success" ? "Synced" : "Connected"}
                 </Badge>
               ) : null}
 
@@ -559,11 +604,21 @@ export function IntegrationsConnectPanel({
                 {loading ? "checking integration status…" : ui.statusLabel}
               </p>
 
-              {ui.phase === "connected" && ui.selectedAccountCount > 0 ? (
+              {(ui.phase === "connected" ||
+                ui.phase === "sync_partial" ||
+                ui.phase === "sync_failed") &&
+              ui.selectedAccountCount > 0 ? (
                 <p className="text-xs" style={{ color: colors.mutedForeground }}>
                   {ui.selectedAccountCount} ad account selected
                   {ui.selectedAccountName ? ` · ${ui.selectedAccountName}` : ""}
                   {ui.hasMetrics ? " · metrics available" : " · no metrics synced yet"}
+                  {ui.lastSyncedLabel ? ` · last synced ${ui.lastSyncedLabel}` : ""}
+                </p>
+              ) : null}
+
+              {ui.phase === "sync_partial" && ui.syncErrorMessage ? (
+                <p className="text-xs" style={{ color: "#fbbf24" }}>
+                  {ui.syncErrorMessage}
                 </p>
               ) : null}
 
@@ -607,10 +662,10 @@ export function IntegrationsConnectPanel({
                 <Button
                   variant="outline"
                   className="w-full mt-2"
-                  disabled={syncBusy}
+                  disabled={syncActionDisabled}
                   onClick={handleSync}
                 >
-                  {syncBusy ? "Syncing…" : "Sync performance"}
+                  {syncActionDisabled ? "Syncing…" : "Sync performance"}
                 </Button>
                 <Button
                   variant="outline"
@@ -627,10 +682,10 @@ export function IntegrationsConnectPanel({
                 <Button
                   className="w-full"
                   style={connectBtnStyle}
-                  disabled={syncBusy}
+                  disabled={syncActionDisabled}
                   onClick={handleSync}
                 >
-                  {syncBusy ? "Retrying…" : "Retry sync"}
+                  {syncActionDisabled ? "Retrying…" : "Retry sync"}
                 </Button>
                 <Button
                   variant="outline"
@@ -663,13 +718,13 @@ export function IntegrationsConnectPanel({
         <div className="text-sm" style={{ color: colors.mutedForeground }}>
           {loading ? "checking integration status..." : "status synced."}
           {message && (
-            <div className="mt-2 text-sm" style={{ color: "#22c55e" }}>
+            <div className="mt-2 text-sm" style={{ color: messageColor }}>
               {message}
             </div>
           )}
         </div>
       ) : message ? (
-        <div className="text-sm" style={{ color: "#22c55e" }}>
+        <div className="text-sm" style={{ color: messageColor }}>
           {message}
         </div>
       ) : null}

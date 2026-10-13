@@ -1,8 +1,8 @@
 import type {
   AdsProviderId,
-  DailyMetricInput,
   DiscoveredAdAccount,
   DiscoveredAsset,
+  FetchDailyMetricsResult,
   PlatformEntityInput,
   SyncDateRange,
   SyncResult,
@@ -15,6 +15,8 @@ export interface AdsProviderContext {
   refreshToken?: string | null;
   /** Selected advertising account external id (no act_ prefix for Meta) */
   selectedAccountId?: string | null;
+  /** ISO currency for the selected ad account (e.g. USD, INR) — stamp on spend metrics */
+  accountCurrency?: string | null;
   /** Google Ads MCC / login-customer-id */
   managerCustomerId?: string | null;
   metadata?: Record<string, unknown>;
@@ -37,12 +39,15 @@ export interface AdsProvider {
     accountId: string
   ): Promise<PlatformEntityInput[]>;
 
-  /** Fetch daily metrics for account (+ campaign-level when available). */
+  /**
+   * Fetch daily metrics for account (+ campaign-level when available).
+   * Must surface per-level failures — do not swallow errors as empty success.
+   */
   fetchDailyMetrics(
     ctx: AdsProviderContext,
     accountId: string,
     range: SyncDateRange
-  ): Promise<DailyMetricInput[]>;
+  ): Promise<FetchDailyMetricsResult>;
 
   /** Refresh access token when supported; return new tokens or null. */
   refreshAccessToken?(
