@@ -202,7 +202,7 @@ Never fabricate competitors, posts, dates, or engagement. If research fails → 
 
 ### Hero
 
-- Headline: “Your competitors are marketing. Are you learning from them?”
+- Headline: “Your AI Marketing team, from research to results.”
 - Supporting copy + primary CTA “Get my free audit”
 - Secondary link → `/pricing` without starting an audit
 - Input id: `hero-brand-input`

@@ -129,11 +129,22 @@ const Hero: React.FC = () => {
       });
       const data = await res.json().catch(() => null);
       if (!res.ok || !data?.ok || !data.audit?.id) {
-        setError(data?.error || "We couldn't start your audit. Please try again.");
+        const code = typeof data?.code === "string" ? data.code : "";
+        const msg =
+          (typeof data?.error === "string" && data.error) ||
+          (code === "rate_limited"
+            ? "You've run several audits recently. Please try again later."
+            : code === "audit_storage_unavailable"
+              ? "Audit storage is temporarily unavailable. Please try again in a few minutes."
+              : code === "dns" || code === "private_address"
+                ? "We couldn't reach that website. Check the address and try again."
+                : "We couldn't start your audit. Please try again.");
+        setError(msg);
         setSubmitting(false);
         return;
       }
       if (!data.reused) trackAuditEvent("audit_started", { host: data.audit.host });
+      // Keep submitting=true until navigation; prevents double-create on double-click.
       router.push(`/audit/${data.audit.id}`);
     } catch {
       setError("Network error. Check your connection and try again.");
@@ -322,7 +333,7 @@ const Hero: React.FC = () => {
               className="text-4xl sm:text-[46px] font-normal leading-tight tracking-tight max-w-4xl mx-auto"
               style={{ color: colors.foreground }}
             >
-              Your competitors are marketing. Are you learning from them?
+              Your AI Marketing team, from research to results.
             </h1>
           </div>
           <p

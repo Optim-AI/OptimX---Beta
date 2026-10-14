@@ -100,9 +100,23 @@ export default function AuditPage() {
     try {
       const res = await authFetch(`/api/audit/${id}/run`, { method: 'POST' });
       const data = await res.json().catch(() => null);
-      if (data?.audit) applyAudit(data.audit);
+      if (data?.audit) {
+        applyAudit(data.audit);
+        setActionError(null);
+        return;
+      }
+      if (!res.ok) {
+        const code = typeof data?.code === 'string' ? data.code : '';
+        setActionError(
+          (typeof data?.error === 'string' && data.error) ||
+            (code === 'audit_storage_unavailable'
+              ? 'Audit storage is temporarily unavailable. Please retry in a few minutes.'
+              : 'Something went wrong running your audit. You can retry — completed steps are kept.')
+        );
+      }
     } catch {
       // Request may be cut off by the network; polling picks up persisted progress.
+      setActionError('The research request was interrupted. Retrying from saved progress…');
     } finally {
       runInFlight.current = false;
     }

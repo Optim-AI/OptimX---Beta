@@ -576,10 +576,12 @@ async function main() {
   // ---------- pricing navigation ----------
   await run('hero: audit CTA posts to /api/audit; "Explore plans" goes straight to /pricing', () => {
     const hero = readFileSync(join(process.cwd(), 'app/web/src/components/Hero.tsx'), 'utf8');
-    assert.ok(hero.includes('Your competitors are marketing. Are you learning from them?'));
+    assert.ok(hero.includes('Your AI Marketing team, from research to results.'));
     assert.ok(hero.includes('Get my free audit'));
     assert.ok(/<Link href="\/pricing"[^>]*>\s*Don&apos;t have a website\? Explore plans/.test(hero));
     assert.ok(hero.includes('"/api/audit"'));
+    assert.ok(hero.includes('audit_storage_unavailable'), 'maps storage outage to a clear message');
+    assert.ok(hero.includes('if (submitting) return'), 'guards against duplicate submits while in flight');
     const pricing = readFileSync(join(process.cwd(), 'pages/pricing.tsx'), 'utf8');
     assert.ok(pricing.includes("from === 'audit'"));
     assert.ok(pricing.includes('/api/onboarding/claim'));

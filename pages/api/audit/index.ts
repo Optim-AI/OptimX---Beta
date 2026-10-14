@@ -3,31 +3,55 @@ import { getUserIdFromRequest } from '@/auth/request';
 import { ensureProfile } from '@/lib/auth/ensure-profile';
 import { ensureGuestSession, readGuestSession } from '@/lib/onboarding/guest-session';
 import { toPublicAudit } from '@/lib/audit/access';
+import {
+  classifyAuditPersistError,
+  clientMessageForCode,
+  logAuditApiError,
+  newAuditRequestId,
+} from '@/lib/audit/api-errors';
 import { AUDIT_LIMITS, decideAuditRateLimit, getClientIp, hashClientIp } from '@/lib/audit/rate-limit';
 import { countRecentAudits, createOrReuseAudit } from '@/lib/audit/store';
 import { assertPublicHost, normalizeAuditUrl, UnsafeUrlError } from '@/lib/audit/url-safety';
 
 const HOST_MESSAGES: Record<string, string> = {
-  private_address: 'That address points to a private or internal network.',
-  dns: "We couldn't find that website. Check the spelling and try again.",
+  private_address: clientMessageForCode('private_address'),
+  dns: clientMessageForCode('dns'),
 };
 
 /** POST /api/audit — start (or resume) a free audit for a website. */
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  const requestId = newAuditRequestId();
+  res.setHeader('x-audit-request-id', requestId);
+
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
-    return res.status(405).json({ ok: false, error: 'Method not allowed' });
+    return res.status(405).json({
+      ok: false,
+      code: 'method_not_allowed',
+      requestId,
+      error: clientMessageForCode('method_not_allowed'),
+    });
   }
 
-  const check = normalizeAuditUrl(req.body?.url);
+  const check = normalizeAuditUrl(typeof req.body?.url === 'string' ? req.body.url : '');
   if (!check.ok) {
-    return res.status(400).json({ ok: false, code: check.reason, error: check.message });
+    return res.status(400).json({
+      ok: false,
+      code: check.reason || 'invalid_url',
+      requestId,
+      error: check.message || clientMessageForCode('invalid_url'),
+    });
   }
   try {
     await assertPublicHost(new URL(check.url).hostname);
   } catch (e) {
     const code = e instanceof UnsafeUrlError ? e.code : 'dns';
-    return res.status(400).json({ ok: false, code, error: HOST_MESSAGES[code] || HOST_MESSAGES.dns });
+    return res.status(400).json({
+      ok: false,
+      code,
+      requestId,
+      error: HOST_MESSAGES[code] || HOST_MESSAGES.dns,
+    });
   }
 
   try {
@@ -39,9 +63,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       actorId = authUserId;
       guestProfileId = (await readGuestSession(req))?.profileId ?? null;
     } else {
-      const guest = await ensureGuestSession(req, res);
-      actorId = guest.profileId;
-      guestProfileId = guest.profileId;
+      try {
+        const guest = await ensureGuestSession(req, res);
+        actorId = guest.profileId;
+        guestProfileId = guest.profileId;
+      } catch (e) {
+        const classified = classifyAuditPersistError(e);
+        logAuditApiError({
+          requestId,
+          stage: 'guest_session',
+          code: 'guest_session_failed',
+          detail: classified.detail,
+          err: e,
+          host: check.host,
+        });
+        return res.status(classified.status === 503 ? 503 : 500).json({
+          ok: false,
+          code: 'guest_session_failed',
+          requestId,
+          error: clientMessageForCode('guest_session_failed'),
+        });
+      }
     }
 
     const ipHash = hashClientIp(getClientIp(req));
@@ -64,17 +106,32 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(429).json({
         ok: false,
         code: 'rate_limited',
-        error: "You've run several audits recently. Please try again later.",
+        requestId,
+        error: clientMessageForCode('rate_limited'),
       });
     }
 
     return res.status(result.reused ? 200 : 201).json({
       ok: true,
       reused: result.reused,
+      requestId,
       audit: toPublicAudit(result.row, { authUserId, guestProfileId }),
     });
   } catch (e) {
-    console.error('[audit] create failed', (e as Error)?.message);
-    return res.status(500).json({ ok: false, code: 'server_error', error: "We couldn't start your audit. Please try again." });
+    const classified = classifyAuditPersistError(e);
+    logAuditApiError({
+      requestId,
+      stage: 'create',
+      code: classified.code,
+      detail: classified.detail,
+      err: e,
+      host: check.host,
+    });
+    return res.status(classified.status).json({
+      ok: false,
+      code: classified.code,
+      requestId,
+      error: classified.message,
+    });
   }
 }
