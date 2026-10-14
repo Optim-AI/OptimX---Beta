@@ -11,6 +11,7 @@ import { db } from '@/database/client';
 import {
   creativeStudioSessions,
   generationJobLocks,
+  marketingAudits,
   onboardingGuestSessions,
   posterGenerationSessions,
   profiles,
@@ -228,6 +229,10 @@ export async function claimGuestSession(
     reassignUserId(creativeStudioSessions, guest.profileId, realUserId),
     reassignUserId(userGeneratedImage, guest.profileId, realUserId),
     reassignUserId(userGeneratedImages, guest.profileId, realUserId),
+    db
+      .update(marketingAudits)
+      .set({ userId: realUserId, claimedAt: new Date().toISOString(), updatedAt: new Date().toISOString() })
+      .where(eq(marketingAudits.userId, guest.profileId)),
   ];
   await Promise.all(moves.map((p) => p.catch(() => undefined)));
 

@@ -10,7 +10,7 @@ import {
   getSafeNextPath,
   redirectWwwToCanonicalForOAuth,
 } from "@/lib/routing/safe-next";
-import { fetchPostAuthDestination } from "@/lib/auth/client-post-auth";
+import { fetchPostAuthDestination, resolvePostAuthPath } from "@/lib/auth/client-post-auth";
 import AuthShell from "@/components/auth/AuthShell";
 
 export default function SignInPage(): React.ReactElement {
@@ -33,7 +33,7 @@ export default function SignInPage(): React.ReactElement {
       setError(decision.error);
       return;
     }
-    router.replace(decision.path);
+    router.replace(resolvePostAuthPath(decision.path, router.query.next));
   }
 
   useEffect(() => {

@@ -35,6 +35,35 @@ const Header: React.FC = () => {
     }
   };
 
+  const pointToAuditInput = () => {
+    const reveal = () => {
+      const input = document.getElementById('hero-brand-input');
+      if (!input) return;
+      input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      window.dispatchEvent(new CustomEvent('skalx:focus-audit'));
+      window.setTimeout(() => {
+        (input as HTMLInputElement).focus({ preventScroll: true });
+      }, 450);
+    };
+
+    if (pathname !== '/') {
+      try {
+        sessionStorage.setItem('skalx:focus-audit', '1');
+      } catch {
+        /* ignore */
+      }
+      void router.push('/#home');
+      return;
+    }
+    reveal();
+  };
+
+  const handleFreeAuditClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    e.preventDefault();
+    setIsMenuOpen(false);
+    pointToAuditInput();
+  };
+
   return (
     <header className="fixed top-0 left-0 right-0 z-50 px-4 sm:px-6 pt-4">
       <div
@@ -119,8 +148,8 @@ const Header: React.FC = () => {
             >
               Login
             </Link>
-            <Link href="/try">
-              <Button variant="cta">Try Now</Button>
+            <Link href="/#home" onClick={handleFreeAuditClick}>
+              <Button variant="cta">Get free audit</Button>
             </Link>
           </div>
 
@@ -221,9 +250,9 @@ const Header: React.FC = () => {
                 >
                   Login
                 </Link>
-                <Link href="/try" onClick={() => setIsMenuOpen(false)}>
+                <Link href="/#home" onClick={handleFreeAuditClick}>
                   <Button variant="cta" className="justify-start w-full">
-                    Try Now
+                    Get free audit
                   </Button>
                 </Link>
               </div>

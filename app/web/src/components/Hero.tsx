@@ -14,6 +14,8 @@ import {
 import { useRouter } from "next/router";
 import Link from "next/link";
 import colors from "@/lib/ui/colors";
+import { authFetch } from "@/lib/utils";
+import { trackAuditEvent } from "@/lib/audit/analytics";
 import { useIsMobile } from "../hooks/use-mobile";
 import { ParallaxLayer } from "./ParallaxLayer";
 
@@ -28,7 +30,7 @@ function withAlpha(token: string, alpha: number) {
 
 /**
  * Public hero — marketing CTA surface.
- * Brand URL/product input routes into the canonical /try flow (no second onboarding).
+ * Website URL starts the free marketing audit (/audit/:id); no signup required.
  * Creative carousel lives in CreativeShowcase on the homepage.
  */
 const Hero: React.FC = () => {
@@ -59,30 +61,84 @@ const Hero: React.FC = () => {
     return () => window.removeEventListener("mousemove", onMove);
   }, [isMobile]);
 
-  const scrollToSection = (id: string) => {
-    const el = document.getElementById(id);
-    if (el) el.scrollIntoView({ behavior: "smooth" });
-    else router.push(`/#${id}`);
-  };
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [showPasteHint, setShowPasteHint] = useState(false);
+  const hintTimerRef = useRef<number | null>(null);
 
-  const goToTry = (e?: React.FormEvent) => {
-    e?.preventDefault();
-    const trimmed = url.trim();
-    if (trimmed) {
-      const looksLikeUrl =
-        /^https?:\/\//i.test(trimmed) ||
-        /^[a-z0-9.-]+\.[a-z]{2,}/i.test(trimmed);
-      if (looksLikeUrl) {
-        const withProtocol = /^https?:\/\//i.test(trimmed)
-          ? trimmed
-          : `https://${trimmed}`;
-        router.push(`/try?website=${encodeURIComponent(withProtocol)}`);
-        return;
+  useEffect(() => {
+    const clearHintTimer = () => {
+      if (hintTimerRef.current != null) {
+        window.clearTimeout(hintTimerRef.current);
+        hintTimerRef.current = null;
       }
-      router.push(`/try?brand=${encodeURIComponent(trimmed)}`);
+    };
+
+    const showHint = () => {
+      clearHintTimer();
+      setShowPasteHint(true);
+      hintTimerRef.current = window.setTimeout(() => {
+        setShowPasteHint(false);
+        hintTimerRef.current = null;
+      }, 5000);
+    };
+
+    const onFocusAudit = () => showHint();
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setShowPasteHint(false);
+    };
+
+    try {
+      if (sessionStorage.getItem("skalx:focus-audit") === "1") {
+        sessionStorage.removeItem("skalx:focus-audit");
+        const input = document.getElementById("hero-brand-input") as HTMLInputElement | null;
+        if (input) {
+          input.scrollIntoView({ behavior: "smooth", block: "center" });
+          window.setTimeout(() => input.focus({ preventScroll: true }), 450);
+        }
+        showHint();
+      }
+    } catch {
+      /* ignore */
+    }
+
+    window.addEventListener("skalx:focus-audit", onFocusAudit);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("skalx:focus-audit", onFocusAudit);
+      window.removeEventListener("keydown", onKeyDown);
+      clearHintTimer();
+    };
+  }, []);
+
+  const startAudit = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (submitting) return;
+    const trimmed = url.trim();
+    if (!trimmed) {
+      setError("Enter your website address to get your audit.");
       return;
     }
-    router.push("/try");
+    setSubmitting(true);
+    setError(null);
+    try {
+      const res = await authFetch("/api/audit", {
+        method: "POST",
+        body: JSON.stringify({ url: trimmed }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok || !data.audit?.id) {
+        setError(data?.error || "We couldn't start your audit. Please try again.");
+        setSubmitting(false);
+        return;
+      }
+      if (!data.reused) trackAuditEvent("audit_started", { host: data.audit.host });
+      router.push(`/audit/${data.audit.id}`);
+    } catch {
+      setError("Network error. Check your connection and try again.");
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -107,6 +163,24 @@ const Hero: React.FC = () => {
         .hero-input-wrap:focus-within {
           transform: scale(1.01);
           box-shadow: 0 0 0 1px hsl(213 100% 62% / 0.2), 0 0 24px hsl(213 100% 62% / 0.12);
+        }
+        @keyframes heroHintPulse {
+          0%,
+          100% {
+            box-shadow: 0 0 0 1px hsl(213 100% 62% / 0.35), 0 0 20px hsl(213 100% 62% / 0.15);
+          }
+          50% {
+            box-shadow: 0 0 0 2px hsl(213 100% 62% / 0.55), 0 0 28px hsl(213 100% 62% / 0.28);
+          }
+        }
+        .hero-input-hint-pulse {
+          animation: heroHintPulse 1.4s ease-in-out infinite;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .hero-input-hint-pulse {
+            animation: none;
+            box-shadow: 0 0 0 1px hsl(213 100% 62% / 0.4), 0 0 20px hsl(213 100% 62% / 0.18);
+          }
         }
         @keyframes floatOrbit {
           0%,
@@ -245,22 +319,23 @@ const Hero: React.FC = () => {
             style={{ animationDelay: "0.1s" }}
           >
             <h1
-              className="text-4xl sm:text-[46px] font-normal leading-tight tracking-tight md:whitespace-nowrap"
+              className="text-4xl sm:text-[46px] font-normal leading-tight tracking-tight max-w-4xl mx-auto"
               style={{ color: colors.foreground }}
             >
-              SkalX AI — Your AI Marketing Partner.
+              Your AI Marketing team, from research to results.
             </h1>
           </div>
           <p
             className="text-center text-xl mb-8 max-w-3xl mx-auto font-extralight animate-[fadeUp_0.7s_cubic-bezier(0.16,1,0.3,1)_both"
             style={{ color: colors.mutedForeground, animationDelay: "0.25s" }}
           >
-            SkalX AI understands your brand and creates marketing creatives — ad creatives,
-            posters, and short video ads — so campaigns move faster.
+            Get a free AI-powered marketing audit for your brand. Discover what competitors are
+            posting, what&apos;s working in your niche, and what you should create next.
           </p>
 
           <form
-            onSubmit={goToTry}
+            onSubmit={startAudit}
+            noValidate
             className="hero-card p-6 sm:p-8 mb-4 mx-auto w-full max-w-2xl animate-float-subtle"
             style={{
               background: `linear-gradient(135deg, ${withAlpha(colors.card, 0.85)} 0%, ${withAlpha(colors.card, 0.92)} 100%)`,
@@ -268,58 +343,116 @@ const Hero: React.FC = () => {
             }}
           >
             <div className="space-y-5">
-              <div className="hero-input-wrap rounded-[18px]">
-                <label htmlFor="hero-brand-input" className="sr-only">
-                  Website URL or brand name
-                </label>
-                <input
-                  id="hero-brand-input"
-                  type="text"
-                  placeholder="Paste your website URL or brand name..."
-                  value={url}
-                  onChange={(e) => setUrl(e.target.value)}
-                  className="w-full h-12 rounded-[18px] px-4 text-base outline-none"
-                  style={{
-                    backgroundColor: colors.card,
-                    border: `1px solid ${colors.input}`,
-                    color: colors.foreground,
-                  }}
-                />
+              <div className="relative">
+                {showPasteHint && (
+                  <div
+                    role="status"
+                    className="absolute left-1/2 bottom-full z-20 mb-3 w-max max-w-[min(90vw,280px)] -translate-x-1/2 animate-[fadeUp_0.35s_cubic-bezier(0.16,1,0.3,1)_both]"
+                  >
+                    <div
+                      className="relative rounded-xl px-4 py-2.5 text-sm font-medium text-center shadow-lg"
+                      style={{
+                        background: "hsl(0 0% 12%)",
+                        color: colors.foreground,
+                        border: "1px solid rgba(255,255,255,0.12)",
+                        boxShadow: "0 8px 28px rgba(0,0,0,0.45)",
+                      }}
+                    >
+                      Paste your website here
+                      <span
+                        aria-hidden
+                        className="absolute left-1/2 top-full -translate-x-1/2"
+                        style={{
+                          width: 0,
+                          height: 0,
+                          borderLeft: "8px solid transparent",
+                          borderRight: "8px solid transparent",
+                          borderTop: "8px solid hsl(0 0% 12%)",
+                          filter: "drop-shadow(0 1px 0 rgba(255,255,255,0.12))",
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
+                <div
+                  className={`hero-input-wrap rounded-[18px] ${showPasteHint ? "hero-input-hint-pulse" : ""}`}
+                >
+                  <label htmlFor="hero-brand-input" className="sr-only">
+                    Your website URL
+                  </label>
+                  <input
+                    id="hero-brand-input"
+                    type="text"
+                    inputMode="url"
+                    autoComplete="url"
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    placeholder="yourbrand.com"
+                    value={url}
+                    onChange={(e) => {
+                      setUrl(e.target.value);
+                      if (error) setError(null);
+                      if (showPasteHint) setShowPasteHint(false);
+                    }}
+                    aria-invalid={Boolean(error)}
+                    aria-describedby={
+                      error
+                        ? "hero-audit-error"
+                        : showPasteHint
+                          ? "hero-paste-hint"
+                          : undefined
+                    }
+                    disabled={submitting}
+                    className="w-full h-12 rounded-[18px] px-4 text-base outline-none"
+                    style={{
+                      backgroundColor: colors.card,
+                      border: `1px solid ${
+                        error
+                          ? colors.destructive
+                          : showPasteHint
+                            ? "hsl(213 100% 62% / 0.7)"
+                            : colors.input
+                      }`,
+                      color: colors.foreground,
+                    }}
+                  />
+                </div>
+                {showPasteHint && (
+                  <span id="hero-paste-hint" className="sr-only">
+                    Paste your website here to start the free audit
+                  </span>
+                )}
               </div>
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+              {error && (
+                <p id="hero-audit-error" role="alert" className="text-sm text-center" style={{ color: colors.destructive }}>
+                  {error}
+                </p>
+              )}
+              <div className="flex flex-col items-center justify-center gap-4">
                 <Button
                   type="submit"
                   variant="hero"
                   size="lg"
-                  className="px-8 py-4 text-base rounded-xl w-full sm:w-auto min-w-[160px]"
+                  disabled={submitting}
+                  className="px-8 py-4 text-base rounded-xl w-full sm:w-auto min-w-[220px]"
                   style={{
                     background: colors.gradientPrimary,
                     color: colors.primaryForeground,
                     boxShadow: colors.shadowGlow,
                   }}
                 >
-                  Try Now →
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="lg"
-                  className="px-8 py-4 text-base rounded-xl w-full sm:w-auto min-w-[160px]"
-                  onClick={() => scrollToSection("how-it-works")}
-                  style={{ borderColor: colors.border, color: colors.foreground }}
-                >
-                  See How It Works
+                  {submitting ? "Starting your audit…" : "Get my free audit"}
                 </Button>
               </div>
               <p className="text-center text-sm" style={{ color: colors.mutedForeground }}>
-                Experience SkalX with your brand — no free trial required to explore.
+                No signup or card needed to see your results.
               </p>
             </div>
           </form>
 
           <div className="text-center">
-            <Link href="/try" className="text-sm font-medium" style={{ color: colors.primary }}>
-              Or continue without entering a URL →
+            <Link href="/pricing" className="text-sm font-medium" style={{ color: colors.primary }}>
+              Don&apos;t have a website? Explore plans
             </Link>
           </div>
         </div>

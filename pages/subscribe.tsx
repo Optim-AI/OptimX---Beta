@@ -14,6 +14,7 @@ import {
   subscriptionTotalsInr,
 } from '@/lib/billing/marketing-plans';
 import { useSubscription } from '@/app/web/src/hooks/use-subscription';
+import { consumeAuditAttribution, trackAuditEvent } from '@/lib/audit/analytics';
 import {
   buildTryOnboardingPatch,
   parseTryOnboarding,
@@ -255,6 +256,8 @@ export default function SubscribePage() {
         handler: function () {
           setSubmitting(false);
           createInFlightRef.current = false;
+          const auditId = consumeAuditAttribution();
+          if (auditId) trackAuditEvent('audit_paid_conversion', { plan: planId, auditId });
           enterProduct(planId);
         },
         modal: {

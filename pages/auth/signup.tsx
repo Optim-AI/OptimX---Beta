@@ -10,7 +10,12 @@ import {
   getSafeNextPath,
   redirectWwwToCanonicalForOAuth,
 } from "@/lib/routing/safe-next";
-import { fetchPostAuthDestination } from "@/lib/auth/client-post-auth";
+import {
+  auditReturnPath,
+  fetchPostAuthDestination,
+  resolvePostAuthPath,
+} from "@/lib/auth/client-post-auth";
+import { trackAuditEvent } from "@/lib/audit/analytics";
 import AuthShell from "@/components/auth/AuthShell";
 
 export default function SignUpPage(): React.ReactElement {
@@ -40,7 +45,7 @@ export default function SignUpPage(): React.ReactElement {
       setError(decision.error);
       return;
     }
-    router.replace(decision.path);
+    router.replace(resolvePostAuthPath(decision.path, router.query.next));
   }
 
   useEffect(() => {
@@ -122,6 +127,7 @@ export default function SignUpPage(): React.ReactElement {
 
     setLoading(true);
     try {
+      const auditNext = auditReturnPath(router.query.next);
       const { data, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
@@ -129,6 +135,7 @@ export default function SignUpPage(): React.ReactElement {
           data: {
             business_name: businessName.trim(),
           },
+          ...(auditNext ? { emailRedirectTo: getOAuthCallbackUrl(auditNext) } : {}),
         },
       });
 
@@ -138,6 +145,7 @@ export default function SignUpPage(): React.ReactElement {
         return;
       }
 
+      trackAuditEvent("signup_completed", { method: "email", fromAudit: Boolean(auditNext) });
       const user = (data as { user?: { id?: string } } | null)?.user ?? null;
       if (user?.id) {
         await routeAfterAuth();

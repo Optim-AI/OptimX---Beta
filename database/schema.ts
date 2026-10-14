@@ -908,6 +908,43 @@ export const onboardingGuestSessions = pgTable("onboarding_guest_sessions", {
 ]);
 
 /**
+ * Free marketing audit (pre-signup acquisition). Owned by a profile id: a guest
+ * shadow profile until claim, then the real user. Research only — never runs
+ * paid creative generation.
+ */
+export const marketingAudits = pgTable("marketing_audits", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	userId: uuid("user_id").notNull(),
+	websiteUrl: text("website_url").notNull(),
+	normalizedHost: text("normalized_host").notNull(),
+	status: text().notNull().default("queued"),
+	stage: text().notNull().default("queued"),
+	attemptCount: integer("attempt_count").notNull().default(0),
+	leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true, mode: "string" }),
+	site: jsonb(),
+	brand: jsonb(),
+	competitors: jsonb().notNull().default([]),
+	competitorPosts: jsonb("competitor_posts").notNull().default([]),
+	insights: jsonb(),
+	ideas: jsonb().notNull().default([]),
+	sources: jsonb().notNull().default([]),
+	limitations: jsonb().notNull().default([]),
+	selectedIdeaIndex: integer("selected_idea_index"),
+	campaignSessionId: uuid("campaign_session_id"),
+	campaignLockAt: timestamp("campaign_lock_at", { withTimezone: true, mode: "string" }),
+	clientIpHash: text("client_ip_hash"),
+	error: jsonb(),
+	claimedAt: timestamp("claimed_at", { withTimezone: true, mode: "string" }),
+	completedAt: timestamp("completed_at", { withTimezone: true, mode: "string" }),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).defaultNow(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }).defaultNow(),
+}, (table) => [
+	index("idx_marketing_audits_user_created").using("btree", table.userId.asc().nullsLast(), table.createdAt.desc().nullsLast()),
+	index("idx_marketing_audits_ip_created").using("btree", table.clientIpHash.asc().nullsLast(), table.createdAt.desc().nullsLast()),
+	index("idx_marketing_audits_user_host").using("btree", table.userId.asc().nullsLast(), table.normalizedHost.asc().nullsLast()),
+]);
+
+/**
  * meta_ads_drafts — local Meta Ads creation drafts (PR W2.0).
  * Not creative `campaigns`. Not synced `ad_platform_entities`.
  * Meta object ids are nullable and must not be fabricated for local drafts.

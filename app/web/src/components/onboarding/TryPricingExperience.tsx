@@ -29,7 +29,13 @@ type Props = {
   onContinue: (planId: MarketingPlanId) => void;
   onBack: () => void;
   continuing?: boolean;
+  backLabel?: string;
+  introCopy?: string;
 };
+
+const DEFAULT_BACK_LABEL = '← Back to your poster';
+const DEFAULT_INTRO =
+  'Your personalized creative was just the beginning. Create more posters, videos, and campaigns with SkalX.';
 
 function trackSafe(event: string, data?: Record<string, string>) {
   try {
@@ -78,6 +84,8 @@ export default function TryPricingExperience({
   onContinue,
   onBack,
   continuing = false,
+  backLabel = DEFAULT_BACK_LABEL,
+  introCopy = DEFAULT_INTRO,
 }: Props) {
   const headingId = useId();
   const [openRow, setOpenRow] = useState<string | null>(PLAN_COMPARISON_ROWS[0]?.id ?? null);
@@ -114,7 +122,7 @@ export default function TryPricingExperience({
             className="text-sm"
             style={{ color: colors.mutedForeground, background: 'none', border: 'none' }}
           >
-            ← Back to your poster
+            {backLabel}
           </button>
         </div>
       </div>
@@ -145,8 +153,7 @@ export default function TryPricingExperience({
         className="text-center text-sm max-w-xl mx-auto mb-10"
         style={{ color: colors.mutedForeground }}
       >
-        Your personalized creative was just the beginning. Create more posters, videos, and
-        campaigns with SkalX.
+        {introCopy}
       </p>
 
       <div
@@ -387,7 +394,7 @@ export default function TryPricingExperience({
           className="text-sm"
           style={{ color: colors.mutedForeground, background: 'none', border: 'none' }}
         >
-          ← Back to your poster
+          {backLabel}
         </button>
       </div>
     </div>
