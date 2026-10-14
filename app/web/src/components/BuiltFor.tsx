@@ -98,8 +98,8 @@ const BuiltFor: React.FC = () => {
         </div>
 
         <div className="text-center">
-          <Link href="/try" className="text-lg font-medium" style={{ color: colors.primary }}>
-            Experience SkalX →
+          <Link href="/#home" className="text-lg font-medium" style={{ color: colors.primary }}>
+            Get my free audit →
           </Link>
         </div>
       </div>

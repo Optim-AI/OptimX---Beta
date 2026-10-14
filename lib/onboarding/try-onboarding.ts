@@ -243,6 +243,25 @@ export type EntryDestination =
   | { kind: 'workspace' }
   | { kind: 'signin'; next: string };
 
+const STATUS_RANK: Record<TryOnboardingStatus, number> = {
+  brand_started: 1,
+  analyzing: 2,
+  brand_analyzed: 3,
+  demo_ready: 4,
+  demo_pending: 5,
+  demo_complete: 6,
+  pricing_seen: 7,
+  skipped: 7,
+  subscribed: 8,
+  complete: 8,
+};
+
+/** Rank guest vs account onboarding so claim keeps the further-along state. */
+export function onboardingStatusRank(status?: string | null): number {
+  if (!status || !(status in STATUS_RANK)) return 0;
+  return STATUS_RANK[status as TryOnboardingStatus];
+}
+
 export type EntryInputs = {
   authenticated: boolean;
   /** Mapped into canonical resolver as subscriptionStatus=active when true. */

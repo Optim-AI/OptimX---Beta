@@ -1,12 +1,12 @@
 // pages/settings.tsx
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import Sidebar from "../app/web/src/components/Sidebar";
-import { supabase } from '@/auth/supabase/client';
-import { initFirebaseApp } from '@/auth/firebase/client';
+import { supabase } from "@/auth/supabase/client";
+import { initFirebaseApp } from "@/auth/firebase/client";
 import { useRouter } from "next/router";
-import { profileClient } from '@/database/client-helpers';
+import { profileClient } from "@/database/client-helpers";
 import type { JSX } from "react";
 import Link from "next/link";
 import { Button } from "../app/web/src/components/ui/button";
@@ -17,6 +17,25 @@ import {
   TabsTrigger,
 } from "../app/web/src/components/ui/tabs";
 import { SITE_SUPPORT_EMAIL } from "@/lib/seo/site";
+import colors from "@/lib/ui/colors";
+import { authFetch } from "@/lib/utils";
+import { showError, showConfirm } from "@/app/web/src/components/ui/alert-modal-api";
+import {
+  SETTINGS_TABS,
+  POLICY_LINKS,
+  isSettingsTab,
+  type SettingsTabValue,
+  SettingsCard,
+  SettingsSectionHeader,
+  SettingsDivider,
+  ProfileAvatar,
+  PolicyDocumentLink,
+  PaymentStatusBadge,
+  fieldLabelStyle,
+  fieldInputStyle,
+  fieldSelectStyle,
+} from "@/app/web/src/components/settings/SettingsUI";
+import { Image as ImageIcon, Video, Shield, KeyRound } from "lucide-react";
 
 type ProfilePayload = {
   id: string;
@@ -81,19 +100,6 @@ const BUSINESS_SIZES = [
   "Enterprise (200+)",
 ];
 
-const USE_CASE_OPTIONS = [
-  "Run Ads & Promotions",
-  "Increase Brand Awareness",
-  "Drive Store Visits / Foot Traffic",
-  "Generate Leads or Signups",
-  "Boost Online Sales",
-  "Engage Existing Customers",
-  "Launch New Products / Offers",
-  "Analyze Marketing Performance",
-  "Automate Campaigns with AI",
-  "Other",
-];
-
 const HEARD_FROM_OPTIONS = [
   "Google / Search",
   "Friend / Referral",
@@ -105,10 +111,6 @@ const HEARD_FROM_OPTIONS = [
   "Other",
 ];
 
-import colors from '@/lib/ui/colors';
-import { authFetch } from '@/lib/utils';
-import { showError, showConfirm } from '@/app/web/src/components/ui/alert-modal-api';
-
 /** Normalize a Drizzle camelCase profile response to snake_case ProfilePayload */
 function normalizeProfile(data: any): ProfilePayload {
   return {
@@ -119,7 +121,8 @@ function normalizeProfile(data: any): ProfilePayload {
     phone_verified: data.phoneVerified ?? data.phone_verified ?? null,
     business_name: data.businessName ?? data.business_name ?? null,
     business_mobile: data.businessMobile ?? data.business_mobile ?? null,
-    business_mobile_verified: data.businessMobileVerified ?? data.business_mobile_verified ?? null,
+    business_mobile_verified:
+      data.businessMobileVerified ?? data.business_mobile_verified ?? null,
     location: data.location ?? null,
     business_type: data.businessType ?? data.business_type ?? null,
     business_size: data.businessSize ?? data.business_size ?? null,
@@ -135,6 +138,20 @@ function normalizeProfile(data: any): ProfilePayload {
   };
 }
 
+function transactionLabel(tx: {
+  paymentType: string;
+  metadata?: { creditType?: string; credits?: number };
+}) {
+  if (tx.paymentType === "subscription") return "Subscription";
+  if (tx.paymentType === "image_topup") {
+    return `Image Credits${tx.metadata?.credits ? ` · ${tx.metadata.credits}` : ""}`;
+  }
+  if (tx.paymentType === "video_topup") {
+    return `Video Credits${tx.metadata?.credits ? ` · ${tx.metadata.credits}` : ""}`;
+  }
+  return tx.paymentType;
+}
+
 export default function SettingsPage(): JSX.Element {
   const router = useRouter();
   const recaptchaContainerRef = useRef<HTMLDivElement | null>(null);
@@ -142,52 +159,71 @@ export default function SettingsPage(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [profileNameError, setProfileNameError] = useState<string | null>(null);
 
-  // Four tabs: profile, business, billing, security
-  const [tab, setTab] = useState<"profile" | "business" | "billing" | "security">(
-    "profile"
-  );
+  const [tab, setTab] = useState<SettingsTabValue>("profile");
 
-  // Billing state
   const [billingLoading, setBillingLoading] = useState(false);
+  const [billingError, setBillingError] = useState<string | null>(null);
   const [creditBalance, setCreditBalance] = useState<{
     imageCredits: { total: number };
     videoCredits: { total: number };
   } | null>(null);
   const [subscription, setSubscription] = useState<{
+    id?: string;
+    status?: string;
     plan: { name: string; billingCycle: string };
     nextResetDate: string | null;
   } | null>(null);
   const [paymentHistory, setPaymentHistory] = useState<
-    { id: string; amount: number; currency: string; status: string; paymentType: string; createdAt: string; metadata?: { creditType?: string; credits?: number } }[]
+    {
+      id: string;
+      amount: number;
+      currency: string;
+      status: string;
+      paymentType: string;
+      createdAt: string;
+      metadata?: { creditType?: string; credits?: number };
+    }[]
   >([]);
 
   const [profile, setProfile] = useState<ProfilePayload | null>(null);
 
-  const [phoneVerified, setPhoneVerified] = useState(false);
-  const [businessVerified, setBusinessVerified] = useState(false);
-
   const [businessName, setBusinessName] = useState("");
   const [location, setLocation] = useState("");
   const [gstNumber, setGstNumber] = useState("");
-  const [businessType, setBusinessType] = useState<string | null>(
-    BUSINESS_TYPES[0]
-  );
-  const [businessSize, setBusinessSize] = useState<string | null>(
-    BUSINESS_SIZES[0]
-  );
+  const [businessType, setBusinessType] = useState<string | null>(BUSINESS_TYPES[0]);
+  const [businessSize, setBusinessSize] = useState<string | null>(BUSINESS_SIZES[0]);
   const [useCase, setUseCase] = useState<string[]>([]);
-  const [heardFrom, setHeardFrom] = useState<string | null>(
-    HEARD_FROM_OPTIONS[0]
-  );
+  const [heardFrom, setHeardFrom] = useState<string | null>(HEARD_FROM_OPTIONS[0]);
   const [heardFromOther, setHeardFromOther] = useState<string>("");
+
+  // Sync tab from URL once router is ready
+  useEffect(() => {
+    if (!router.isReady) return;
+    const queryTab = router.query.tab;
+    if (typeof queryTab === "string" && isSettingsTab(queryTab)) {
+      setTab(queryTab);
+    }
+  }, [router.isReady, router.query.tab]);
+
+  function handleTabChange(next: string) {
+    if (!isSettingsTab(next)) return;
+    setTab(next);
+    setSaveSuccess(false);
+    setSaveError(null);
+    void router.replace(
+      { pathname: router.pathname, query: { ...router.query, tab: next } },
+      undefined,
+      { shallow: true }
+    );
+  }
 
   useEffect(() => {
     (async () => {
       setLoading(true);
       try {
-        // Wait for auth to initialize (session restore from storage) before redirecting.
-        // getUser() can briefly return null on initial load before Supabase hydrates the session.
         let user: any = null;
         let userErr: any = null;
         for (let attempt = 0; attempt < 3; attempt++) {
@@ -209,7 +245,6 @@ export default function SettingsPage(): JSX.Element {
           const normalized = normalizeProfile(data);
           setProfile(normalized);
 
-          // Drizzle returns camelCase keys; fall back to snake_case for compatibility
           setBusinessName(data.businessName ?? data.business_name ?? "");
           setLocation(data.location ?? "");
           setGstNumber(data.gstNumber ?? data.gst_number ?? "");
@@ -219,13 +254,11 @@ export default function SettingsPage(): JSX.Element {
           if (Array.isArray(useCaseData)) setUseCase(useCaseData);
           setHeardFrom(data.heardFrom ?? data.heard_from ?? HEARD_FROM_OPTIONS[0]);
           setHeardFromOther(data.heardFromOther ?? data.heard_from_other ?? "");
-
-          setPhoneVerified(Boolean(data.phoneVerified ?? data.phone_verified));
-          setBusinessVerified(Boolean(data.businessMobileVerified ?? data.business_mobile_verified));
         } else {
           setProfile({
             id: user.id,
-            full_name: user.user_metadata?.full_name || user.user_metadata?.fullName || null,
+            full_name:
+              user.user_metadata?.full_name || user.user_metadata?.fullName || null,
             email: user.email || null,
           });
         }
@@ -247,11 +280,11 @@ export default function SettingsPage(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Fetch billing data when billing tab is active
   useEffect(() => {
     if (tab !== "billing") return;
     let cancelled = false;
     setBillingLoading(true);
+    setBillingError(null);
     (async () => {
       try {
         const [balanceRes, subRes, historyRes] = await Promise.all([
@@ -263,28 +296,45 @@ export default function SettingsPage(): JSX.Element {
         const balanceData = await balanceRes.json();
         const subData = await subRes.json();
         const historyData = await historyRes.json();
-        if (balanceData.success)
+        if (balanceData.success) {
           setCreditBalance({
             imageCredits: balanceData.imageCredits,
             videoCredits: balanceData.videoCredits,
           });
-        if (subData.success && subData.subscription)
+        }
+        if (subData.success && subData.subscription) {
           setSubscription({
+            id: subData.subscription.id,
+            status: subData.subscription.status,
             plan: subData.subscription.plan,
             nextResetDate: subData.subscription.nextResetDate,
           });
+        } else if (subData.success) {
+          setSubscription(null);
+        }
         if (historyData.success) setPaymentHistory(historyData.payments || []);
       } catch (e) {
         console.error("fetch billing error", e);
+        if (!cancelled) setBillingError("Unable to load billing details right now.");
       } finally {
         if (!cancelled) setBillingLoading(false);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [tab]);
 
   async function saveProfileAndAi() {
-    if (!profile) return;
+    if (!profile || saving) return;
+
+    const trimmedName = (profile.full_name || "").trim();
+    if (tab === "profile" && !trimmedName) {
+      setProfileNameError("Full name is required.");
+      return;
+    }
+    setProfileNameError(null);
+    setSaveError(null);
     setSaving(true);
 
     try {
@@ -297,23 +347,14 @@ export default function SettingsPage(): JSX.Element {
         return;
       }
 
+      // Email stays read-only in the UI. Keep auth email as source of truth.
       const authEmail = authUser?.email || null;
-      if (profile.email && profile.email !== authEmail) {
-        const { error: updateErr } = await supabase.auth.updateUser({
-          email: profile.email,
-        });
-        if (updateErr) {
-          console.error("updateUser error", updateErr);
-          showError("Failed to update email. Please try again.");
-          return;
-        }
-      }
 
       const payload: any = {
         id: profile.id,
-        full_name: profile.full_name || null,
-        fullName: profile.full_name || null,
-        email: profile.email || null,
+        full_name: trimmedName || profile.full_name || null,
+        fullName: trimmedName || profile.full_name || null,
+        email: authEmail || profile.email || null,
         phone: profile.phone ?? null,
         phone_verified: profile.phone_verified ?? null,
         business_name: businessName || profile.business_name || null,
@@ -330,14 +371,14 @@ export default function SettingsPage(): JSX.Element {
           useCase && useCase.length
             ? useCase
             : Array.isArray(profile.use_case)
-            ? profile.use_case
-            : null,
+              ? profile.use_case
+              : null,
         useCase:
           useCase && useCase.length
             ? useCase
             : Array.isArray(profile.use_case)
-            ? profile.use_case
-            : null,
+              ? profile.use_case
+              : null,
         color_primary: profile.color_primary || "#0ea5e9",
         colorPrimary: profile.color_primary || "#0ea5e9",
         color_secondary: profile.color_secondary || "#0b74ff",
@@ -373,12 +414,19 @@ export default function SettingsPage(): JSX.Element {
           setProfile(normalizeProfile(result.data));
           setSaveSuccess(true);
           setTimeout(() => setSaveSuccess(false), 3000);
+        } else {
+          setSaveError("Failed to save changes. Please try again.");
+          showError("Failed to save changes. Please try again.");
         }
       } catch (upErr) {
         console.error("profiles upsert error", upErr);
+        setSaveError("Failed to save changes. Please try again.");
+        showError("Failed to save changes. Please try again.");
       }
     } catch (err) {
       console.error("saveProfileAndAi error", err);
+      setSaveError("Failed to save changes. Please try again.");
+      showError("Failed to save changes. Please try again.");
     } finally {
       setSaving(false);
     }
@@ -386,7 +434,11 @@ export default function SettingsPage(): JSX.Element {
 
   async function handleSignOut() {
     try {
-      const ok = await showConfirm("Are you sure you want to sign out?", { title: "Sign Out", confirmLabel: "Sign Out", cancelLabel: "Cancel" });
+      const ok = await showConfirm("Are you sure you want to sign out?", {
+        title: "Sign Out",
+        confirmLabel: "Sign Out",
+        cancelLabel: "Cancel",
+      });
       if (!ok) return;
       try {
         await supabase.auth.signOut();
@@ -400,48 +452,19 @@ export default function SettingsPage(): JSX.Element {
     }
   }
 
-  const inputStyle: React.CSSProperties = {
-    background: colors.input,
-    color: colors.foreground,
-    border: `1px solid ${colors.border}`,
-    borderRadius: 8,
-    padding: "10px 14px",
-    width: "100%",
-    fontSize: 14,
-    outline: "none",
-    transition: "border-color 0.2s",
-  };
-
-  const selectStyle: React.CSSProperties = {
-    ...inputStyle,
-    appearance: "none" as const,
-    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`,
-    backgroundRepeat: "no-repeat",
-    backgroundPosition: "right 14px center",
-    paddingRight: 36,
-  };
-
-  const labelStyle: React.CSSProperties = {
-    color: colors.mutedForeground,
-    fontSize: 13,
-    fontWeight: 500,
-    marginBottom: 6,
-    display: "block",
-  };
-
-  const sectionStyle: React.CSSProperties = {
-    background: colors.card,
-    border: `1px solid ${colors.border}`,
-    borderRadius: 12,
-    padding: 28,
-  };
+  const planAction = useMemo(() => {
+    if (!subscription) {
+      return { label: "View plans", href: "/pricing" };
+    }
+    return { label: "Manage plan", href: "/buy-credits" };
+  }, [subscription]);
 
   if (loading) {
     return (
       <div className="min-h-screen flex app-page" style={{ background: colors.background }}>
         <Sidebar />
-        <main className="flex-1 flex items-center justify-center">
-          <p style={{ color: colors.mutedForeground, fontSize: 15 }}>Loading profile...</p>
+        <main className="flex-1 flex items-center justify-center p-6">
+          <p style={{ color: colors.mutedForeground, fontSize: 15 }}>Loading settings…</p>
         </main>
       </div>
     );
@@ -451,167 +474,95 @@ export default function SettingsPage(): JSX.Element {
     <div className="min-h-screen flex app-page" style={{ background: colors.background }}>
       <Sidebar />
 
-      <main className="flex-1 p-8 overflow-y-auto">
-        <div className="max-w-3xl mx-auto">
+      <main className="flex-1 overflow-y-auto">
+        <div className="mx-auto w-full max-w-4xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
           <style jsx>{`
             .settings-tabs button {
-              transition: background-color 0.2s, color 0.2s;
+              transition: background-color 0.15s, color 0.15s;
             }
             .settings-tabs button[data-state="inactive"]:hover {
-              background-color: hsl(0 0% 25%) !important;
+              background-color: hsl(0 0% 22%) !important;
               color: ${colors.foreground} !important;
             }
-            .settings-input:focus {
-              border-color: ${colors.primary} !important;
-              box-shadow: 0 0 0 2px hsl(213 100% 55% / 0.15);
-            }
+            .settings-input:focus,
             .settings-select:focus {
               border-color: ${colors.primary} !important;
-              box-shadow: 0 0 0 2px hsl(213 100% 55% / 0.15);
+              box-shadow: 0 0 0 3px hsl(213 100% 55% / 0.16);
             }
             .settings-select option {
               background: ${colors.card};
               color: ${colors.foreground};
             }
-            .credit-chips {
-              display: flex;
-              gap: 12px;
-              flex-wrap: wrap;
-              margin-bottom: 24px;
+            .settings-tabs-scroll {
+              -webkit-overflow-scrolling: touch;
+              scrollbar-width: none;
             }
-            .credit-chip {
-              border-radius: 10px;
-              padding: 20px 28px;
-              min-width: 140px;
-              text-align: center;
-              transition: border-color 0.2s, transform 0.2s;
-            }
-            .credit-chip:hover {
-              transform: translateY(-1px);
-            }
-            .credit-chip-image {
-              background: hsl(213 100% 55% / 0.15);
-              border: 1px solid hsl(213 100% 55% / 0.35);
-            }
-            .credit-chip-image:hover {
-              border-color: hsl(213 100% 55% / 0.5);
-            }
-            .credit-chip-image .value,
-            .credit-chip-image .label {
-              color: hsl(213 100% 65%);
-            }
-            .credit-chip-video {
-              background: hsl(270 80% 55% / 0.15);
-              border: 1px solid hsl(270 80% 55% / 0.3);
-            }
-            .credit-chip-video:hover {
-              border-color: hsl(270 80% 55% / 0.5);
-            }
-            .credit-chip-video .value,
-            .credit-chip-video .label {
-              color: hsl(270 80% 70%);
-            }
-            .credit-chip-loading {
-              background: ${colors.background};
-              border: 1px solid ${colors.border};
-            }
-            .credit-chip-loading .value {
-              font-size: 28px;
-              font-weight: 700;
-              color: ${colors.foreground};
-              display: block;
-              margin-bottom: 4px;
-            }
-            .credit-chip-loading .label {
-              font-size: 12px;
-              color: ${colors.mutedForeground};
-              text-transform: uppercase;
-              letter-spacing: 0.04em;
-            }
-            .credit-chip .value {
-              font-size: 28px;
-              font-weight: 700;
-              display: block;
-              margin-bottom: 4px;
-            }
-            .credit-chip .label {
-              font-size: 12px;
-              text-transform: uppercase;
-              letter-spacing: 0.04em;
-            }
-            .tx-table {
-              width: 100%;
-              border-collapse: collapse;
-              font-size: 14px;
-            }
-            .tx-table th {
-              text-align: left;
-              padding: 12px 0;
-              color: ${colors.mutedForeground};
-              font-weight: 600;
-              font-size: 12px;
-              text-transform: uppercase;
-              letter-spacing: 0.04em;
-              border-bottom: 1px solid ${colors.border};
-            }
-            .tx-table td {
-              padding: 14px 0;
-              border-bottom: 1px solid ${colors.border};
-              color: ${colors.foreground};
-            }
-            .tx-table tr:last-child td {
-              border-bottom: none;
-            }
-            .status-badge {
-              display: inline-block;
-              padding: 4px 10px;
-              border-radius: 6px;
-              font-size: 12px;
-              font-weight: 600;
-            }
-            .status-complete, .status-captured {
-              background: hsl(142 76% 36% / 0.15);
-              color: ${colors.green600};
-            }
-            .status-created {
-              background: hsl(213 100% 55% / 0.15);
-              color: ${colors.primary};
-            }
-            .status-failed {
-              background: hsl(0 84% 55% / 0.15);
-              color: ${colors.destructive};
+            .settings-tabs-scroll::-webkit-scrollbar {
+              display: none;
             }
           `}</style>
 
-          <h2 className="text-2xl font-bold mb-6" style={{ color: colors.foreground }}>Settings</h2>
+          <header className="mb-6 sm:mb-8">
+            <h1
+              className="text-2xl font-bold tracking-tight sm:text-3xl"
+              style={{ color: colors.foreground }}
+            >
+              Settings
+            </h1>
+            <p className="mt-2 max-w-2xl text-sm leading-relaxed sm:text-[15px]" style={{ color: colors.mutedForeground }}>
+              Manage your account, business profile, billing, and security.
+            </p>
+          </header>
 
-          <Tabs value={tab} onValueChange={(v) => setTab(v as any)}>
-            <TabsList className="settings-tabs flex gap-1 mb-6 p-1 rounded-lg overflow-x-auto" style={{ backgroundColor: colors.muted, border: `1px solid ${colors.border}` }}>
-              {([
-                { value: "profile", label: "Profile" },
-                { value: "business", label: "Business" },
-                { value: "billing", label: "Billing" },
-                { value: "security", label: "Security & Policy" },
-              ] as const).map((t) => (
-                <TabsTrigger
-                  key={t.value}
-                  value={t.value}
-                  className="px-4 py-2 rounded-md text-sm font-medium"
-                  style={{
-                    backgroundColor: tab === t.value ? colors.primary : "transparent",
-                    color: tab === t.value ? colors.primaryForeground : colors.mutedForeground,
-                  }}
-                >
-                  {t.label}
-                </TabsTrigger>
-              ))}
-            </TabsList>
+          <Tabs value={tab} onValueChange={handleTabChange}>
+            <div className="settings-tabs-scroll mb-6 overflow-x-auto">
+              <TabsList
+                className="settings-tabs inline-flex min-w-full gap-1 rounded-xl p-1 sm:min-w-0"
+                style={{
+                  backgroundColor: colors.muted,
+                  border: `1px solid ${colors.border}`,
+                  height: "auto",
+                }}
+              >
+                {SETTINGS_TABS.map((item) => {
+                  const active = tab === item.value;
+                  return (
+                    <TabsTrigger
+                      key={item.value}
+                      value={item.value}
+                      className="rounded-lg px-3 py-2.5 text-sm font-medium sm:px-4"
+                      style={{
+                        backgroundColor: active ? colors.primary : "transparent",
+                        color: active ? colors.primaryForeground : colors.mutedForeground,
+                        boxShadow: active ? "0 4px 14px hsl(213 100% 55% / 0.28)" : "none",
+                      }}
+                    >
+                      {item.label}
+                    </TabsTrigger>
+                  );
+                })}
+              </TabsList>
+            </div>
 
-            {/* ── Profile Tab ── */}
-            <TabsContent value="profile">
-              <div style={sectionStyle}>
-                <h3 className="text-lg font-semibold mb-1" style={{ color: colors.foreground }}>Personal Information</h3>
-                <p className="text-sm mb-6" style={{ color: colors.mutedForeground }}>Manage your account details</p>
+            {/* Profile */}
+            <TabsContent value="profile" className="mt-0 space-y-5" style={{ background: "transparent" }}>
+              <SettingsCard>
+                <SettingsSectionHeader
+                  title="Personal Information"
+                  description="Update the details associated with your SkalX account."
+                />
+
+                <div className="mb-6 flex items-center gap-4">
+                  <ProfileAvatar name={profile?.full_name} email={profile?.email} />
+                  <div className="min-w-0">
+                    <p className="truncate text-base font-semibold" style={{ color: colors.foreground }}>
+                      {profile?.full_name || "Your profile"}
+                    </p>
+                    <p className="truncate text-sm" style={{ color: colors.mutedForeground }}>
+                      {profile?.email || "No email on file"}
+                    </p>
+                  </div>
+                </div>
 
                 <form
                   className="space-y-5"
@@ -620,61 +571,106 @@ export default function SettingsPage(): JSX.Element {
                     await saveProfileAndAi();
                   }}
                 >
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
                     <div>
-                      <label htmlFor="full_name" style={labelStyle}>Full name</label>
+                      <label htmlFor="full_name" style={fieldLabelStyle}>
+                        Full name
+                      </label>
                       <input
                         id="full_name"
                         className="settings-input"
-                        style={inputStyle}
+                        style={fieldInputStyle}
                         value={profile?.full_name ?? ""}
-                        onChange={(e) =>
+                        onChange={(e) => {
+                          setProfileNameError(null);
                           setProfile({
                             ...(profile as ProfilePayload),
                             full_name: e.target.value,
-                          })
-                        }
+                          });
+                        }}
                         placeholder="Your full name"
+                        autoComplete="name"
                       />
+                      {profileNameError ? (
+                        <p className="mt-1.5 text-xs" style={{ color: colors.destructive }}>
+                          {profileNameError}
+                        </p>
+                      ) : null}
                     </div>
 
                     <div>
-                      <label htmlFor="email" style={labelStyle}>Email</label>
+                      <label htmlFor="email" style={fieldLabelStyle}>
+                        Email
+                      </label>
                       <input
                         id="email"
                         type="email"
                         className="settings-input"
-                        style={{ ...inputStyle, opacity: 0.7, cursor: 'not-allowed' }}
+                        style={{
+                          ...fieldInputStyle,
+                          opacity: 0.72,
+                          cursor: "not-allowed",
+                        }}
                         value={profile?.email ?? ""}
                         disabled
+                        readOnly
                         placeholder="you@example.com"
+                        autoComplete="email"
                       />
+                      <p className="mt-1.5 text-xs" style={{ color: colors.mutedForeground }}>
+                        Email is managed by your sign-in method and can&apos;t be changed here.
+                      </p>
                     </div>
                   </div>
 
-                  <div style={{ borderTop: `1px solid ${colors.border}`, paddingTop: 20, marginTop: 24, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                    <div className="flex items-center gap-3">
-                      <Button type="button" onClick={saveProfileAndAi} disabled={saving}>
-                        {saving ? "Saving..." : "Save changes"}
-                      </Button>
-                      {saveSuccess && (
-                        <span className="text-sm font-medium" style={{ color: colors.green600 }}>Saved</span>
-                      )}
-                    </div>
-                    <Button variant="destructive" type="button" onClick={handleSignOut}>
-                      Sign out
+                  <div
+                    className="flex flex-col gap-3 pt-5 sm:flex-row sm:items-center"
+                    style={{ borderTop: `1px solid ${colors.border}` }}
+                  >
+                    <Button type="submit" disabled={saving}>
+                      {saving ? "Saving…" : "Save changes"}
                     </Button>
+                    {saveSuccess ? (
+                      <span className="text-sm font-medium" style={{ color: colors.green600 }}>
+                        Saved successfully
+                      </span>
+                    ) : null}
+                    {saveError ? (
+                      <span className="text-sm font-medium" style={{ color: colors.destructive }}>
+                        {saveError}
+                      </span>
+                    ) : null}
                   </div>
                 </form>
+              </SettingsCard>
 
-              </div>
+              <SettingsCard>
+                <SettingsSectionHeader
+                  title="Account access"
+                  description="Sign out of SkalX on this device. You can sign back in anytime with your existing credentials."
+                />
+                <Button
+                  variant="outline"
+                  type="button"
+                  onClick={handleSignOut}
+                  style={{
+                    borderColor: "hsl(0 84% 55% / 0.45)",
+                    color: colors.destructive,
+                    background: "hsl(0 84% 55% / 0.08)",
+                  }}
+                >
+                  Sign out
+                </Button>
+              </SettingsCard>
             </TabsContent>
 
-            {/* ── Business Tab ── */}
-            <TabsContent value="business">
-              <div style={sectionStyle}>
-                <h3 className="text-lg font-semibold mb-1" style={{ color: colors.foreground }}>Business Details</h3>
-                <p className="text-sm mb-6" style={{ color: colors.mutedForeground }}>Information about your business</p>
+            {/* Business */}
+            <TabsContent value="business" className="mt-0" style={{ background: "transparent" }}>
+              <SettingsCard>
+                <SettingsSectionHeader
+                  title="Business Details"
+                  description="Information used across Brand Studio and campaign experiences."
+                />
 
                 <form
                   className="space-y-5"
@@ -683,13 +679,15 @@ export default function SettingsPage(): JSX.Element {
                     await saveProfileAndAi();
                   }}
                 >
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
                     <div>
-                      <label htmlFor="business_name" style={labelStyle}>Business name</label>
+                      <label htmlFor="business_name" style={fieldLabelStyle}>
+                        Business name
+                      </label>
                       <input
                         id="business_name"
                         className="settings-input"
-                        style={inputStyle}
+                        style={fieldInputStyle}
                         value={businessName}
                         onChange={(e) => setBusinessName(e.target.value)}
                         placeholder="Acme Inc."
@@ -697,11 +695,13 @@ export default function SettingsPage(): JSX.Element {
                     </div>
 
                     <div>
-                      <label htmlFor="location" style={labelStyle}>Location</label>
+                      <label htmlFor="location" style={fieldLabelStyle}>
+                        Location
+                      </label>
                       <input
                         id="location"
                         className="settings-input"
-                        style={inputStyle}
+                        style={fieldInputStyle}
                         value={location}
                         onChange={(e) => setLocation(e.target.value)}
                         placeholder="City, Country"
@@ -709,11 +709,13 @@ export default function SettingsPage(): JSX.Element {
                     </div>
 
                     <div className="md:col-span-2">
-                      <label htmlFor="gst_number" style={labelStyle}>GST Number</label>
+                      <label htmlFor="gst_number" style={fieldLabelStyle}>
+                        GST number
+                      </label>
                       <input
                         id="gst_number"
                         className="settings-input"
-                        style={inputStyle}
+                        style={fieldInputStyle}
                         value={gstNumber}
                         onChange={(e) => setGstNumber(e.target.value)}
                         placeholder="e.g. 27XXXXX1234X1Z5"
@@ -721,285 +723,345 @@ export default function SettingsPage(): JSX.Element {
                     </div>
 
                     <div>
-                      <label style={labelStyle}>Business type</label>
+                      <label htmlFor="business_type" style={fieldLabelStyle}>
+                        Business type
+                      </label>
                       <select
+                        id="business_type"
                         className="settings-select"
-                        style={selectStyle}
+                        style={fieldSelectStyle}
                         value={businessType ?? ""}
                         onChange={(e) => setBusinessType(e.target.value)}
                       >
-                        {BUSINESS_TYPES.map((b) => (
-                          <option key={b} value={b}>{b}</option>
+                        {BUSINESS_TYPES.map((item) => (
+                          <option key={item} value={item}>
+                            {item}
+                          </option>
                         ))}
                       </select>
                     </div>
 
                     <div>
-                      <label style={labelStyle}>Business size</label>
+                      <label htmlFor="business_size" style={fieldLabelStyle}>
+                        Business size
+                      </label>
                       <select
+                        id="business_size"
                         className="settings-select"
-                        style={selectStyle}
+                        style={fieldSelectStyle}
                         value={businessSize ?? ""}
                         onChange={(e) => setBusinessSize(e.target.value)}
                       >
-                        {BUSINESS_SIZES.map((s) => (
-                          <option key={s} value={s}>{s}</option>
+                        {BUSINESS_SIZES.map((item) => (
+                          <option key={item} value={item}>
+                            {item}
+                          </option>
                         ))}
                       </select>
                     </div>
                   </div>
 
-                  <div style={{ borderTop: `1px solid ${colors.border}`, paddingTop: 20, marginTop: 24, display: "flex", alignItems: "center", gap: 12 }}>
-                    <Button type="button" onClick={saveProfileAndAi} disabled={saving}>
-                      {saving ? "Saving..." : "Save changes"}
+                  <div
+                    className="flex flex-col gap-3 pt-5 sm:flex-row sm:items-center"
+                    style={{ borderTop: `1px solid ${colors.border}` }}
+                  >
+                    <Button type="submit" disabled={saving}>
+                      {saving ? "Saving…" : "Save changes"}
                     </Button>
-                    {saveSuccess && (
-                      <span className="text-sm font-medium" style={{ color: colors.green600 }}>Saved</span>
-                    )}
+                    {saveSuccess ? (
+                      <span className="text-sm font-medium" style={{ color: colors.green600 }}>
+                        Saved successfully
+                      </span>
+                    ) : null}
+                    {saveError ? (
+                      <span className="text-sm font-medium" style={{ color: colors.destructive }}>
+                        {saveError}
+                      </span>
+                    ) : null}
                   </div>
                 </form>
-
-                <div style={{ borderTop: `1px solid ${colors.border}`, marginTop: 32, paddingTop: 24 }}>
-                  <h3 className="text-lg font-semibold mb-2" style={{ color: colors.foreground }}>Policies & Legal</h3>
-                  <p className="text-sm mb-4" style={{ color: colors.mutedForeground }}>Important legal and policy documents</p>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {[
-                      { href: "/terms-and-conditions", label: "Terms & Conditions" },
-                      { href: "/privacy-policy", label: "Privacy Policy" },
-                      { href: "/terms-and-conditions#refund-cancellation", label: "Refund Policy" },
-                      { href: "/cpolicy", label: "Cookie Policy" },
-                      { href: "/terms-and-conditions#data-handling", label: "Data Handling & Security" },
-                      { href: "/terms-and-conditions#ai-usage", label: "AI Use Disclosure" },
-                    ].map((item) => (
-                      <Link key={item.href} href={item.href} className="group block">
-                        <div
-                          className="flex items-center justify-between rounded-lg border px-4 py-3 transition"
-                          style={{
-                            borderColor: colors.border,
-                            backgroundColor: "transparent",
-                            color: colors.foreground,
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.borderColor = colors.primary;
-                            e.currentTarget.style.backgroundColor = "hsl(213 100% 55% / 0.08)";
-                            const view = e.currentTarget.querySelector(".policy-view");
-                            if (view) (view as HTMLElement).style.color = colors.primary;
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.borderColor = colors.border;
-                            e.currentTarget.style.backgroundColor = "transparent";
-                            const view = e.currentTarget.querySelector(".policy-view");
-                            if (view) (view as HTMLElement).style.color = colors.mutedForeground;
-                          }}
-                        >
-                          <span className="text-sm font-medium" style={{ color: colors.foreground }}>
-                            {item.label}
-                          </span>
-                          <span className="policy-view text-xs" style={{ color: colors.mutedForeground }}>
-                            View
-                          </span>
-                        </div>
-                      </Link>
-                    ))}
-                  </div>
-                </div>
-              </div>
+              </SettingsCard>
             </TabsContent>
 
-            {/* ── Billing Tab ── */}
-            <TabsContent value="billing">
-              <div style={sectionStyle}>
-
+            {/* Billing */}
+            <TabsContent value="billing" className="mt-0" style={{ background: "transparent" }}>
+              <SettingsCard>
                 {billingLoading ? (
-                  <p style={{ color: colors.mutedForeground, fontSize: 14, padding: "24px 0" }}>Loading billing info...</p>
+                  <p className="py-10 text-sm" style={{ color: colors.mutedForeground }}>
+                    Loading billing info…
+                  </p>
+                ) : billingError ? (
+                  <p className="py-10 text-sm" style={{ color: colors.destructive }}>
+                    {billingError}
+                  </p>
                 ) : (
-                  <div className="space-y-8">
-                    {/* Credit Balance */}
-                    <div>
-                      <h3 className="text-lg font-semibold mb-1" style={{ color: colors.foreground }}>Credit Balance</h3>
-                      <p className="text-sm mb-4" style={{ color: colors.mutedForeground }}>
-                        Your available credits for image and video generation
-                      </p>
-                      <div className="credit-chips">
-                        {creditBalance ? (
-                          <>
-                            <div className="credit-chip credit-chip-image">
-                              <span className="value">{creditBalance.imageCredits?.total ?? 0}</span>
-                              <span className="label">Image Credits</span>
-                            </div>
-                            <div className="credit-chip credit-chip-video">
-                              <span className="value">{creditBalance.videoCredits?.total ?? 0}</span>
-                              <span className="label">Video Credits</span>
-                            </div>
-                          </>
-                        ) : (
-                          <div className="credit-chip credit-chip-loading">
-                            <span className="value">--</span>
-                            <span className="label">Loading</span>
-                          </div>
-                        )}
-                      </div>
-                      <Button type="button" onClick={() => router.push("/buy-credits")}>
-                        Buy Credits
-                      </Button>
-                    </div>
+                  <>
+                    <SettingsSectionHeader
+                      title="Credit balance"
+                      description="Your available credits for image and video generation."
+                      action={
+                        <Button type="button" onClick={() => router.push("/buy-credits")}>
+                          Buy Credits
+                        </Button>
+                      }
+                    />
 
-                    <div style={{ borderTop: `1px solid ${colors.border}` }} />
-
-                    {/* Subscription Plan */}
-                    <div>
-                      <h3 className="text-lg font-semibold mb-1" style={{ color: colors.foreground }}>
-                        Subscription Plan
-                      </h3>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <div
-                        className="mt-3"
+                        className="rounded-xl px-5 py-5"
                         style={{
-                          background: colors.background,
-                          border: `1px solid ${colors.border}`,
-                          borderRadius: 10,
-                          padding: "16px 20px",
+                          background: "hsl(213 100% 55% / 0.12)",
+                          border: "1px solid hsl(213 100% 55% / 0.32)",
                         }}
                       >
-                        <span className="font-semibold" style={{ color: colors.primary }}>
+                        <div className="mb-3 flex items-center gap-2" style={{ color: "hsl(213 100% 70%)" }}>
+                          <ImageIcon size={16} />
+                          <span className="text-xs font-semibold uppercase tracking-[0.08em]">
+                            Image credits
+                          </span>
+                        </div>
+                        <p className="text-3xl font-bold" style={{ color: "hsl(213 100% 72%)" }}>
+                          {creditBalance?.imageCredits?.total ?? 0}
+                        </p>
+                      </div>
+
+                      <div
+                        className="rounded-xl px-5 py-5"
+                        style={{
+                          background: "hsl(270 80% 55% / 0.12)",
+                          border: "1px solid hsl(270 80% 55% / 0.28)",
+                        }}
+                      >
+                        <div className="mb-3 flex items-center gap-2" style={{ color: "hsl(270 80% 72%)" }}>
+                          <Video size={16} />
+                          <span className="text-xs font-semibold uppercase tracking-[0.08em]">
+                            Video credits
+                          </span>
+                        </div>
+                        <p className="text-3xl font-bold" style={{ color: "hsl(270 80% 72%)" }}>
+                          {creditBalance?.videoCredits?.total ?? 0}
+                        </p>
+                      </div>
+                    </div>
+
+                    <SettingsDivider />
+
+                    <SettingsSectionHeader
+                      title="Subscription plan"
+                      description="Your current plan and billing cycle."
+                      action={
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => router.push(planAction.href)}
+                        >
+                          {planAction.label}
+                        </Button>
+                      }
+                    />
+
+                    <div
+                      className="rounded-xl px-5 py-4"
+                      style={{
+                        background: colors.background,
+                        border: `1px solid ${colors.border}`,
+                      }}
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-base font-semibold" style={{ color: colors.primary }}>
                           {subscription?.plan?.name ?? "Pay-as-you-go"}
                         </span>
-                        <span className="ml-2 text-sm" style={{ color: colors.mutedForeground }}>
-                          {subscription?.plan?.billingCycle ?? "Credits purchased on demand"}
-                        </span>
-                        {subscription?.nextResetDate && (
-                          <p className="text-sm mt-2" style={{ color: colors.mutedForeground }}>
-                            Credits reset on {new Date(subscription.nextResetDate).toLocaleDateString()}
-                          </p>
+                        {subscription?.status ? (
+                          <span
+                            className="rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide"
+                            style={{
+                              background: "hsl(213 100% 55% / 0.14)",
+                              color: colors.primary,
+                            }}
+                          >
+                            {subscription.status}
+                          </span>
+                        ) : (
+                          <span
+                            className="rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide"
+                            style={{
+                              background: colors.muted,
+                              color: colors.mutedForeground,
+                            }}
+                          >
+                            On demand
+                          </span>
                         )}
                       </div>
-                    </div>
-
-                    <div style={{ borderTop: `1px solid ${colors.border}` }} />
-
-                    {/* Payment Method */}
-                    <div>
-                      <h3 className="text-lg font-semibold mb-1" style={{ color: colors.foreground }}>Payment Method</h3>
-                      <p className="text-sm mb-3" style={{ color: colors.mutedForeground }}>
-                        All payments are processed securely via Razorpay
+                      <p className="mt-2 text-sm" style={{ color: colors.mutedForeground }}>
+                        {subscription?.plan?.billingCycle ?? "Credits purchased on demand"}
                       </p>
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 12,
-                          padding: "14px 20px",
-                          background: colors.background,
-                          borderRadius: 10,
-                          border: `1px solid ${colors.border}`,
-                        }}
-                      >
-                        <span style={{ fontWeight: 600, color: colors.foreground, fontSize: 14 }}>
-                          Razorpay (Cards, UPI, Net Banking)
-                        </span>
-                      </div>
+                      {subscription?.nextResetDate ? (
+                        <p className="mt-2 text-sm" style={{ color: colors.mutedForeground }}>
+                          Credits reset on{" "}
+                          {new Date(subscription.nextResetDate).toLocaleDateString()}
+                        </p>
+                      ) : null}
                     </div>
 
-                    <div style={{ borderTop: `1px solid ${colors.border}` }} />
+                    <SettingsDivider />
 
-                    {/* Latest Transactions */}
-                    <div>
-                      <h3 className="text-lg font-semibold mb-4" style={{ color: colors.foreground }}>Latest Transactions</h3>
-                      {paymentHistory.length > 0 ? (
-                        <table className="tx-table">
+                    <SettingsSectionHeader
+                      title="Payment method"
+                      description="All payments are processed securely via Razorpay."
+                    />
+                    <div
+                      className="rounded-xl px-5 py-4 text-sm font-medium"
+                      style={{
+                        background: colors.background,
+                        border: `1px solid ${colors.border}`,
+                        color: colors.foreground,
+                      }}
+                    >
+                      Razorpay · Cards, UPI, Net Banking
+                    </div>
+
+                    <SettingsDivider />
+
+                    <SettingsSectionHeader
+                      title="Latest transactions"
+                      description="Recent purchases and subscription payments."
+                    />
+
+                    {paymentHistory.length > 0 ? (
+                      <div className="overflow-x-auto">
+                        <table className="w-full min-w-[520px] border-collapse text-sm">
                           <thead>
                             <tr>
-                              <th>Invoice</th>
-                              <th>Date</th>
-                              <th>Amount</th>
-                              <th>Status</th>
+                              {["Invoice", "Date", "Amount", "Status"].map((heading) => (
+                                <th
+                                  key={heading}
+                                  className="pb-3 text-left text-xs font-semibold uppercase tracking-[0.06em]"
+                                  style={{
+                                    color: colors.mutedForeground,
+                                    borderBottom: `1px solid ${colors.border}`,
+                                  }}
+                                >
+                                  {heading}
+                                </th>
+                              ))}
                             </tr>
                           </thead>
                           <tbody>
                             {paymentHistory.map((tx) => (
                               <tr key={tx.id}>
-                                <td>
-                                  {tx.paymentType === "subscription"
-                                    ? "Subscription"
-                                    : tx.paymentType === "image_topup"
-                                    ? `Image Credits${tx.metadata?.credits ? ` - ${tx.metadata.credits}` : ""}`
-                                    : tx.paymentType === "video_topup"
-                                    ? `Video Credits${tx.metadata?.credits ? ` - ${tx.metadata.credits} credits` : ""}`
-                                    : tx.paymentType}
+                                <td
+                                  className="py-3.5 pr-3"
+                                  style={{
+                                    color: colors.foreground,
+                                    borderBottom: `1px solid ${colors.border}`,
+                                  }}
+                                >
+                                  {transactionLabel(tx)}
                                 </td>
-                                <td>{new Date(tx.createdAt).toLocaleDateString()}</td>
-                                <td style={{ fontWeight: 700 }}>
-                                  {"\u20B9"}{tx.amount}
+                                <td
+                                  className="py-3.5 pr-3"
+                                  style={{
+                                    color: colors.foreground,
+                                    borderBottom: `1px solid ${colors.border}`,
+                                  }}
+                                >
+                                  {new Date(tx.createdAt).toLocaleDateString()}
                                 </td>
-                                <td>
-                                  <span className={`status-badge status-${tx.status}`}>
-                                    {tx.status === "captured" ? "Complete" : tx.status}
-                                  </span>
+                                <td
+                                  className="py-3.5 pr-3 font-semibold"
+                                  style={{
+                                    color: colors.foreground,
+                                    borderBottom: `1px solid ${colors.border}`,
+                                  }}
+                                >
+                                  {"\u20B9"}
+                                  {tx.amount}
+                                </td>
+                                <td
+                                  className="py-3.5"
+                                  style={{ borderBottom: `1px solid ${colors.border}` }}
+                                >
+                                  <PaymentStatusBadge status={tx.status} />
                                 </td>
                               </tr>
                             ))}
                           </tbody>
                         </table>
-                      ) : (
-                        <p style={{ color: colors.mutedForeground, fontSize: 14, padding: "16px 0" }}>
-                          No transactions yet
-                        </p>
-                      )}
-                    </div>
-                  </div>
+                      </div>
+                    ) : (
+                      <p className="text-sm" style={{ color: colors.mutedForeground }}>
+                        No transactions yet.
+                      </p>
+                    )}
+                  </>
                 )}
-              </div>
+              </SettingsCard>
             </TabsContent>
 
-            {/* ── Security Tab ── */}
-            <TabsContent value="security">
-              <div style={sectionStyle}>
-                <h3 className="text-lg font-semibold mb-1" style={{ color: colors.foreground }}>Security &amp; Policy</h3>
-                <p className="text-sm mb-6" style={{ color: colors.mutedForeground }}>
-                  All the important legal, security, and data-handling details in one place.
-                </p>
+            {/* Security & Policy */}
+            <TabsContent value="security" className="mt-0 space-y-5" style={{ background: "transparent" }}>
+              <SettingsCard>
+                <SettingsSectionHeader
+                  title="Security"
+                  description="Protect your account with the authentication options available for your sign-in method."
+                />
 
+                <div
+                  className="flex flex-col gap-4 rounded-xl px-4 py-4 sm:flex-row sm:items-center sm:justify-between"
+                  style={{
+                    background: colors.background,
+                    border: `1px solid ${colors.border}`,
+                  }}
+                >
+                  <div className="flex items-start gap-3">
+                    <div
+                      className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-lg"
+                      style={{
+                        background: "hsl(213 100% 55% / 0.12)",
+                        color: colors.primary,
+                      }}
+                    >
+                      <KeyRound size={16} />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold" style={{ color: colors.foreground }}>
+                        Password
+                      </p>
+                      <p className="mt-1 text-sm" style={{ color: colors.mutedForeground }}>
+                        Use the password reset flow to securely update your password.
+                      </p>
+                    </div>
+                  </div>
+                  <Button asChild type="button" variant="outline">
+                    <Link href="/auth/forgot-password">Reset password</Link>
+                  </Button>
+                </div>
+              </SettingsCard>
+
+              <SettingsCard>
+                <SettingsSectionHeader
+                  title="Policies & Legal"
+                  description="Important legal, security, and data-handling documents."
+                />
                 <div className="grid gap-3 sm:grid-cols-2">
-                  {[
-                    { href: "/terms-and-conditions", label: "Terms & Conditions" },
-                    { href: "/privacy-policy", label: "Privacy Policy" },
-                    { href: "/terms-and-conditions#refund-cancellation", label: "Refund Policy" },
-                    { href: "/cpolicy", label: "Cookie Policy" },
-                    { href: "/terms-and-conditions#data-handling", label: "Data Handling & Security" },
-                    { href: "/terms-and-conditions#ai-usage", label: "AI Use Disclosure" },
-                  ].map((item) => (
-                    <Link key={item.href} href={item.href} className="group block">
-                      <div
-                        className="flex items-center justify-between rounded-lg px-4 py-3 transition-all"
-                        style={{
-                          border: `1px solid ${colors.border}`,
-                          backgroundColor: colors.background,
-                          color: colors.foreground,
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.borderColor = colors.primary;
-                          e.currentTarget.style.backgroundColor = "hsl(213 100% 55% / 0.06)";
-                          const view = e.currentTarget.querySelector(".policy-view");
-                          if (view) (view as HTMLElement).style.color = colors.primary;
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.borderColor = colors.border;
-                          e.currentTarget.style.backgroundColor = colors.background;
-                          const view = e.currentTarget.querySelector(".policy-view");
-                          if (view) (view as HTMLElement).style.color = colors.mutedForeground;
-                        }}
-                      >
-                        <span className="text-sm font-medium" style={{ color: colors.foreground }}>
-                          {item.label}
-                        </span>
-                        <span className="policy-view text-xs" style={{ color: colors.mutedForeground, transition: "color 0.2s" }}>
-                          View
-                        </span>
-                      </div>
-                    </Link>
+                  {POLICY_LINKS.map((item) => (
+                    <PolicyDocumentLink key={item.href} href={item.href} label={item.label} />
                   ))}
                 </div>
 
-                <div className="mt-6 pt-5" style={{ borderTop: `1px solid ${colors.border}` }}>
+                <SettingsDivider />
+
+                <div className="flex items-start gap-3">
+                  <div
+                    className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
+                    style={{
+                      background: "hsl(0 84% 55% / 0.1)",
+                      color: colors.destructive,
+                    }}
+                  >
+                    <Shield size={16} />
+                  </div>
                   <p className="text-sm leading-relaxed" style={{ color: colors.mutedForeground }}>
                     To remove your data or permanently delete your account, email{" "}
                     <a
@@ -1009,14 +1071,17 @@ export default function SettingsPage(): JSX.Element {
                     >
                       {SITE_SUPPORT_EMAIL}
                     </a>{" "}
-                    with the subject <span className="font-semibold" style={{ color: colors.foreground }}>&quot;delete&quot;</span> and a brief reason.
+                    with the subject{" "}
+                    <span className="font-semibold" style={{ color: colors.foreground }}>
+                      &quot;delete&quot;
+                    </span>{" "}
+                    and a brief reason.
                   </p>
                 </div>
-              </div>
+              </SettingsCard>
             </TabsContent>
           </Tabs>
 
-          {/* recaptcha container (kept) */}
           <div className="sr-only">
             <div ref={recaptchaContainerRef} id="recaptcha-container" />
           </div>

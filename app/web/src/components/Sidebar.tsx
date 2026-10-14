@@ -1,58 +1,95 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import {
-  Home,
-  PlusCircle,
-  BarChart3,
-  UploadCloud,
-  Link2,
-  Settings,
-  ChevronLeft,
-  ChevronRight,
-  Palette,
-  Folder,
-  MessageSquare,
-  FileText,
-  Trash2,
-  Crown,
-  Sparkles,
-  Zap,
-  Coins,
-  Flag,
-  Brain,
   LayoutGrid,
+  Orbit,
+  Image as ImageIcon,
+  Waypoints,
+  ChartColumn,
+  Folder,
+  Library,
+  FileText,
+  Link2,
+  SlidersHorizontal,
+  Flag,
+  PanelLeft,
+  Plus,
+  PlusCircle,
+  MessageSquare,
+  Trash2,
+  ChevronsUpDown,
+  type LucideIcon,
 } from 'lucide-react';
-import colors from '@/lib/ui/colors';
+import { supabase } from '@/auth/supabase/client';
 import { authFetch } from '@/lib/utils';
-import { useSubscription } from '@/app/web/src/hooks/use-subscription';
 import { SkeletonNavItem } from './ui/skeletons';
 
 type NavItem = {
   href: string;
   label: string;
-  Icon: React.ComponentType<any>;
-  featureKey?: string; // Optional feature key for gating
-  betaBadge?: boolean; // Show green "Beta" badge
+  Icon: LucideIcon;
+  featureKey?: string;
+  betaBadge?: boolean;
 };
 
-// Map routes to feature keys for gating
-const NAV_ITEMS: NavItem[] = [
-  { href: '/dashboard', label: 'Dashboard', Icon: Home, featureKey: 'dashboard' },
-  { href: '/brand-studio', label: 'Brand Studio', Icon: Palette }, // Always visible
-  { href: '/creative-intelligence', label: 'Creative Intelligence', Icon: Brain, betaBadge: true }, // Always visible
-  { href: '/content-studio', label: 'Ad Studio', Icon: LayoutGrid, betaBadge: true }, // Always visible
-  { href: '/buy-credits', label: 'Buy Credits', Icon: Coins }, // Always visible (pay-as-you-go)
-  { href: '/create-campaign', label: 'Create Campaign', Icon: PlusCircle, featureKey: 'create_campaigns' },
-  { href: '/analytics', label: 'Analytics', Icon: BarChart3, featureKey: 'basic_analytics' },
-  { href: '/library', label: 'Campaign Library', Icon: Folder, featureKey: 'campaign_library' },
-  { href: '/image-library', label: 'Generated contents', Icon: UploadCloud }, // Always visible
-  { href: '/integrations', label: 'Integrations', Icon: Link2, featureKey: 'integrations' },
-  { href: '/settings', label: 'Settings', Icon: Settings }, // Always visible
-  { href: '/report', label: 'Report', Icon: Flag }, // Report errors or feedback
+type NavSection = {
+  id: string;
+  label: string;
+  items: NavItem[];
+};
+
+const NAV_SECTIONS: NavSection[] = [
+  {
+    id: 'overview',
+    label: 'Overview',
+    items: [
+      { href: '/dashboard', label: 'Dashboard', Icon: LayoutGrid, featureKey: 'dashboard' },
+    ],
+  },
+  {
+    id: 'create',
+    label: 'Create',
+    items: [
+      { href: '/brand-studio', label: 'Brand Studio', Icon: Orbit },
+      { href: '/content-studio', label: 'Ad Studio', Icon: ImageIcon, betaBadge: true },
+      { href: '/create-campaign', label: 'Create Campaign', Icon: PlusCircle, featureKey: 'create_campaigns' },
+    ],
+  },
+  {
+    id: 'intelligence',
+    label: 'Intelligence',
+    items: [
+      { href: '/creative-intelligence', label: 'Creative Intelligence', Icon: Waypoints, betaBadge: true },
+      { href: '/analytics', label: 'Analytics', Icon: ChartColumn, featureKey: 'basic_analytics' },
+    ],
+  },
+  {
+    id: 'library',
+    label: 'Library',
+    items: [
+      { href: '/image-library', label: 'Generated Contents', Icon: Folder },
+      { href: '/library', label: 'Campaign Library', Icon: Library, featureKey: 'campaign_library' },
+    ],
+  },
+  {
+    id: 'account',
+    label: 'Account',
+    items: [
+      { href: '/buy-credits', label: 'Plans & Purchases', Icon: FileText },
+      { href: '/integrations', label: 'Integrations', Icon: Link2, featureKey: 'integrations' },
+      { href: '/settings', label: 'Settings', Icon: SlidersHorizontal },
+    ],
+  },
 ];
+
+const REPORT_ITEM: NavItem = {
+  href: '/report',
+  label: 'Report an issue',
+  Icon: Flag,
+};
 
 type ChatItem = {
   id: string;
@@ -72,17 +109,23 @@ type SidebarProps = {
   onBrandGuideline?: () => void;
 };
 
-// Plan styling configuration
-const PLAN_STYLES: Record<string, { color: string; bgColor: string; icon: React.ComponentType<any> }> = {
-  'Free Trial': { color: '#f59e0b', bgColor: 'rgba(245, 158, 11, 0.15)', icon: Sparkles },
-  'Basic': { color: '#64748b', bgColor: 'rgba(100, 116, 139, 0.15)', icon: Zap },
-  'Starter': { color: '#3b82f6', bgColor: 'rgba(59, 130, 246, 0.15)', icon: Zap },
-  'Lite Growth': { color: '#8b5cf6', bgColor: 'rgba(139, 92, 246, 0.15)', icon: Crown },
-  'Growth Pro': { color: '#ec4899', bgColor: 'rgba(236, 72, 153, 0.15)', icon: Crown },
+type FeatureAccess = {
+  enabled?: boolean;
+  comingSoon?: boolean;
 };
 
-const Sidebar: React.FC<SidebarProps> = ({ 
-  logoUrl, 
+const SURFACE = '#141416';
+const LINE = 'rgba(255,255,255,0.08)';
+const LABEL = '#6e6e76';
+const ITEM = '#a3a3ab';
+const ACTIVE_BG = '#2a2a31';
+const HOVER_BG = 'rgba(255,255,255,0.045)';
+
+function isRouteActive(pathname: string, href: string) {
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+const Sidebar: React.FC<SidebarProps> = ({
   onLogoClick,
   showChatHistory = false,
   chatHistory = [],
@@ -95,20 +138,12 @@ const Sidebar: React.FC<SidebarProps> = ({
   const router = useRouter();
   const pathname = router.pathname;
   const [collapsed, setCollapsed] = useState(false);
-  const [featureAccess, setFeatureAccess] = useState<Record<string, any>>({});
+  const [featureAccess, setFeatureAccess] = useState<Record<string, FeatureAccess>>({});
   const [featuresLoading, setFeaturesLoading] = useState(true);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [accountInitial, setAccountInitial] = useState('');
+  const accountRef = useRef<HTMLDivElement>(null);
 
-  const { subscription, fetchSubscription } = useSubscription();
-  const currentPlan = subscription?.plan
-    ? { name: subscription.plan.name, status: subscription.status }
-    : null;
-
-  // Use shared subscription store (deduplicates with CreditDisplay and other consumers)
-  useEffect(() => {
-    fetchSubscription();
-  }, [fetchSubscription]);
-
-  // Fetch feature access on mount (separate API)
   useEffect(() => {
     authFetch('/api/features/access')
       .then((res) => res.json())
@@ -119,308 +154,299 @@ const Sidebar: React.FC<SidebarProps> = ({
       .finally(() => setFeaturesLoading(false));
   }, []);
 
-  // Blue-themed fallbacks (use tokens from your colors object if present)
-  const sidebarBg =
-    (colors as any).sidebarBackgroundBlue ?? (colors as any).sidebarBackground ?? '#0b1f3b';
-  const sidebarFg =
-    (colors as any).sidebarForegroundLight ?? (colors as any).sidebarForeground ?? '#e6f3ff';
-  const sidebarPrimary = (colors as any).sidebarPrimaryBlue ?? (colors as any).sidebarPrimary ?? '#60a5fa';
-  const sidebarAccent = (colors as any).sidebarAccentBlue ?? (colors as any).sidebarAccent ?? 'rgba(96,165,250,0.08)';
-  const sidebarAccentFg = (colors as any).sidebarAccentForeground ?? '#dbeafe';
-  const deepShadow = (colors as any).shadowDeep ?? (colors as any).shadowMedium ?? '0 12px 40px rgba(6,18,60,0.28)';
-  // Report item: red CTA styling
-  const reportRed = (colors as any).destructive ?? '#ef4444';
-  const reportAccent = 'rgba(239, 68, 68, 0.12)';
-  const reportAccentFg = '#fecaca';
+  useEffect(() => {
+    let cancelled = false;
+    supabase.auth
+      .getUser()
+      .then(({ data }) => {
+        if (cancelled) return;
+        const user = data.user;
+        const meta = (user?.user_metadata ?? {}) as { full_name?: string; fullName?: string };
+        const source = meta.full_name || meta.fullName || user?.email || 'A';
+        const letter = source.trim().charAt(0).toUpperCase();
+        if (letter) setAccountInitial(letter);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
-  // Helper function to check if a route is active
-  const isActive = (href: string) => pathname === href;
+  useEffect(() => {
+    setAccountOpen(false);
+  }, [pathname]);
 
-  return (
-    <aside
-      className={`flex flex-col h-screen transition-all duration-300 ease-in-out ${collapsed ? 'w-20' : 'w-64'}`}
-      style={{
-        backgroundColor: sidebarBg,
-        color: sidebarFg,
-        boxShadow: deepShadow,
-        borderRight: 'none', // ensure no line in between
-      }}
-      aria-expanded={!collapsed}
-    >
-      {/* Header: logo */}
-      <div className="flex items-center justify-between px-4 py-3">
-        <div className="flex items-center gap-3">
-          <img src="/images/SkalX_Logo.png" alt="SkalX AI Logo" className="h-5 w-auto object-contain" />
-        </div>
+  useEffect(() => {
+    if (!accountOpen) return;
+    const onPointer = (event: MouseEvent) => {
+      if (!accountRef.current?.contains(event.target as Node)) setAccountOpen(false);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setAccountOpen(false);
+    };
+    document.addEventListener('mousedown', onPointer);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onPointer);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [accountOpen]);
 
-        {/* Collapse toggle */}
-        <button
-          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          onClick={() => setCollapsed((s) => !s)}
-          className="inline-flex items-center justify-center rounded-md p-1 transition-transform duration-200"
-          style={{
-            background: 'transparent',
-            color: sidebarFg,
-          }}
-        >
-          {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
-        </button>
-      </div>
+  const itemState = (item: NavItem): 'hidden' | 'loading' | 'visible' => {
+    if (!item.featureKey) return 'visible';
+    if (featuresLoading) return 'loading';
+    const access = featureAccess[item.featureKey];
+    if (!access || (!access.enabled && !access.comingSoon)) return 'hidden';
+    return 'visible';
+  };
 
-      {/* Navigation - no separators, blue hover accent */}
-      <nav className="flex-1 px-2 py-3 space-y-1" aria-label="Primary">
-        {NAV_ITEMS.map((item) => {
-          const active = isActive(item.href);
-          const isReport = item.href === '/report';
-          const itemPrimary = isReport ? reportRed : sidebarPrimary;
-          const itemAccent = isReport ? reportAccent : sidebarAccent;
-          const itemAccentFg = isReport ? reportAccentFg : sidebarAccentFg;
-          
-          // Check feature access for gated items
-          if (item.featureKey) {
-            if (featuresLoading) {
-              return <SkeletonNavItem key={item.href} className={collapsed ? 'justify-center' : ''} />;
-            }
-            const access = featureAccess[item.featureKey];
-            // Hide if feature is not enabled and not coming soon
-            if (!access || (!access.enabled && !access.comingSoon)) {
-              return null;
-            }
-          }
-          
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`group flex items-center gap-3 rounded-lg px-3 py-2 transition-colors duration-150 ${collapsed ? 'justify-center' : ''}`}
-              style={{
-                color: active ? itemPrimary : (isReport ? reportRed : sidebarFg),
-                background: active ? itemAccent : 'transparent',
-                fontWeight: active ? 600 : 400,
-                borderLeft: active ? `3px solid ${itemPrimary}` : '3px solid transparent',
-              }}
-              onMouseEnter={(e) => {
-                if (!active) {
-                  (e.currentTarget as HTMLElement).style.backgroundColor = itemAccent;
-                  (e.currentTarget as HTMLElement).style.color = itemAccentFg;
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!active) {
-                  (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent';
-                  (e.currentTarget as HTMLElement).style.color = isReport ? reportRed : sidebarFg;
-                }
-              }}
-            >
-              <item.Icon size={18} />
-              <span className={`text-sm flex items-center gap-2 min-w-0 ${collapsed ? 'hidden' : 'flex'}`}>
-                <span className="truncate">{item.label}</span>
-                {/* Show "Beta" badge for beta features */}
+  const sections = NAV_SECTIONS.map((section) => ({
+    ...section,
+    entries: section.items
+      .map((item) => ({ item, state: itemState(item) }))
+      .filter(
+        (entry): entry is { item: NavItem; state: 'loading' | 'visible' } =>
+          entry.state !== 'hidden'
+      ),
+  })).filter((section) => section.entries.length > 0);
+
+  async function handleSignOut() {
+    setAccountOpen(false);
+    try {
+      await supabase.auth.signOut();
+    } catch (error) {
+      console.error('signOut error', error);
+    }
+    router.push('/auth/signin');
+  }
+
+  const renderItem = (item: NavItem, state: 'loading' | 'visible') => {
+    if (state === 'loading') {
+      return <SkeletonNavItem key={item.href} className={collapsed ? 'justify-center px-0' : ''} />;
+    }
+
+    const active = isRouteActive(pathname, item.href);
+    const comingSoon = Boolean(item.featureKey && featureAccess[item.featureKey]?.comingSoon);
+    const isReport = item.href === REPORT_ITEM.href;
+
+    return (
+      <Link
+        key={item.href}
+        href={item.href}
+        title={collapsed ? item.label : undefined}
+        aria-current={active ? 'page' : undefined}
+        className={`group flex items-center gap-2.5 rounded-lg transition-colors duration-150 ${
+          collapsed ? 'justify-center px-2 py-2' : 'px-2.5 py-2'
+        }`}
+        style={{
+          color: isReport ? '#f05252' : active ? '#ffffff' : ITEM,
+          background: active ? ACTIVE_BG : 'transparent',
+          fontWeight: active ? 500 : 400,
+        }}
+        onMouseEnter={(event) => {
+          if (active) return;
+          event.currentTarget.style.background = isReport ? 'rgba(240,82,82,0.08)' : HOVER_BG;
+          if (!isReport) event.currentTarget.style.color = '#f4f4f5';
+        }}
+        onMouseLeave={(event) => {
+          if (active) return;
+          event.currentTarget.style.background = 'transparent';
+          event.currentTarget.style.color = isReport ? '#f05252' : ITEM;
+        }}
+      >
+        <item.Icon size={16} strokeWidth={1.75} className="shrink-0" />
+        {!collapsed && (
+          <>
+            <span className="min-w-0 truncate text-[13px] leading-5">{item.label}</span>
+            {(item.betaBadge || comingSoon) && (
+              <span className="ml-auto flex shrink-0 items-center gap-1">
                 {item.betaBadge && (
                   <span
-                    className="shrink-0"
-                    style={{
-                      fontSize: 10,
-                      padding: '2px 6px',
-                      borderRadius: 4,
-                      background: 'rgba(34, 197, 94, 0.2)',
-                      color: '#22c55e',
-                      fontWeight: 600,
-                    }}
+                    className="rounded-full px-1.5 py-[3px] text-[10px] font-semibold leading-none"
+                    style={{ color: '#3ecf8e', background: 'rgba(62, 207, 142, 0.14)' }}
                   >
                     Beta
                   </span>
                 )}
-                {/* Show "Coming Soon" badge if applicable */}
-                {item.featureKey && featureAccess[item.featureKey]?.comingSoon && (
+                {comingSoon && (
                   <span
-                    className="shrink-0"
-                    style={{
-                      fontSize: 10,
-                      padding: '2px 6px',
-                      borderRadius: 4,
-                      background: 'rgba(245, 158, 11, 0.2)',
-                      color: '#f59e0b',
-                      fontWeight: 600,
-                    }}
+                    className="rounded-full px-1.5 py-[3px] text-[10px] font-semibold leading-none"
+                    style={{ color: '#f5b942', background: 'rgba(245, 185, 66, 0.14)' }}
                   >
                     Soon
                   </span>
                 )}
               </span>
+            )}
+          </>
+        )}
+      </Link>
+    );
+  };
+
+  return (
+    <aside
+      className={`flex h-screen shrink-0 flex-col transition-[width] duration-200 ease-out ${
+        collapsed ? 'w-[72px]' : 'w-[260px]'
+      }`}
+      style={{
+        backgroundColor: SURFACE,
+        color: ITEM,
+        borderRight: `1px solid ${LINE}`,
+      }}
+      aria-expanded={!collapsed}
+      data-collapsed={collapsed ? 'true' : 'false'}
+    >
+      <div className={`flex items-center ${collapsed ? 'justify-center px-2' : 'justify-between px-4'} py-4`}>
+        {!collapsed &&
+          (onLogoClick ? (
+            <button type="button" onClick={onLogoClick} className="rounded-md" aria-label="SkalX">
+              <img src="/images/SkalX_Logo.png" alt="SkalX" className="h-5 w-auto object-contain" />
+            </button>
+          ) : (
+            <Link href="/dashboard" className="rounded-md" aria-label="SkalX">
+              <img src="/images/SkalX_Logo.png" alt="SkalX" className="h-5 w-auto object-contain" />
             </Link>
-          );
-        })}
+          ))}
+        <button
+          type="button"
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          onClick={() => {
+            setAccountOpen(false);
+            setCollapsed((open) => !open);
+          }}
+          className="inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors"
+          style={{ color: '#8d8d95' }}
+          onMouseEnter={(event) => {
+            event.currentTarget.style.background = HOVER_BG;
+            event.currentTarget.style.color = '#f4f4f5';
+          }}
+          onMouseLeave={(event) => {
+            event.currentTarget.style.background = 'transparent';
+            event.currentTarget.style.color = '#8d8d95';
+          }}
+        >
+          <PanelLeft size={16} strokeWidth={1.75} />
+        </button>
+      </div>
+
+      <nav className="min-h-0 flex-1 overflow-y-auto px-2.5 pb-3" aria-label="Primary" style={{ scrollbarWidth: 'thin' }}>
+        {sections.map((section, index) => (
+          <div
+            key={section.id}
+            className={index === 0 ? '' : 'mt-2 border-t pt-2'}
+            style={index === 0 ? undefined : { borderColor: LINE }}
+          >
+            {!collapsed && (
+              <div
+                className="px-2.5 pb-1.5 pt-1.5 text-[10px] font-semibold uppercase tracking-[0.14em]"
+                style={{ color: LABEL }}
+              >
+                {section.label}
+              </div>
+            )}
+            <div className="space-y-0.5">
+              {section.entries.map(({ item, state }) => renderItem(item, state))}
+            </div>
+          </div>
+        ))}
+
+        <div className="mt-2 border-t pt-2" style={{ borderColor: LINE }}>
+          {renderItem(REPORT_ITEM, 'visible')}
+        </div>
       </nav>
 
-      {/* Current Plan Badge */}
-      {currentPlan && (
-        <div className={`px-3 py-3 border-t ${!(onBrandGuideline || showChatHistory) ? 'mt-auto' : ''}`} style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
-          <Link
-            href="/buy-credits"
-            className={`flex items-center gap-3 w-full rounded-lg px-3 py-2.5 transition-all duration-200 ${collapsed ? 'justify-center' : ''}`}
-            style={{
-              backgroundColor: PLAN_STYLES[currentPlan.name]?.bgColor || 'rgba(100, 116, 139, 0.15)',
-              border: `1px solid ${PLAN_STYLES[currentPlan.name]?.color || '#64748b'}40`,
-            }}
-          >
-            {(() => {
-              const PlanIcon = PLAN_STYLES[currentPlan.name]?.icon || Zap;
-              const planColor = PLAN_STYLES[currentPlan.name]?.color || '#64748b';
-              return (
-                <>
-                  <PlanIcon size={18} style={{ color: planColor, flexShrink: 0 }} />
-                  {!collapsed && (
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-semibold truncate" style={{ color: planColor }}>
-                          {currentPlan.name}
-                        </span>
-                        {currentPlan.status === 'trialing' && (
-                          <span 
-                            className="text-[10px] px-1.5 py-0.5 rounded-full font-medium"
-                            style={{ 
-                              backgroundColor: `${planColor}30`,
-                              color: planColor,
-                            }}
-                          >
-                            Trial
-                          </span>
-                        )}
-                      </div>
-                      <span className="text-[11px] opacity-70" style={{ color: sidebarFg }}>
-                        View plans
-                      </span>
-                    </div>
-                  )}
-                </>
-              );
-            })()}
-          </Link>
-        </div>
-      )}
-
-      {/* Bottom Section - Brand Guideline (always shown when onBrandGuideline is provided) and Session History */}
       {(onBrandGuideline || showChatHistory) && (
-        <div className={`border-t ${!currentPlan ? 'mt-auto' : ''}`} style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
-          {/* Brand Guideline Button - Always shown when callback provided */}
+        <div className="border-t px-2.5 py-2.5" style={{ borderColor: LINE }}>
           {onBrandGuideline && (
-            <div className="px-3 py-3">
-              <button
-                onClick={() => onBrandGuideline?.()}
-                className={`flex items-center gap-3 w-full rounded-lg px-3 py-2 transition-colors duration-150 ${collapsed ? 'justify-center' : ''}`}
-                style={{
-                  backgroundColor: 'rgba(235, 243, 255, 1)',
-                  color: 'rgba(54, 145, 255, 1)',
-                  border: `1px solid rgba(255, 255, 255, 0.1)`,
-                }}
-                onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLElement).style.backgroundColor = sidebarAccent;
-                  (e.currentTarget as HTMLElement).style.color = sidebarAccentFg;
-                }}
-                onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLElement).style.backgroundColor = 'rgba(235, 243, 255, 1)';
-                  (e.currentTarget as HTMLElement).style.color = 'rgba(54, 145, 255, 1)';
-                }}
-              >
-                <FileText size={16} style={{ color: 'rgba(54, 145, 255, 1)' }} />
-                <span className={`${collapsed ? 'hidden' : 'inline-block'}`} style={{ color: 'rgba(54, 145, 255, 1)', fontWeight: '300' }}>Brand guideline</span>
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => onBrandGuideline()}
+              title={collapsed ? 'Brand guideline' : undefined}
+              className={`mb-1 flex w-full items-center gap-2.5 rounded-lg py-2 text-[13px] transition-colors ${
+                collapsed ? 'justify-center px-2' : 'px-2.5'
+              }`}
+              style={{ color: ITEM }}
+              onMouseEnter={(event) => {
+                event.currentTarget.style.background = HOVER_BG;
+                event.currentTarget.style.color = '#f4f4f5';
+              }}
+              onMouseLeave={(event) => {
+                event.currentTarget.style.background = 'transparent';
+                event.currentTarget.style.color = ITEM;
+              }}
+            >
+              <FileText size={16} strokeWidth={1.75} />
+              {!collapsed && <span>Brand guideline</span>}
+            </button>
           )}
 
-          {/* Session History Section - Only show on session pages */}
           {showChatHistory && (
             <>
-              {/* New Session Button */}
-              <div className="px-3 pb-2">
-                <button
-                  onClick={() => onNewChat?.()}
-                  className={`flex items-center gap-3 w-full rounded-lg px-3 py-2 font-light transition-all duration-150 ${collapsed ? 'justify-center' : ''}`}
-                  style={{
-                    backgroundColor: 'rgba(54, 145, 255, 1)',
-                    color: 'rgba(250, 250, 250, 1)',
-                    border: 'none',
-                    boxShadow: deepShadow,
-                  }}
-                  onMouseEnter={(e) => {
-                    (e.currentTarget as HTMLElement).style.filter = 'brightness(0.98)';
-                  }}
-                  onMouseLeave={(e) => {
-                    (e.currentTarget as HTMLElement).style.filter = 'none';
-                  }}
-                >
-                  <MessageSquare size={16} />
-                  <span className={`${collapsed ? 'hidden' : 'inline-block'}`}>New session</span>
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => onNewChat?.()}
+                title={collapsed ? 'New session' : undefined}
+                className={`flex w-full items-center gap-2.5 rounded-lg py-2 text-[13px] font-medium transition-colors ${
+                  collapsed ? 'justify-center px-2' : 'px-2.5'
+                }`}
+                style={{ color: '#f4f4f5', background: 'rgba(255,255,255,0.04)' }}
+                onMouseEnter={(event) => {
+                  event.currentTarget.style.background = 'rgba(255,255,255,0.08)';
+                }}
+                onMouseLeave={(event) => {
+                  event.currentTarget.style.background = 'rgba(255,255,255,0.04)';
+                }}
+              >
+                {collapsed ? <Plus size={16} strokeWidth={1.75} /> : <MessageSquare size={16} strokeWidth={1.75} />}
+                {!collapsed && <span>New session</span>}
+              </button>
 
-              {/* Session History List */}
               {!collapsed && (
-                <div className="px-3 pb-3">
-                  <div className="text-[11px] font-semibold uppercase tracking-wide mb-2.5 px-0.5" style={{ color: sidebarFg, opacity: 0.55 }}>
+                <div className="mt-2">
+                  <div className="px-2.5 pb-1.5 text-[10px] font-semibold uppercase tracking-[0.14em]" style={{ color: LABEL }}>
                     Your sessions
                   </div>
-                  <div className="space-y-0.5 max-h-[calc(100vh-380px)] overflow-y-auto" style={{ scrollbarWidth: 'thin' }}>
+                  <div className="max-h-52 space-y-0.5 overflow-y-auto" style={{ scrollbarWidth: 'thin' }}>
                     {chatHistory.length === 0 ? (
-                      <div className="text-xs opacity-50 px-3 py-2">No sessions yet</div>
+                      <div className="px-2.5 py-2 text-xs" style={{ color: LABEL }}>
+                        No sessions yet
+                      </div>
                     ) : (
                       chatHistory.map((chat) => {
                         const isActiveChat = activeChatId === chat.id;
                         return (
-                          <div key={chat.id} className="flex items-center gap-1 group w-full">
+                          <div key={chat.id} className="group flex items-center gap-1">
                             <button
-                              className="flex-1 text-left px-3 py-2.5 rounded-lg text-sm transition-colors duration-150 min-w-0"
+                              type="button"
+                              className="min-w-0 flex-1 rounded-lg px-2.5 py-2 text-left"
                               style={{
-                                color: isActiveChat ? sidebarAccentFg : sidebarFg,
-                                backgroundColor: isActiveChat ? sidebarAccent : 'transparent',
-                                boxShadow: isActiveChat ? `inset 2px 0 0 ${colors.primary}` : 'none',
+                                color: isActiveChat ? '#ffffff' : ITEM,
+                                background: isActiveChat ? ACTIVE_BG : 'transparent',
                               }}
-                              onMouseEnter={(e) => {
-                                if (!isActiveChat) {
-                                  (e.currentTarget as HTMLElement).style.backgroundColor = sidebarAccent;
-                                  (e.currentTarget as HTMLElement).style.color = sidebarAccentFg;
-                                }
+                              onMouseEnter={(event) => {
+                                if (!isActiveChat) event.currentTarget.style.background = HOVER_BG;
                               }}
-                              onMouseLeave={(e) => {
-                                if (!isActiveChat) {
-                                  (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent';
-                                  (e.currentTarget as HTMLElement).style.color = sidebarFg;
-                                }
+                              onMouseLeave={(event) => {
+                                if (!isActiveChat) event.currentTarget.style.background = 'transparent';
                               }}
                               onClick={() => onChatSelect?.(chat.id)}
                             >
-                              <div className="truncate font-medium">{chat.title}</div>
-                              <div className="text-xs opacity-60">{chat.timestamp}</div>
+                              <div className="truncate text-[13px]">{chat.title}</div>
+                              <div className="truncate text-[11px]" style={{ color: LABEL }}>
+                                {chat.timestamp}
+                              </div>
                             </button>
                             {onChatDelete ? (
                               <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  onChatDelete(chat.id);
-                                }}
-                                className="opacity-0 group-hover:opacity-100 p-2 rounded-md transition-all duration-200 hover:bg-red-500/30 active:bg-red-500/50 flex-shrink-0 flex items-center justify-center z-10"
-                                style={{ 
-                                  color: '#ef4444',
-                                  backgroundColor: 'rgba(239, 68, 68, 0.15)',
-                                  minWidth: '32px',
-                                  minHeight: '32px',
-                                  border: '1px solid rgba(239, 68, 68, 0.3)'
-                                }}
-                                onMouseEnter={(e) => {
-                                  e.currentTarget.style.color = '#ffffff';
-                                  e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.4)';
-                                  e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.6)';
-                                }}
-                                onMouseLeave={(e) => {
-                                  e.currentTarget.style.color = '#ef4444';
-                                  e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.15)';
-                                  e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.3)';
-                                }}
+                                type="button"
+                                onClick={() => onChatDelete(chat.id)}
+                                className="rounded-md p-1.5 opacity-0 transition-opacity group-hover:opacity-100"
+                                style={{ color: '#f05252' }}
                                 aria-label="Delete session"
                                 title="Delete session"
                               >
-                                <Trash2 size={16} strokeWidth={2.5} />
+                                <Trash2 size={14} strokeWidth={1.75} />
                               </button>
                             ) : null}
                           </div>
@@ -434,6 +460,102 @@ const Sidebar: React.FC<SidebarProps> = ({
           )}
         </div>
       )}
+
+      <div ref={accountRef} className="relative border-t px-2.5 py-2.5" style={{ borderColor: LINE }}>
+        {accountOpen && !collapsed && (
+          <div
+            role="menu"
+            className="absolute bottom-full left-2.5 right-2.5 z-30 mb-2 overflow-hidden rounded-xl border py-1 shadow-xl"
+            style={{ background: '#1c1c21', borderColor: LINE }}
+          >
+            <Link
+              href="/settings"
+              role="menuitem"
+              className="block px-3 py-2 text-[13px] transition-colors"
+              style={{ color: '#f4f4f5' }}
+              onMouseEnter={(event) => {
+                event.currentTarget.style.background = HOVER_BG;
+              }}
+              onMouseLeave={(event) => {
+                event.currentTarget.style.background = 'transparent';
+              }}
+            >
+              Settings
+            </Link>
+            <Link
+              href="/buy-credits"
+              role="menuitem"
+              className="block px-3 py-2 text-[13px] transition-colors"
+              style={{ color: '#f4f4f5' }}
+              onMouseEnter={(event) => {
+                event.currentTarget.style.background = HOVER_BG;
+              }}
+              onMouseLeave={(event) => {
+                event.currentTarget.style.background = 'transparent';
+              }}
+            >
+              Plans & Purchases
+            </Link>
+            <div className="my-1 border-t" style={{ borderColor: LINE }} />
+            <button
+              type="button"
+              role="menuitem"
+              className="block w-full px-3 py-2 text-left text-[13px] transition-colors"
+              style={{ color: '#f05252' }}
+              onClick={handleSignOut}
+              onMouseEnter={(event) => {
+                event.currentTarget.style.background = 'rgba(240,82,82,0.08)';
+              }}
+              onMouseLeave={(event) => {
+                event.currentTarget.style.background = 'transparent';
+              }}
+            >
+              Sign out
+            </button>
+          </div>
+        )}
+
+        {collapsed ? (
+          <Link
+            href="/settings"
+            title="Account"
+            className="mx-auto flex h-9 w-9 items-center justify-center rounded-full text-[13px] font-semibold"
+            style={{ background: '#2a2a31', color: '#ffffff' }}
+          >
+            {accountInitial}
+          </Link>
+        ) : (
+          <button
+            type="button"
+            className="flex w-full items-center gap-2.5 rounded-lg px-1.5 py-1.5 text-left transition-colors"
+            aria-haspopup="menu"
+            aria-expanded={accountOpen}
+            onClick={() => setAccountOpen((open) => !open)}
+            onMouseEnter={(event) => {
+              event.currentTarget.style.background = HOVER_BG;
+            }}
+            onMouseLeave={(event) => {
+              event.currentTarget.style.background = 'transparent';
+            }}
+          >
+            <span
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[13px] font-semibold"
+              style={{ background: '#2a2a31', color: '#ffffff' }}
+            >
+              {accountInitial}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[13px] font-medium leading-4" style={{ color: '#ffffff' }}>
+                Account
+              </span>
+              <span className="block truncate text-[11px] leading-4" style={{ color: LABEL }}>
+                Manage your workspace
+              </span>
+            </span>
+            <ChevronsUpDown size={14} strokeWidth={1.75} style={{ color: '#8d8d95' }} />
+          </button>
+        )}
+      </div>
     </aside>
   );
 };

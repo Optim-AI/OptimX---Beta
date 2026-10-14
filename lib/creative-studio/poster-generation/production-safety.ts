@@ -34,6 +34,11 @@ export const PUBLIC_ERROR_MESSAGES: Record<string, string> = {
   PLAN_INVALID: "We couldn't plan that change. Try rephrasing your edit.",
   CLASSIFICATION_FAILED: "We couldn't understand that change. Try rephrasing.",
   MALFORMED_SPEC: "Poster setup was invalid. Please try again.",
+  STORY_INVALID:
+    "We couldn't plan a coherent carousel story. Try again or adjust the creative direction.",
+  NOT_ELIGIBLE: "That slide can't be changed right now.",
+  EXPORT_EMPTY: "No finished slides are available to download yet.",
+  PROVIDER: "Planning is temporarily unavailable. Please try again shortly.",
   INTERNAL: "Something went wrong. Please try again.",
 };
 

@@ -4,6 +4,9 @@
 
 import { authFetch } from '@/lib/utils';
 import { POST_AUTH_WORKSPACE_PATH } from '@/lib/auth/post-auth-decision';
+import { auditReturnPath, resolvePostAuthPath } from '@/lib/audit/analytics';
+
+export { auditReturnPath, resolvePostAuthPath };
 
 export type ClientPostAuthResult =
   | { ok: true; destination: 'workspace' | 'try'; step: string | null; path: string }

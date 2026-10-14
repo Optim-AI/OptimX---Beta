@@ -19,6 +19,8 @@ import {
   type ComparisonCell,
 } from '@/lib/onboarding/plan-comparison';
 import { WORKSPACE_PATH } from '@/lib/onboarding/try-onboarding';
+import { FREE_TRIAL_CARD } from '@/lib/trial/validate';
+import FreeTrialRequestDialog from './FreeTrialRequestDialog';
 
 type Props = {
   brandName: string;
@@ -29,7 +31,13 @@ type Props = {
   onContinue: (planId: MarketingPlanId) => void;
   onBack: () => void;
   continuing?: boolean;
+  backLabel?: string;
+  introCopy?: string;
 };
+
+const DEFAULT_BACK_LABEL = '← Back to your poster';
+const DEFAULT_INTRO =
+  'Your personalized creative was just the beginning. Create more posters, videos, and campaigns with SkalX.';
 
 function trackSafe(event: string, data?: Record<string, string>) {
   try {
@@ -78,9 +86,12 @@ export default function TryPricingExperience({
   onContinue,
   onBack,
   continuing = false,
+  backLabel = DEFAULT_BACK_LABEL,
+  introCopy = DEFAULT_INTRO,
 }: Props) {
   const headingId = useId();
   const [openRow, setOpenRow] = useState<string | null>(PLAN_COMPARISON_ROWS[0]?.id ?? null);
+  const [trialDialogOpen, setTrialDialogOpen] = useState(false);
 
   useEffect(() => {
     trackSafe('pricing_viewed', { brand: brandName || 'unknown' });
@@ -114,7 +125,7 @@ export default function TryPricingExperience({
             className="text-sm"
             style={{ color: colors.mutedForeground, background: 'none', border: 'none' }}
           >
-            ← Back to your poster
+            {backLabel}
           </button>
         </div>
       </div>
@@ -145,15 +156,67 @@ export default function TryPricingExperience({
         className="text-center text-sm max-w-xl mx-auto mb-10"
         style={{ color: colors.mutedForeground }}
       >
-        Your personalized creative was just the beginning. Create more posters, videos, and
-        campaigns with SkalX.
+        {introCopy}
       </p>
 
       <div
-        className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-14"
+        className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5 mb-14"
         role="radiogroup"
         aria-labelledby={headingId}
       >
+        <div
+          className="rounded-2xl p-6 flex flex-col transition-all duration-300"
+          style={glass}
+        >
+          <h2 className="text-2xl font-semibold mb-1">{FREE_TRIAL_CARD.name}</h2>
+          <p className="text-sm mb-3" style={{ color: colors.mutedForeground }}>
+            {FREE_TRIAL_CARD.description}
+          </p>
+          <div className="mb-1">
+            <span className="text-3xl font-bold tracking-tight">{FREE_TRIAL_CARD.priceLabel}</span>
+          </div>
+          <p className="text-xs mb-5" style={{ color: colors.mutedForeground }}>
+            {FREE_TRIAL_CARD.supporting}
+          </p>
+
+          <ul className="space-y-2 mb-6 flex-1">
+            {FREE_TRIAL_CARD.features.map((cap) => (
+              <li
+                key={cap}
+                className="flex items-start gap-2 text-sm"
+                style={{ color: colors.mutedForeground }}
+              >
+                <Check
+                  className="h-4 w-4 mt-0.5 flex-shrink-0"
+                  style={{ color: colors.primary }}
+                />
+                {cap}
+              </li>
+            ))}
+          </ul>
+
+          <button
+            type="button"
+            aria-label="Request free trial"
+            disabled={continuing}
+            onClick={() => {
+              trackSafe('trial_request_opened', { source: 'pricing' });
+              setTrialDialogOpen(true);
+            }}
+            className="w-full h-11 rounded-xl text-sm font-medium transition-opacity disabled:opacity-60"
+            style={{
+              background: colors.gradientPrimary,
+              color: colors.primaryForeground,
+              border: 'none',
+            }}
+          >
+            {FREE_TRIAL_CARD.cta}
+          </button>
+          <p className="text-xs text-center mt-3" style={{ color: colors.mutedForeground }}>
+            {FREE_TRIAL_CARD.note}
+          </p>
+        </div>
+
         {MARKETING_SUBSCRIPTION_PLANS.map((plan) => {
           const isSelected = selectedPlanId === plan.id;
           const totals = subscriptionTotalsInr(plan.priceInr);
@@ -249,6 +312,8 @@ export default function TryPricingExperience({
           );
         })}
       </div>
+
+      <FreeTrialRequestDialog open={trialDialogOpen} onOpenChange={setTrialDialogOpen} />
 
       {/* Comparison — desktop table */}
       <section className="mb-14" aria-labelledby="compare-heading">
@@ -387,7 +452,7 @@ export default function TryPricingExperience({
           className="text-sm"
           style={{ color: colors.mutedForeground, background: 'none', border: 'none' }}
         >
-          ← Back to your poster
+          {backLabel}
         </button>
       </div>
     </div>

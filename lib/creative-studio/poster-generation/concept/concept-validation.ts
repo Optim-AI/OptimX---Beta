@@ -17,7 +17,10 @@ const TERRITORY_SET = new Set<string>(CREATIVE_TERRITORIES);
 const GENERIC_CONCEPT_PATTERNS =
   /\b(premium product on a beautiful background|beautiful studio background|product centered on gradient|generic premium)\b/i;
 
-function asTerritory(raw: unknown, fallback: CreativeTerritory): CreativeTerritory {
+export function asTerritory(
+  raw: unknown,
+  fallback: CreativeTerritory
+): CreativeTerritory {
   const t = String(raw || "")
     .trim()
     .toLowerCase()

@@ -48,6 +48,15 @@ import {
   selectPosterConcept,
   updatePosterEngineBrief,
 } from '@/app/web/src/components/creative-studio/poster-engine-client';
+import CarouselStudio from '@/app/web/src/components/creative-studio/CarouselStudio';
+import {
+  getLatestCarousel,
+  loadCarouselPreference,
+  planCarousel,
+  saveCarouselPreference,
+  type CreativeFormat,
+  type PublicCarouselCampaign,
+} from '@/app/web/src/components/creative-studio/carousel-client';
 import { authFetch, safeResponseJson } from '@/lib/utils';
 import PosterEditModal from '@/app/web/src/components/content-studio/PosterEditModal';
 import type { PosterGenerationSession } from '@/lib/creative-studio/poster-generation/types';
@@ -175,6 +184,13 @@ export default function PosterSessionPage() {
   >([]);
   const [lastCreditsCharged, setLastCreditsCharged] = useState<number | null>(null);
 
+  // Carousel format (single poster stays the default)
+  const [creativeFormat, setCreativeFormat] = useState<CreativeFormat>('single');
+  const [carouselSlideCount, setCarouselSlideCount] = useState<number>(5);
+  const [carouselCampaign, setCarouselCampaign] = useState<PublicCarouselCampaign | null>(null);
+  const [carouselViewOpen, setCarouselViewOpen] = useState(false);
+  const [isPlanningCarousel, setIsPlanningCarousel] = useState(false);
+
   // Image preview state (for chat history images)
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
 
@@ -273,6 +289,15 @@ export default function PosterSessionPage() {
       setSelectedDirectionId(null);
       setEngineResultMeta([]);
       setLastCreditsCharged(null);
+      const carouselPref =
+        typeof sessionId === 'string' && sessionId !== 'new'
+          ? loadCarouselPreference(sessionId)
+          : null;
+      setCreativeFormat(carouselPref?.format ?? 'single');
+      setCarouselSlideCount(carouselPref?.slideCount ?? 5);
+      setCarouselCampaign(null);
+      setCarouselViewOpen(false);
+      setIsPlanningCarousel(false);
       
       try {
         // Handle 'new' session - load brand from database
@@ -359,6 +384,18 @@ export default function PosterSessionPage() {
                 setPhase("config");
               } else if (eng.brief?.userInstruction) {
                 setPipelineStage("compose");
+              }
+              if (carouselPref?.format === 'carousel') {
+                try {
+                  const latest = await getLatestCarousel(eng.id);
+                  if (latest) {
+                    setCarouselCampaign(latest);
+                    setCarouselSlideCount(latest.slideCount);
+                    setCarouselViewOpen(true);
+                  }
+                } catch (carouselErr) {
+                  console.warn("Carousel restore skipped", carouselErr);
+                }
               }
             }
           }
@@ -1228,6 +1265,7 @@ export default function PosterSessionPage() {
         : safeTrim(posterPrompt);
 
     setIsGenerating(true);
+    setCarouselViewOpen(false);
     setPhase("generating");
     setPipelineStage("generating");
     setThinkingMessages([
@@ -1314,6 +1352,41 @@ export default function PosterSessionPage() {
       await developCreativeDirections(undefined, true);
     } finally {
       setIsRegeneratingDirections(false);
+    }
+  }
+
+  function updateCarouselPreference(next: { format?: CreativeFormat; slideCount?: number }) {
+    const format = next.format ?? creativeFormat;
+    const slideCount = next.slideCount ?? carouselSlideCount;
+    if (next.format) setCreativeFormat(next.format);
+    if (next.slideCount) setCarouselSlideCount(next.slideCount);
+    if (typeof sessionId === 'string' && sessionId !== 'new') {
+      saveCarouselPreference(sessionId, { format, slideCount });
+    }
+  }
+
+  async function handlePlanCarousel(regenerate = false) {
+    if (isPlanningCarousel || isGenerating) return;
+    if (!engineSessionId || !selectedDirectionId) {
+      showError("Select a creative direction first.");
+      return;
+    }
+    setIsPlanningCarousel(true);
+    try {
+      await selectPosterConcept(engineSessionId, selectedDirectionId);
+      const { campaign } = await planCarousel({
+        sessionId: engineSessionId,
+        slideCount: carouselSlideCount,
+        conceptId: selectedDirectionId,
+        regenerate,
+      });
+      setCarouselCampaign(campaign);
+      setCarouselViewOpen(true);
+    } catch (err: any) {
+      console.error("Carousel planning failed", err);
+      showError(err?.message || "Could not plan the carousel. Please try again.");
+    } finally {
+      setIsPlanningCarousel(false);
     }
   }
 
@@ -2787,14 +2860,49 @@ export default function PosterSessionPage() {
         onSelectDirection={setSelectedDirectionId}
         onRegenerateDirections={() => void handleRegenerateDirections()}
         isRegeneratingDirections={isRegeneratingDirections}
-        onGenerateFromDirection={() => void handleGenerateFromSelectedDirection()}
+        onGenerateFromDirection={() =>
+          creativeFormat === 'carousel'
+            ? void handlePlanCarousel(false)
+            : void handleGenerateFromSelectedDirection()
+        }
         canGenerateFromDirection={
-          !isGenerating && !hasInsufficientCredits && !!selectedDirectionId
+          creativeFormat === 'carousel'
+            ? !isGenerating && !isPlanningCarousel && !!selectedDirectionId
+            : !isGenerating && !hasInsufficientCredits && !!selectedDirectionId
+        }
+        creativeFormat={creativeFormat}
+        onCreativeFormatChange={(format) => updateCarouselPreference({ format })}
+        carouselSlideCount={carouselSlideCount}
+        onCarouselSlideCountChange={(slideCount) => updateCarouselPreference({ slideCount })}
+        isPlanningCarousel={isPlanningCarousel}
+        carouselSlot={
+          creativeFormat === 'carousel' && carouselViewOpen && carouselCampaign ? (
+            <CarouselStudio
+              campaign={carouselCampaign}
+              onCampaignChange={setCarouselCampaign}
+              onRegenerateStory={() => handlePlanCarousel(true)}
+              isPlanning={isPlanningCarousel}
+              onChangeDirection={
+                creativeDirections.length
+                  ? () => {
+                      setCarouselViewOpen(false);
+                      setPipelineStage("directions");
+                      setPhase("config");
+                    }
+                  : undefined
+              }
+              creditsAvailable={credits}
+              onCreditsChanged={() => void loadCredits()}
+              onError={(message) => showError(message)}
+              onNotice={(message) => showSuccess(message)}
+            />
+          ) : null
         }
         creditsAlertSlot={
           hasInsufficientCredits ? <InsufficientCreditsAlert type="image" /> : null
         }
         onBackToCompose={() => {
+          setCarouselViewOpen(false);
           setPipelineStage("compose");
           setPhase("input");
         }}

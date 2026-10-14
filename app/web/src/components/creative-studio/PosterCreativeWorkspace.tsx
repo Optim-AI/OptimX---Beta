@@ -131,12 +131,23 @@ export type PosterCreativeWorkspaceProps = {
   onGenerateFromDirection?: () => void;
   canGenerateFromDirection?: boolean;
 
+  /* Creative format — omitted onCreativeFormatChange hides the control (single poster only) */
+  creativeFormat?: "single" | "carousel";
+  onCreativeFormatChange?: (format: "single" | "carousel") => void;
+  carouselSlideCount?: number;
+  onCarouselSlideCountChange?: (n: number) => void;
+  /** Planned / generating / finished carousel campaign view */
+  carouselSlot?: React.ReactNode;
+  isPlanningCarousel?: boolean;
+
   /* Overlays */
   brandReviewSlot?: React.ReactNode;
   resultsSlot?: React.ReactNode;
   creditsAlertSlot?: React.ReactNode;
   onBackToCompose?: () => void;
 };
+
+const CAROUSEL_SLIDE_OPTIONS = [2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
 
 function surfaceClass(extra?: string) {
   return cn(
@@ -245,11 +256,18 @@ export function PosterCreativeWorkspace({
   isRegeneratingDirections = false,
   onGenerateFromDirection,
   canGenerateFromDirection = false,
+  creativeFormat = "single",
+  onCreativeFormatChange,
+  carouselSlideCount = 5,
+  onCarouselSlideCountChange,
+  carouselSlot,
+  isPlanningCarousel = false,
   brandReviewSlot,
   resultsSlot,
   creditsAlertSlot,
   onBackToCompose,
 }: PosterCreativeWorkspaceProps) {
+  const isCarousel = creativeFormat === "carousel" && !!onCreativeFormatChange;
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [catalogQuery, setCatalogQuery] = useState("");
   const [urlOpen, setUrlOpen] = useState(false);
@@ -371,14 +389,16 @@ export function PosterCreativeWorkspace({
     onReferencePosterFile(file);
   }
 
+  const showCarousel = isCarousel && !!carouselSlot && !isGenerating && !brandReviewSlot;
   const showResults =
-    pipelineStage === "ready" && !!resultsSlot && !isGenerating;
+    !showCarousel && pipelineStage === "ready" && !!resultsSlot && !isGenerating;
   const showDirections =
+    !showCarousel &&
     pipelineStage === "directions" &&
     !isGenerating &&
     creativeDirections.length > 0;
   const showCompose =
-    !isGenerating && !showResults && !showDirections && !brandReviewSlot;
+    !isGenerating && !showResults && !showDirections && !showCarousel && !brandReviewSlot;
 
   return (
     <div
@@ -494,6 +514,35 @@ export function PosterCreativeWorkspace({
         </div>
       )}
 
+      {/* Carousel campaign */}
+      {showCarousel && (
+        <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
+          <div className="mx-auto max-w-[1300px]">
+            <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <p
+                  className="text-[10px] font-semibold uppercase tracking-[0.16em]"
+                  style={{ color: BLUE.text }}
+                >
+                  Carousel
+                </p>
+                <h2 className="mt-1 text-xl font-medium text-white">Your carousel campaign</h2>
+              </div>
+              {onBackToCompose && (
+                <button
+                  type="button"
+                  onClick={onBackToCompose}
+                  className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-white/70 transition hover:bg-white/[0.08] hover:text-white"
+                >
+                  Adjust brief
+                </button>
+              )}
+            </div>
+            {carouselSlot}
+          </div>
+        </div>
+      )}
+
       {/* Creative directions selection */}
       {showDirections && (
         <div className="min-h-0 flex-1 overflow-y-auto">
@@ -507,11 +556,14 @@ export function PosterCreativeWorkspace({
                   Creative directions
                 </p>
                 <h2 className="mt-1 text-xl font-medium text-white">
-                  Choose a direction for your poster
+                  {isCarousel
+                    ? "Choose a direction for your carousel"
+                    : "Choose a direction for your poster"}
                 </h2>
                 <p className="mt-1 text-sm text-white/45">
-                  Exploring directions uses no image credits. Generation charges only when you
-                  create posters.
+                  {isCarousel
+                    ? "The direction seeds one shared visual system across every slide. Planning the story uses no image credits."
+                    : "Exploring directions uses no image credits. Generation charges only when you create posters."}
                 </p>
               </div>
               {onBackToCompose && (
@@ -588,27 +640,29 @@ export function PosterCreativeWorkspace({
                 disabled={
                   !canGenerateFromDirection ||
                   !selectedDirectionId ||
-                  isGenerating
+                  isGenerating ||
+                  isPlanningCarousel
                 }
                 className="inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-45"
                 style={{ background: BLUE.solid }}
               >
-                {isGenerating ? (
+                {isGenerating || isPlanningCarousel ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    Creating…
+                    {isPlanningCarousel ? "Planning story…" : "Creating…"}
                   </>
                 ) : (
                   <>
-                    Generate poster
+                    {isCarousel ? "Plan carousel" : "Generate poster"}
                     <ArrowRight className="h-4 w-4" />
                   </>
                 )}
               </button>
               {selectedDirectionId && (
                 <p className="text-xs text-white/40">
-                  {numVariants} poster{numVariants === 1 ? "" : "s"} · {numVariants} image
-                  credit{numVariants === 1 ? "" : "s"}
+                  {isCarousel
+                    ? `${carouselSlideCount} slides · story planning uses no credits`
+                    : `${numVariants} poster${numVariants === 1 ? "" : "s"} · ${numVariants} image credit${numVariants === 1 ? "" : "s"}`}
                 </p>
               )}
             </div>
@@ -1075,6 +1129,49 @@ export function PosterCreativeWorkspace({
                   </div>
                 </div>
 
+                {onCreativeFormatChange && (
+                  <div className="mt-6 border-t border-white/[0.06] pt-5">
+                    <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45">
+                      Creative format
+                    </h3>
+                    <div
+                      role="radiogroup"
+                      aria-label="Creative format"
+                      className="mt-3 inline-flex gap-1 rounded-xl border border-white/10 bg-black/25 p-1"
+                    >
+                      {(
+                        [
+                          { id: "single", label: "Single Poster" },
+                          { id: "carousel", label: "Carousel" },
+                        ] as const
+                      ).map((opt) => {
+                        const selected = creativeFormat === opt.id;
+                        return (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            role="radio"
+                            aria-checked={selected}
+                            onClick={() => onCreativeFormatChange(opt.id)}
+                            className={cn(
+                              "rounded-lg px-3 py-2 text-xs font-medium transition",
+                              selected ? "text-white" : "text-white/55 hover:text-white"
+                            )}
+                            style={selected ? { background: BLUE.solid } : undefined}
+                          >
+                            {opt.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {isCarousel && (
+                      <p className="mt-2 text-xs text-white/35">
+                        One connected campaign across 2–10 slides with a shared visual identity.
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 <div className="mt-6 border-t border-white/[0.06] pt-5">
                   <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45">
                     Format
@@ -1103,6 +1200,41 @@ export function PosterCreativeWorkspace({
                   </div>
                 </div>
 
+                {isCarousel && (
+                  <div className="mt-6 border-t border-white/[0.06] pt-5">
+                    <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45">
+                      Slides
+                    </h3>
+                    <div className="mt-3 flex flex-wrap items-center gap-3">
+                      <div className="inline-flex flex-wrap gap-1 rounded-xl border border-white/10 bg-black/25 p-1">
+                        {CAROUSEL_SLIDE_OPTIONS.map((n) => {
+                          const selected = carouselSlideCount === n;
+                          return (
+                            <button
+                              key={n}
+                              type="button"
+                              onClick={() => onCarouselSlideCountChange?.(n)}
+                              aria-pressed={selected}
+                              className={cn(
+                                "min-w-[2.25rem] rounded-lg px-2.5 py-2 text-xs font-medium transition",
+                                selected ? "text-white" : "text-white/55 hover:text-white"
+                              )}
+                              style={selected ? { background: BLUE.solid } : undefined}
+                            >
+                              {n}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <p className="text-xs text-white/40">
+                        {carouselSlideCount} slides · up to {carouselSlideCount} image credits
+                        {creditsAvailable != null ? ` · ${creditsAvailable} available` : ""}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {!isCarousel && (
                 <div className="mt-6 border-t border-white/[0.06] pt-5">
                   <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45">
                     Variants
@@ -1134,6 +1266,7 @@ export function PosterCreativeWorkspace({
                     </p>
                   </div>
                 </div>
+                )}
 
                 <div className="mt-6 border-t border-white/[0.06] pt-5">
                   <button

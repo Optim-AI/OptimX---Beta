@@ -95,6 +95,10 @@ export function mapFullAnalyzeToBrandSnapshot(result: any): BrandSnapshot {
     brand_values: result.brand_values,
     business_overview: result.business_overview,
     website_url: result.website_url,
+    marketSummary:
+      typeof result.competition?.summary === 'string' && result.competition.summary.trim()
+        ? result.competition.summary.trim()
+        : undefined,
     productImages: Array.isArray(result.product_images)
       ? result.product_images
           .filter((u: unknown): u is string => typeof u === 'string' && u.length > 0)
@@ -359,34 +363,7 @@ export function generateId(): string {
   return `${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
 }
 
-/**
- * Default Ad Builder Data
- */
-export const DEFAULT_AD_BUILDER_DATA = {
-  step: 1 as const,
-  product: null,
-  adSetup: {
-    creativeFormat: "Commercial" as const,
-    hookType: "Auto" as const,
-    campaignGoal: "Drive Sales" as const,
-    audience: "Auto" as const,
-    duration: 15 as const,
-    platform: "Instagram Reels / TikTok" as const,
-    aspect_ratio: "9:16" as const,
-  },
-  voiceover: {
-    enabled: true,
-    language: "english" as const,
-    tone: "Energetic" as const,
-    ctaEnabled: true,
-  },
-  onScreenText: {
-    enabled: true,
-    textStyle: "animated_effects" as const,
-    textPosition: "lower_third" as const,
-    alignBrand: true,
-  },
-};
+export { DEFAULT_AD_BUILDER_DATA } from './ad-builder-defaults';
 
 /**
  * Default poster config

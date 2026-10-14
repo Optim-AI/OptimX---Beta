@@ -3,7 +3,8 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '@/auth/supabase/client';
-import { fetchPostAuthDestination } from '@/lib/auth/client-post-auth';
+import { auditReturnPath, fetchPostAuthDestination } from '@/lib/auth/client-post-auth';
+import { trackAuditEvent } from '@/lib/audit/analytics';
 import { getSafeNextPath } from '@/lib/routing/safe-next';
 import { PulseSpinner } from '@/app/web/src/components/ui/skeletons';
 import colors from '@/lib/ui/colors';
@@ -56,6 +57,19 @@ export default function AuthCallbackPage(): React.ReactElement {
 
         if (!decision.ok) {
           setError(decision.error);
+          return;
+        }
+
+        const authUser = data.user as { created_at?: string; app_metadata?: { provider?: string } };
+        const createdAt = Date.parse(authUser.created_at || '');
+        const provider = authUser.app_metadata?.provider || 'unknown';
+        const auditNext = auditReturnPath(router.query.next);
+        if (provider !== 'email' && Number.isFinite(createdAt) && Date.now() - createdAt < 10 * 60_000) {
+          trackAuditEvent('signup_completed', { method: provider, fromAudit: Boolean(auditNext) });
+        }
+
+        if (auditNext) {
+          router.replace(auditNext);
           return;
         }
 

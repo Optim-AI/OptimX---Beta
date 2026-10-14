@@ -48,7 +48,7 @@ const FinalCTA: React.FC = () => {
                 boxShadow: '0 0 32px hsl(213 100% 55% / 0.35)',
               }}
             >
-              <Link href="/try">Try Now →</Link>
+              <Link href="/#home">Get my free audit →</Link>
             </Button>
           </div>
           <Link href="/Contact" className="text-sm" style={{ color: colors.mutedForeground }}>

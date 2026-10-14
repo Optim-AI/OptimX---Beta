@@ -10,6 +10,7 @@ import { splitCreditDeduction as splitDeduction } from '@/lib/billing/credit-spl
 type UserCredits = typeof userCredits.$inferSelect;
 type CreditHistory = typeof creditHistory.$inferSelect;
 type CreditReservation = typeof creditReservations.$inferSelect;
+export type CreditsTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 export interface CreditBalance {
   imageCredits: {
@@ -152,6 +153,62 @@ export class CreditsDAO {
     } catch (error: any) {
       return { success: false, error: error.message || 'Failed to deduct image credits' };
     }
+  }
+
+  /**
+   * Deduct image credits inside a caller-owned transaction so the charge commits
+   * or rolls back together with the caller's own writes (e.g. persisting the asset
+   * that is being paid for).
+   */
+  static async deductImageCreditsInTransaction(
+    tx: CreditsTransaction,
+    params: {
+      userId: string;
+      amount: number;
+      source: string;
+      metadata?: Record<string, unknown>;
+    }
+  ): Promise<{ success: true; balanceAfter: number } | { success: false; error: string }> {
+    const { userId, amount, source, metadata } = params;
+    if (!Number.isInteger(amount) || amount < 1) {
+      return { success: false, error: 'Amount must be a positive integer' };
+    }
+    const locked = await tx.execute(
+      sql`SELECT * FROM user_credits WHERE id = ${userId} FOR UPDATE`
+    );
+    const rows = (locked as any).rows ?? locked;
+    const record = Array.isArray(rows) ? rows[0] : null;
+    if (!record) {
+      return { success: false, error: 'User credits not found' };
+    }
+    const sub = Number(record.image_credits_subscription ?? record.imageCreditsSubscription);
+    const addon = Number(record.image_credits_addon ?? record.imageCreditsAddon);
+    const split = splitDeduction(sub, addon, amount);
+    if (!split) {
+      return { success: false, error: 'Insufficient image credits' };
+    }
+    await tx
+      .update(userCredits)
+      .set({
+        imageCreditsSubscription: split.newSubscription,
+        imageCreditsAddon: split.newAddon,
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(userCredits.id, userId));
+    await tx.insert(creditHistory).values({
+      userId,
+      creditType: 'image',
+      amount: -amount,
+      operation: 'deduct',
+      source,
+      balanceAfter: split.newSubscription + split.newAddon,
+      metadata: {
+        fromSubscription: split.fromSubscription,
+        fromAddon: split.fromAddon,
+        ...(metadata || {}),
+      },
+    });
+    return { success: true, balanceAfter: split.newSubscription + split.newAddon };
   }
 
   /**

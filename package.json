@@ -121,6 +121,7 @@
     "test:campaign-executor": "npx --yes tsx lib/creative-studio/commercial-production/campaign-executor/validate.test.ts",
     "test:commercial-qc": "npx --yes tsx lib/creative-studio/commercial-production/commercial-qc/validate.test.ts",
     "test:studio-mapper": "npx --yes tsx lib/creative-studio/commercial-production/studio-mapper.validate.test.ts",
+    "test:poster-carousel": "npx --yes tsx lib/creative-studio/poster-generation/carousel/carousel-planning.test.ts && npx --yes tsx lib/creative-studio/poster-generation/carousel/carousel-service.test.ts",
     "test:commercial-production": "npm run test:commercial-director && npm run test:shot-planner && npm run test:reference-engine && npm run test:video-executor && npm run test:campaign-orchestrator && npm run test:campaign-compiler && npm run test:campaign-executor && npm run test:commercial-qc && npm run test:studio-mapper",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",

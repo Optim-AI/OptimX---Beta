@@ -85,8 +85,8 @@ const Footer: React.FC = () => {
             <p className="text-sm leading-relaxed mb-4" style={{ color: colors.mutedForeground }}>
               An AI Marketing Team — Without Expanding Headcount.
             </p>
-            <Link href="/try" className="text-sm font-medium" style={{ color: colors.primary }}>
-              Try Now →
+            <Link href="/#home" className="text-sm font-medium" style={{ color: colors.primary }}>
+              Get my free audit →
             </Link>
           </div>
 

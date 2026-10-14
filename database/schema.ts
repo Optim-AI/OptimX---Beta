@@ -763,3 +763,133 @@ export const posterGenerationSessions = pgTable("poster_generation_sessions", {
 	index("idx_poster_gen_sessions_status").using("btree", table.status.asc().nullsLast()),
 	index("idx_poster_gen_sessions_updated_at").using("btree", table.updatedAt.desc().nullsLast()),
 ]);
+
+/**
+ * Poster carousel campaigns — one ordered multi-slide campaign per row, planned
+ * from a poster_generation_sessions strategy. Slides live in poster_carousel_slides
+ * so each slide can be claimed, generated, charged, and QC'd independently.
+ */
+export const posterCarouselCampaigns = pgTable("poster_carousel_campaigns", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	userId: uuid("user_id").notNull(),
+	sessionId: uuid("session_id").notNull(),
+	status: text().notNull().default("ready"),
+	version: integer().notNull().default(1),
+	slideCount: integer("slide_count").notNull(),
+	aspectRatio: text("aspect_ratio").notNull(),
+	briefId: text("brief_id").notNull(),
+	strategyId: text("strategy_id").notNull(),
+	story: jsonb().notNull(),
+	sharedDna: jsonb("shared_dna").notNull(),
+	campaignChecks: jsonb("campaign_checks").notNull().default([]),
+	lastExport: jsonb("last_export"),
+	generationStartedAt: timestamp("generation_started_at", { withTimezone: true, mode: "string" }),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }).defaultNow().notNull(),
+}, (table) => [
+	index("idx_poster_carousel_campaigns_user").using("btree", table.userId.asc().nullsLast()),
+	index("idx_poster_carousel_campaigns_session_created").using("btree", table.sessionId.asc().nullsLast(), table.createdAt.desc().nullsLast()),
+]);
+
+export const posterCarouselSlides = pgTable("poster_carousel_slides", {
+	id: text().primaryKey().notNull(),
+	campaignId: uuid("campaign_id").notNull(),
+	userId: uuid("user_id").notNull(),
+	slideIndex: integer("slide_index").notNull(),
+	status: text().notNull().default("planned"),
+	generationId: text("generation_id"),
+	leaseToken: text("lease_token"),
+	leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true, mode: "string" }),
+	creditsCharged: integer("credits_charged").notNull().default(0),
+	/** Full CarouselSlide JSON (validated by runtime guards on read) */
+	data: jsonb().notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }).defaultNow().notNull(),
+}, (table) => [
+	uniqueIndex("idx_poster_carousel_slides_campaign_index").using("btree", table.campaignId.asc().nullsLast(), table.slideIndex.asc().nullsLast()),
+	index("idx_poster_carousel_slides_user").using("btree", table.userId.asc().nullsLast()),
+	index("idx_poster_carousel_slides_generation").using("btree", table.generationId.asc().nullsLast()),
+]);
+
+/**
+ * Pre-auth product onboarding. Holds a shadow profile id so existing brand
+ * snapshot, preferences, and poster-generation code can run before signup.
+ * Claim copies that state onto the real account.
+ */
+export const onboardingGuestSessions = pgTable("onboarding_guest_sessions", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	tokenHash: text("token_hash").notNull(),
+	profileId: uuid("profile_id").notNull(),
+	claimedBy: uuid("claimed_by"),
+	claimedAt: timestamp("claimed_at", { withTimezone: true, mode: "string" }),
+	expiresAt: timestamp("expires_at", { withTimezone: true, mode: "string" }).notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).defaultNow(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }).defaultNow(),
+}, (table) => [
+	uniqueIndex("onboarding_guest_sessions_token_hash_key").using("btree", table.tokenHash.asc().nullsLast()),
+	uniqueIndex("onboarding_guest_sessions_profile_id_key").using("btree", table.profileId.asc().nullsLast()),
+]);
+
+/**
+ * Free marketing audit (pre-signup acquisition). Owned by a profile id: a guest
+ * shadow profile until claim, then the real user. Research only — never runs
+ * paid creative generation.
+ */
+export const marketingAudits = pgTable("marketing_audits", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	userId: uuid("user_id").notNull(),
+	websiteUrl: text("website_url").notNull(),
+	normalizedHost: text("normalized_host").notNull(),
+	status: text().notNull().default("queued"),
+	stage: text().notNull().default("queued"),
+	attemptCount: integer("attempt_count").notNull().default(0),
+	leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true, mode: "string" }),
+	site: jsonb(),
+	brand: jsonb(),
+	competitors: jsonb().notNull().default([]),
+	competitorPosts: jsonb("competitor_posts").notNull().default([]),
+	insights: jsonb(),
+	ideas: jsonb().notNull().default([]),
+	sources: jsonb().notNull().default([]),
+	limitations: jsonb().notNull().default([]),
+	selectedIdeaIndex: integer("selected_idea_index"),
+	campaignSessionId: uuid("campaign_session_id"),
+	campaignLockAt: timestamp("campaign_lock_at", { withTimezone: true, mode: "string" }),
+	clientIpHash: text("client_ip_hash"),
+	error: jsonb(),
+	claimedAt: timestamp("claimed_at", { withTimezone: true, mode: "string" }),
+	completedAt: timestamp("completed_at", { withTimezone: true, mode: "string" }),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).defaultNow(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }).defaultNow(),
+}, (table) => [
+	index("idx_marketing_audits_user_created").using("btree", table.userId.asc().nullsLast(), table.createdAt.desc().nullsLast()),
+	index("idx_marketing_audits_ip_created").using("btree", table.clientIpHash.asc().nullsLast(), table.createdAt.desc().nullsLast()),
+	index("idx_marketing_audits_user_host").using("btree", table.userId.asc().nullsLast(), table.normalizedHost.asc().nullsLast()),
+]);
+
+/**
+ * Manual free-trial access requests. Pending rows never grant product access;
+ * an authorized operator must approve and provision entitlements separately.
+ */
+export const trialAccessRequests = pgTable("trial_access_requests", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	fullName: text("full_name").notNull(),
+	email: text().notNull(),
+	companyName: text("company_name").notNull(),
+	websiteUrl: text("website_url"),
+	useCase: text("use_case").notNull(),
+	status: text().notNull().default("pending"),
+	clientIpHash: text("client_ip_hash"),
+	userAgent: text("user_agent"),
+	notifySentAt: timestamp("notify_sent_at", { withTimezone: true, mode: "string" }),
+	notifyError: text("notify_error"),
+	reviewedAt: timestamp("reviewed_at", { withTimezone: true, mode: "string" }),
+	reviewedBy: text("reviewed_by"),
+	notes: text(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }).defaultNow().notNull(),
+}, (table) => [
+	index("idx_trial_access_requests_email_created").using("btree", table.email.asc().nullsLast(), table.createdAt.desc().nullsLast()),
+	index("idx_trial_access_requests_status_created").using("btree", table.status.asc().nullsLast(), table.createdAt.desc().nullsLast()),
+	index("idx_trial_access_requests_ip_created").using("btree", table.clientIpHash.asc().nullsLast(), table.createdAt.desc().nullsLast()),
+]);

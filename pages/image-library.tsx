@@ -16,7 +16,7 @@ import { storageClient } from '@/lib/storage/client';
 import { toast } from "sonner";
 import { Sparkles, Image as ImageIcon, Video } from "lucide-react";
 import { authFetch } from "@/lib/utils";
-import { SkeletonImageGrid, SkeletonVideoGrid } from "@/app/web/src/components/ui/skeletons";
+import { SkeletonImageGrid } from "@/app/web/src/components/ui/skeletons";
 
 type UserImage = {
   id: string;
@@ -31,12 +31,20 @@ type GeneratedVideo = {
   timestamp: number;
 };
 
+type LibraryVideo = {
+  sessionId: string;
+  sessionName: string;
+  video: GeneratedVideo;
+};
+
+type LibraryItem =
+  | { kind: "poster"; id: string; sortAt: number; image: UserImage }
+  | { kind: "video"; id: string; sortAt: number; entry: LibraryVideo };
+
 export default function ImageLibraryPage(): JSX.Element {
-  const [contentType, setContentType] = React.useState<"poster" | "video">("poster");
   const [images, setImages] = React.useState<UserImage[]>([]);
-  const [videos, setVideos] = React.useState<Array<{ sessionId: string; sessionName: string; video: GeneratedVideo }>>([]);
+  const [videos, setVideos] = React.useState<LibraryVideo[]>([]);
   const [loading, setLoading] = React.useState(true);
-  const [videosLoading, setVideosLoading] = React.useState(false);
   const [firstName, setFirstName] = React.useState<string | null>(null);
   const [selectedImage, setSelectedImage] = React.useState<UserImage | null>(
     null
@@ -133,7 +141,63 @@ export default function ImageLibraryPage(): JSX.Element {
       }
     };
 
-    const fetchImages = async () => {
+    const parseImages = (rows: any[]): UserImage[] =>
+      (rows || [])
+        .map((r: any) =>
+          r && r.imageUrl
+            ? {
+                id: String(r.id),
+                imageUrl: String(r.imageUrl),
+                createdAt: String(r.createdAt),
+              }
+            : null
+        )
+        .filter((u): u is UserImage => Boolean(u));
+
+    const mergeSessionPosters = (
+      existing: UserImage[],
+      sessions: any[]
+    ): UserImage[] => {
+      const seen = new Set(existing.map((img) => img.imageUrl));
+      const extras: UserImage[] = [];
+
+      for (const session of sessions || []) {
+        const posters = (session.generatedPosters || []) as string[];
+        const sessionUpdatedAt = session.updatedAt
+          ? new Date(session.updatedAt).toISOString()
+          : new Date().toISOString();
+
+        posters.forEach((url, index) => {
+          if (!url || typeof url !== "string" || seen.has(url)) return;
+          seen.add(url);
+          extras.push({
+            id: `session-poster-${session.id}-${index}`,
+            imageUrl: url,
+            createdAt: sessionUpdatedAt,
+          });
+        });
+      }
+
+      return [...existing, ...extras];
+    };
+
+    const aggregateVideos = (sessions: any[]): LibraryVideo[] => {
+      const aggregated: LibraryVideo[] = [];
+      for (const session of sessions || []) {
+        const list = (session.generatedVideos || []) as GeneratedVideo[];
+        for (const video of list) {
+          if (!video?.url) continue;
+          aggregated.push({
+            sessionId: session.id,
+            sessionName: session.name || "Untitled Video",
+            video,
+          });
+        }
+      }
+      return aggregated;
+    };
+
+    const fetchLibrary = async () => {
       if (!mounted) return;
       setLoading(true);
 
@@ -142,13 +206,13 @@ export default function ImageLibraryPage(): JSX.Element {
         if (!user) {
           if (mounted) {
             setImages([]);
+            setVideos([]);
             setFirstName(null);
             setLoading(false);
           }
           return;
         }
 
-        // fetch user profile for greeting
         try {
           const result = await profileClient.get();
           const profile = result.success ? result.data : null;
@@ -161,81 +225,62 @@ export default function ImageLibraryPage(): JSX.Element {
             setFirstName(user.email ? user.email.split("@")[0] : "There");
         }
 
-        // fetch user images
-        const result = await imagesClient.list(500);
+        const [imagesResult, posterSessionsRes, videoSessionsRes] =
+          await Promise.all([
+            imagesClient.list(500).catch(() => ({ success: false, data: [] })),
+            authFetch(
+              "/api/creative-studio/sessions?type=poster&limit=100&includeMedia=1"
+            )
+              .then((res) => res.json())
+              .catch(() => ({ ok: false, sessions: [] })),
+            authFetch(
+              "/api/creative-studio/sessions?type=video&limit=100&includeMedia=1"
+            )
+              .then((res) => res.json())
+              .catch(() => ({ ok: false, sessions: [] })),
+          ]);
 
-        if (!result.success) {
+        if (!mounted) return;
+
+        let nextImages: UserImage[] = [];
+        if (!imagesResult.success) {
           toast.error("Failed to fetch images");
-          if (mounted) setImages([]);
         } else {
-          const parsed: UserImage[] =
-            (result.data || [])
-              .map((r: any) =>
-                r && r.imageUrl
-                  ? {
-                      id: String(r.id),
-                      imageUrl: String(r.imageUrl),
-                      createdAt: String(r.createdAt),
-                    }
-                  : null
-              )
-              .filter((u): u is UserImage => Boolean(u)) ?? [];
-          if (mounted) setImages(parsed);
+          nextImages = parseImages(imagesResult.data || []);
         }
+
+        if (posterSessionsRes?.ok) {
+          nextImages = mergeSessionPosters(
+            nextImages,
+            posterSessionsRes.sessions || []
+          );
+        }
+
+        let nextVideos: LibraryVideo[] = [];
+        if (videoSessionsRes?.ok) {
+          nextVideos = aggregateVideos(videoSessionsRes.sessions || []);
+        } else {
+          toast.error("Failed to load videos");
+        }
+
+        setImages(nextImages);
+        setVideos(nextVideos);
       } catch {
-        toast.error("Failed to load images");
-        if (mounted) setImages([]);
+        toast.error("Failed to load generated contents");
+        if (mounted) {
+          setImages([]);
+          setVideos([]);
+        }
       } finally {
         if (mounted) setLoading(false);
       }
     };
 
-    fetchImages();
+    fetchLibrary();
     return () => {
       mounted = false;
     };
   }, []);
-
-  React.useEffect(() => {
-    if (contentType !== "video") return;
-
-    let mounted = true;
-    setVideosLoading(true);
-
-    authFetch("/api/creative-studio/sessions?type=video&limit=100&includeMedia=1")
-      .then((res) => res.json())
-      .then((data) => {
-        if (!mounted || !data.ok) {
-          if (mounted) setVideos([]);
-          return;
-        }
-        const aggregated: Array<{ sessionId: string; sessionName: string; video: GeneratedVideo }> = [];
-        for (const s of data.sessions || []) {
-          const list = (s.generatedVideos || []) as GeneratedVideo[];
-          for (const v of list) {
-            aggregated.push({
-              sessionId: s.id,
-              sessionName: s.name,
-              video: v,
-            });
-          }
-        }
-        if (mounted) setVideos(aggregated);
-      })
-      .catch(() => {
-        if (mounted) {
-          setVideos([]);
-          toast.error("Failed to load videos");
-        }
-      })
-      .finally(() => {
-        if (mounted) setVideosLoading(false);
-      });
-
-    return () => {
-      mounted = false;
-    };
-  }, [contentType]);
 
   const greet = React.useMemo(() => {
     const n = firstName?.trim();
@@ -243,6 +288,24 @@ export default function ImageLibraryPage(): JSX.Element {
     const f = n.split(" ")[0];
     return f.charAt(0).toUpperCase() + f.slice(1).toLowerCase();
   }, [firstName]);
+
+  const libraryItems = React.useMemo<LibraryItem[]>(() => {
+    const posterItems: LibraryItem[] = images.map((image) => ({
+      kind: "poster",
+      id: `poster-${image.id}`,
+      sortAt: Date.parse(image.createdAt) || 0,
+      image,
+    }));
+
+    const videoItems: LibraryItem[] = videos.map((entry) => ({
+      kind: "video",
+      id: `video-${entry.video.id}`,
+      sortAt: Number(entry.video.timestamp) || 0,
+      entry,
+    }));
+
+    return [...posterItems, ...videoItems].sort((a, b) => b.sortAt - a.sortAt);
+  }, [images, videos]);
 
   // DELETE flow with confirmation
   const handleDelete = () => {
@@ -731,43 +794,27 @@ export default function ImageLibraryPage(): JSX.Element {
               className="text-sm mt-1"
               style={{ color: colors.mutedForeground }}
             >
-              {contentType === "poster"
-                ? (loading ? "Loading your images…" : `All images generated by ${greet}.`)
-                : (videosLoading ? "Loading your videos…" : `All videos generated by ${greet}.`)}
+              {loading
+                ? "Loading your posters and videos…"
+                : `All posters and videos generated by ${greet}.`}
             </p>
-            {/* Toggle: Poster generation | Video generation */}
-            <div
-              className="inline-flex rounded-lg p-1 mt-4 gap-0"
-              style={{ background: colors.muted, border: `1px solid ${colors.border}` }}
-            >
-              <button
-                type="button"
-                onClick={() => setContentType("poster")}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-md text-sm font-medium transition-colors"
-                style={{
-                  background: contentType === "poster" ? colors.primary : "transparent",
-                  color: contentType === "poster" ? colors.primaryForeground : colors.mutedForeground,
-                }}
+            {!loading && libraryItems.length > 0 && (
+              <div
+                className="mt-3 flex flex-wrap items-center gap-3 text-xs"
+                style={{ color: colors.mutedForeground }}
               >
-                <ImageIcon size={18} />
-                Poster generation
-              </button>
-              <button
-                type="button"
-                onClick={() => setContentType("video")}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-md text-sm font-medium transition-colors"
-                style={{
-                  background: contentType === "video" ? "hsl(270 80% 55%)" : "transparent",
-                  color: contentType === "video" ? "white" : colors.mutedForeground,
-                }}
-              >
-                <Video size={18} />
-                Video generation
-              </button>
-            </div>
+                <span className="inline-flex items-center gap-1.5">
+                  <ImageIcon size={14} />
+                  {images.length} poster{images.length === 1 ? "" : "s"}
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <Video size={14} />
+                  {videos.length} video{videos.length === 1 ? "" : "s"}
+                </span>
+              </div>
+            )}
           </div>
 
-          {contentType === "poster" && (
           <Card
             className="p-4 optim-deep-shadow"
             style={{
@@ -777,76 +824,79 @@ export default function ImageLibraryPage(): JSX.Element {
           >
             {loading ? (
               <SkeletonImageGrid count={12} />
-            ) : images.length === 0 ? (
+            ) : libraryItems.length === 0 ? (
               <div style={{ color: colors.mutedForeground }}>
-                No generated images found. Create a campaign to generate images
-                and they&apos;ll appear here.
+                No generated content yet. Create posters or videos in Brand Studio and they&apos;ll appear here.
               </div>
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-                {images.map((img) => (
-                  <button
-                    key={img.id}
-                    onClick={() => setSelectedImage(img)}
-                    className="rounded overflow-hidden border focus:ring-2 focus:ring-sky-500"
-                    style={{ borderColor: colors.border }}
-                  >
-                    <img
-                      src={img.imageUrl}
-                      alt="generated"
-                      className="w-full h-40 object-cover"
-                    />
-                  </button>
-                ))}
-              </div>
-            )}
-          </Card>
-          )}
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                {libraryItems.map((item) => {
+                  if (item.kind === "poster") {
+                    return (
+                      <button
+                        key={item.id}
+                        onClick={() => setSelectedImage(item.image)}
+                        className="group relative rounded overflow-hidden border focus:ring-2 focus:ring-sky-500 text-left"
+                        style={{ borderColor: colors.border }}
+                      >
+                        <img
+                          src={item.image.imageUrl}
+                          alt="generated poster"
+                          className="w-full h-40 object-cover"
+                        />
+                        <span
+                          className="absolute left-2 top-2 rounded-full px-2 py-0.5 text-[10px] font-semibold"
+                          style={{
+                            background: "rgba(54, 145, 255, 0.9)",
+                            color: "#fff",
+                          }}
+                        >
+                          Poster
+                        </span>
+                      </button>
+                    );
+                  }
 
-          {contentType === "video" && (
-          <Card
-            className="p-4 optim-deep-shadow"
-            style={{
-              background: colors.card,
-              border: `1px solid ${colors.border}`,
-            }}
-          >
-            {videosLoading ? (
-              <SkeletonVideoGrid count={8} />
-            ) : videos.length === 0 ? (
-              <div style={{ color: colors.mutedForeground }}>
-                No generated videos found. Create a video in Brand Studio and they&apos;ll appear here.
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                {videos.map(({ sessionId, sessionName, video }) => (
-                  <button
-                    key={video.id}
-                    onClick={() => setSelectedVideo({ sessionId, sessionName, video })}
-                    className="rounded overflow-hidden border focus:ring-2 focus:ring-sky-500 text-left"
-                    style={{ borderColor: colors.border }}
-                  >
-                    <div className="aspect-video w-full bg-black/80 relative">
-                      <video
-                        src={video.url}
-                        className="w-full h-full object-cover"
-                        muted
-                        preload="metadata"
-                        playsInline
-                      />
-                    </div>
-                    <div className="p-2">
-                      <p className="text-xs truncate" style={{ color: colors.mutedForeground }}>{sessionName}</p>
-                      <p className="text-xs" style={{ color: colors.foreground }}>
-                        {new Date(video.timestamp).toLocaleDateString()}
-                      </p>
-                    </div>
-                  </button>
-                ))}
+                  const { entry } = item;
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => setSelectedVideo(entry)}
+                      className="group relative rounded overflow-hidden border focus:ring-2 focus:ring-sky-500 text-left"
+                      style={{ borderColor: colors.border }}
+                    >
+                      <div className="h-40 w-full bg-black/80 relative">
+                        <video
+                          src={entry.video.url}
+                          className="w-full h-full object-cover"
+                          muted
+                          preload="metadata"
+                          playsInline
+                        />
+                        <span
+                          className="absolute left-2 top-2 rounded-full px-2 py-0.5 text-[10px] font-semibold"
+                          style={{
+                            background: "rgba(139, 92, 246, 0.92)",
+                            color: "#fff",
+                          }}
+                        >
+                          Video
+                        </span>
+                      </div>
+                      <div className="p-2">
+                        <p className="text-xs truncate" style={{ color: colors.mutedForeground }}>
+                          {entry.sessionName}
+                        </p>
+                        <p className="text-xs" style={{ color: colors.foreground }}>
+                          {new Date(entry.video.timestamp).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
             )}
           </Card>
-          )}
         </main>
       </div>
 
