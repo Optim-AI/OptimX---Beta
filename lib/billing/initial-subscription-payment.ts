@@ -47,6 +47,15 @@ export type RazorpayInvoiceLike = {
 
 export type FetchInvoiceFn = (invoiceId: string) => Promise<RazorpayInvoiceLike>;
 
+export type InitialProvisionExpectations = {
+  /** Authenticated user must own the local subscription resolved from the invoice. */
+  userId?: string;
+  /** Local subscriptions.id that confirm-payment is targeting. */
+  subscriptionId?: string;
+  /** Razorpay subscription id from checkout (must match invoice.subscription_id). */
+  razorpaySubscriptionId?: string;
+};
+
 const INITIAL_ELIGIBLE_STATUSES = new Set(['pending', 'past_due']);
 
 export function isPaymentCaptured(payment: CapturedPaymentEntity): boolean {
@@ -97,7 +106,7 @@ export type InitialSubscriptionProvisionResult =
  */
 export async function tryProvisionInitialSubscriptionFromCapturedPayment(
   paymentEntity: CapturedPaymentEntity,
-  deps?: { fetchInvoice?: FetchInvoiceFn }
+  deps?: { fetchInvoice?: FetchInvoiceFn; expected?: InitialProvisionExpectations }
 ): Promise<InitialSubscriptionProvisionResult> {
   if (!isPaymentCaptured(paymentEntity)) {
     return { handled: false, reason: 'payment_not_captured' };
@@ -142,9 +151,24 @@ export async function tryProvisionInitialSubscriptionFromCapturedPayment(
   }
 
   const razorpaySubscriptionId = String(invoice.subscription_id).trim();
+  const expectedRpSub = deps?.expected?.razorpaySubscriptionId?.trim();
+  if (expectedRpSub && expectedRpSub !== razorpaySubscriptionId) {
+    return { handled: false, reason: 'razorpay_subscription_mismatch' };
+  }
+
   const subscription = await SubscriptionsDAO.getByRazorpayId(razorpaySubscriptionId);
   if (!subscription) {
     return { handled: false, reason: 'local_subscription_not_found' };
+  }
+
+  if (deps?.expected?.userId && subscription.userId !== deps.expected.userId) {
+    return { handled: false, reason: 'subscription_user_mismatch' };
+  }
+  if (
+    deps?.expected?.subscriptionId &&
+    subscription.id !== deps.expected.subscriptionId
+  ) {
+    return { handled: false, reason: 'subscription_id_mismatch' };
   }
 
   // pending/past_due: first entitlement. active: allow idempotent re-delivery only.

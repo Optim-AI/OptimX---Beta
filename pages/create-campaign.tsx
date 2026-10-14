@@ -35,6 +35,7 @@ import { imagesClient, profileClient, chatClient } from '@/database/client-helpe
 import { apiFetch } from '@/api/fetch';
 import { storageClient } from '@/lib/storage/client';
 import { SITE_SUPPORT_EMAIL } from '@/lib/seo/site';
+import { authFetch } from '@/lib/utils';
 
 /* -------------------- Mic Recorder -------------------- */
 type MicRecorderProps = {
@@ -883,70 +884,40 @@ const CampaignCreate: React.FC = () => {
     };
   }, [logoGlowing, sidebarHost]);
 
-  /* -------------------- NEW: Mirror NavBar credits (ADDED) --------------------
-     Read user_credits (same source NavBar uses) and subscribe to realtime updates.
-     We only add this small effect so the page knows the same credits NavBar shows.
-     When credits <= 0 we show the acknowledgement screen (below).
-  */
+  /* Authoritative image balance via /api/credits/balance (not legacy user_credits.credits). */
   useEffect(() => {
-    let channel: any = null;
     let cancelled = false;
+    let intervalId: ReturnType<typeof setInterval> | null = null;
 
-    (async () => {
+    const load = async () => {
       try {
         const user = await getCurrentUser();
         if (!user) return;
-
-        // initial fetch of user_credits
-        try {
-          const { data, error } = await supabase
-            .from("user_credits")
-            .select("credits")
-            .eq("id", user.id)
-            .single();
-          if (!error && !cancelled && typeof data?.credits === "number") {
-            setCredits(Number(data.credits));
-          }
-        } catch (e) {
-          console.warn("initial user_credits fetch failed", e);
+        const res = await authFetch("/api/credits/balance");
+        const data = await res.json();
+        if (!cancelled && data?.success && data.imageCredits) {
+          setCredits(Number(data.imageCredits.total ?? 0));
         }
-
-        // subscribe to realtime updates for this user's credits
-        channel = supabase
-          .channel(`credits_page_${user.id}`)
-          .on(
-            "postgres_changes",
-            {
-              event: "UPDATE",
-              schema: "public",
-              table: "user_credits",
-              filter: `id=eq.${user.id}`,
-            },
-            (payload: any) => {
-              try {
-                const newCredits = payload.new?.credits;
-                if (typeof newCredits === "number") {
-                  setCredits(newCredits);
-                }
-              } catch (e) {
-                console.warn("credits payload handling error", e);
-              }
-            }
-          )
-          .subscribe((status) => {
-            // no-op
-          });
       } catch (e) {
-        console.warn("credits subscription setup failed", e);
+        console.warn("credits balance fetch failed", e);
       }
-    })();
+    };
+
+    void load();
+    intervalId = setInterval(() => {
+      void load();
+    }, 5000);
+    const onFocus = () => {
+      void load();
+    };
+    window.addEventListener("focus", onFocus);
 
     return () => {
       cancelled = true;
-      if (channel) supabase.removeChannel(channel);
+      if (intervalId) clearInterval(intervalId);
+      window.removeEventListener("focus", onFocus);
     };
   }, []);
-  /* -------------------- END ADDED -------------------- */
 
   /* -------------------- Fetch Integration Status -------------------- */
   useEffect(() => {

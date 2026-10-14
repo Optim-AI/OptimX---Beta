@@ -10,7 +10,12 @@ export const config = {
 
 /**
  * POST /api/billing/webhooks/razorpay
- * Handles Razorpay webhook events
+ * Handles Razorpay webhook events.
+ *
+ * HTTP semantics:
+ * - 401/400: bad signature / payload (no retry of invalid data)
+ * - 200: processed, intentionally ignored, or permanent validation failure (no infinite retry)
+ * - 500: retryable processing failure (Razorpay should retry; event stays `failed` for reclaim)
  */
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
@@ -61,9 +66,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const result = await WebhookService.processWebhook(payload, eventId);
 
     if (!result.success) {
-      console.error('Webhook processing failed:', result.error);
-      // Still return 200 to prevent infinite Razorpay retries for logic errors
-      return res.status(200).json({ received: true, error: result.error });
+      console.error('Webhook processing failed (retryable):', result.error);
+      return res.status(500).json({
+        received: false,
+        retryable: true,
+        error: result.error || 'processing_failed',
+      });
+    }
+
+    if (result.permanentFailure) {
+      console.error('Webhook permanent validation failure:', result.error);
+      return res.status(200).json({
+        received: true,
+        permanentFailure: true,
+        error: result.error,
+      });
     }
 
     return res.status(200).json({ received: true });
@@ -72,6 +89,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (error instanceof SyntaxError) {
       return res.status(400).json({ error: 'Invalid JSON payload' });
     }
-    return res.status(200).json({ received: true });
+    // Unknown failures: ask Razorpay to retry
+    return res.status(500).json({
+      received: false,
+      retryable: true,
+      error: 'internal_error',
+    });
   }
 }

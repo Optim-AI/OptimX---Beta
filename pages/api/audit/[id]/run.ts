@@ -61,7 +61,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const state = rowToWorkState(leased);
     try {
-      await runAuditStages(state, defaultAuditDeps(), (_stage, s) => saveAuditProgress(id, s));
+      await runAuditStages(
+        state,
+        defaultAuditDeps({ correlationId: requestId }),
+        (_stage, s) => saveAuditProgress(id, s)
+      );
       await finishAudit(id, finalStatus(state));
     } catch (e) {
       const err =

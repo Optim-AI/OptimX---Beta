@@ -156,10 +156,15 @@ export default function ContentStudioPage() {
 
   const [imageCredits, setImageCredits] = useState<number | null>(null);
   const [videoCredits, setVideoCredits] = useState<number | null>(null);
+  const [creditsPending, setCreditsPending] = useState(false);
 
   const activeSession = activeSessionId ? sessions.find((s) => s.id === activeSessionId) : null;
   const selectedProduct = activeSession?.product ?? null;
 
+  useEffect(() => {
+    if (!router.isReady) return;
+    setCreditsPending(router.query.credits === 'pending');
+  }, [router.isReady, router.query.credits]);
 
   useEffect(() => {
     async function loadCredits() {
@@ -169,20 +174,34 @@ export default function ContentStudioPage() {
         const response = await authFetch('/api/credits/balance');
         const data = await response.json();
         if (data.success) {
-          setImageCredits(data.imageCredits?.total ?? 0);
-          setVideoCredits(data.videoCredits?.total ?? 0);
+          const img = data.imageCredits?.total ?? 0;
+          const vid = data.videoCredits?.total ?? 0;
+          setImageCredits(img);
+          setVideoCredits(vid);
+          if (img > 0 || vid > 0) {
+            setCreditsPending(false);
+          }
         }
       } catch (err) {
         console.error('Error loading credits:', err);
       }
     }
-    loadCredits();
+    void loadCredits();
     const onFocus = () => {
       void loadCredits();
     };
     window.addEventListener('focus', onFocus);
-    return () => window.removeEventListener('focus', onFocus);
-  }, [fetchSubscription]);
+    const intervalId = window.setInterval(
+      () => {
+        void loadCredits();
+      },
+      creditsPending ? 4000 : 30000
+    );
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      window.clearInterval(intervalId);
+    };
+  }, [fetchSubscription, creditsPending]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1213,6 +1232,18 @@ export default function ContentStudioPage() {
                 </p>
               </div>
               <div className="flex items-center gap-3">
+                {creditsPending && (imageCredits === 0 || imageCredits === null) && (
+                  <div
+                    className="px-3 py-2 rounded-lg text-sm max-w-xs"
+                    style={{
+                      background: 'hsl(45 90% 50% / 0.15)',
+                      border: '1px solid hsl(45 90% 50% / 0.35)',
+                      color: colors.foreground,
+                    }}
+                  >
+                    Payment received — plan credits are still confirming.
+                  </div>
+                )}
                 {imageCredits !== null && (
                   <div className="flex items-center gap-2 px-4 py-2 rounded-lg" style={{ background: 'hsl(213 100% 55% / 0.15)', border: '1px solid hsl(213 100% 55% / 0.35)' }}>
                     <svg className="w-5 h-5" style={{ color: colors.primary }} fill="none" viewBox="0 0 24 24" stroke="currentColor">

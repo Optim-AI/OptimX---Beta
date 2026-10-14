@@ -374,28 +374,117 @@ async function main() {
   await run('research provider failures degrade to partial with explained limitations', async () => {
     const deps = stubDeps({
       searchCompetitors: async () => {
-        throw new Error('searchapi 500');
+        throw Object.assign(new Error('searchapi 500'), { status: 500 });
       },
     });
     const s = await runAuditStages(freshState(), deps, async () => {});
     assert.equal(s.competitors.length, 0);
     assert.equal(s.competitorPosts.length, 0);
+    assert.ok(s.limitations.some((l) => l.code === 'competitor_search_provider_error'));
     assert.ok(s.limitations.some((l) => l.code === 'no_competitors_found'));
     assert.equal(s.ideas.length, 3);
     assert.equal(finalStatus(s), 'partial');
   });
-  await run('AI outage still yields evidence-based audit with template ideas', async () => {
+  await run('deterministic brand fallback still allows verified competitors', async () => {
+    const deps = stubDeps({
+      ai: async (prompt) => {
+        if (prompt.includes('auditing a business')) return null;
+        if (prompt.includes('identify REAL competitor brands') || prompt.includes('scored_homepages')) {
+          return {
+            competitors: [
+              {
+                index: 0,
+                name: 'Dewy Co',
+                classification: 'direct',
+                overlap_reason: 'Also sells serums for skin care audiences',
+                confidence: 'high',
+              },
+            ],
+            named_brands: [],
+          };
+        }
+        return {
+          summary: 'Glow Labs sells plant-powered serums.',
+          themes: [],
+          opportunities: [],
+          ideas: [
+            { title: 'A', hook: 'h', brief: 'b', format: 'Static post', audience: 'a', rationale: 'r', cta: 'c', evidence_ids: ['w1'] },
+            { title: 'B', hook: 'h', brief: 'b', format: 'Carousel', audience: 'a', rationale: 'r', cta: 'c', evidence_ids: ['w1'] },
+            { title: 'C', hook: 'h', brief: 'b', format: 'Reel / short video', audience: 'a', rationale: 'r', cta: 'c', evidence_ids: ['w1'] },
+          ],
+        };
+      },
+      searchCompetitors: async () => [
+        {
+          domain: 'dewyco.com',
+          title: 'Dewy Co | Clean serums',
+          snippet: 'Vegan skincare serums for sensitive skin',
+          url: 'https://dewyco.com/',
+        },
+      ],
+    });
+    const s = await runAuditStages(freshState(), deps, async () => {});
+    assert.equal(s.brand?.basis, 'deterministic_fallback');
+    assert.ok(s.competitors.some((c) => /dewy/i.test(c.name) || c.domain === 'dewyco.com'));
+  });
+  await run('AI outage still yields evidence-based audit with deterministic brand fallback', async () => {
     const deps = stubDeps({
       ai: async () => {
-        throw new Error('Gemini 503');
+        throw Object.assign(new Error('Gemini 503'), { status: 503 });
       },
     });
     const s = await runAuditStages(freshState(), deps, async () => {});
-    assert.equal(s.brand?.basis, 'metadata_only');
+    assert.equal(s.brand?.basis, 'deterministic_fallback');
     assert.equal(s.brand?.name, 'Glow Labs');
+    assert.ok(
+      (s.brand?.interpretation.products.length || 0) > 0 ||
+        Boolean(s.brand?.interpretation.productCategory),
+      'fallback must extract category signals from the page'
+    );
+    assert.ok(s.limitations.some((l) => l.code === 'brand_ai_provider_error' || l.code === 'brand_ai_unavailable'));
     assert.equal(s.ideas.length, 3);
     assert.ok(s.limitations.some((l) => l.code === 'analysis_ai_unavailable'));
     assert.equal(finalStatus(s), 'partial');
+    assert.ok(s.diagnostics?.some((d) => d.stage === 'brand' && d.provider === 'gemini'));
+  });
+  await run('missing Gemini key uses deterministic fallback (not “thin website”)', async () => {
+    const deps = stubDeps({
+      ai: async () => null,
+    });
+    const s = await runAuditStages(freshState(), deps, async () => {});
+    assert.equal(s.brand?.basis, 'deterministic_fallback');
+    assert.ok(s.limitations.some((l) => l.code === 'brand_ai_config' || l.code === 'brand_ai_unavailable'));
+    assert.ok(s.diagnostics?.some((d) => d.errorClass === 'missing_api_key'));
+  });
+  await run('search provider failure is labeled separately from genuine empty results', async () => {
+    const deps = stubDeps({
+      searchCompetitors: async () => ({
+        results: [],
+        queries: ['top serums brands'],
+        outcome: 'provider_error',
+        errorClass: 'http_500',
+        providerFailures: 2,
+        successfulQueries: 0,
+      }),
+    });
+    const s = await runAuditStages(freshState(), deps, async () => {});
+    assert.equal(s.competitors.length, 0);
+    assert.ok(s.limitations.some((l) => l.code === 'competitor_search_provider_error'));
+  });
+  await run('genuine empty search results do not claim provider failure', async () => {
+    const deps = stubDeps({
+      searchCompetitors: async () => ({
+        results: [],
+        queries: ['top serums brands'],
+        outcome: 'empty',
+        providerFailures: 0,
+        successfulQueries: 2,
+      }),
+    });
+    const s = await runAuditStages(freshState(), deps, async () => {});
+    assert.equal(s.competitors.length, 0);
+    assert.ok(s.limitations.some((l) => l.code === 'no_competitors_found'));
+    assert.ok(!s.limitations.some((l) => l.code === 'competitor_search_provider_error'));
   });
   await run('no search provider configured: explains limitation, no competitor claims', async () => {
     const s = await runAuditStages(freshState(), stubDeps({ hasSearchProvider: false }), async () => {});

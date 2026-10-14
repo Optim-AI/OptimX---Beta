@@ -10,6 +10,10 @@ import { PlansDAO } from '@/database/models/Plans.dao';
 import { grantCreditsForCapturedPayment } from './credit-grant';
 import { provisionSubscriptionCycleForCharge } from '@/lib/billing/subscription-entitlement';
 import { tryProvisionInitialSubscriptionFromCapturedPayment } from '@/lib/billing/initial-subscription-payment';
+import {
+  classifyInitialProvisionReason,
+  type PaymentOutcomeKind,
+} from '@/lib/billing/subscription-payment-outcome';
 
 interface WebhookPayload {
   entity: string;
@@ -20,6 +24,19 @@ interface WebhookPayload {
   created_at: number;
   id?: string;
 }
+
+export type WebhookProcessResult = {
+  success: boolean;
+  /** When false, Razorpay should retry (HTTP 5xx). Permanent failures return success:true with permanentFailure. */
+  retryable?: boolean;
+  permanentFailure?: boolean;
+  error?: string;
+};
+
+type HandlerOutcome = {
+  kind: PaymentOutcomeKind;
+  error?: string;
+};
 
 export class WebhookService {
   static verifySignature(body: string, signature: string): boolean {
@@ -73,11 +90,17 @@ export class WebhookService {
   static async processWebhook(
     payload: WebhookPayload,
     eventId: string
-  ): Promise<{ success: boolean; error?: string }> {
+  ): Promise<WebhookProcessResult> {
     try {
       const existing = await WebhookEventsDAO.getByRazorpayId(eventId);
-      if (existing?.status === 'processed' || existing?.status === 'pending') {
-        console.log(`Webhook event ${eventId} already ${existing.status}, skipping`);
+      if (existing?.status === 'processed') {
+        console.log(`Webhook event ${eventId} already processed, skipping`);
+        return { success: true };
+      }
+      // In-flight pending: another worker owns this delivery. Acknowledge to avoid
+      // duplicate concurrent work; if that worker fails it will mark failed for retry.
+      if (existing?.status === 'pending') {
+        console.log(`Webhook event ${eventId} already pending, skipping`);
         return { success: true };
       }
 
@@ -107,15 +130,17 @@ export class WebhookService {
       }
 
       try {
+        let outcome: HandlerOutcome = { kind: 'success' };
+
         switch (payload.event) {
           case 'payment.captured':
-            await this.handlePaymentCaptured(payload.payload);
+            outcome = await this.handlePaymentCaptured(payload.payload);
             break;
           case 'subscription.activated':
             await this.handleSubscriptionActivated(payload.payload);
             break;
           case 'subscription.charged':
-            await this.handleSubscriptionCharged(payload.payload);
+            outcome = await this.handleSubscriptionCharged(payload.payload);
             break;
           case 'subscription.cancelled':
             await this.handleSubscriptionCancelled(payload.payload);
@@ -131,24 +156,54 @@ export class WebhookService {
             await this.handlePaymentFailed(payload.payload);
             break;
           default:
-            console.log(`Unhandled webhook event: ${payload.event}`);
+            // Harmless / unsupported for entitlement (e.g. downtime, invoice.paid).
+            console.log(`Unhandled webhook event (ignored): ${payload.event}`);
+            outcome = { kind: 'ignored' };
         }
 
-        await WebhookEventsDAO.markProcessed(webhookEvent.id);
-        return { success: true };
+        if (outcome.kind === 'success' || outcome.kind === 'ignored') {
+          await WebhookEventsDAO.markProcessed(webhookEvent.id);
+          return { success: true };
+        }
+
+        const error =
+          outcome.error ||
+          `webhook_${payload.event}_${outcome.kind}`;
+        await WebhookEventsDAO.markFailed(webhookEvent.id, error);
+
+        if (outcome.kind === 'permanent') {
+          // Acknowledge so Razorpay does not retry forever; row stays failed for ops.
+          return {
+            success: true,
+            permanentFailure: true,
+            error,
+          };
+        }
+
+        // pending / retryable — ask Razorpay to retry
+        return {
+          success: false,
+          retryable: true,
+          error,
+        };
       } catch (processingError: any) {
-        await WebhookEventsDAO.markFailed(webhookEvent.id, processingError.message);
+        await WebhookEventsDAO.markFailed(
+          webhookEvent.id,
+          processingError.message || 'processing_error'
+        );
         throw processingError;
       }
     } catch (error: any) {
       console.error('Error processing webhook:', error);
-      return { success: false, error: error.message };
+      return { success: false, retryable: true, error: error.message };
     }
   }
 
-  private static async handlePaymentCaptured(payload: any): Promise<void> {
+  private static async handlePaymentCaptured(payload: any): Promise<HandlerOutcome> {
     const paymentEntity = payload.payment?.entity;
-    if (!paymentEntity) return;
+    if (!paymentEntity) {
+      return { kind: 'ignored', error: 'missing_payment_entity' };
+    }
 
     const orderId = paymentEntity.order_id;
     const paymentId = paymentEntity.id;
@@ -163,17 +218,19 @@ export class WebhookService {
         console.log(
           `[webhook] payment.captured for order ${orderId} is paymentType=${payment.paymentType}; skipping PAYG grant`
         );
-        return;
+        // Subscription rows recorded under this order are handled via initial-sub path below
+        // only when no PAYG row exists. A non-topup local row is an intentional no-op.
+        return { kind: 'ignored', error: `payg_skip_${payment.paymentType}` };
       }
 
       const captured = await PaymentsDAO.captureIfCreated(payment.id, paymentId);
       if (!captured) {
         console.log(`Payment ${payment.id} already captured, skipping credit grant`);
-        return;
+        return { kind: 'success' };
       }
 
       await grantCreditsForCapturedPayment(captured);
-      return;
+      return { kind: 'success' };
     }
 
     // 2) Initial subscription first-month addon (payment.subscription_id is often null)
@@ -183,13 +240,27 @@ export class WebhookService {
         `[webhook] payment.captured initial-sub provisioned=${initial.provisioned} created=${initial.created} ` +
           `cycle=${initial.cycleId} payment=${initial.razorpayPaymentId} sub=${initial.subscriptionId}`
       );
-      return;
+      return { kind: 'success' };
     }
 
+    const kind = classifyInitialProvisionReason(initial.reason);
     console.log(
       `[webhook] payment.captured unclassified (no PAYG order, not initial-sub addon): ` +
-        `order=${orderId || 'none'} payment=${paymentId || 'none'} reason=${initial.reason}`
+        `order=${orderId || 'none'} payment=${paymentId || 'none'} reason=${initial.reason} kind=${kind}`
     );
+
+    // No SkalX signal (no local order, no invoice, no subscription on payment) → ignore.
+    if (!paymentEntity.invoice_id && !paymentEntity.subscription_id && !orderId) {
+      return { kind: 'ignored', error: initial.reason };
+    }
+
+    // Captured subscription-like payments that failed classification must NOT be
+    // marked processed — permanent stays failed for ops; retryable asks Razorpay again.
+    if (kind === 'pending' || kind === 'retryable') {
+      return { kind: 'retryable', error: initial.reason };
+    }
+
+    return { kind: 'permanent', error: initial.reason };
   }
 
   /**
@@ -209,16 +280,19 @@ export class WebhookService {
     await SubscriptionsDAO.activate(subscription.id);
   }
 
-  private static async handleSubscriptionCharged(payload: any): Promise<void> {
+  private static async handleSubscriptionCharged(payload: any): Promise<HandlerOutcome> {
     const subscriptionEntity = payload.subscription?.entity;
     const paymentEntity = payload.payment?.entity;
-    if (!subscriptionEntity) return;
+    if (!subscriptionEntity) {
+      return { kind: 'ignored', error: 'missing_subscription_entity' };
+    }
 
     const razorpaySubscriptionId = subscriptionEntity.id;
     const subscription = await SubscriptionsDAO.getByRazorpayId(razorpaySubscriptionId);
     if (!subscription) {
       console.log(`Subscription not found for Razorpay ID ${razorpaySubscriptionId}`);
-      return;
+      // Local row may not exist yet — retry briefly rather than consuming the event.
+      return { kind: 'retryable', error: 'local_subscription_not_found' };
     }
 
     // Do not provision if already fully cancelled/expired
@@ -226,7 +300,10 @@ export class WebhookService {
       console.log(
         `[webhook] subscription.charged ignored for ${subscription.id} status=${subscription.status}`
       );
-      return;
+      return {
+        kind: 'permanent',
+        error: `subscription_status_${subscription.status}`,
+      };
     }
 
     // If cancel_at_period_end is set, Razorpay should not renew — but if a charge
@@ -240,7 +317,7 @@ export class WebhookService {
       console.error(
         `[webhook] subscription.charged for ${razorpaySubscriptionId} missing payment.id — skipping entitlement grant`
       );
-      return;
+      return { kind: 'retryable', error: 'missing_payment_id' };
     }
 
     await PaymentsDAO.createIfAbsentByRazorpayPaymentId({
@@ -257,7 +334,7 @@ export class WebhookService {
     const plan = await PlansDAO.getById(subscription.planId);
     if (!plan) {
       console.error(`[webhook] Plan ${subscription.planId} not found for subscription charge`);
-      return;
+      return { kind: 'permanent', error: 'plan_not_found' };
     }
 
     const periodStart = new Date();
@@ -284,6 +361,7 @@ export class WebhookService {
     console.log(
       `[webhook] subscription.charged provisioned=${result.creditsGranted} created=${result.created} cycle=${result.cycle.id} payment=${razorpayPaymentId}`
     );
+    return { kind: 'success' };
   }
 
   /**

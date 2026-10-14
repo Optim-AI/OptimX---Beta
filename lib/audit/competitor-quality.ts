@@ -35,6 +35,10 @@ const STOPWORDS = new Set([
   'which', 'while', 'will', 'would', 'could', 'should', 'seeking', 'looking', 'consumers', 'customers',
 ]);
 
+/** Secondary category vocabulary — useful when primary product tokens are sparse. */
+const SECONDARY_CATEGORY =
+  /\b(skincare|haircare|personal\s*care|bath\s*&\s*body|body\s*care|ayurveda|ayurvedic|clean\s*beauty|botanical|serum|shampoo|conditioner|moisturizer|face\s*wash|hair\s*oil|body\s*butter|soap|supplements?|apparel|footwear|saas|software)\b/gi;
+
 export function normalizeBrandToken(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, '');
 }
@@ -46,17 +50,22 @@ export function namesOverlap(a: string, b: string): boolean {
   return x.includes(y) || y.includes(x);
 }
 
-function tokenSet(s: string): Set<string> {
+function tokenSet(s: string, { keepWeak = false } = {}): Set<string> {
   return new Set(
     s
       .toLowerCase()
       .replace(/[^a-z0-9\s]/g, ' ')
       .split(/\s+/)
-      .filter((t) => t.length >= 3 && !STOPWORDS.has(t) && !WEAK_GENERIC.test(t))
+      .filter(
+        (t) =>
+          t.length >= 3 &&
+          !STOPWORDS.has(t) &&
+          (keepWeak || !WEAK_GENERIC.test(t))
+      )
   );
 }
 
-/** Category / niche tokens from the audited brand. */
+/** Strong product/category tokens (excludes organic/natural/skincare buzzwords). */
 export function brandCategoryTokens(brand: AuditBrand): Set<string> {
   const i = brand.interpretation;
   const bag = [
@@ -70,12 +79,27 @@ export function brandCategoryTokens(brand: AuditBrand): Set<string> {
   ]
     .filter(Boolean)
     .join(' ');
-  return tokenSet(bag);
+  return tokenSet(bag, { keepWeak: false });
+}
+
+/** Shared category vocabulary (skincare, haircare, …) for peer matching. */
+export function brandSecondaryCategories(brand: AuditBrand): Set<string> {
+  const bag = [
+    brand.interpretation.niche,
+    brand.interpretation.productCategory,
+    brand.interpretation.industry,
+    ...brand.interpretation.products,
+    ...brand.interpretation.searchKeywords,
+  ]
+    .join(' ')
+    .toLowerCase();
+  return new Set([...bag.matchAll(SECONDARY_CATEGORY)].map((m) => m[0].toLowerCase()));
 }
 
 /**
  * Score a search hit as a possible competitor homepage.
  * Rejects marketplaces/directories; rewards category/geo overlap.
+ * Does not require exact keyword matches when category + geo + commerce align.
  */
 export function scoreCompetitorCandidate(
   candidate: CompetitorCandidate,
@@ -100,7 +124,7 @@ export function scoreCompetitorCandidate(
   let score = 0;
   let overlap = 0;
   for (const t of cats) {
-    if (hay.includes(t)) {
+    if (t.length >= 3 && hay.includes(t)) {
       overlap++;
       score += 2;
     }
@@ -108,11 +132,52 @@ export function scoreCompetitorCandidate(
   if (overlap >= 2) reasons.push(`category_overlap:${overlap}`);
   else if (overlap === 1) reasons.push('weak_category_overlap');
 
-  // Sharing only “organic/natural/skincare” language is not competitive evidence.
-  if (overlap === 0) {
-    if (/\b(organic|natural|herbal|ayurvedic)\b/i.test(hay)) {
-      reasons.push('generic_organic_only');
+  const brandSecondary = brandSecondaryCategories(brand);
+  const candSecondary = new Set(
+    [...hay.matchAll(SECONDARY_CATEGORY)].map((m) => m[0].toLowerCase())
+  );
+  let secondaryHits = 0;
+  for (const s of brandSecondary) {
+    for (const c of candSecondary) {
+      if (c === s || c.includes(s) || s.includes(c)) {
+        secondaryHits++;
+        break;
+      }
     }
+  }
+  if (secondaryHits > 0) {
+    score += Math.min(4, secondaryHits * 2);
+    reasons.push(`secondary_category:${secondaryHits}`);
+  }
+
+  const country = brand.interpretation.country?.toLowerCase() || '';
+  let geo = false;
+  if (country) {
+    const geoHints = [country];
+    if (/india|in\b/.test(country)) geoHints.push('india', 'indian', 'bharat');
+    if (geoHints.some((g) => hay.includes(g)) || domain.endsWith('.in')) {
+      score += 3;
+      geo = true;
+      reasons.push('geo_match');
+    }
+  }
+
+  const commerce = /\b(shop|buy|products?|serum|soap|oil|cream|butter|wash|bar|bars|store)\b/i.test(
+    hay
+  );
+  if (commerce) {
+    score += 1;
+    reasons.push('commerce_language');
+  }
+
+  const label = domain.split('.')[0] || '';
+  if (label.length >= 4 && label.length <= 22 && !/shop|store|online|best|top/.test(label)) {
+    score += 1;
+  }
+
+  // Buzzword-only pages (organic/natural vibes, no product category) never qualify.
+  if (overlap === 0 && secondaryHits === 0) {
+    reasons.push('generic_organic_only');
     return {
       score: 0,
       reasons,
@@ -121,35 +186,15 @@ export function scoreCompetitorCandidate(
     };
   }
 
-  const country = brand.interpretation.country?.toLowerCase() || '';
-  if (country) {
-    const geoHints = [country];
-    if (/india|in\b/.test(country)) geoHints.push('india', 'indian', 'bharat');
-    if (geoHints.some((g) => hay.includes(g)) || domain.endsWith('.in')) {
-      score += 3;
-      reasons.push('geo_match');
-    }
-  }
-
-  // Official-looking shop / product language (beyond buzzwords alone)
-  if (/\b(shop|buy|products?|serum|soap|oil|cream|butter|wash|bar|bars)\b/i.test(hay)) {
-    score += 1;
-    reasons.push('commerce_language');
-  }
-
-  // Prefer short brand-like domains
-  const label = domain.split('.')[0] || '';
-  if (label.length >= 4 && label.length <= 22 && !/shop|store|online|best|top/.test(label)) {
-    score += 1;
-  }
-
-  // Require meaningful category overlap; geo/commerce alone cannot pass.
-  const rejected = score < 3 || overlap < 1;
+  // Accept when: strong product overlap, OR shared category vocab with geo/commerce support.
+  const accepted =
+    score >= 3 &&
+    (overlap >= 1 || (secondaryHits >= 1 && (geo || commerce || overlap >= 1)));
   return {
     score,
     reasons,
-    rejected,
-    rejectReason: rejected ? 'insufficient_category_fit' : undefined,
+    rejected: !accepted,
+    rejectReason: accepted ? undefined : 'insufficient_category_fit',
   };
 }
 

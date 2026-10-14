@@ -116,16 +116,58 @@ export default function SubscribePage() {
     }
   }, []);
 
-  /** Payment done → product home. Webhooks provision credits in the background. */
+  /**
+   * After checkout: confirm capture server-side, then enter the product.
+   * Browser success is never treated as proof that credits were granted.
+   */
   const enterProduct = useCallback(
-    (planId: string) => {
+    (planId: string, opts?: { creditsPending?: boolean }) => {
       clearCheckoutSessionFlags();
       void markOnboardingSubscribed(planId);
       void fetchSubscription({ force: true });
-      window.location.href = WORKSPACE_PATH;
+      const dest = opts?.creditsPending
+        ? `${WORKSPACE_PATH}?credits=pending`
+        : WORKSPACE_PATH;
+      window.location.href = dest;
     },
     [fetchSubscription, markOnboardingSubscribed]
   );
+
+  async function confirmCheckoutPayment(params: {
+    planId: string;
+    subscriptionId: string;
+    razorpaySubscriptionId: string;
+    razorpayPaymentId: string;
+    razorpaySignature: string;
+  }): Promise<'provisioned' | 'pending' | 'rejected'> {
+    const maxAttempts = 4;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const res = await authFetch('/api/billing/subscriptions/confirm-payment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          subscriptionId: params.subscriptionId,
+          razorpaySubscriptionId: params.razorpaySubscriptionId,
+          razorpayPaymentId: params.razorpayPaymentId,
+          razorpaySignature: params.razorpaySignature,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (res.ok && data.status === 'provisioned') {
+        return 'provisioned';
+      }
+      if (res.status === 202 || data.status === 'pending') {
+        if (attempt < maxAttempts - 1) {
+          await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+          continue;
+        }
+        return 'pending';
+      }
+      return 'rejected';
+    }
+    return 'pending';
+  }
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -235,16 +277,19 @@ export default function SubscribePage() {
         throw new Error(data.error || 'Could not start checkout');
       }
 
-      if (!data.razorpaySubscriptionId || !data.key) {
+      if (!data.razorpaySubscriptionId || !data.key || !data.subscriptionId) {
         throw new Error('Checkout session incomplete. Please try again.');
       }
+
+      const localSubscriptionId = String(data.subscriptionId);
+      const razorpaySubscriptionId = String(data.razorpaySubscriptionId);
 
       const RazorpayCtor = await waitForRazorpay();
       const totalsLabel = totals ? formatInr(totals.totalInr) : formatPricePlusGst(plan.priceInr);
 
       const options = {
         key: data.key,
-        subscription_id: data.razorpaySubscriptionId,
+        subscription_id: razorpaySubscriptionId,
         name: 'SkalX AI',
         description: `${plan.name} · ${totalsLabel}/month (incl. GST)`,
         prefill: {
@@ -253,12 +298,60 @@ export default function SubscribePage() {
         theme: {
           color: colors.primary || '#0088FF',
         },
-        handler: function () {
-          setSubmitting(false);
-          createInFlightRef.current = false;
-          const auditId = consumeAuditAttribution();
-          if (auditId) trackAuditEvent('audit_paid_conversion', { plan: planId, auditId });
-          enterProduct(planId);
+        handler: function (response: {
+          razorpay_payment_id?: string;
+          razorpay_subscription_id?: string;
+          razorpay_signature?: string;
+        }) {
+          void (async () => {
+            setPaymentMessage('Confirming payment and applying plan credits…');
+            try {
+              const paymentId = String(response?.razorpay_payment_id || '').trim();
+              const signature = String(response?.razorpay_signature || '').trim();
+              const rpSub =
+                String(response?.razorpay_subscription_id || '').trim() ||
+                razorpaySubscriptionId;
+
+              if (!paymentId || !signature) {
+                setError(
+                  'Checkout finished but payment details were incomplete. If you were charged, contact support — do not pay again.'
+                );
+                setPaymentMessage(null);
+                return;
+              }
+
+              const outcome = await confirmCheckoutPayment({
+                planId,
+                subscriptionId: localSubscriptionId,
+                razorpaySubscriptionId: rpSub,
+                razorpayPaymentId: paymentId,
+                razorpaySignature: signature,
+              });
+
+              const auditId = consumeAuditAttribution();
+              if (auditId) {
+                trackAuditEvent('audit_paid_conversion', { plan: planId, auditId });
+              }
+
+              if (outcome === 'rejected') {
+                setError(
+                  'Payment could not be confirmed for this plan. If you were charged, contact support — do not pay again.'
+                );
+                setPaymentMessage(null);
+                return;
+              }
+
+              enterProduct(planId, { creditsPending: outcome === 'pending' });
+            } catch {
+              setError(
+                'Payment confirmation timed out. If you were charged, refresh Brand Studio shortly — do not pay again.'
+              );
+              setPaymentMessage(null);
+            } finally {
+              setSubmitting(false);
+              createInFlightRef.current = false;
+            }
+          })();
         },
         modal: {
           ondismiss: function () {

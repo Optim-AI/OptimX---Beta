@@ -55,6 +55,15 @@ async function main() {
       'B: webhook also tries initial-sub addon path after PAYG miss'
     );
     assert(
+      webhookService.includes("outcome.kind === 'success'") ||
+        webhookService.includes('outcome.kind === "success"'),
+      'B: webhook marks processed only after outcome success/ignored'
+    );
+    assert(
+      webhookService.includes('permanentFailure') && webhookService.includes('retryable'),
+      'B: webhook distinguishes permanent vs retryable failures'
+    );
+    assert(
       creditGrant.includes("payment.paymentType !== 'image_topup'"),
       'grant helper ignores non-topup'
     );

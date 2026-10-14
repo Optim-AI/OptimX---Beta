@@ -10,11 +10,19 @@ import {
   fetchMetaAdLibraryAds,
   extractPageIdFromFacebookUrl,
   searchFacebookPages,
-  searchWithContextualQueries,
+  searchWithContextualQueriesDetailed,
   type BrandContext,
+  type CompetitorSearchBatch,
 } from '@/lib/research/competitor-research';
 import { getSerpApiKey, serpAdsTransparency, serpGoogleSearch } from '@/lib/research/serp-search';
 import { geminiJson, untrusted, type AuditJsonModel } from './ai';
+import { deterministicBrandFromSite } from './brand-fallback';
+import {
+  classifyProviderError,
+  newAuditCorrelationId,
+  recordDiagnostic,
+  type StageDiagnostic,
+} from './diagnostics';
 import {
   collectObservedNumbers,
   parseEngagementFromSnippet,
@@ -56,7 +64,13 @@ export type TransparencyAd = {
 export type AuditDeps = {
   fetchHtml: (url: string) => Promise<{ url: string; body: string; truncated?: boolean }>;
   ai: AuditJsonModel;
-  searchCompetitors: (ctx: BrandContext) => Promise<SearchResult[]>;
+  /**
+   * Prefer returning a detailed batch so empty results can be distinguished from
+   * provider failures. Plain arrays remain supported for tests.
+   */
+  searchCompetitors: (
+    ctx: BrandContext
+  ) => Promise<SearchResult[] | CompetitorSearchBatch>;
   /** Resolve a brand name to its official website from Google results. */
   resolveBrandDomain: (brandName: string) => Promise<SearchResult | null>;
   findFacebookPageId: (name: string) => Promise<string | null>;
@@ -66,6 +80,8 @@ export type AuditDeps = {
   searchSocialPosts: (competitorName: string) => Promise<SearchResult[]>;
   now: () => Date;
   hasSearchProvider: boolean;
+  /** Correlation id for stage diagnostics (server logs). */
+  correlationId?: string;
 };
 
 export type AuditWorkState = {
@@ -80,7 +96,29 @@ export type AuditWorkState = {
   ideas: ContentIdea[];
   sources: SourceRef[];
   limitations: AuditLimitation[];
+  /** Server-side stage diagnostics — not exposed in PublicAudit. */
+  diagnostics?: StageDiagnostic[];
 };
+
+function ensureDiagnostics(state: AuditWorkState): StageDiagnostic[] {
+  if (!state.diagnostics) state.diagnostics = [];
+  return state.diagnostics;
+}
+
+function normalizeSearchBatch(
+  raw: SearchResult[] | CompetitorSearchBatch
+): CompetitorSearchBatch {
+  if (Array.isArray(raw)) {
+    return {
+      results: raw,
+      queries: [],
+      outcome: raw.length ? 'ok' : 'empty',
+      providerFailures: 0,
+      successfulQueries: raw.length ? 1 : 0,
+    };
+  }
+  return raw;
+}
 
 export class AuditStageError extends Error {
   constructor(public code: string, message: string) {
@@ -204,16 +242,57 @@ function siteFacts(site: SiteSnapshot): AuditBrand['facts'] {
   return facts;
 }
 
+function brandAiFailureMessage(code: string): { limitationCode: string; message: string } {
+  switch (code) {
+    case 'missing_api_key':
+      return {
+        limitationCode: 'brand_ai_config',
+        message:
+          'AI brand analysis is not configured on this server, so we built a brand profile from your website content using a deterministic fallback.',
+      };
+    case 'quota':
+    case 'rate_limit':
+      return {
+        limitationCode: 'brand_ai_quota',
+        message:
+          'AI brand analysis hit a provider quota or rate limit, so we built a brand profile from your website content using a deterministic fallback.',
+      };
+    case 'timeout':
+      return {
+        limitationCode: 'brand_ai_timeout',
+        message:
+          'AI brand analysis timed out, so we built a brand profile from your website content using a deterministic fallback.',
+      };
+    case 'parse_error':
+    case 'empty':
+      return {
+        limitationCode: 'brand_ai_parse',
+        message:
+          'AI brand analysis returned an unusable response, so we built a brand profile from your website content using a deterministic fallback.',
+      };
+    default:
+      return {
+        limitationCode: 'brand_ai_provider_error',
+        message:
+          'AI brand analysis failed due to a provider error, so we built a brand profile from your website content using a deterministic fallback.',
+      };
+  }
+}
+
 async function runBrand(state: AuditWorkState, deps: AuditDeps) {
   const site = state.site!;
+  const correlationId = deps.correlationId || newAuditCorrelationId();
+  const started = Date.now();
   const facts = siteFacts(site);
   let raw: any = null;
+  let aiFailureCode: string | null = null;
+
   try {
     raw = await deps.ai(
       [
         'You are auditing a business from its own homepage. Identify what it sells and to whom, using only the page content.',
-        'Return JSON: {"name":string,"products":string[],"niche":string,"industry":string,"product_category":string,"positioning":string,"audience":string,"tone":string,"country":string,"search_keywords":string[],"supporting_quotes":string[],"confidence":"high"|"medium"|"low"}.',
-        'Rules: "country" only if the page states or clearly implies it, else "". "supporting_quotes" must be exact short phrases copied from the page. If the page is too thin to tell, set confidence "low" and leave unknown fields "".',
+        'Return JSON: {"name":string,"products":string[],"niche":string,"industry":string,"product_category":string,"positioning":string,"audience":string,"tone":string,"country":string,"search_keywords":string[],"ingredients_or_materials":string[],"benefits":string[],"differentiators":string[],"competitor_categories":string[],"supporting_quotes":string[],"confidence":"high"|"medium"|"low"}.',
+        'Rules: "country" only if the page states or clearly implies it, else "". "supporting_quotes" must be exact short phrases copied from the page. "search_keywords" and "competitor_categories" should help find peer brands. If the page is too thin to tell, set confidence "low" and leave unknown fields "".',
         untrusted('homepage', {
           url: site.finalUrl,
           title: site.title,
@@ -224,39 +303,124 @@ async function runBrand(state: AuditWorkState, deps: AuditDeps) {
       ].join('\n\n')
     );
   } catch (e) {
-    console.warn('[audit] brand AI failed', (e as Error)?.message);
+    const classified = classifyProviderError(e);
+    aiFailureCode = (e as { code?: string })?.code || classified.errorClass;
+    recordDiagnostic(ensureDiagnostics(state), {
+      correlationId,
+      stage: 'brand',
+      provider: 'gemini',
+      elapsedMs: Date.now() - started,
+      outcome: classified.outcome,
+      errorClass: aiFailureCode,
+      detail: classified.detail,
+    });
   }
 
-  const pageText = `${site.title} ${site.description} ${site.headings.join(' ')} ${site.excerpt}`.toLowerCase();
-  const quotes = strList(raw?.supporting_quotes, 4, 200).filter((q) => pageText.includes(q.toLowerCase()));
-  for (const q of quotes) facts.push({ label: 'Quoted from site', value: q, sourceId: site.sourceId });
+  if (raw == null && aiFailureCode == null) {
+    // geminiJson returns null when the API key is missing.
+    aiFailureCode = 'missing_api_key';
+    recordDiagnostic(ensureDiagnostics(state), {
+      correlationId,
+      stage: 'brand',
+      provider: 'gemini',
+      elapsedMs: Date.now() - started,
+      outcome: 'config_missing',
+      errorClass: 'missing_api_key',
+      detail: 'GEMINI_API_KEY not configured',
+    });
+  }
 
-  const name = text(raw?.name, 60) || metadataBrandName(site, state.normalizedHost);
-  const confidence = raw?.confidence === 'high' || raw?.confidence === 'medium' ? raw.confidence : 'low';
-  state.brand = {
-    name,
-    facts,
-    interpretation: {
-      products: strList(raw?.products, 6),
-      niche: text(raw?.niche, 160),
-      industry: text(raw?.industry, 80),
-      productCategory: text(raw?.product_category, 80),
-      positioning: text(raw?.positioning, 300),
-      audience: text(raw?.audience, 240),
-      tone: text(raw?.tone, 80),
-      country: text(raw?.country, 60),
-      searchKeywords: strList(raw?.search_keywords, 6),
-    },
-    confidence: raw ? confidence : 'low',
-    basis: raw ? 'ai' : 'metadata_only',
-  };
-  if (!raw) {
-    addLimitation(
-      state,
-      'brand_ai_unavailable',
-      "AI brand analysis wasn't available, so the brand profile is based only on your page title and description."
+  if (raw) {
+    const pageText = `${site.title} ${site.description} ${site.headings.join(' ')} ${site.excerpt}`.toLowerCase();
+    const quotes = strList(raw?.supporting_quotes, 4, 200).filter((q) =>
+      pageText.includes(q.toLowerCase())
     );
+    for (const q of quotes) facts.push({ label: 'Quoted from site', value: q, sourceId: site.sourceId });
+
+    const name = text(raw?.name, 60) || metadataBrandName(site, state.normalizedHost);
+    const confidence =
+      raw?.confidence === 'high' || raw?.confidence === 'medium' ? raw.confidence : 'low';
+    const searchKeywords = uniqStrings([
+      ...strList(raw?.search_keywords, 6),
+      ...strList(raw?.competitor_categories, 4),
+      ...strList(raw?.ingredients_or_materials, 4),
+      ...strList(raw?.benefits, 3),
+    ], 8);
+    state.brand = {
+      name,
+      facts,
+      interpretation: {
+        products: strList(raw?.products, 6),
+        niche: text(raw?.niche, 160),
+        industry: text(raw?.industry, 80),
+        productCategory: text(raw?.product_category, 80),
+        positioning: text(
+          [text(raw?.positioning, 220), ...strList(raw?.differentiators, 2)].filter(Boolean).join(' — '),
+          300
+        ),
+        audience: text(raw?.audience, 240),
+        tone: text(raw?.tone, 80),
+        country: text(raw?.country, 60),
+        searchKeywords,
+      },
+      confidence,
+      basis: 'ai',
+    };
+    recordDiagnostic(ensureDiagnostics(state), {
+      correlationId,
+      stage: 'brand',
+      provider: 'gemini',
+      elapsedMs: Date.now() - started,
+      outcome: confidence === 'low' ? 'partial' : 'ok',
+      meta: {
+        products: state.brand.interpretation.products.length,
+        category: state.brand.interpretation.productCategory || null,
+      },
+    });
+    return;
   }
+
+  // AI failed or unavailable — deterministic fallback from page evidence.
+  const fallback = deterministicBrandFromSite(site, state.normalizedHost);
+  // Preserve any title/description facts already collected.
+  fallback.facts = facts.length ? facts : fallback.facts;
+  state.brand = fallback;
+  const msg = brandAiFailureMessage(aiFailureCode || 'provider_error');
+  addLimitation(state, msg.limitationCode, msg.message);
+  // Keep legacy code so older UI/tests still recognize AI unavailability.
+  addLimitation(
+    state,
+    'brand_ai_unavailable',
+    msg.message
+  );
+  recordDiagnostic(ensureDiagnostics(state), {
+    correlationId,
+    stage: 'brand',
+    provider: 'gemini',
+    elapsedMs: Date.now() - started,
+    outcome: 'partial',
+    errorClass: aiFailureCode || 'provider_error',
+    detail: 'used_deterministic_fallback',
+    meta: {
+      products: fallback.interpretation.products.length,
+      category: fallback.interpretation.productCategory || null,
+    },
+  });
+}
+
+function uniqStrings(items: string[], max: number): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const item of items) {
+    const t = item.trim();
+    if (!t) continue;
+    const key = t.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(t);
+    if (out.length >= max) break;
+  }
+  return out;
 }
 
 // ---------- stage: competitors ----------
@@ -301,8 +465,18 @@ function isLikelyBrandHomepage(url: string, title = '', snippet = ''): boolean {
 
 async function runCompetitors(state: AuditWorkState, deps: AuditDeps) {
   const brand = state.brand!;
+  const correlationId = deps.correlationId || newAuditCorrelationId();
+  const started = Date.now();
   if (!deps.hasSearchProvider) {
     addLimitation(state, 'competitor_search_unavailable', 'Competitor search is not configured, so this audit covers your website only.');
+    recordDiagnostic(ensureDiagnostics(state), {
+      correlationId,
+      stage: 'competitors',
+      provider: 'none',
+      elapsedMs: 0,
+      outcome: 'config_missing',
+      errorClass: 'missing_search_key',
+    });
     return;
   }
   const ctx: BrandContext = {
@@ -317,18 +491,75 @@ async function runCompetitors(state: AuditWorkState, deps: AuditDeps) {
     country: brand.interpretation.country,
     is_ambiguous_brand: AMBIGUOUS_BRAND_WORDS.has(brand.name.toLowerCase()),
   };
-  let results: SearchResult[] = [];
+  let batch: CompetitorSearchBatch = {
+    results: [],
+    queries: [],
+    outcome: 'empty',
+    providerFailures: 0,
+    successfulQueries: 0,
+  };
   try {
-    results = await deps.searchCompetitors(ctx);
+    batch = normalizeSearchBatch(await deps.searchCompetitors(ctx));
   } catch (e) {
+    const classified = classifyProviderError(e);
     console.warn('[audit] competitor search failed', (e as Error)?.message);
-  }
-  if (!results.length) {
+    recordDiagnostic(ensureDiagnostics(state), {
+      correlationId,
+      stage: 'competitors',
+      provider: 'serpapi',
+      elapsedMs: Date.now() - started,
+      outcome: classified.outcome,
+      errorClass: classified.errorClass,
+      detail: classified.detail,
+    });
+    addLimitation(
+      state,
+      'competitor_search_provider_error',
+      'Competitor search failed due to a provider error, so this audit is based on your website only.'
+    );
     addLimitation(
       state,
       'no_competitors_found',
-      'Competitor search returned no results (the search provider may be temporarily unavailable), so this audit is based on your website only.'
+      'Competitor search failed due to a provider error, so this audit is based on your website only.'
     );
+    return;
+  }
+
+  const results = batch.results;
+  if (!results.length) {
+    if (batch.outcome === 'provider_error' || batch.outcome === 'timeout' || batch.outcome === 'missing_key') {
+      addLimitation(
+        state,
+        'competitor_search_provider_error',
+        batch.outcome === 'missing_key'
+          ? 'Competitor search is not configured, so this audit covers your website only.'
+          : 'Competitor search failed due to a provider error, so this audit is based on your website only.'
+      );
+      addLimitation(
+        state,
+        'no_competitors_found',
+        'Competitor search failed due to a provider error, so this audit is based on your website only.'
+      );
+    } else {
+      addLimitation(
+        state,
+        'no_competitors_found',
+        'Public search returned no competitor candidates for this category, so this audit is based on your website only.'
+      );
+    }
+    recordDiagnostic(ensureDiagnostics(state), {
+      correlationId,
+      stage: 'competitors',
+      provider: 'serpapi',
+      elapsedMs: Date.now() - started,
+      outcome: batch.outcome,
+      errorClass: batch.errorClass,
+      meta: {
+        queries: batch.queries.length,
+        successfulQueries: batch.successfulQueries,
+        providerFailures: batch.providerFailures,
+      },
+    });
     return;
   }
 
@@ -539,19 +770,66 @@ async function runCompetitors(state: AuditWorkState, deps: AuditDeps) {
   }
 
   if (!state.competitors.length) {
-    addLimitation(state, 'no_competitors_found', "Search results didn't include brands that clearly compete with you.");
+    addLimitation(
+      state,
+      'no_competitors_found',
+      "Search results didn't include brands that clearly compete with you after verification."
+    );
+    recordDiagnostic(ensureDiagnostics(state), {
+      correlationId,
+      stage: 'competitors',
+      provider: 'serpapi',
+      elapsedMs: Date.now() - started,
+      outcome: 'rejected',
+      detail: 'all_candidates_rejected',
+      meta: {
+        rawHits: results.length,
+        homepageHits: homepageHits.length,
+        listicles: listicles.length,
+        queries: batch.queries.length,
+      },
+    });
   } else if (state.competitors.length === 1) {
     addLimitation(
       state,
       'limited_competitors',
       'Only one competitor brand could be verified from public search. Activity below may look repetitive until more brands are confirmed.'
     );
+    recordDiagnostic(ensureDiagnostics(state), {
+      correlationId,
+      stage: 'competitors',
+      provider: 'serpapi',
+      elapsedMs: Date.now() - started,
+      outcome: 'partial',
+      meta: { competitors: 1, rawHits: results.length },
+    });
   } else if (state.competitors.every((c) => c.confidence === 'low')) {
     addLimitation(
       state,
       'low_confidence_competitors',
       'Competitor matches have limited evidence overlap; treat rankings as provisional.'
     );
+    recordDiagnostic(ensureDiagnostics(state), {
+      correlationId,
+      stage: 'competitors',
+      provider: 'serpapi',
+      elapsedMs: Date.now() - started,
+      outcome: 'partial',
+      meta: { competitors: state.competitors.length, rawHits: results.length },
+    });
+  } else {
+    recordDiagnostic(ensureDiagnostics(state), {
+      correlationId,
+      stage: 'competitors',
+      provider: 'serpapi',
+      elapsedMs: Date.now() - started,
+      outcome: 'ok',
+      meta: {
+        competitors: state.competitors.length,
+        rawHits: results.length,
+        queries: batch.queries.length,
+      },
+    });
   }
 }
 
@@ -566,12 +844,38 @@ const MAX_ORGANIC_PER_COMPETITOR = 1;
 const MAX_ACTIVITY_ITEMS = 8;
 
 async function runPosts(state: AuditWorkState, deps: AuditDeps) {
+  const correlationId = deps.correlationId || newAuditCorrelationId();
+  const started = Date.now();
   if (!state.competitors.length || !deps.hasSearchProvider) {
     if (state.competitors.length === 0 && deps.hasSearchProvider) {
       addLimitation(state, 'no_competitor_posts', 'Without identified competitors, we could not collect competitor posts.');
     }
+    recordDiagnostic(ensureDiagnostics(state), {
+      correlationId,
+      stage: 'posts',
+      provider: deps.hasSearchProvider ? 'serpapi' : 'none',
+      elapsedMs: 0,
+      outcome: 'skipped',
+      detail: state.competitors.length ? 'no_search_provider' : 'no_competitors',
+    });
     return;
   }
+
+  // Always retain verified company/product homepage sources even if social is inaccessible.
+  for (const comp of state.competitors) {
+    if (!state.sources.some((s) => s.id === comp.sourceId)) {
+      addSource(state, {
+        id: comp.sourceId,
+        kind: 'search_result',
+        url: comp.url,
+        title: comp.name,
+        provider: 'serpapi',
+        publishedAt: null,
+        retrievedAt: deps.now().toISOString(),
+      });
+    }
+  }
+
   const now = deps.now();
   const retrievedAt = now.toISOString();
   const organicCutoff = now.getTime() - ORGANIC_RECENT_DAYS * 86_400_000;
@@ -729,14 +1033,45 @@ async function runPosts(state: AuditWorkState, deps: AuditDeps) {
     addLimitation(
       state,
       'no_competitor_posts',
-      "We couldn't find recent public posts or ads from these competitors. Insights below are based on your website and competitors' own positioning."
+      "We couldn't find recent public posts or ads from these competitors. Verified company and product pages are still cited; social platforms may block indexing."
     );
+    addLimitation(
+      state,
+      'social_platforms_inaccessible',
+      'Public social activity could not be collected for these brands (platforms often limit search indexing). Insights use verified company/product sources instead.'
+    );
+    recordDiagnostic(ensureDiagnostics(state), {
+      correlationId,
+      stage: 'posts',
+      provider: 'serpapi',
+      elapsedMs: Date.now() - started,
+      outcome: 'empty',
+      detail: 'no_public_activity',
+      meta: { competitors: targets.length },
+    });
   } else if (!organicCount) {
     addLimitation(
       state,
       'no_organic_posts',
       'No recent organic social posts were publicly indexed; competitor activity is based on publicly listed ads.'
     );
+    recordDiagnostic(ensureDiagnostics(state), {
+      correlationId,
+      stage: 'posts',
+      provider: 'serpapi',
+      elapsedMs: Date.now() - started,
+      outcome: 'partial',
+      meta: { ads: adCount, organic: 0 },
+    });
+  } else {
+    recordDiagnostic(ensureDiagnostics(state), {
+      correlationId,
+      stage: 'posts',
+      provider: 'serpapi',
+      elapsedMs: Date.now() - started,
+      outcome: 'ok',
+      meta: { ads: adCount, organic: organicCount },
+    });
   }
   if (organicCount && !state.competitorPosts.some((p) => p.engagement)) {
     addLimitation(
@@ -852,9 +1187,16 @@ const STAGE_RUNNERS: Record<AuditStageName, (s: AuditWorkState, d: AuditDeps) =>
 /** Limitation codes that downgrade the audit to "partial". */
 const PARTIAL_CODES = new Set([
   'brand_ai_unavailable',
+  'brand_ai_config',
+  'brand_ai_quota',
+  'brand_ai_timeout',
+  'brand_ai_parse',
+  'brand_ai_provider_error',
   'competitor_search_unavailable',
+  'competitor_search_provider_error',
   'no_competitors_found',
   'no_competitor_posts',
+  'social_platforms_inaccessible',
   'analysis_ai_unavailable',
   'site_truncated',
 ]);
@@ -872,25 +1214,29 @@ export async function runAuditStages(
   deps: AuditDeps,
   onStage: (stage: AuditStageName, state: AuditWorkState) => Promise<void>
 ): Promise<AuditWorkState> {
+  const correlationId = deps.correlationId || newAuditCorrelationId();
+  const wired: AuditDeps = { ...deps, correlationId };
+  ensureDiagnostics(state);
   for (const stage of AUDIT_STAGES) {
     if (stageDone(state, stage)) continue;
-    await STAGE_RUNNERS[stage](state, deps);
+    await STAGE_RUNNERS[stage](state, wired);
     state.stage = stage;
     await onStage(stage, state);
   }
   return state;
 }
 
-export function defaultAuditDeps(): AuditDeps {
+export function defaultAuditDeps(opts: { correlationId?: string } = {}): AuditDeps {
   const searchApiKey = getSerpApiKey();
   return {
+    correlationId: opts.correlationId || newAuditCorrelationId(),
     fetchHtml: async (url) => {
       // Cap download size; truncate instead of failing (large Shopify/storefront pages).
       const r = await safeFetchText(url, { timeoutMs: 15_000, maxBytes: 1_500_000 });
       return { url: r.url, body: r.body, truncated: r.truncated };
     },
     ai: geminiJson,
-    searchCompetitors: (ctx) => searchWithContextualQueries(ctx, searchApiKey),
+    searchCompetitors: (ctx) => searchWithContextualQueriesDetailed(ctx, searchApiKey, { includeFallback: true }),
     resolveBrandDomain: async (brandName) => {
       const organic = await serpGoogleSearch(searchApiKey, {
         q: `"${brandName.replace(/"/g, '')}" official website`,

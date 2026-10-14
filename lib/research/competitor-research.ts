@@ -5,7 +5,7 @@
  * Server-only: reads API keys from env and never returns them.
  */
 
-import { serpGoogleSearch } from './serp-search';
+import { serpGoogleSearch, serpGoogleSearchDetailed } from './serp-search';
 
 export const AMBIGUOUS_BRAND_WORDS = new Set([
   "boat", "apple", "orange", "nothing", "noise", "real", "one", "true", "pure", "simple",
@@ -25,78 +25,223 @@ export type BrandContext = {
   official_instagram_url?: string | null;
 };
 
+export type CompetitorSearchHit = {
+  domain: string;
+  title: string;
+  snippet: string;
+  url: string;
+  date?: string;
+};
+
+export type CompetitorSearchBatch = {
+  results: CompetitorSearchHit[];
+  queries: string[];
+  outcome: 'ok' | 'empty' | 'missing_key' | 'provider_error' | 'timeout';
+  errorClass?: string;
+  providerFailures: number;
+  successfulQueries: number;
+};
+
+function uniqueQueries(queries: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const q of queries) {
+    const trimmed = q.replace(/\s+/g, ' ').trim();
+    if (!trimmed) continue;
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(trimmed);
+  }
+  return out;
+}
+
 export function buildContextualQueries(ctx: BrandContext): string[] {
   const { brand_name, domain_name, industry_category, product_category, country, is_ambiguous_brand } =
     ctx;
-  const industry = industry_category || "this industry";
-  const product = product_category || "products";
-  const loc = country ? ` in ${country}` : "";
-  const keywords = (ctx.primary_keywords || []).filter(Boolean).slice(0, 3);
-  const kw = keywords[0] || product;
+  const industry = (industry_category || '').trim();
+  const product = (product_category || '').trim();
+  const loc = country ? ` in ${country}` : '';
+  const keywords = (ctx.primary_keywords || []).map((k) => k.trim()).filter(Boolean).slice(0, 5);
+  const kw = keywords[0] || product || industry || 'brand';
+  const kw2 = keywords[1] || industry || product || kw;
+  const category = product || kw || industry || 'consumer brands';
 
   if (is_ambiguous_brand) {
-    return [
-      `${domain_name} ${product} competitor brands${loc}`,
-      `top ${product} brands${loc}`,
-      `${industry} brands like ${domain_name}`,
-      `best ${product} brands${loc}`,
-      `brands similar to ${domain_name} ${product}`,
-    ];
+    return uniqueQueries([
+      `${domain_name} ${category} competitor brands${loc}`,
+      `top ${category} brands${loc}`,
+      `${industry || category} brands like ${domain_name}`,
+      `best ${category} brands${loc}`,
+      `brands similar to ${domain_name} ${category}`,
+    ]);
   }
 
-  // Category + geography first so listicles surface named peers (then resolved to sites).
-  // Keep distinct angles: category listicle, secondary keyword, direct competitors, peers.
-  const kw2 = keywords[1] || (industry !== 'this industry' ? industry : product);
-  return [
-    `top ${product} brands${loc}`,
+  // Multiple angles: category listicles, product alternatives, geo peers, direct competitors.
+  return uniqueQueries([
+    `top ${category} brands${loc}`,
     `best ${kw} brands${loc}`,
-    keywords[1]
-      ? `best ${kw2} brands${loc}`
-      : `${brand_name} competitors ${product}${loc}`,
-    `brands like ${brand_name} ${product}${loc}`,
-    `${product} brands similar to ${brand_name}${loc}`,
-    `best ${industry} ${product} companies${loc} -site:${domain_name}`,
-  ];
+    `best ${kw2} brands${loc}`,
+    `${brand_name} competitors ${category}${loc}`,
+    `brands like ${brand_name} ${category}${loc}`,
+    `${category} brands similar to ${brand_name}${loc}`,
+    `${category} alternatives to ${brand_name}${loc}`,
+    industry
+      ? `best ${industry} ${category} companies${loc} -site:${domain_name}`
+      : `best ${category} companies${loc} -site:${domain_name}`,
+    country
+      ? `${category} brands targeting ${country} customers`
+      : `${category} brands for the same customers as ${brand_name}`,
+  ]);
+}
+
+/** Bounded fallback queries when the first pass yields weak/empty competitor evidence. */
+export function buildFallbackQueries(ctx: BrandContext): string[] {
+  const product = (ctx.product_category || ctx.primary_keywords?.[0] || 'brands').trim();
+  const loc = ctx.country ? ` in ${ctx.country}` : '';
+  const brand = ctx.brand_name;
+  return uniqueQueries([
+    `${product} competitors${loc}`,
+    `popular ${product} brands${loc}`,
+    `${brand} vs ${product} brands${loc}`,
+    `similar brands to ${brand}${loc}`,
+    `"${product}" brand list${loc}`,
+  ]);
+}
+
+async function runQueryBatch(
+  ctx: BrandContext,
+  searchApiKey: string,
+  queries: string[],
+  seen: Set<string>,
+  results: CompetitorSearchHit[]
+): Promise<{ providerFailures: number; successfulQueries: number; lastErrorClass?: string; lastOutcome?: CompetitorSearchBatch['outcome'] }> {
+  const brandDomainNorm = ctx.domain_name?.replace(/^www\./, '').toLowerCase() || '';
+  let providerFailures = 0;
+  let successfulQueries = 0;
+  let lastErrorClass: string | undefined;
+  let lastOutcome: CompetitorSearchBatch['outcome'] | undefined;
+  const gl = /india/i.test(ctx.country || '') || /\.in$/i.test(brandDomainNorm) ? 'in' : undefined;
+
+  for (const q of queries) {
+    if (!q?.trim()) continue;
+    const detailed = await serpGoogleSearchDetailed(searchApiKey, {
+      q,
+      num: 10,
+      gl,
+      hl: gl ? 'en' : undefined,
+    });
+    if (detailed.outcome === 'ok' || detailed.outcome === 'empty') {
+      successfulQueries++;
+      lastOutcome = detailed.outcome;
+    } else {
+      providerFailures++;
+      lastErrorClass = detailed.errorClass;
+      lastOutcome = detailed.outcome;
+      continue;
+    }
+    for (const r of detailed.results) {
+      if (!r.link) continue;
+      try {
+        const host = new URL(r.link).hostname.replace(/^www\./, '').toLowerCase();
+        if (seen.has(host)) continue;
+        if (host === brandDomainNorm || host.endsWith('.' + brandDomainNorm)) continue;
+        seen.add(host);
+        results.push({
+          domain: host,
+          title: r.title,
+          snippet: r.snippet,
+          url: r.link,
+          date: r.date,
+        });
+      } catch {
+        // skip invalid URLs
+      }
+    }
+  }
+  return { providerFailures, successfulQueries, lastErrorClass, lastOutcome };
+}
+
+/**
+ * Competitor search with explicit empty-vs-failure outcomes and optional fallback queries.
+ * Bounded SerpApi usage: primary ≤5 queries, fallback ≤3 more only when weak.
+ */
+export async function searchWithContextualQueriesDetailed(
+  ctx: BrandContext,
+  searchApiKey: string | undefined,
+  opts: { includeFallback?: boolean; minResultsForSkipFallback?: number } = {}
+): Promise<CompetitorSearchBatch> {
+  if (!searchApiKey) {
+    return {
+      results: [],
+      queries: [],
+      outcome: 'missing_key',
+      errorClass: 'missing_key',
+      providerFailures: 0,
+      successfulQueries: 0,
+    };
+  }
+
+  const primary = buildContextualQueries(ctx).slice(0, 5);
+  const seen = new Set<string>();
+  const results: CompetitorSearchHit[] = [];
+  const ran: string[] = [...primary];
+  const first = await runQueryBatch(ctx, searchApiKey, primary, seen, results);
+
+  const minKeep = opts.minResultsForSkipFallback ?? 4;
+  const wantFallback = opts.includeFallback !== false && results.length < minKeep;
+  let second: {
+    providerFailures: number;
+    successfulQueries: number;
+    lastErrorClass?: string;
+    lastOutcome?: CompetitorSearchBatch['outcome'];
+  } = { providerFailures: 0, successfulQueries: 0 };
+  if (wantFallback) {
+    const fallback = buildFallbackQueries(ctx).slice(0, 3);
+    ran.push(...fallback);
+    second = await runQueryBatch(ctx, searchApiKey, fallback, seen, results);
+  }
+
+  const providerFailures = first.providerFailures + second.providerFailures;
+  const successfulQueries = first.successfulQueries + second.successfulQueries;
+  const lastErrorClass = second.lastErrorClass || first.lastErrorClass;
+  const lastOutcome = second.lastOutcome || first.lastOutcome;
+
+  if (!results.length) {
+    if (successfulQueries === 0 && providerFailures > 0) {
+      return {
+        results: [],
+        queries: ran,
+        outcome: lastOutcome === 'timeout' ? 'timeout' : 'provider_error',
+        errorClass: lastErrorClass,
+        providerFailures,
+        successfulQueries,
+      };
+    }
+    return {
+      results: [],
+      queries: ran,
+      outcome: 'empty',
+      providerFailures,
+      successfulQueries,
+    };
+  }
+
+  return {
+    results: results.slice(0, 28),
+    queries: ran,
+    outcome: 'ok',
+    providerFailures,
+    successfulQueries,
+  };
 }
 
 export async function searchWithContextualQueries(
   ctx: BrandContext,
   searchApiKey: string | undefined
-): Promise<any[]> {
-  if (!searchApiKey) return [];
-  // Bounded SerpApi usage: 4 queries × ≤10 results, deduped by domain.
-  const queries = buildContextualQueries(ctx).slice(0, 4);
-  const seen = new Set<string>();
-  const results: any[] = [];
-  const brandDomainNorm = ctx.domain_name?.replace("www.", "").toLowerCase() || "";
-  for (const q of queries) {
-    if (!q?.trim()) continue;
-    try {
-      const gl = /india/i.test(ctx.country || "") ? "in" : undefined;
-      const organic = await serpGoogleSearch(searchApiKey, { q, num: 10, gl, hl: gl ? "en" : undefined });
-      for (const r of organic) {
-        if (!r.link) continue;
-        try {
-          const host = new URL(r.link).hostname.replace("www.", "").toLowerCase();
-          if (seen.has(host)) continue;
-          if (host === brandDomainNorm || host.endsWith("." + brandDomainNorm)) continue;
-          seen.add(host);
-          results.push({
-            domain: host,
-            title: r.title,
-            snippet: r.snippet,
-            url: r.link,
-            date: r.date,
-          });
-        } catch {
-          // skip invalid URLs
-        }
-      }
-    } catch (e) {
-      console.warn("Search API error:", e);
-    }
-  }
-  return results.slice(0, 24);
+): Promise<CompetitorSearchHit[]> {
+  const batch = await searchWithContextualQueriesDetailed(ctx, searchApiKey, { includeFallback: true });
+  return batch.results;
 }
 
 export const META_GRAPH_VERSION = "v25.0";

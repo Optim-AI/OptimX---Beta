@@ -135,4 +135,50 @@ console.log('=== competitor quality ===');
   assert.equal(same.rejectReason, 'own_domain');
 }
 
+{
+  // Sparse profile like deterministic fallback — still accept clear category peers.
+  const sparse: AuditBrand = {
+    name: 'Deyga',
+    facts: [],
+    interpretation: {
+      products: ['face wash', 'hair oil'],
+      niche: 'Organic face wash, hair oil and body butter',
+      industry: 'personal care',
+      productCategory: 'organic skincare',
+      positioning: 'Natural organic skincare',
+      audience: 'Indian shoppers interested in organic skincare',
+      tone: '',
+      country: 'India',
+      searchKeywords: ['organic skincare', 'natural personal care', 'haircare'],
+    },
+    confidence: 'medium',
+    basis: 'deterministic_fallback',
+  };
+  const mamaearth = scoreCompetitorCandidate(
+    {
+      domain: 'mamaearth.in',
+      title: 'Mamaearth | Natural Skincare & Haircare',
+      snippet: 'Toxin-free natural skincare and haircare products made in India',
+      url: 'https://mamaearth.in/',
+    },
+    sparse,
+    'deyga.in'
+  );
+  assert.equal(mamaearth.rejected, false, 'sparse organic skincare profile must still accept peers');
+}
+
+{
+  const saas = scoreCompetitorCandidate(
+    {
+      domain: 'stripe.com',
+      title: 'Stripe | Payment infrastructure',
+      snippet: 'Online payment processing for internet businesses',
+      url: 'https://stripe.com/',
+    },
+    brand,
+    'deyga.in'
+  );
+  assert.equal(saas.rejected, true, 'unrelated SaaS must be rejected');
+}
+
 console.log('PASS competitor quality');

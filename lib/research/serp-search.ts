@@ -26,15 +26,42 @@ export type SerpGoogleOptions = {
   timeoutMs?: number;
 };
 
+export type SerpSearchOutcome = {
+  results: OrganicResult[];
+  /** ok = results returned; empty = successful call with zero organics; others = failure */
+  outcome: 'ok' | 'empty' | 'missing_key' | 'provider_error' | 'timeout';
+  status?: number;
+  errorClass?: string;
+  elapsedMs: number;
+};
+
+function mapOrganic(data: any): OrganicResult[] {
+  return (data?.organic_results || [])
+    .filter((r: any) => r?.link)
+    .map((r: any) => ({
+      title: String(r.title || ''),
+      link: String(r.link),
+      snippet: String(r.snippet || ''),
+      date: typeof r.date === 'string' ? r.date : undefined,
+      displayed_link: typeof r.displayed_link === 'string' ? r.displayed_link : undefined,
+    }));
+}
+
 /**
- * Google organic results via SerpApi.
+ * Google organic results via SerpApi with explicit outcome classification.
  * Docs: https://serpapi.com/search-api
  */
-export async function serpGoogleSearch(
+export async function serpGoogleSearchDetailed(
   apiKey: string | undefined,
   opts: SerpGoogleOptions
-): Promise<OrganicResult[]> {
-  if (!apiKey || !opts.q?.trim()) return [];
+): Promise<SerpSearchOutcome> {
+  const started = Date.now();
+  if (!apiKey) {
+    return { results: [], outcome: 'missing_key', errorClass: 'missing_key', elapsedMs: 0 };
+  }
+  if (!opts.q?.trim()) {
+    return { results: [], outcome: 'empty', elapsedMs: 0 };
+  }
   const params = new URLSearchParams({
     engine: 'google',
     q: opts.q.trim(),
@@ -51,31 +78,60 @@ export async function serpGoogleSearch(
     const res = await fetch(`https://serpapi.com/search.json?${params}`, {
       signal: controller.signal,
     });
+    const elapsedMs = Date.now() - started;
     if (!res.ok) {
       const errText = await res.text().catch(() => '');
       console.warn('[serp] google search failed', res.status, errText.slice(0, 200));
-      return [];
+      return {
+        results: [],
+        outcome: 'provider_error',
+        status: res.status,
+        errorClass: `http_${res.status}`,
+        elapsedMs,
+      };
     }
     const data = (await res.json()) as any;
     if (data?.error) {
-      console.warn('[serp] google search error', String(data.error).slice(0, 200));
-      return [];
+      const msg = String(data.error).slice(0, 200);
+      console.warn('[serp] google search error', msg);
+      return {
+        results: [],
+        outcome: 'provider_error',
+        errorClass: /invalid api key|unauthorized/i.test(msg) ? 'invalid_key' : 'provider_message',
+        elapsedMs,
+      };
     }
-    return (data.organic_results || [])
-      .filter((r: any) => r?.link)
-      .map((r: any) => ({
-        title: String(r.title || ''),
-        link: String(r.link),
-        snippet: String(r.snippet || ''),
-        date: typeof r.date === 'string' ? r.date : undefined,
-        displayed_link: typeof r.displayed_link === 'string' ? r.displayed_link : undefined,
-      }));
+    const results = mapOrganic(data);
+    return {
+      results,
+      outcome: results.length ? 'ok' : 'empty',
+      elapsedMs,
+    };
   } catch (e) {
+    const elapsedMs = Date.now() - started;
+    const name = (e as { name?: string })?.name;
     console.warn('[serp] google search exception', (e as Error)?.message);
-    return [];
+    return {
+      results: [],
+      outcome: name === 'AbortError' ? 'timeout' : 'provider_error',
+      errorClass: name === 'AbortError' ? 'timeout' : 'exception',
+      elapsedMs,
+    };
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * Google organic results via SerpApi.
+ * Docs: https://serpapi.com/search-api
+ */
+export async function serpGoogleSearch(
+  apiKey: string | undefined,
+  opts: SerpGoogleOptions
+): Promise<OrganicResult[]> {
+  const detailed = await serpGoogleSearchDetailed(apiKey, opts);
+  return detailed.results;
 }
 
 /**

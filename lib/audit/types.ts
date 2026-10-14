@@ -51,7 +51,12 @@ export type AuditBrand = {
     searchKeywords: string[];
   };
   confidence: 'high' | 'medium' | 'low';
-  basis: 'ai' | 'metadata_only';
+  /**
+   * ai — Gemini structured analysis of the homepage.
+   * deterministic_fallback — rule-based profile from page text after AI failure/absence.
+   * metadata_only — title/description only (legacy / thin page with no extractable signals).
+   */
+  basis: 'ai' | 'deterministic_fallback' | 'metadata_only';
 };
 
 export type CompetitorClassification = 'direct' | 'adjacent';
