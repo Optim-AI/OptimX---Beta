@@ -109,6 +109,14 @@ run('notify defaults to info@skalxai.app', () => {
   if (prev !== undefined) process.env.TRIAL_REQUEST_NOTIFY_EMAIL = prev;
 });
 
+run('email sender prefers Resend when configured', () => {
+  const send = readFileSync(join(process.cwd(), 'lib/email/send.ts'), 'utf8');
+  assert.ok(send.includes('api.resend.com/emails'));
+  assert.ok(send.includes('RESEND_API_KEY'));
+  assert.ok(send.includes('getResendFromAddress'));
+  assert.ok(!/re_[A-Za-z0-9_]{10,}/.test(send), 'API key must not be hardcoded');
+});
+
 run('paid plan prices and credits unchanged in marketing catalog', () => {
   const starter = MARKETING_SUBSCRIPTION_PLANS.find((p) => p.id === 'skalx_starter')!;
   const growth = MARKETING_SUBSCRIPTION_PLANS.find((p) => p.id === 'skalx_growth')!;

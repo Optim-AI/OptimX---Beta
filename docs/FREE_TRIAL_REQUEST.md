@@ -2,15 +2,16 @@
 
 Request-based Free Trial card on `/pricing` (and `/try` pricing). Submitting a request **never** creates a subscription, assigns credits, or unlocks paid features.
 
-On every new request (and on retry if notify previously failed), details are emailed to **info@skalxai.app** via [FormSubmit](https://formsubmit.co) (no API key).
+On every new request (and on retry if notify previously failed), details are emailed to **info@skalxai.app** via [Resend](https://resend.com) when `RESEND_API_KEY` is set (FormSubmit is the fallback only if the key is missing).
 
 After submit, the UI invites the visitor to **Explore SkalX** (`/try`). That path does **not** grant credits, a trial subscription, or paid entitlements — generation stays gated until purchase or manual approval.
 
 ## Email
 
 - Destination: `info@skalxai.app` (override with `TRIAL_REQUEST_NOTIFY_EMAIL` if ever needed)
-- Provider: FormSubmit AJAX from `lib/email/send.ts`
-- **First submission only:** FormSubmit sends a confirmation link to `info@skalxai.app` — open that email and activate once. Later requests arrive normally.
+- Provider: Resend from `lib/email/send.ts` (`RESEND_API_KEY`, `RESEND_FROM_EMAIL`)
+- From address must use a domain verified in Resend (default `SkalX AI <noreply@skalxai.app>`)
+- Set the same env vars in Vercel/production — never commit the API key
 
 The request row is always stored as `pending` even if email delivery fails (`notify_error` on the row).
 
