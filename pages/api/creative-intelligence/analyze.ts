@@ -24,6 +24,14 @@ const SEARCH_API_KEY = process.env.SEARCH_API_KEY || process.env.SERPAPI_KEY;
 const META_AD_LIBRARY_TOKEN = process.env.META_AD_LIBRARY_ACCESS_TOKEN;
 const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta";
 
+// Shopify (and similar storefronts) rate-limit user agents that contain "bot"
+// with 429 local_rate_limited. A compatible browser-style agent is accepted.
+const PAGE_FETCH_HEADERS = {
+  "User-Agent": "Mozilla/5.0 (compatible; OptimX-ContentStudio/1.0)",
+  Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+  "Accept-Language": "en-US,en;q=0.9",
+};
+
 function normalizeCompetitorUrls(input: unknown): string[] {
   if (Array.isArray(input)) {
     return input.filter((u): u is string => typeof u === "string" && u.trim().length > 0);
@@ -101,9 +109,9 @@ function extractSocialUrlsFromDoc(doc: Document, baseUrl: string): { facebook: s
 async function fetchPageData(url: string) {
   const resp = await fetch(url, {
     redirect: "follow",
-    headers: { "User-Agent": "optimx-brand-bot/1.0" },
+    headers: PAGE_FETCH_HEADERS,
   });
-  if (!resp.ok) throw new Error("Failed to fetch page");
+  if (!resp.ok) throw new Error(`Failed to fetch page (${resp.status})`);
   const html = await resp.text();
   const dom = new JSDOM(html, { url });
   const doc = dom.window.document;
@@ -346,7 +354,7 @@ async function domainKeywordValidation(
   try {
     const url = candidate.url || `https://${candidate.domain}`;
     const resp = await fetch(url, {
-      headers: { "User-Agent": "optimx-brand-bot/1.0" },
+      headers: PAGE_FETCH_HEADERS,
       signal: AbortSignal.timeout(6000),
     });
     if (resp.ok) {
@@ -1129,7 +1137,7 @@ If brand_name is a common dictionary word (boat, apple, orange, nothing, noise, 
       let positioning = r.snippet || "";
       try {
         const compResp = await fetch(r.url || `https://${r.domain}`, {
-          headers: { "User-Agent": "optimx-brand-bot/1.0" },
+          headers: PAGE_FETCH_HEADERS,
           signal: AbortSignal.timeout(8000),
         });
         if (compResp.ok) {

@@ -15,6 +15,12 @@ const nextConfig = {
     middlewareClientMaxBodySize: '50mb',
   },
   serverExternalPackages: ['playwright', 'ffmpeg-static', 'sharp'],
+  // ffmpeg-static downloads its binary in a postinstall script. That file is
+  // not a static import, so Next file tracing omits it and the Vercel function
+  // spawns /var/task/node_modules/ffmpeg-static/ffmpeg (ENOENT) during voiceover mux.
+  outputFileTracingIncludes: {
+    '/api/commercial/generate': ['./node_modules/ffmpeg-static/ffmpeg'],
+  },
   webpack: (config: any, { isServer }: { isServer: boolean; dev: boolean }) => {
     if (isServer) {
       config.externals = config.externals || [];
