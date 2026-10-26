@@ -1,5 +1,6 @@
 // pages/api/auth/instagram/post.ts
 import type { NextApiRequest, NextApiResponse } from "next";
+import { getUserIdFromRequest } from '@/auth/request';
 import { readSavedIntegration } from '@/integrations/store';
 
 const version = process.env.FACEBOOK_API_VERSION || "23.0";
@@ -19,8 +20,13 @@ export default async function handler(
   }
 
   try {
-    const saved = await readSavedIntegration({ provider: "meta" });
-    if (!saved) return res.status(500).json({ error: "Missing integration in Supabase" });
+    const userId = await getUserIdFromRequest(req);
+    if (!userId) {
+      return res.status(401).json({ error: "missing_user", details: "No Supabase session token found in request." });
+    }
+
+    const saved = await readSavedIntegration({ provider: "meta", userId });
+    if (!saved) return res.status(400).json({ error: "no_integration", details: "No Instagram integration found for this user." });
 
     const igUserId = saved.igUserId;
     const pageAccessToken = saved.pageAccessToken;

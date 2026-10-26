@@ -518,9 +518,8 @@ export default function ImageLibraryPage(): JSX.Element {
         // Try to post to Instagram (if selected)
         if (postFormData.platforms.includes("Instagram")) {
           try {
-            const resp = await fetch("/api/auth/instagram/post", {
+            const resp = await authFetch("/api/auth/instagram/post", {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 image_url,
                 caption: postFormData.generatedCaption || postFormData.postName || "",

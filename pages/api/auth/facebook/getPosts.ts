@@ -1,19 +1,9 @@
 // pages/api/auth/facebook/getPosts.ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import { promises as fs } from "fs";
-import path from "path";
+import { getUserIdFromRequest } from '@/auth/request';
+import { readSavedIntegration } from '@/integrations/store';
 
-const DATA_FILE = path.join(process.cwd(), "data", "instagram.json");
 const VERSION = process.env.FACEBOOK_API_VERSION || "23.0";
-
-async function readSaved() {
-  try {
-    const raw = await fs.readFile(DATA_FILE, "utf8");
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
-}
 
 function safeJsonParse(text: string) {
   try { return JSON.parse(text); } catch { return text; }
@@ -21,12 +11,17 @@ function safeJsonParse(text: string) {
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
-    const saved = await readSaved();
-    const pageId = saved?.pageId ?? process.env.PAGE_ID;
-    const pageAccessToken = saved?.pageAccessToken ?? process.env.PAGE_ACCESS_TOKEN;
+    const userId = await getUserIdFromRequest(req);
+    if (!userId) {
+      return res.status(401).json({ error: "missing_user", details: "No Supabase session token found in request." });
+    }
+
+    const saved = await readSavedIntegration({ provider: "meta", userId });
+    const pageId = saved?.pageId;
+    const pageAccessToken = saved?.pageAccessToken;
 
     if (!pageId || !pageAccessToken) {
-      return res.status(500).json({ error: "Missing pageId or pageAccessToken (check data/instagram.json or env vars)" });
+      return res.status(400).json({ error: "no_integration", details: "No Facebook Page connected for this user." });
     }
 
     const fields = [

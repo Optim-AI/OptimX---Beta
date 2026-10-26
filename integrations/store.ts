@@ -10,10 +10,11 @@ export type PlatformId = (typeof PLATFORMS)[number];
  * - This module exposes two different kinds of helpers:
  *   1) Global (admin) app_settings flags: getStatuses / setStatus
  *   2) Per-user integration helpers: getUserStatuses / setUserStatusForUser,
- *      saveIntegration(userId optional) and readSavedIntegration(userId optional)
+ *      saveIntegration(userId) and readSavedIntegration(userId)
  *
- * By default the integration read/write helpers are now user-scoped when a userId
- * is passed. They will NOT silently update or return another user's row.
+ * The integration read/write helpers are strictly user-scoped. There is no
+ * "latest row for provider" fallback: a missing userId must never resolve to
+ * another user's tokens.
  */
 
 /* -------------------- Admin/global app_settings helpers -------------------- */
@@ -47,15 +48,17 @@ export async function setUserStatusForUser(userId: string, platformId: string, c
 /**
  * Save or update integration row.
  * - IMPORTANT: store pageAccessToken in access_token column.
- * - If userId is provided, this will only upsert rows for that user (no cross-user updates).
- * - If userId is NOT provided, behavior is admin-style: find an existing provider row (last updated) or insert new.
+ * - Only upserts rows for the given user (no cross-user updates). Throws without a userId.
  */
 export async function saveIntegration(
   savedObj: any,
-  options?: { userId?: string | null; provider?: string }
+  options: { userId: string; provider?: string }
 ) {
   const provider = options?.provider ?? "meta";
   const userId = options?.userId ?? null;
+  if (!userId) {
+    throw new Error("saveIntegration requires userId");
+  }
 
   const pageAccessToken = savedObj?.pageAccessToken ?? savedObj?.page_access_token ?? null;
   const userAccessToken = savedObj?.userAccessToken ?? savedObj?.user_access_token ?? null;
@@ -72,33 +75,6 @@ export async function saveIntegration(
     adAccountIdRaw,
     savedAt: new Date().toISOString(),
   };
-
-  // If userId not provided, get latest for provider (admin mode)
-  if (!userId) {
-    const existing = await IntegrationDAO.getLatestByProvider(provider);
-    if (existing) {
-      // Update existing
-      return IntegrationDAO.upsert({
-        userId: existing.userId,
-        provider,
-        providerUserId: igUserId ?? pageId ?? null,
-        adAccountId: ad_account_id,
-        pageId,
-        igUserId,
-        accessToken: pageAccessToken,
-        refreshToken: userAccessToken,
-        tokenExpiresAt: savedObj?.token_expires_at || null,
-        scopes: savedObj?.scopes || null,
-        raw: savedObj?.raw ?? savedObj,
-        metadata,
-      });
-    }
-  }
-
-  // User-scoped mode (or admin mode with no existing integration)
-  if (!userId) {
-    throw new Error("saveIntegration requires userId when no existing integration found");
-  }
 
   return IntegrationDAO.upsert({
     userId,
@@ -123,24 +99,16 @@ export async function saveIntegration(
 }
 
 /**
- * Read latest integration for provider and optional userId.
- * - If userId is provided, returns the latest integration row for that user and provider (or null).
- * - If userId is NOT provided, returns the latest provider row (admin fallback).
- *
- * IMPORTANT: to avoid leaking other users' tokens, prefer calling this with userId.
+ * Read the integration row for a user and provider.
+ * Returns null when userId is missing, so callers treat it as "not connected"
+ * instead of receiving another user's tokens.
  */
-export async function readSavedIntegration(options?: { userId?: string | null; provider?: string }) {
+export async function readSavedIntegration(options: { userId: string | null; provider?: string }) {
   const provider = options?.provider ?? "meta";
   const userId = options?.userId ?? null;
+  if (!userId) return null;
 
-  let integration;
-
-  if (userId) {
-    integration = await IntegrationDAO.findByUserAndProvider(userId, provider);
-  } else {
-    integration = await IntegrationDAO.getLatestByProvider(provider);
-  }
-
+  const integration = await IntegrationDAO.findByUserAndProvider(userId, provider);
   if (!integration) return null;
 
   // Rebuild the expected format for backward compatibility

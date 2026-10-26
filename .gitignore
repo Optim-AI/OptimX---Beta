@@ -29,3 +29,6 @@ tsconfig.tsbuildinfo
 
 # Supabase
 supabase/.temp/
+
+# Local token stores and SQLite files (never commit)
+data/
