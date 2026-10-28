@@ -13,12 +13,12 @@ import {
   type SessionType,
   SessionNameModal,
   BrandOnboarding,
-  BrandGuidelineModal,
   formatTimestamp,
   mapFullAnalyzeToBrandSnapshot,
 } from '@/app/web/src/components/creative-studio';
 import { authFetch, safeResponseJson } from '@/lib/utils';
 import { saveBrandSnapshot } from '@/app/web/src/components/creative-studio/utils';
+import BrandKitCard from '@/app/web/src/components/creative-studio/BrandKitCard';
 
 export default function BrandStudioLanding() {
   const router = useRouter();
@@ -30,7 +30,7 @@ export default function BrandStudioLanding() {
   // Brand state
   const [brand, setBrand] = useState<BrandSnapshot | null>(null);
   const [showBrandOnboarding, setShowBrandOnboarding] = useState(false);
-  const [showBrandGuidelineModal, setShowBrandGuidelineModal] = useState(false);
+  const [brandLoaded, setBrandLoaded] = useState(false);
   const [isAnalyzingBrand, setIsAnalyzingBrand] = useState(false);
   const [onboardingMode, setOnboardingMode] = useState<'website' | 'manual'>('website');
 
@@ -128,22 +128,14 @@ export default function BrandStudioLanding() {
         const data = await res.json();
         if (!cancelled && data.brandSnapshot) {
           setBrand(data.brandSnapshot);
-          // Check guideline_seen from DB preferences
-          try {
-            const prefRes = await authFetch('/api/user/preferences');
-            const prefData = await prefRes.json();
-            if (!cancelled && !prefData.preferences?.guideline_seen) {
-              setShowBrandGuidelineModal(true);
-            }
-          } catch {
-            // ignore preference load failure
-          }
+          setBrandLoaded(true);
           return;
         }
       } catch {
         // no snapshot available
       }
       if (cancelled) return;
+      setBrandLoaded(true);
       setShowBrandOnboarding(true);
     })();
     return () => { cancelled = true; };
@@ -249,24 +241,6 @@ export default function BrandStudioLanding() {
 
   // ============== Brand Handlers ==============
 
-  async function handleWebsiteAnalyzeForEdit(website: string): Promise<BrandSnapshot | null> {
-    try {
-      const response = await authFetch('/api/brand/fullAnalyze', {
-        method: 'POST',
-        body: JSON.stringify({ url: website }),
-      });
-      const data = await safeResponseJson<{ result?: unknown; error?: string; details?: string }>(response);
-      if (!data.result) {
-        showError(data.error || data.details || 'Could not analyze website. Please try manual setup.');
-        return null;
-      }
-      return mapFullAnalyzeToBrandSnapshot(data.result);
-    } catch (err: any) {
-      showError(`Error analyzing website: ${err?.message || 'Unknown error'}. Please try manual setup.`);
-      return null;
-    }
-  }
-
   async function handleWebsiteBrandSetup(website: string) {
     setIsAnalyzingBrand(true);
     // Keep onboarding modal open so user sees "Analyzing..." UI
@@ -283,10 +257,10 @@ export default function BrandStudioLanding() {
       if (data.result) {
         const brandSnapshot = mapFullAnalyzeToBrandSnapshot(data.result);
         setBrand(brandSnapshot);
-        saveBrandSnapshot(brandSnapshot);
+        await saveBrandSnapshot(brandSnapshot);
         setShowBrandOnboarding(false);
-        // Show stored brand guideline in the Brand Studio page
-        setShowBrandGuidelineModal(true);
+        // The brand is now the user's Brand Kit — review it there.
+        router.push('/brand-kit');
       } else {
         const errorMsg = data.error || data.details || 'Could not analyze website.';
         setShowBrandOnboarding(true);
@@ -301,7 +275,7 @@ export default function BrandStudioLanding() {
     }
   }
 
-  function handleManualBrandSetup(data: {
+  async function handleManualBrandSetup(data: {
     name: string;
     offering: string;
     audience: string;
@@ -321,10 +295,10 @@ export default function BrandStudioLanding() {
     };
 
     setBrand(brandSnapshot);
-    saveBrandSnapshot(brandSnapshot);
+    await saveBrandSnapshot(brandSnapshot);
     setShowBrandOnboarding(false);
-    // Show stored brand guideline so user can view/edit
-    setShowBrandGuidelineModal(true);
+    // The brand is now the user's Brand Kit — add the logo, colours and fonts there.
+    router.push('/brand-kit');
   }
 
   function handleSkipBrandSetup() {
@@ -338,14 +312,6 @@ export default function BrandStudioLanding() {
     setBrand(minimalBrand);
     saveBrandSnapshot(minimalBrand);
     setShowBrandOnboarding(false);
-    setShowBrandGuidelineModal(true);
-  }
-
-  function updateBrandGuideline(updated: BrandSnapshot) {
-    setBrand(updated);
-    saveBrandSnapshot(updated);
-    authFetch('/api/user/preferences', { method: 'PUT', body: JSON.stringify({ preferences: { guideline_seen: true } }) }).catch(() => {});
-    setShowBrandGuidelineModal(false);
   }
 
   // ============== Separate sessions by type ==============
@@ -491,40 +457,8 @@ export default function BrandStudioLanding() {
               </div>
             )}
 
-            {/* Brand Guideline Section */}
-            {brand && (
-              <div className="mb-12">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-semibold" style={{ color: colors.foreground }}>Brand Guideline</h2>
-                  <button
-                    onClick={() => setShowBrandGuidelineModal(true)}
-                    className="text-sm font-medium"
-                    style={{ color: colors.primary }}
-                  >
-                    View / Edit
-                  </button>
-                </div>
-                <div className="p-4 rounded-xl" style={{ backgroundColor: colors.muted, border: `1px solid ${colors.border}` }}>
-                  <div className="flex items-center gap-4">
-                    {brand.logo && (
-                      <img
-                        src={brand.logo}
-                        alt={brand.name}
-                        className="h-12 w-12 object-contain rounded-lg p-1"
-                        style={{ border: `1px solid ${colors.border}`, backgroundColor: colors.card }}
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).style.display = 'none';
-                        }}
-                      />
-                    )}
-                    <div>
-                      <h3 className="font-semibold" style={{ color: colors.foreground }}>{brand.name}</h3>
-                      <p className="text-sm" style={{ color: colors.mutedForeground }}>{brand.offering || brand.description}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
+            {/* Brand Kit (replaces the old Brand Guideline) */}
+            {brandLoaded && <BrandKitCard brand={brand} />}
 
             {/* Create New Section */}
             <div>
@@ -622,19 +556,6 @@ export default function BrandStudioLanding() {
             onManualSubmit={handleManualBrandSetup}
             onSkip={handleSkipBrandSetup}
             isLoading={isAnalyzingBrand}
-          />
-        )}
-
-        {/* Brand Guideline Modal */}
-        {showBrandGuidelineModal && brand && (
-          <BrandGuidelineModal
-            brand={brand}
-            onUpdate={updateBrandGuideline}
-            onClose={() => {
-              authFetch('/api/user/preferences', { method: 'PUT', body: JSON.stringify({ preferences: { guideline_seen: true } }) }).catch(() => {});
-              setShowBrandGuidelineModal(false);
-            }}
-            onWebsiteAnalyze={handleWebsiteAnalyzeForEdit}
           />
         )}
 

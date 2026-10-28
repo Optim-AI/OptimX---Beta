@@ -6,7 +6,7 @@
  */
 
 import { db } from '@/database/client';
-import { payments, profiles, subscriptions } from '@/database/schema';
+import { brandKits, payments, profiles, subscriptions } from '@/database/schema';
 import { and, eq, gt, inArray, or } from 'drizzle-orm';
 import { parseTryOnboarding } from '@/lib/onboarding/try-onboarding';
 import {
@@ -37,7 +37,7 @@ export type PostAuthStateLoader = (userId: string) => Promise<PostAuthState>;
 async function loadPostAuthState(userId: string): Promise<PostAuthState> {
   const nowIso = new Date().toISOString();
 
-  const [profileRows, paymentRows, subscriptionRows] = await Promise.all([
+  const [profileRows, paymentRows, subscriptionRows, kitRows] = await Promise.all([
     db
       .select({
         businessName: profiles.businessName,
@@ -71,6 +71,16 @@ async function loadPostAuthState(userId: string): Promise<PostAuthState> {
         )
       )
       .limit(10),
+    // A Brand Kit means the user has already set up their brand. Never block sign-in on it.
+    db
+      .select({ name: brandKits.name })
+      .from(brandKits)
+      .where(eq(brandKits.userId, userId))
+      .limit(1)
+      .catch((e: unknown) => {
+        console.error('[postAuth] brand kit lookup failed', { userId, error: (e as Error)?.message });
+        return [] as Array<{ name: string }>;
+      }),
   ]);
 
   const profile = profileRows[0] ?? null;
@@ -79,7 +89,7 @@ async function loadPostAuthState(userId: string): Promise<PostAuthState> {
   const onboarding = parseTryOnboarding(preferences);
   const brandSnapshot = profile?.brandSnapshot as { name?: string } | null;
   const brandSnapshotName =
-    typeof brandSnapshot?.name === 'string' ? brandSnapshot.name : null;
+    kitRows[0]?.name ?? (typeof brandSnapshot?.name === 'string' ? brandSnapshot.name : null);
 
   let subscriptionStatus: string | null = null;
   let subscriptionCurrentPeriodEnd: string | null = null;

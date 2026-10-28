@@ -23,6 +23,7 @@ export { GenerationLocksDAO } from './models/GenerationLocks.dao';
 
 // Reports DAO
 export { ReportDAO } from './models/Report.dao';
+export { BrandKitDAO } from './models/BrandKit.dao';
 
 // Note: Removed DAOs for tables that don't exist in production:
 // - GoogleAdsDAO (google_ads_tokens table removed)

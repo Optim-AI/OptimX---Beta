@@ -113,6 +113,17 @@ export function formatQcContextForEvaluator(input: PosterQcInput): string {
     "Design refs are INSPIRATION ONLY — do not fail for not copying them. Fail if reference product replaced the user's product."
   );
 
+  if (input.asset.template) {
+    parts.push("\n=== TEMPLATE COMPOSITION ===");
+    parts.push(
+      `This poster was composed from the "${input.asset.template.id}" layout template: the background photo was generated without text or product, ` +
+        "the user's exact product photo was cut out and placed in, and all text was typeset in code with the brand fonts. " +
+        "Layout, typography, badge and CTA styling follow the template, NOT the concept's composition, typography or graphic-language notes — do not fail for that. " +
+        "Judge the scene (setting, props, lighting, mood) against the concept, the copy against the approved text, and the layout only on legibility, hierarchy and balance. " +
+        "Do fail if the product looks pasted in (lighting mismatch, floating, no grounding) or if text collides with the product."
+    );
+  }
+
   parts.push("\n=== EVALUATION RULES ===");
   parts.push(
     "Judge EXPECTED vs OBSERVED against the specification. Do NOT invent a better creative concept."

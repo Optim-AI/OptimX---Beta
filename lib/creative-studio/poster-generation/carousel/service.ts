@@ -8,6 +8,12 @@
  * Each request works within a time budget; the client re-calls generate to resume.
  */
 
+import type { BrandKit } from "@/lib/brand-kit/types";
+import {
+  defaultBrandKitGetter,
+  loadBrandKitForPosters,
+  type BrandKitGetter,
+} from "@/lib/brand-kit/for-posters";
 import { randomUUID } from "crypto";
 import { CreditsDAO } from "@/database/models/Credits.dao";
 import type { StructuredGenerator } from "@/lib/creative-studio/commercial-production/commercial-director/llm";
@@ -93,6 +99,8 @@ export type CarouselServiceDeps = {
   storeImage: typeof storePosterGeneratedImage;
   loadImage: SlideImageLoader;
   getBalance: (userId: string) => Promise<number>;
+  /** The user's default Brand Kit (default: database lookup; failures fall back to none) */
+  getBrandKit?: BrandKitGetter;
   /** Parallel provider calls per request (default 2) */
   concurrency?: number;
   /** Lease length; must exceed one provider+storage+commit cycle (default 6 min) */
@@ -166,6 +174,7 @@ type SessionContext = {
   brief: NonNullable<PosterGenerationSession["brief"]>;
   strategy: NonNullable<PosterGenerationSession["strategy"]>;
   contexts: ReturnType<typeof strategistInputFromBrief>;
+  brandKit: BrandKit | null;
 };
 
 export class PosterCarouselService {
@@ -180,6 +189,7 @@ export class PosterCarouselService {
       timeBudgetMs: 200_000,
       now: () => Date.now(),
       newId: defaultNewId,
+      getBrandKit: defaultBrandKitGetter,
       ...deps,
     };
   }
@@ -221,6 +231,7 @@ export class PosterCarouselService {
       brief: session.brief,
       strategy: session.strategy,
       contexts: strategistInputFromBrief(session.brief),
+      brandKit: await loadBrandKitForPosters(userId, this.deps.getBrandKit),
     };
   }
 
@@ -459,6 +470,7 @@ export class PosterCarouselService {
             brand: ctx.contexts.brand,
             references: ctx.contexts.references,
             generationId: options.generationId,
+            brandKit: ctx.brandKit,
           });
           assertValidGenerationSpecification(built.specification, built.slideStrategy);
           return built.specification;
@@ -591,6 +603,7 @@ export class PosterCarouselService {
             sessionId: campaign.sessionId,
             generationId: options.generationId,
             buffer,
+            contentType: result.mimeType || undefined,
           })
         );
       } catch (e) {

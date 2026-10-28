@@ -29,6 +29,21 @@ import {
   tryAcquireGenerationLock,
 } from "../concurrency";
 import { publicErrorMessage } from "../production-safety";
+import {
+  loadBrandKitForPosters,
+  type BrandKitGetter,
+} from "@/lib/brand-kit/for-posters";
+import type { BrandKit } from "@/lib/brand-kit/types";
+import { getProductCutout, type ProductCutout } from "@/lib/creative-studio/product-cutouts";
+import {
+  generateTemplatePoster,
+  loadBrandAssets,
+  posterTemplatesEnabled,
+  selectTemplate,
+  type BrandAssets,
+} from "@/lib/creative-studio/poster-templates";
+import type { AdFormatKind } from "./ad-format";
+import { detectImageMimeType } from "@/lib/creative-studio/nano-banana";
 
 export type GeneratePostersOptions = {
   sessionId: string;
@@ -51,7 +66,41 @@ export type GeneratePostersOptions = {
   maxProviderRetries?: number;
   /** Skip live provider — tests only */
   skipStorage?: boolean;
+  /** Inject Brand Kit lookup for tests (default: the user's default kit) */
+  getBrandKit?: BrandKitGetter;
+  /** Template posters (scene + cut-out + code-rendered type); default: POSTER_TEMPLATES env flag */
+  templates?: boolean;
+  /** Inject for tests */
+  getCutout?: (input: { userId: string; source: string }) => Promise<ProductCutout>;
+  loadBrandAssets?: (brandKit: BrandKit | null, spec: GenerationSpecification) => Promise<BrandAssets>;
 };
+
+type TemplateContext = { cutout: ProductCutout & { png: Buffer }; brand: BrandAssets };
+
+/**
+ * Cut out the product once per run. Null (→ the full-AI path) when there is
+ * no product photo, no cut-out provider, or the cut-out isn't clean.
+ */
+async function prepareTemplateContext(
+  options: GeneratePostersOptions,
+  spec: GenerationSpecification,
+  brandKit: BrandKit | null
+): Promise<TemplateContext | null> {
+  const source = spec.references.find((r) => r.kind === "product" && r.url)?.url;
+  if (!source) return null;
+  try {
+    const cutout = await (options.getCutout ?? getProductCutout)({ userId: options.userId, source });
+    if (!cutout.ok || !cutout.png) {
+      console.info("[posterGenerate] template path skipped", { reason: cutout.error, provider: cutout.provider });
+      return null;
+    }
+    const brand = await (options.loadBrandAssets ?? loadBrandAssets)(brandKit, spec);
+    return { cutout: cutout as ProductCutout & { png: Buffer }, brand };
+  } catch (e) {
+    console.warn("[posterGenerate] template setup failed; using the full-AI path", (e as Error).message);
+    return null;
+  }
+}
 
 export type VariantGenerationOutcome = {
   variantId: string;
@@ -96,8 +145,13 @@ function resolveConcepts(
         stage: "resolveConcepts",
       });
     }
-    // Same concept, N variants (usually 1)
-    return Array.from({ length: variantCount }, () => c);
+    // N variants = the chosen concept first, then the session's other concepts,
+    // so the user gets genuinely different options instead of near-duplicates.
+    // A concept repeats only when the session has fewer concepts than requested.
+    const others = session.concepts.filter((x) => x.id !== c.id);
+    return Array.from({ length: variantCount }, (_, i) =>
+      i === 0 ? c : others[i - 1] ?? c
+    );
   }
 
   const selected = session.selectedConceptIds.length
@@ -208,8 +262,25 @@ async function generatePostersForSessionUnlocked(
   // Idempotency: reuse successful assets for these concept IDs unless forced
   if (!options.forceRegenerate) {
     const conceptIds = new Set(concepts.map((c) => c.id));
+    // Only reuse posters rendered with the current copy — after a headline/CTA
+    // edit the old posters no longer match what the user approved.
+    const strategyNow = session.strategy;
+    const matchesCurrentCopy = (specificationId: string) => {
+      const spec = session.specifications.find((s) => s.id === specificationId);
+      if (!spec) return true; // legacy assets without a stored spec
+      const o = strategyNow.userOverrides || {};
+      const same = (a?: string | null, b?: string | null) => (a || "").trim() === (b || "").trim();
+      return (
+        same(spec.renderCopy.headline, o.headline || strategyNow.copy.headline) &&
+        (!o.cta || same(spec.renderCopy.cta, o.cta)) &&
+        (!o.message || same(spec.renderCopy.supporting, o.message))
+      );
+    };
     const existing = session.assets.filter(
-      (a) => a.status === "generated" && conceptIds.has(a.conceptId)
+      (a) =>
+        a.status === "generated" &&
+        conceptIds.has(a.conceptId) &&
+        matchesCurrentCopy(a.specificationId)
     );
     if (existing.length >= requestedVariants) {
       return {
@@ -266,11 +337,15 @@ async function generatePostersForSessionUnlocked(
   }
 
   const contexts = strategistInputFromBrief(session.brief);
+  const brandKit = await loadBrandKitForPosters(options.userId, options.getBrandKit);
   session = await sessions.startGeneration(options.sessionId, options.userId);
 
   const outcomes: VariantGenerationOutcome[] = [];
   let creditsCharged = 0;
   let actualAttempts = 0;
+  const templatesOn = options.templates ?? posterTemplatesEnabled();
+  let templateCtx: TemplateContext | null | undefined = templatesOn ? undefined : null;
+  const usedTemplates: string[] = [];
 
   for (let i = 0; i < concepts.length; i++) {
     const concept = concepts[i];
@@ -293,6 +368,7 @@ async function generatePostersForSessionUnlocked(
       brand: contexts.brand,
       references: contexts.references,
       variantIndex: i,
+      brandKit,
     });
 
     assertValidGenerationSpecification(spec, session.strategy!);
@@ -302,6 +378,21 @@ async function generatePostersForSessionUnlocked(
       options.userId,
       spec
     );
+
+    if (templateCtx === undefined) {
+      templateCtx = await prepareTemplateContext(options, spec, brandKit);
+    }
+    let template = templateCtx
+      ? selectTemplate({
+          kind: (spec.artDirection?.adFormat?.kind as AdFormatKind | undefined) ?? "general",
+          aspect: spec.aspectRatio,
+          variantIndex: i,
+          hasCutout: true,
+          concept,
+          used: usedTemplates,
+        })
+      : null;
+    if (template) usedTemplates.push(template.id);
 
     let attempts = 0;
     let lastError: string | null = null;
@@ -313,47 +404,124 @@ async function generatePostersForSessionUnlocked(
       attempts += 1;
       actualAttempts += 1;
 
-      const request = buildImageGenerationRequest({
-        specification: spec,
-        userId: options.userId,
-      });
+      let produced: {
+        imageBuffer: Buffer | null;
+        imageDataUrl: string;
+        mimeType: string | null;
+        provider: string;
+        model: string;
+        scene: Buffer | null;
+        template: PosterGeneratedAsset["template"];
+      } | null = null;
 
-      // Persist compiled prompt on spec for debug
-      session = await sessions.addGenerationSpecification(
-        options.sessionId,
-        options.userId,
-        { ...spec, compiledPrompt: request.prompt }
-      );
-
-      const result = await provider.generate(request);
-      durationMs = result.durationMs || 0;
-
-      if (!result.ok || !result.imageDataUrl) {
-        console.error("[posterGenerate] provider failed", {
-          generationId: spec.generationId,
-          errorCode: result.errorCode,
-          errorMessage: result.errorMessage,
+      if (template && templateCtx) {
+        const t = await generateTemplatePoster({
+          spec,
+          template,
+          cutout: templateCtx.cutout.png,
+          brand: templateCtx.brand,
+          provider,
+          userId: options.userId,
         });
-        lastError = publicErrorMessage(
-          result.errorCode || "PROVIDER_FAILED"
+        durationMs = t.durationMs;
+        if (t.scenePrompt) {
+          session = await sessions.addGenerationSpecification(options.sessionId, options.userId, {
+            ...spec,
+            compiledPrompt: t.scenePrompt,
+          });
+        }
+        if (!t.ok) {
+          console.error("[posterGenerate] template poster failed", {
+            generationId: spec.generationId,
+            templateId: template.id,
+            errorCode: t.errorCode,
+            errorMessage: t.errorMessage,
+          });
+          // A render bug shouldn't cost the user a poster: retry on the full-AI path.
+          if (t.errorCode === "TEMPLATE_RENDER") template = null;
+          lastError = publicErrorMessage(t.errorCode);
+          lastErrorCode = t.errorCode;
+          continue;
+        }
+        produced = {
+          imageBuffer: t.imageBuffer,
+          imageDataUrl: `data:image/png;base64,${t.imageBuffer.toString("base64")}`,
+          mimeType: t.mimeType,
+          provider: t.provider,
+          model: t.model,
+          scene: t.sceneBuffer,
+          template: {
+            id: template.id,
+            version: template.version,
+            sceneUrl: null,
+            cutoutUrl: templateCtx.cutout.url,
+            manifest: t.manifest,
+          },
+        };
+      } else {
+        const request = buildImageGenerationRequest({
+          specification: spec,
+          userId: options.userId,
+        });
+
+        // Persist compiled prompt on spec for debug
+        session = await sessions.addGenerationSpecification(
+          options.sessionId,
+          options.userId,
+          { ...spec, compiledPrompt: request.prompt }
         );
-        lastErrorCode = result.errorCode || "PROVIDER_FAILED";
-        continue;
+
+        const result = await provider.generate(request);
+        durationMs = result.durationMs || 0;
+
+        if (!result.ok || !result.imageDataUrl) {
+          console.error("[posterGenerate] provider failed", {
+            generationId: spec.generationId,
+            errorCode: result.errorCode,
+            errorMessage: result.errorMessage,
+          });
+          lastError = publicErrorMessage(
+            result.errorCode || "PROVIDER_FAILED"
+          );
+          lastErrorCode = result.errorCode || "PROVIDER_FAILED";
+          continue;
+        }
+        produced = {
+          imageBuffer: result.imageBuffer ?? null,
+          imageDataUrl: result.imageDataUrl,
+          mimeType: result.mimeType ?? null,
+          provider: result.provider,
+          model: result.model,
+          scene: null,
+          template: null,
+        };
       }
 
-      let imageUrl = result.imageDataUrl;
+      let imageUrl = produced.imageDataUrl;
       let storagePath: string | null = null;
 
-      if (!options.skipStorage && result.imageBuffer) {
+      if (!options.skipStorage && produced.imageBuffer) {
         try {
           const stored = await storeImage({
             userId: options.userId,
             sessionId: session.id,
             generationId: spec.generationId,
-            buffer: result.imageBuffer,
+            buffer: produced.imageBuffer,
+            contentType: produced.mimeType || undefined,
           });
           imageUrl = stored.publicUrl;
           storagePath = stored.storagePath;
+          if (produced.scene && produced.template) {
+            // Keep the text-free scene so text edits can re-render without a new AI call.
+            const scene = await storeImage({
+              userId: options.userId,
+              sessionId: session.id,
+              generationId: `${spec.generationId}-scene`,
+              buffer: produced.scene,
+              contentType: detectImageMimeType(produced.scene),
+            }).catch(() => null);
+            produced.template.sceneUrl = scene?.publicUrl ?? null;
+          }
         } catch (e) {
           // Fall back to data URL — still a successful generation
           console.warn("[posterGenerate] storage failed, using data URL", e);
@@ -384,13 +552,14 @@ async function generatePostersForSessionUnlocked(
         specificationId: spec.id,
         imageUrl,
         storagePath,
-        provider: result.provider,
-        model: result.model,
+        provider: produced.provider,
+        model: produced.model,
         creditsConsumed: 1,
         status: "generated",
         attemptCount: attempts,
         durationMs,
         createdAt: new Date().toISOString(),
+        template: produced.template,
       };
     }
 

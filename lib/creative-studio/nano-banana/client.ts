@@ -55,6 +55,38 @@ export function getPosterImageModel(): string {
   return process.env.POSTER_IMAGE_MODEL || "gemini-3.1-flash-image";
 }
 
+export const GEMINI_IMAGE_SIZES = ["1K", "2K", "4K"] as const;
+export type GeminiImageSize = (typeof GEMINI_IMAGE_SIZES)[number];
+
+/**
+ * Poster output resolution. The provider default (1K) is too soft for ads,
+ * so posters request 2K unless POSTER_IMAGE_SIZE overrides it.
+ */
+export function getPosterImageSize(): GeminiImageSize {
+  const fromEnv = (process.env.POSTER_IMAGE_SIZE || "").trim().toUpperCase();
+  return (GEMINI_IMAGE_SIZES as readonly string[]).includes(fromEnv)
+    ? (fromEnv as GeminiImageSize)
+    : "2K";
+}
+
+/** Gemini may return JPEG or PNG; detect from magic bytes instead of assuming PNG. */
+export function detectImageMimeType(buffer: Buffer): string {
+  if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+    return "image/jpeg";
+  }
+  if (buffer.length >= 4 && buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47) {
+    return "image/png";
+  }
+  if (
+    buffer.length >= 12 &&
+    buffer.toString("ascii", 0, 4) === "RIFF" &&
+    buffer.toString("ascii", 8, 12) === "WEBP"
+  ) {
+    return "image/webp";
+  }
+  return "image/png";
+}
+
 /**
  * Key resolution matches poster route:
  * NANO_API_KEY || GEMINI_API_KEY || GEMINI_VEO_API_KEY
@@ -260,11 +292,14 @@ export interface GenerateGeminiImageInput {
   maxRetries?: number;
   apiKey?: string;
   model?: string;
+  /** Output resolution; omitted = provider default (1K). */
+  imageSize?: GeminiImageSize;
 }
 
 export interface GenerateGeminiImageResult {
   buffer: Buffer;
   dataUrl: string;
+  mimeType: string;
   model: string;
   provider: "nano_banana";
   aspectRatio: GeminiImageAspectRatio;
@@ -318,7 +353,10 @@ export async function generateGeminiImage(
     contents: [{ parts }],
     generationConfig: {
       responseModalities: ["Image"],
-      imageConfig: { aspectRatio },
+      imageConfig: {
+        aspectRatio,
+        ...(input.imageSize ? { imageSize: input.imageSize } : {}),
+      },
       candidateCount: 1,
     },
   };
@@ -365,10 +403,12 @@ export async function generateGeminiImage(
     throw new Error("No image returned from Gemini (unable to extract).");
   }
 
-  const dataUrl = `data:image/png;base64,${imageBuffer.toString("base64")}`;
+  const mimeType = detectImageMimeType(imageBuffer);
+  const dataUrl = `data:${mimeType};base64,${imageBuffer.toString("base64")}`;
   return {
     buffer: imageBuffer,
     dataUrl,
+    mimeType,
     model,
     provider: "nano_banana",
     aspectRatio,

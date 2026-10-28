@@ -15,14 +15,24 @@ import type {
   GenerationSpecReference,
   GenerationSpecification,
   MarketingStrategy,
+  PosterArtDirection,
   PosterAspectRatio,
 } from "../types";
+import {
+  copyDensityForConcept,
+  dedupeCopyLines,
+  filterCopyForDensity,
+  trimPosterPhrase,
+  type PosterCopyDensity,
+} from "./copy-density";
 import {
   formatThemeRecipeForGeneration,
   resolveThemeRecipe,
   type ThemeRecipe,
 } from "../theme-recipes";
 import { PosterGenerationError } from "./generation-errors";
+import { resolveAdFormat, type AdFormat } from "./ad-format";
+import type { BrandKit } from "@/lib/brand-kit/types";
 
 function blendThemeField(
   themeLine: string,
@@ -101,6 +111,13 @@ export type BuildGenerationSpecificationInput = {
   variantId?: string;
   generationId?: string;
   specificationId?: string;
+  /**
+   * Trim copy to the concept's text budget (default true). Carousel slides
+   * pass false because their copy is already planned per slide.
+   */
+  applyCopyDensity?: boolean;
+  /** The user's default Brand Kit, if they have one */
+  brandKit?: BrandKit | null;
 };
 
 function newId(prefix: string): string {
@@ -122,22 +139,13 @@ function platformForAspect(aspect: PosterAspectRatio): string {
   }
 }
 
-function buildCopyHierarchy(
-  strategy: MarketingStrategy
-): { renderCopy: GenerationSpecification["renderCopy"]; copyHierarchy: GenerationCopySlot[] } {
+/** Copy that was already planned per slide (carousels): render it as given. */
+function buildPlannedCopyHierarchy(
+  strategy: MarketingStrategy,
+  headline: string,
+  density: PosterCopyDensity
+): ReturnType<typeof buildCopyHierarchy> {
   const overrides = strategy.userOverrides || {};
-  const headline =
-    (overrides.headline && overrides.headline.trim()) ||
-    strategy.copy.headline.trim();
-  if (!headline) {
-    throw new PosterGenerationError({
-      code: "VALIDATION",
-      message:
-        "Cannot build GenerationSpecification without approved headline copy from MarketingStrategy",
-      stage: "buildCopy",
-    });
-  }
-
   const supporting =
     (overrides.message && overrides.message.trim()) ||
     strategy.copy.supporting ||
@@ -154,43 +162,118 @@ function buildCopyHierarchy(
     { role: "primary", text: headline, importance: "required" },
   ];
   if (productLine?.trim()) {
-    copyHierarchy.push({
-      role: "product_line",
-      text: productLine.trim(),
-      importance: "required",
-    });
+    copyHierarchy.push({ role: "product_line", text: productLine.trim(), importance: "required" });
   }
   if (supporting?.trim()) {
-    copyHierarchy.push({
-      role: "secondary",
-      text: supporting.trim(),
-      importance: "optional",
-    });
+    copyHierarchy.push({ role: "secondary", text: supporting.trim(), importance: "optional" });
   }
   for (const badge of badges.slice(0, 3)) {
-    copyHierarchy.push({
-      role: "badge",
-      text: badge,
-      importance: "optional",
-    });
+    copyHierarchy.push({ role: "badge", text: badge, importance: "optional" });
   }
   if (cta?.trim()) {
-    copyHierarchy.push({
-      role: "cta",
-      text: cta.trim(),
-      importance: "optional",
-    });
+    copyHierarchy.push({ role: "cta", text: cta.trim(), importance: "optional" });
   }
 
   return {
+    renderCopy: { headline, supporting, productLine, cta, badges },
+    copyHierarchy,
+    density,
+    textBudgetRule: "Render the planned copy for this slide.",
+  };
+}
+
+function buildCopyHierarchy(
+  strategy: MarketingStrategy,
+  concept: CreativeConcept,
+  format: AdFormat,
+  applyCopyDensity = true
+): {
+  renderCopy: GenerationSpecification["renderCopy"];
+  copyHierarchy: GenerationCopySlot[];
+  density: PosterCopyDensity;
+  textBudgetRule: string;
+} {
+  const overrides = strategy.userOverrides || {};
+  const headline =
+    (overrides.headline && overrides.headline.trim()) ||
+    strategy.copy.headline.trim();
+  if (!headline) {
+    throw new PosterGenerationError({
+      code: "VALIDATION",
+      message:
+        "Cannot build GenerationSpecification without approved headline copy from MarketingStrategy",
+      stage: "buildCopy",
+    });
+  }
+
+  // The concept's text budget decides how many lines render; repeats are dropped.
+  const density = copyDensityForConcept(concept);
+  if (!applyCopyDensity) {
+    return buildPlannedCopyHierarchy(strategy, headline, density);
+  }
+  const filtered = filterCopyForDensity({ strategy, density });
+
+  // The ad format can need copy the budget would drop: the offer/rating badge
+  // on offer and social-proof ads, and the CTA where the objective is to act.
+  if (format.heroBadge && !filtered.badges.length) {
+    const proof = overrides.offer?.trim() || strategy.copy.badges?.[0]?.trim();
+    if (proof) filtered.badges = [overrides.offer?.trim() ? proof : trimPosterPhrase(proof, 6)];
+  }
+  if (format.ctaRequired && !filtered.cta && strategy.copy.cta?.trim()) {
+    filtered.cta = trimPosterPhrase(strategy.copy.cta.trim(), 4);
+  }
+
+  const candidates: GenerationCopySlot[] = [
+    { role: "primary", text: filtered.headline, importance: "required" },
+  ];
+  if (filtered.productLine) {
+    candidates.push({
+      role: "product_line",
+      text: filtered.productLine,
+      importance: "required",
+    });
+  }
+  if (filtered.supporting) {
+    candidates.push({
+      role: "secondary",
+      text: filtered.supporting,
+      importance: "optional",
+    });
+  }
+  for (const badge of filtered.badges) {
+    candidates.push({ role: "badge", text: badge, importance: "optional" });
+  }
+  // A user-supplied CTA is always kept, even if it repeats other copy.
+  const userCta = !!(overrides.cta && overrides.cta.trim());
+  if (filtered.cta && !userCta) {
+    candidates.push({ role: "cta", text: filtered.cta, importance: "optional" });
+  }
+
+  const copyHierarchy = dedupeCopyLines(candidates);
+  // Format labels (Before / After) are structural, so they skip de-duplication.
+  copyHierarchy.splice(
+    1,
+    0,
+    ...format.labels.map((text) => ({ role: "label" as const, text, importance: "required" as const }))
+  );
+  if (filtered.cta && userCta) {
+    copyHierarchy.push({ role: "cta", text: filtered.cta, importance: "optional" });
+  }
+
+  const textFor = (role: GenerationCopySlot["role"]) =>
+    copyHierarchy.find((s) => s.role === role)?.text ?? null;
+
+  return {
     renderCopy: {
-      headline,
-      supporting,
-      productLine,
-      cta,
-      badges,
+      headline: filtered.headline,
+      supporting: textFor("secondary"),
+      productLine: textFor("product_line"),
+      cta: textFor("cta"),
+      badges: copyHierarchy.filter((s) => s.role === "badge").map((s) => s.text),
     },
     copyHierarchy,
+    density,
+    textBudgetRule: filtered.textBudgetRule,
   };
 }
 
@@ -198,7 +281,8 @@ function buildReferences(
   brief: CreativeBrief,
   brand: BrandContext,
   references: ReferenceContext,
-  product: ProductContext
+  product: ProductContext,
+  kitLogoUrl: string | null = null
 ): GenerationSpecReference[] {
   const out: GenerationSpecReference[] = [];
   let idx = 0;
@@ -249,7 +333,8 @@ function buildReferences(
     );
   }
 
-  const logo = brand.identity.logo || brief.brand?.logo;
+  // The Brand Kit logo is the user's explicit choice, so it wins over detected logos.
+  const logo = kitLogoUrl ? { url: kitLogoUrl } : brand.identity.logo || brief.brand?.logo;
   if (logo?.url) {
     out.push({
       assetId: "brand_logo",
@@ -361,8 +446,11 @@ export function buildGenerationSpecification(
     `var_${String(variantIndex + 1).padStart(3, "0")}_${generationId.slice(-6)}`;
   const specId = input.specificationId || `spec_${generationId}`;
 
-  const { renderCopy, copyHierarchy } = buildCopyHierarchy(strategy);
-  const refs = buildReferences(brief, brand, references, product);
+  const adFormat = resolveAdFormat({ brief, strategy, concept });
+  const { renderCopy, copyHierarchy, density, textBudgetRule } =
+    buildCopyHierarchy(strategy, concept, adFormat, input.applyCopyDensity !== false);
+  const kit = input.brandKit ?? null;
+  const refs = buildReferences(brief, brand, references, product, kit?.logo?.url ?? null);
   const brandReqs = brandRequirements(brand, brief);
   const theme = resolveThemeRecipe(brief.visualDirection);
   const themeScene = applyThemeToSceneFields(theme, concept, dna);
@@ -370,6 +458,73 @@ export function buildGenerationSpecification(
   const productName =
     product.name?.value || brief.product?.name || "the product";
   const hasProductRef = refs.some((r) => r.kind === "product" && r.url);
+
+  const pick = (...values: Array<string | null | undefined>) =>
+    values.map((v) => (v || "").trim()).find(Boolean) || "";
+  const artDirection: PosterArtDirection = {
+    productName,
+    brandName: pick(kit?.name, brand.identity.name?.value, brief.brand?.name) || null,
+    brandColors: kit?.colors.length
+      ? kit.colors.map((c) => c.hex)
+      : brand.identity.colors.palette?.length
+        ? [...brand.identity.colors.palette]
+        : [...(brief.brand?.primaryColors || [])],
+    brandFont: pick(kit?.fonts.heading?.family, brand.identity.fonts?.value, brief.brand?.fonts) || null,
+    hasProductReference: hasProductRef,
+    hasLogoReference: refs.some((r) => r.kind === "logo" && r.url),
+    hasDesignReference: refs.some((r) => r.kind === "design" && r.url),
+    theme: {
+      label: theme.label,
+      summary: theme.summary,
+      mood: theme.mood,
+      colorStrategy: theme.colorStrategy,
+      typography: theme.typography,
+      graphicLanguage: theme.graphicLanguage,
+      compositionBias: theme.compositionBias,
+      lighting: theme.lighting,
+      must: [...theme.must],
+      avoid: [...theme.avoid],
+    },
+    adFormat: {
+      kind: adFormat.kind,
+      ctaGuidance: adFormat.ctaGuidance,
+      badgeGuidance: adFormat.badgeGuidance,
+      heroBadge: adFormat.heroBadge,
+      layoutRule: adFormat.layoutRule,
+    },
+    concept: {
+      name: pick(concept.name),
+      visualStory: pick(concept.visualStory, concept.description),
+      subject: pick(dna.subjectTreatment, concept.subjectTreatment),
+      humanPresence: pick(dna.humanPresence, concept.humanPresence),
+      environment: pick(dna.environment, concept.environment),
+      productTreatment: pick(dna.productTreatment, concept.productTreatment),
+      supportingElements: pick(concept.supportingElements),
+      cameraDirection: pick(concept.cameraDirection),
+      photographyStyle: pick(dna.photographyStyle),
+      lighting: pick(dna.lighting),
+      composition: pick(dna.composition, concept.composition),
+      colorTreatment: pick(dna.colorStrategy, concept.colorTreatment),
+      typographyTreatment: pick(dna.typographyStrategy, concept.typographyTreatment),
+      graphicLanguage: pick(dna.graphicLanguage, concept.graphicLanguage),
+      mood: pick(dna.mood, concept.emotionalExpression),
+      ctaTreatment: pick(concept.ctaTreatment),
+      aspectNotes: pick(dna.aspectAwareNotes),
+    },
+    copyDensity: density,
+    textBudgetRule,
+    brandKit: kit
+      ? {
+          name: kit.name,
+          colors: kit.colors.map((c) => ({ hex: c.hex, role: c.role })),
+          headingFont: kit.fonts.heading?.family ?? null,
+          bodyFont: kit.fonts.body?.family ?? kit.fonts.heading?.family ?? null,
+          mustInclude: [...kit.guidelines.mustInclude],
+          dos: [...kit.guidelines.dos],
+          donts: [...kit.guidelines.donts],
+        }
+      : null,
+  };
 
   const spec: GenerationSpecification = {
     id: specId,
@@ -444,6 +599,7 @@ export function buildGenerationSpecification(
         "Do not generate a generic canvas intended for later crop.",
         "Finished advertising poster ready for social use.",
         "Render ONLY the approved copy from the specification — do not invent or paraphrase required text.",
+        textBudgetRule,
         hasProductRef
           ? "The featured product packaging must be recognizably identical to the attached PRODUCT reference."
           : "No product reference attached — do not invent branded packaging.",
@@ -472,6 +628,7 @@ export function buildGenerationSpecification(
       brandRequirements: brandReqs,
     },
     userOverrides: { ...strategy.userOverrides },
+    artDirection,
     compiledPrompt: null,
   };
 

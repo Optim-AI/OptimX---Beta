@@ -457,6 +457,44 @@ export const reports = pgTable("reports", {
 	index("idx_reports_created_at").using("btree", table.createdAt.desc().nullsLast()),
 ]);
 
+// brand_kits table — a brand's design system (logo, colours, fonts, rules)
+export const brandKits = pgTable("brand_kits", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	userId: uuid("user_id").notNull(),
+	name: text().notNull(),
+	websiteUrl: text("website_url"),
+	isDefault: boolean("is_default").notNull().default(false),
+	logo: jsonb(),
+	colors: jsonb().notNull().default([]),
+	fonts: jsonb().notNull().default({}),
+	guidelines: jsonb().notNull().default({}),
+	identity: jsonb("identity").notNull().default({}),
+	extraction: jsonb(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).notNull().defaultNow(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).notNull().defaultNow(),
+}, (table) => [
+	index("idx_brand_kits_user_id").using("btree", table.userId.asc().nullsLast()),
+	uniqueIndex("uq_brand_kits_one_default_per_user").using("btree", table.userId.asc().nullsLast()).where(sql`is_default`),
+]);
+
+// product_cutouts table — cache of background-removed product photos
+export const productCutouts = pgTable("product_cutouts", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	userId: uuid("user_id").notNull(),
+	sourceHash: text("source_hash").notNull(),
+	sourceUrl: text("source_url"),
+	cutoutUrl: text("cutout_url"),
+	storagePath: text("storage_path"),
+	width: integer("width"),
+	height: integer("height"),
+	provider: text("provider").notNull(),
+	ok: boolean("ok").notNull(),
+	quality: jsonb("quality").notNull().default({}),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).notNull().defaultNow(),
+}, (table) => [
+	unique("product_cutouts_user_id_source_hash_key").on(table.userId, table.sourceHash),
+]);
+
 // ============================================================
 // TABLES NOT IN PRODUCTION (but needed for local development)
 // ============================================================

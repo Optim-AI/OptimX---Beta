@@ -8,6 +8,7 @@ import {
   getNanoBananaApiKey,
   getNanoBananaApiKeySource,
   getPosterImageModel,
+  getPosterImageSize,
 } from "@/lib/creative-studio/nano-banana";
 import type {
   ImageGenerationProvider,
@@ -145,6 +146,7 @@ export class NanoBananaImageProvider implements ImageGenerationProvider {
         aspectRatio: request.aspectRatio,
         references,
         model: this.modelId,
+        imageSize: getPosterImageSize(),
         operationLabel: `poster-gen:${request.metadata.generationId}`,
         maxRetries: 4,
       });
@@ -153,7 +155,7 @@ export class NanoBananaImageProvider implements ImageGenerationProvider {
         ok: true,
         imageDataUrl: result.dataUrl,
         imageBuffer: result.buffer,
-        mimeType: "image/png",
+        mimeType: result.mimeType,
         provider: result.provider,
         model: result.model,
         durationMs: Date.now() - started,

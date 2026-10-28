@@ -33,11 +33,49 @@ function wordCount(s: string): number {
   return s.trim().split(/\s+/).filter(Boolean).length;
 }
 
+/** Words a trimmed phrase must not end on ("Glowing skin in just" → "Glowing skin"). */
+const DANGLING_WORDS = new Set([
+  "a", "an", "the", "and", "or", "but", "nor", "of", "to", "in", "on", "at",
+  "for", "with", "by", "from", "into", "onto", "your", "our", "their", "its",
+  "my", "this", "that", "these", "those", "is", "are", "be", "just", "so",
+  "as", "than", "&", "-", "–", "—",
+]);
+
 /** Soft-trim long strategy copy for poster rendering (never invents new words). */
 export function trimPosterPhrase(text: string, maxWords: number): string {
   const words = text.trim().split(/\s+/).filter(Boolean);
   if (words.length <= maxWords) return text.trim();
-  return words.slice(0, maxWords).join(" ");
+  const kept = words.slice(0, maxWords);
+  while (
+    kept.length > 1 &&
+    DANGLING_WORDS.has(kept[kept.length - 1].toLowerCase().replace(/[^\p{L}\p{N}&–—-]/gu, ""))
+  ) {
+    kept.pop();
+  }
+  return kept.join(" ").replace(/[,;:–—-]+$/, "").trim();
+}
+
+function normalizeCopy(text: string): string {
+  return text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+}
+
+/**
+ * Drop copy that repeats an earlier line — exact repeats (case/punctuation-insensitive)
+ * or a later line whose words are all contained in an earlier one
+ * (e.g. badge "26g protein" under headline "26G PROTEIN").
+ */
+export function dedupeCopyLines<T extends { text: string }>(lines: T[]): T[] {
+  const kept: T[] = [];
+  for (const line of lines) {
+    const norm = normalizeCopy(line.text);
+    if (!norm) continue;
+    const repeats = kept.some((k) => {
+      const prev = normalizeCopy(k.text);
+      return prev === norm || ` ${prev} `.includes(` ${norm} `);
+    });
+    if (!repeats) kept.push(line);
+  }
+  return kept;
 }
 
 export function copyDensityForConcept(
@@ -122,10 +160,13 @@ export function filterCopyForDensity(options: {
     .map((b) => b.trim())
     .filter(Boolean);
 
+  // The user's own offer text is never trimmed or dropped for length.
   const shortBadges = (max: number, maxWords: number) =>
     badges
-      .map((b) => trimPosterPhrase(b, maxWords))
-      .filter((b) => wordCount(b) > 0 && wordCount(b) <= maxWords + 1)
+      .map((b) => (b === offerBadge ? b : trimPosterPhrase(b, maxWords)))
+      .filter(
+        (b) => b === offerBadge || (wordCount(b) > 0 && wordCount(b) <= maxWords + 1)
+      )
       .slice(0, max);
 
   const headline = (maxWords: number) =>
@@ -136,9 +177,10 @@ export function filterCopyForDensity(options: {
       return {
         density,
         headline: headline(8),
-        supporting: null,
+        // A supporting line the user wrote themselves always renders.
+        supporting: overrideSupporting,
         productLine: null,
-        cta: overrideCta ? trimPosterPhrase(overrideCta, 4) : null,
+        cta: overrideCta ? overrideCta : null,
         badges: shortBadges(1, 3),
         textBudgetRule:
           "TEXT BUDGET = PUNCHLINE. Render ONLY the primary headline (plus at most one short tag if listed). No paragraphs, captions, arrows with body copy, product-name footers, or decorative subheads. Prefer big type + product visual.",
@@ -147,9 +189,10 @@ export function filterCopyForDensity(options: {
       return {
         density,
         headline: headline(8),
-        supporting: null,
+        // A supporting line the user wrote themselves always renders.
+        supporting: overrideSupporting,
         productLine: productLine ? trimPosterPhrase(productLine, 6) : null,
-        cta: overrideCta ? trimPosterPhrase(overrideCta, 4) : null,
+        cta: overrideCta ? overrideCta : null,
         badges: shortBadges(2, 3),
         textBudgetRule:
           "TEXT BUDGET = TAGS. Headline + up to two short tags/badges. No supporting paragraph, no multi-line captions, no arrow callouts with sentences.",
@@ -158,12 +201,15 @@ export function filterCopyForDensity(options: {
       return {
         density,
         headline: headline(10),
-        supporting: trimPosterPhrase(
-          overrideSupporting || strategySupporting || "",
-          14
-        ) || null,
+        supporting:
+          overrideSupporting ||
+          trimPosterPhrase(strategySupporting || "", 14) ||
+          null,
         productLine: productLine ? trimPosterPhrase(productLine, 6) : null,
-        cta: trimPosterPhrase(overrideCta || strategyCta || "", 5) || null,
+        cta:
+          overrideCta ||
+          (strategyCta ? trimPosterPhrase(strategyCta, 5) : "") ||
+          null,
         badges: shortBadges(2, 4),
         textBudgetRule:
           "TEXT BUDGET = INFORMATIVE but still poster-tight. Headline + one short supporting line max. No brochure paragraphs or stacked captions.",
@@ -180,15 +226,17 @@ export function filterCopyForDensity(options: {
         return {
           density,
           headline: headline(9),
-          supporting: supporting
-            ? trimPosterPhrase(supporting, 12)
-            : null,
+          supporting: overrideSupporting
+            ? overrideSupporting
+            : supporting
+              ? trimPosterPhrase(supporting, 12)
+              : null,
           productLine:
             !supporting && productLine
               ? trimPosterPhrase(productLine, 6)
               : null,
           cta: overrideCta
-            ? trimPosterPhrase(overrideCta, 4)
+            ? overrideCta
             : strategyCta && wordCount(strategyCta) <= 4
               ? strategyCta
               : null,

@@ -1,6 +1,7 @@
 // pages/brand-studio/poster/[sessionId].tsx
 // Poster Generation Session Page
 
+import { withLatestBrandKit } from '@/app/web/src/components/creative-studio/utils';
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import { showAlert, showError, showSuccess } from '@/app/web/src/components/ui/alert-modal-api';
@@ -18,7 +19,6 @@ import {
   type SessionListItem,
   BrandCard,
   BrandOnboarding,
-  BrandGuidelineModal,
   SessionNameModal,
   buildPosterPrompt,
   fetchPosterCreativeDirectorVariants,
@@ -46,8 +46,15 @@ import {
   runPosterQcClient,
   runPosterStrategy,
   selectPosterConcept,
+  updatePosterCopy,
   updatePosterEngineBrief,
 } from '@/app/web/src/components/creative-studio/poster-engine-client';
+import type { PosterMessageCopy } from '@/app/web/src/components/creative-studio/PosterCreativeWorkspace';
+import {
+  PLACEMENT_OPTIONS,
+  missingGoalDetails,
+  placementForAspect,
+} from '@/lib/creative-studio/poster-generation/brief-options';
 import CarouselStudio from '@/app/web/src/components/creative-studio/CarouselStudio';
 import {
   getLatestCarousel,
@@ -59,7 +66,7 @@ import {
 } from '@/app/web/src/components/creative-studio/carousel-client';
 import { authFetch, safeResponseJson } from '@/lib/utils';
 import PosterEditModal from '@/app/web/src/components/content-studio/PosterEditModal';
-import type { PosterGenerationSession } from '@/lib/creative-studio/poster-generation/types';
+import type { MarketingStrategy, PosterGenerationSession } from '@/lib/creative-studio/poster-generation/types';
 
 /** Download image to user's device - works for data URLs and remote URLs (blob-based for reliable download) */
 async function downloadImageToLocal(url: string, filename: string): Promise<void> {
@@ -124,13 +131,17 @@ export default function PosterSessionPage() {
   const [brand, setBrand] = useState<BrandSnapshot | null>(null);
   const [editing, setEditing] = useState(false);
   const [showBrandOnboarding, setShowBrandOnboarding] = useState(false);
-  const [showBrandGuidelineModal, setShowBrandGuidelineModal] = useState(false);
   const [onboardingMode, setOnboardingMode] = useState<'website' | 'manual'>('website');
   const [isAnalyzingBrand, setIsAnalyzingBrand] = useState(false);
   
   // Product state
   const [productPrompt, setProductPrompt] = useState('');
   const [productImages, setProductImages] = useState<File[]>([]);
+  /** Reference stills: context images (setting, mood) — never the product */
+  const [referenceStills, setReferenceStills] = useState<File[]>([]);
+  /** The poster's message as written by the strategist, editable before generating */
+  const [messageCopy, setMessageCopy] = useState<PosterMessageCopy | null>(null);
+  const [savedMessageCopy, setSavedMessageCopy] = useState<PosterMessageCopy | null>(null);
   const [savedProductData, setSavedProductData] = useState<{
     prompt: string;
     images: File[];
@@ -331,6 +342,7 @@ export default function PosterSessionPage() {
         
         // Restore state from session
         setBrand(loadedSession.brandSnapshot);
+        void withLatestBrandKit(loadedSession.brandSnapshot).then((latest) => { if (latest) setBrand(latest); });
         setPhase((loadedSession.phase as Phase) || 'input');
         setPosterPrompt(loadedSession.posterPrompt || '');
         setConfig(loadedSession.config || DEFAULT_POSTER_CONFIG);
@@ -359,6 +371,16 @@ export default function PosterSessionPage() {
                   variantCount: eng.brief!.variantCount || c.variantCount,
                   theme: eng.brief!.visualDirection || c.theme,
                 }));
+              }
+              if (eng.strategy?.copy) {
+                const o = eng.strategy.userOverrides || {};
+                const copy: PosterMessageCopy = {
+                  headline: o.headline || eng.strategy.copy.headline || "",
+                  supporting: o.message || eng.strategy.copy.supporting || "",
+                  cta: o.cta || eng.strategy.copy.cta || "",
+                };
+                setMessageCopy(copy);
+                setSavedMessageCopy(copy);
               }
               if (eng.concepts?.length) {
                 setCreativeDirections(eng.concepts.map(conceptToUiCard));
@@ -709,24 +731,6 @@ export default function PosterSessionPage() {
     }
   }
   
-  async function handleWebsiteAnalyzeForEdit(website: string): Promise<BrandSnapshot | null> {
-    try {
-      const response = await authFetch('/api/brand/fullAnalyze', {
-        method: 'POST',
-        body: JSON.stringify({ url: website }),
-      });
-      const data = await safeResponseJson<{ result?: unknown; error?: string }>(response);
-      if (!data.result) {
-        showError(data.error || 'Could not analyze website. Please try manual setup.');
-        return null;
-      }
-      return mapFullAnalyzeToBrandSnapshot(data.result);
-    } catch (err: any) {
-      showError(`Error analyzing website: ${err?.message || 'Unknown error'}. Please try manual setup.`);
-      return null;
-    }
-  }
-
   async function handleWebsiteBrandSetup(website: string) {
     setIsAnalyzingBrand(true);
     
@@ -831,65 +835,6 @@ export default function PosterSessionPage() {
       "Nice — we're ready. Tell me about your product or upload a few images.",
       "All set! What's the product or service? You can describe it or add images.",
     ]));
-  }
-
-  function updateBrandGuideline(updated: BrandSnapshot) {
-    setBrand(updated);
-    saveBrandSnapshot(updated);
-    setShowBrandGuidelineModal(false);
-  }
-
-  async function handleWebsiteReanalyze(website: string): Promise<BrandSnapshot | null> {
-    setIsAnalyzingBrand(true);
-    try {
-      const response = await authFetch('/api/brand/fullAnalyze', {
-        method: 'POST',
-        body: JSON.stringify({ url: website }),
-      });
-      const data = await safeResponseJson<{ result?: unknown; error?: string }>(response);
-      if (data.result) {
-        const result = data.result as Record<string, any>;
-        const brandSnapshot: BrandSnapshot = {
-          name: result.facts?.company_name || 'Unknown Brand',
-          description: result.positioning?.primary_value_proposition || '',
-          audience: result.facts?.who_it_is_for?.join(', ') || '',
-          offering: result.facts?.what_they_sell?.join(', ') || '',
-          tone: result.brandVoice || result.personality || 'professional',
-          logo: result.logo,
-          logoUrl: result.logoUrl,
-          primaryColors: result.primaryColors,
-          fontStyles: result.fontStyles,
-          brandVoice: result.brandVoice,
-          coreValueProp: result.coreValueProp,
-          ctaPatterns: result.ctaPatterns,
-          productCategory: result.productCategory,
-          pricePositioning: result.pricePositioning,
-          personality: result.personality,
-          colors: result.colors
-            ? {
-                primary: result.colors.primary ?? undefined,
-                secondary: result.colors.secondary ?? undefined,
-                accent: result.colors.accent ?? undefined,
-              }
-            : undefined,
-        };
-        setBrand(brandSnapshot);
-        saveBrandSnapshot(brandSnapshot);
-        setShowBrandGuidelineModal(false);
-        setPhase('brand-review');
-        addMessage('system', `I've re-analyzed your website and updated your brand information.`);
-        return brandSnapshot;
-      } else {
-        addMessage('system', `I had trouble analyzing that website: ${data.error || 'Unknown error'}. Please try a different URL or edit manually.`);
-        return null;
-      }
-    } catch (err: any) {
-      console.error('Brand re-analyze error:', err);
-      addMessage('system', `There was an error analyzing your website: ${err?.message || 'Unknown error'}. Please try again or edit manually.`);
-      return null;
-    } finally {
-      setIsAnalyzingBrand(false);
-    }
   }
 
   // ============== Product Scan / Selection Handlers ==============
@@ -1187,8 +1132,13 @@ export default function PosterSessionPage() {
       return;
     }
 
-    if (!safeTrim(posterPrompt)) {
-      showError('Describe what you want to create');
+    if (!config.adGoal && !safeTrim(posterPrompt)) {
+      showError("Pick what this ad is for, or describe what you want to create");
+      return;
+    }
+    const missing = missingGoalDetails(config.adGoal, config.goalDetails || {});
+    if (missing.length) {
+      showError(`Add the ${missing.join(" and ").toLowerCase()} for this ad.`);
       return;
     }
 
@@ -1275,6 +1225,17 @@ export default function PosterSessionPage() {
       "→ Defining marketing direction",
     ]);
 
+    // Reference stills go to storage like product photos, but into the brief as context.
+    let referenceStillUrls: string[] = [];
+    if (referenceStills.length) {
+      try {
+        const stillDataUrls = await Promise.all(referenceStills.slice(0, 2).map((f) => fileToDataUrl(f)));
+        referenceStillUrls = (await uploadDataUrlsToStorage(stillDataUrls)).filter((u) => /^https?:\/\//i.test(u));
+      } catch (e) {
+        console.warn("Reference still upload failed; continuing without them", e);
+      }
+    }
+
     try {
       const brief = buildCreativeBriefFromWorkspace({
         brand,
@@ -1287,6 +1248,10 @@ export default function PosterSessionPage() {
         aspectRatio: (config.aspectRatio || "4:5") as any,
         variantCount: (config.variantCount || 3) as 1 | 2 | 3,
         referencePoster: config.referencePoster || null,
+        adGoal: config.adGoal ?? null,
+        goalDetails: config.goalDetails || {},
+        placement: config.placement ?? placementForAspect((config.aspectRatio || "4:5") as any),
+        referenceStillUrls,
       });
 
       const { session: createdOrLoaded, created } =
@@ -1317,7 +1282,18 @@ export default function PosterSessionPage() {
         "✓ Brand context applied",
         "→ Defining marketing direction",
       ]);
-      await runPosterStrategy(capturedEngineSessionId, forceRegenerate);
+      const { strategy: strategyRaw } = await runPosterStrategy(capturedEngineSessionId, forceRegenerate);
+      const strategy = strategyRaw as MarketingStrategy | null;
+      if (strategy?.copy) {
+        const o = strategy.userOverrides || {};
+        const copy: PosterMessageCopy = {
+          headline: o.headline || strategy.copy.headline || "",
+          supporting: o.message || strategy.copy.supporting || "",
+          cta: o.cta || strategy.copy.cta || "",
+        };
+        setMessageCopy(copy);
+        setSavedMessageCopy(copy);
+      }
 
       setThinkingMessages([
         "✓ Marketing direction ready",
@@ -1414,6 +1390,19 @@ export default function PosterSessionPage() {
     ]);
 
     try {
+      // Save the user's message edits first so the posters render exactly that text.
+      if (messageCopy && savedMessageCopy && JSON.stringify(messageCopy) !== JSON.stringify(savedMessageCopy)) {
+        if (!messageCopy.headline.trim()) {
+          throw new Error("The headline can't be empty.");
+        }
+        await updatePosterCopy(engineSessionId, {
+          headline: messageCopy.headline,
+          supporting: messageCopy.supporting.trim() || null,
+          cta: messageCopy.cta.trim() || null,
+        });
+        setSavedMessageCopy(messageCopy);
+      }
+
       await selectPosterConcept(engineSessionId, selectedDirectionId);
 
       const gen = await generatePosterEngine({
@@ -2784,7 +2773,7 @@ export default function PosterSessionPage() {
           onNewChat={handleNewSession}
           onChatSelect={handleSessionSelect}
           onChatDelete={handleSessionDelete}
-          onBrandGuideline={() => setShowBrandGuidelineModal(true)}
+          onBrandGuideline={() => router.push('/brand-kit')}
         />
       </div>
 
@@ -2793,7 +2782,7 @@ export default function PosterSessionPage() {
         brand={brand}
         sessionName={session?.name || 'Untitled Poster'}
         creditsAvailable={credits}
-        onOpenBrandGuidelines={() => setShowBrandGuidelineModal(true)}
+        onOpenBrandGuidelines={() => router.push('/brand-kit')}
         onBackToBrandStudio={() => router.push('/brand-studio')}
         selectedProduct={selectedProduct}
         productImages={productImages}
@@ -2828,9 +2817,23 @@ export default function PosterSessionPage() {
         onAspectRatioChange={(r) => setConfig((c) => ({ ...c, aspectRatio: r }))}
         numVariants={(config.variantCount || 3) as 1 | 2 | 3}
         onNumVariantsChange={(n) => setConfig((c) => ({ ...c, variantCount: n }))}
+        adGoal={config.adGoal ?? null}
+        onAdGoalChange={(goal) => setConfig((c) => ({ ...c, adGoal: goal }))}
+        goalDetails={config.goalDetails || {}}
+        onGoalDetailsChange={(details) => setConfig((c) => ({ ...c, goalDetails: details }))}
+        placement={config.placement ?? placementForAspect((config.aspectRatio || "4:5") as any)}
+        onPlacementChange={(id) => {
+          const option = PLACEMENT_OPTIONS.find((p) => p.id === id);
+          setConfig((c) => ({ ...c, placement: id, aspectRatio: (option?.aspectRatio || c.aspectRatio) as typeof c.aspectRatio }));
+        }}
+        referenceStills={referenceStills}
+        onReferenceStillsChange={setReferenceStills}
+        messageCopy={messageCopy}
+        onMessageCopyChange={setMessageCopy}
         canGenerate={
           !hasInsufficientCredits &&
-          !!safeTrim(posterPrompt) &&
+          (!!config.adGoal || !!safeTrim(posterPrompt)) &&
+          missingGoalDetails(config.adGoal, config.goalDetails || {}).length === 0 &&
           (!!selectedProduct ||
             productImages.length > 0 ||
             (savedProductData?.imageDataUrls?.length ?? 0) > 0 ||
@@ -2846,9 +2849,11 @@ export default function PosterSessionPage() {
                   (savedProductData?.images?.length ?? 0) > 0
                 )
               ? 'Add a product to generate'
-              : !safeTrim(posterPrompt)
-                ? 'Describe what you want to create'
-                : null
+              : !config.adGoal && !safeTrim(posterPrompt)
+                ? 'Pick what this ad is for, or describe it'
+                : missingGoalDetails(config.adGoal, config.goalDetails || {}).length
+                  ? `Add the ${missingGoalDetails(config.adGoal, config.goalDetails || {}).join(' and ').toLowerCase()}`
+                  : null
         }
         onGenerate={() => void handleWorkspaceGenerate()}
         isGenerating={isGenerating || phase === 'generating'}
@@ -2983,15 +2988,6 @@ export default function PosterSessionPage() {
           />
         )}
 
-        {/* Brand Guideline Modal */}
-        {showBrandGuidelineModal && brand && (
-          <BrandGuidelineModal
-            brand={brand}
-            onUpdate={updateBrandGuideline}
-            onClose={() => setShowBrandGuidelineModal(false)}
-            onWebsiteAnalyze={handleWebsiteReanalyze}
-          />
-        )}
 
         {/* New Session Modal (fallback — primary path auto-creates Untitled Poster) */}
         <SessionNameModal

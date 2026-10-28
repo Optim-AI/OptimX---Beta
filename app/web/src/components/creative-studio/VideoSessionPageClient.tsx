@@ -1,6 +1,7 @@
 // pages/brand-studio/video/[sessionId].tsx
 // Video Generation Session Page
 
+import { withLatestBrandKit } from '@/app/web/src/components/creative-studio/utils';
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import { showAlert, showError, showSuccess } from '@/app/web/src/components/ui/alert-modal-api';
@@ -15,7 +16,6 @@ import {
   type CommercialProductionStatus,
   type GeneratedVideoQcSummary,
   BrandOnboarding,
-  BrandGuidelineModal,
   SessionNameModal,
   formatTimestamp,
   DEFAULT_AD_BUILDER_DATA,
@@ -271,7 +271,6 @@ export default function VideoSessionPage() {
   // Brand state
   const [brand, setBrand] = useState<BrandSnapshot | null>(null);
   const [showBrandOnboarding, setShowBrandOnboarding] = useState(false);
-  const [showBrandGuidelineModal, setShowBrandGuidelineModal] = useState(false);
   const [onboardingMode, setOnboardingMode] = useState<'website' | 'manual'>('website');
   const [isAnalyzingBrand, setIsAnalyzingBrand] = useState(false);
 
@@ -487,6 +486,7 @@ export default function VideoSessionPage() {
         
         setSession(loadedSession);
         setBrand(loadedSession.brandSnapshot);
+        void withLatestBrandKit(loadedSession.brandSnapshot).then((latest) => { if (latest) setBrand(latest); });
 
         // Restore Ad Builder data
         if (loadedSession.adBuilderData && typeof loadedSession.adBuilderData === 'object') {
@@ -708,24 +708,6 @@ export default function VideoSessionPage() {
     }
   }
 
-  async function handleWebsiteAnalyzeForEdit(website: string): Promise<BrandSnapshot | null> {
-    try {
-      const response = await authFetch('/api/brand/fullAnalyze', {
-        method: 'POST',
-        body: JSON.stringify({ url: website }),
-      });
-      const data = await safeResponseJson<{ result?: unknown; error?: string }>(response);
-      if (!data.result) {
-        showError(data.error || 'Could not analyze website. Please try manual setup.');
-        return null;
-      }
-      return mapFullAnalyzeToBrandSnapshot(data.result);
-    } catch (err: any) {
-      showError(`Error analyzing website: ${err?.message || 'Unknown error'}. Please try manual setup.`);
-      return null;
-    }
-  }
-
   async function handleWebsiteBrandSetup(website: string) {
     setIsAnalyzingBrand(true);
 
@@ -792,63 +774,6 @@ export default function VideoSessionPage() {
     };
     setBrand(minimalBrand);
     saveBrandSnapshot(minimalBrand);
-  }
-
-  function updateBrandGuideline(updated: BrandSnapshot) {
-    setBrand(updated);
-    saveBrandSnapshot(updated);
-    setShowBrandGuidelineModal(false);
-  }
-
-  async function handleWebsiteReanalyze(website: string): Promise<BrandSnapshot | null> {
-    setIsAnalyzingBrand(true);
-    try {
-      const response = await authFetch('/api/brand/fullAnalyze', {
-        method: 'POST',
-        body: JSON.stringify({ url: website }),
-      });
-      const data = await safeResponseJson<{ result?: unknown; error?: string }>(response);
-      if (data.result) {
-        const result = data.result as Record<string, any>;
-        const brandSnapshot: BrandSnapshot = {
-          name: result.facts?.company_name || 'Unknown Brand',
-          description: result.positioning?.primary_value_proposition || '',
-          audience: result.facts?.who_it_is_for?.join(', ') || '',
-          offering: result.facts?.what_they_sell?.join(', ') || '',
-          tone: result.brandVoice || result.personality || 'professional',
-          logo: result.logo,
-          logoUrl: result.logoUrl,
-          primaryColors: result.primaryColors,
-          fontStyles: result.fontStyles,
-          brandVoice: result.brandVoice,
-          coreValueProp: result.coreValueProp,
-          ctaPatterns: result.ctaPatterns,
-          productCategory: result.productCategory,
-          pricePositioning: result.pricePositioning,
-          personality: result.personality,
-          colors: result.colors
-            ? {
-                primary: result.colors.primary ?? undefined,
-                secondary: result.colors.secondary ?? undefined,
-                accent: result.colors.accent ?? undefined,
-              }
-            : undefined,
-        };
-        setBrand(brandSnapshot);
-        saveBrandSnapshot(brandSnapshot);
-        setShowBrandGuidelineModal(false);
-        return brandSnapshot;
-      } else {
-        showError(data.error || 'Could not analyze website. Please try again.');
-        return null;
-      }
-    } catch (err: any) {
-      console.error('Brand re-analyze error:', err);
-      showError(`Error analyzing website: ${err?.message || 'Unknown error'}. Please try again.`);
-      return null;
-    } finally {
-      setIsAnalyzingBrand(false);
-    }
   }
 
   // ============== Product Handlers ==============
@@ -1799,7 +1724,7 @@ export default function VideoSessionPage() {
             onNewChat={handleNewSession}
             onChatSelect={handleSessionSelect}
             onChatDelete={handleSessionDelete}
-            onBrandGuideline={() => setShowBrandGuidelineModal(true)}
+            onBrandGuideline={() => router.push('/brand-kit')}
           />
         </StudioErrorBoundary>
       </div>
@@ -1871,14 +1796,6 @@ export default function VideoSessionPage() {
           />
         )}
 
-        {showBrandGuidelineModal && brand && (
-          <BrandGuidelineModal
-            brand={brand}
-            onUpdate={updateBrandGuideline}
-            onClose={() => setShowBrandGuidelineModal(false)}
-            onWebsiteAnalyze={handleWebsiteReanalyze}
-          />
-        )}
 
         <SessionNameModal
           isOpen={showNewSessionModal}

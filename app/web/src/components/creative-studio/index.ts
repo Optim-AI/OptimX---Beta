@@ -39,6 +39,5 @@ export { default as SessionNameModal } from './SessionNameModal';
 export { default as BackButton } from './BackButton';
 export { default as BrandCard } from './BrandCard';
 export { default as BrandOnboarding } from './BrandOnboarding';
-export { default as BrandGuidelineModal } from './BrandGuidelineModal';
 export { default as PosterCreativeWorkspace } from './PosterCreativeWorkspace';
 export { SystemBubble, UserBubble } from './ChatBubbles';

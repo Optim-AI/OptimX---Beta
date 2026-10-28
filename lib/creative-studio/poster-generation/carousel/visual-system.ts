@@ -4,6 +4,7 @@
  * Nano Banana prompt is still compiled from it by the existing adapter.
  */
 
+import type { BrandKit } from "@/lib/brand-kit/types";
 import type { BrandContext } from "../context/brand-context";
 import type { ProductContext } from "../context/product-context";
 import type { ReferenceContext } from "../context/reference-context";
@@ -254,6 +255,7 @@ export function buildSlideSpecification(options: {
   brand: BrandContext;
   references: ReferenceContext;
   generationId: string;
+  brandKit?: BrandKit | null;
 }): { specification: GenerationSpecification; slideStrategy: MarketingStrategy } {
   const slideStrategy = slideStrategyView(
     options.strategy,
@@ -273,7 +275,10 @@ export function buildSlideSpecification(options: {
     variantId: options.slide.slideId,
     generationId: options.generationId,
     specificationId: `spec_${options.generationId}`,
+    applyCopyDensity: false,
+    brandKit: options.brandKit ?? null,
   });
+  const carouselRequirements = carouselOutputRequirements(options);
   return {
     slideStrategy,
     specification: {
@@ -282,9 +287,18 @@ export function buildSlideSpecification(options: {
         ...spec.scene,
         outputRequirements: [
           ...spec.scene.outputRequirements,
-          ...carouselOutputRequirements(options),
+          ...carouselRequirements,
         ],
       },
+      artDirection: spec.artDirection
+        ? {
+            ...spec.artDirection,
+            additionalRequirements: [
+              ...(spec.artDirection.additionalRequirements || []),
+              ...carouselRequirements,
+            ],
+          }
+        : spec.artDirection,
     },
   };
 }

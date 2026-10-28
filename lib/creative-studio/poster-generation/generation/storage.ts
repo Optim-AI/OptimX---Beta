@@ -18,7 +18,9 @@ export async function storePosterGeneratedImage(options: {
   contentType?: string;
 }): Promise<StoredPosterImage> {
   const contentType = options.contentType || "image/png";
-  const storagePath = `poster-generation/${options.userId}/${options.sessionId}/${options.generationId}.png`;
+  const ext =
+    contentType === "image/jpeg" ? "jpg" : contentType === "image/webp" ? "webp" : "png";
+  const storagePath = `poster-generation/${options.userId}/${options.sessionId}/${options.generationId}.${ext}`;
 
   const { supabaseAdmin } = await import("@/auth/supabase/admin");
   const { error } = await supabaseAdmin.storage

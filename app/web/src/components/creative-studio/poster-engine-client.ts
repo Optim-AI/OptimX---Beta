@@ -14,7 +14,15 @@ import type {
   PosterQcResult,
   PosterVisualDirection,
   PosterVariantCount,
+  PosterAdGoal,
+  MarketingStrategy,
 } from "@/lib/creative-studio/poster-generation/types";
+import { AD_GOAL_OBJECTIVE } from "@/lib/creative-studio/poster-generation/types";
+import {
+  PLACEMENT_OPTIONS,
+  type GoalDetails,
+  type PlacementId,
+} from "@/lib/creative-studio/poster-generation/brief-options";
 
 const ENGINE_SESSION_KEY = "skalx_poster_engine_session";
 
@@ -123,6 +131,13 @@ export type BuildBriefInput = {
     imageUrl?: string | null;
     analysis?: Record<string, unknown> | null;
   } | null;
+  /** Ad goal picked in the composer, with the details that goal asks for */
+  adGoal?: PosterAdGoal | null;
+  goalDetails?: GoalDetails;
+  /** Where the ad will run (sets the platform hint) */
+  placement?: PlacementId | null;
+  /** Context images (Reference stills) — never treated as the product */
+  referenceStillUrls?: string[];
 };
 
 /** Prefer http(s) image URLs; allow at most one small data URL as fallback. */
@@ -200,7 +215,35 @@ export function slimBriefForApi(brief: CreativeBrief): CreativeBrief {
       : null,
     productReferences: productRefs,
     designReferences: designRefs.slice(0, 1),
-    supportingReferences: [],
+    // Reference stills (context images): keep up to two, URL or small data URL only.
+    supportingReferences: (brief.supportingReferences || [])
+      .filter((ref) => {
+        const url = ref.image?.url || "";
+        return /^https?:\/\//i.test(url) || (url.startsWith("data:") && url.length <= 300_000);
+      })
+      .slice(0, 2)
+      .map((ref, i) => ({ id: ref.id || `still_${i}`, role: "supporting_still" as const, image: { url: ref.image.url } })),
+  };
+}
+
+/** Map the composer's goal, its details and the placement onto the engine's brief hints. */
+export function goalHintsForBrief(
+  input: Pick<BuildBriefInput, "adGoal" | "goalDetails" | "placement">
+): Partial<CreativeBrief> {
+  const d = input.goalDetails || {};
+  const t = (v?: string) => (v || "").trim();
+  const join = (...parts: string[]) => parts.filter(Boolean).join(" · ") || null;
+  const placement = PLACEMENT_OPTIONS.find((p) => p.id === input.placement);
+  const goal = input.adGoal ?? null;
+  return {
+    adGoal: goal,
+    objectiveHint: goal ? AD_GOAL_OBJECTIVE[goal] : null,
+    offerHint: goal === "offer" ? join(t(d.offer), t(d.offerEnds)) : null,
+    proofHint: goal === "social_proof" ? t(d.proof) || null : null,
+    occasionHint: goal === "festive" ? join(t(d.occasion), t(d.orderBy) && `order by ${t(d.orderBy)}`) : null,
+    transformationHint: goal === "before_after" ? t(d.transformation) || null : null,
+    platformHint: placement?.platformHint ?? null,
+    constraints: goal === "feature" && t(d.feature) ? [`Highlight this feature: ${t(d.feature)}`] : [],
   };
 }
 
@@ -292,8 +335,16 @@ export function buildCreativeBriefFromWorkspace(
     constraints: [],
     productReferences: productRefs,
     designReferences: designRefs,
-    supportingReferences: [],
+    supportingReferences: slimImageUrls(input.referenceStillUrls || [], 300_000)
+      .slice(0, 2)
+      .map((url, i) => ({ id: `still_${i}`, role: "supporting_still" as const, image: { url } })),
+    ...goalHintsForBrief(input),
   };
+  // User-supplied proof is a fact the strategist may state exactly.
+  const proof = input.goalDetails?.proof?.trim();
+  if (proof && !brief.product?.factualClaims?.includes(proof)) {
+    brief.product = { ...brief.product!, factualClaims: [...(brief.product?.factualClaims || []), proof] };
+  }
 
   return slimBriefForApi(brief);
 }
@@ -428,6 +479,24 @@ export async function runPosterStrategy(
   );
   const data = await parseJson(res);
   return { strategy: data.strategy, session: data.session };
+}
+
+/** Save the user's headline / supporting line / CTA edits (0 credits). */
+export async function updatePosterCopy(
+  engineSessionId: string,
+  edits: { headline?: string; supporting?: string | null; cta?: string | null }
+): Promise<MarketingStrategy> {
+  const sid = assertEngineSessionId(engineSessionId, "updatePosterCopy");
+  const res = await authFetch(
+    `/api/creative-studio/poster/strategy?sessionId=${encodeURIComponent(sid)}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId: sid, ...edits }),
+    }
+  );
+  const data = await parseJson(res);
+  return data.strategy as MarketingStrategy;
 }
 
 export async function runPosterConcepts(

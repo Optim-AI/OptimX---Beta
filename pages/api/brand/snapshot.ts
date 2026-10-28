@@ -7,6 +7,7 @@ import { db } from "@/database/client";
 import { profiles } from "@/database/schema";
 import { eq } from "drizzle-orm";
 import { ensureProfile } from "@/lib/auth/ensure-profile";
+import { getUserBrand, syncSnapshotIntoKits } from "@/lib/brand-kit/server";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
@@ -36,15 +37,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
 async function handleGetBrandSnapshot(res: NextApiResponse, userId: string) {
   try {
-    const [row] = await db
-      .select({ brandSnapshot: profiles.brandSnapshot })
-      .from(profiles)
-      .where(eq(profiles.id, userId))
-      .limit(1);
-
+    // The Brand Kit is the source of truth; it is served in the snapshot shape
+    // the studio pages read (falls back to the legacy guideline when no kit).
+    const { snapshot, kit } = await getUserBrand(userId);
     return res.status(200).json({
       ok: true,
-      brandSnapshot: row?.brandSnapshot || null,
+      brandSnapshot: snapshot,
+      brandKitId: kit?.id ?? null,
     });
   } catch (e: any) {
     console.error("Get brand snapshot error:", e);
@@ -78,9 +77,18 @@ async function handleUpdateBrandSnapshot(
       })
       .where(eq(profiles.id, userId));
 
+    // Keep the Brand Kit in step: this brand becomes the user's default kit.
+    // The guideline is already saved, so a kit failure must not fail the request.
+    const kit = await syncSnapshotIntoKits(userId, brandSnapshot).catch((e) => {
+      console.error("[brandKit] could not sync saved brand into kits", { userId, error: e?.message });
+      return null;
+    });
+    const { snapshot } = await getUserBrand(userId);
+
     return res.status(200).json({
       ok: true,
-      brandSnapshot,
+      brandSnapshot: snapshot ?? brandSnapshot,
+      brandKitId: kit?.id ?? null,
     });
   } catch (e: any) {
     console.error("Update brand snapshot error:", e);

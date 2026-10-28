@@ -11,6 +11,26 @@ import { compilePosterPrompt } from "@/lib/creative-studio/poster-engine/compile
 import { normalizePosterInput } from "@/lib/creative-studio/poster-engine/normalize";
 
 /** Save brand snapshot to DB via API */
+/**
+ * Sessions store a copy of the brand from when they were created. Prefer the
+ * user's current Brand Kit when it is the same brand, so kit edits reach
+ * strategy and generation; a session made for a different brand keeps its own.
+ */
+export async function withLatestBrandKit(sessionBrand: BrandSnapshot | null | undefined): Promise<BrandSnapshot | null> {
+  try {
+    const res = await authFetch("/api/brand/snapshot");
+    const data = await res.json();
+    const kitBrand: BrandSnapshot | null = data?.ok ? data.brandSnapshot ?? null : null;
+    if (!kitBrand) return sessionBrand ?? null;
+    if (!sessionBrand?.name || sessionBrand.name.trim().toLowerCase() === kitBrand.name?.trim().toLowerCase()) {
+      return kitBrand;
+    }
+    return sessionBrand;
+  } catch {
+    return sessionBrand ?? null;
+  }
+}
+
 export async function saveBrandSnapshot(snapshot: BrandSnapshot): Promise<void> {
   await authFetch("/api/brand/snapshot", {
     method: "PUT",

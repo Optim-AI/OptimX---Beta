@@ -285,6 +285,11 @@ export type PosterConfig = {
    * Persisted inside session config jsonb — NOT a product image.
    */
   referencePoster?: import("@/lib/creative-studio/poster-engine").ReferencePosterAsset | null;
+  /** Ad goal picked in the composer, and the details that goal asks for */
+  adGoal?: import("@/lib/creative-studio/poster-generation/types").PosterAdGoal | null;
+  goalDetails?: import("@/lib/creative-studio/poster-generation/brief-options").GoalDetails;
+  /** Where the ad runs (sets the aspect ratio and platform) */
+  placement?: import("@/lib/creative-studio/poster-generation/brief-options").PlacementId | null;
 };
 
 // Session type for database persistence

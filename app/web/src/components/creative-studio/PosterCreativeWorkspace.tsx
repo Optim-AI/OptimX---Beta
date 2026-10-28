@@ -17,6 +17,15 @@ import {
 import type { BrandSnapshot, PosterConfig, Product } from "./types";
 import { ASPECT_RATIOS, POSTER_THEMES } from "./utils";
 import { cn } from "@/lib/utils";
+import type { PosterAdGoal } from "@/lib/creative-studio/poster-generation/types";
+import {
+  GOAL_OPTIONS,
+  PLACEMENT_OPTIONS,
+  type GoalDetails,
+  type PlacementId,
+} from "@/lib/creative-studio/poster-generation/brief-options";
+
+export type PosterMessageCopy = { headline: string; supporting: string; cta: string };
 
 const STUDIO_BG = "#0B0B0F";
 const BLUE = {
@@ -86,6 +95,21 @@ export type PosterCreativeWorkspaceProps = {
   onSelectCatalogProduct: (product: Product) => void;
   onBrowseCatalog: () => void;
   onImportProductUrl: (url: string) => void;
+
+  /* Ad goal — the control is hidden when onAdGoalChange is omitted */
+  adGoal?: PosterAdGoal | null;
+  onAdGoalChange?: (goal: PosterAdGoal | null) => void;
+  goalDetails?: GoalDetails;
+  onGoalDetailsChange?: (details: GoalDetails) => void;
+  /* Where the ad runs — replaces the bare aspect-ratio picker when onPlacementChange is given */
+  placement?: PlacementId | null;
+  onPlacementChange?: (placement: PlacementId) => void;
+  /* Reference stills — context images, never the product */
+  referenceStills?: File[];
+  onReferenceStillsChange?: (files: File[]) => void;
+  /* The message (headline / supporting / CTA), editable before generating */
+  messageCopy?: PosterMessageCopy | null;
+  onMessageCopyChange?: (copy: PosterMessageCopy) => void;
 
   /* Creative direction */
   creativePrompt: string;
@@ -190,7 +214,7 @@ function BrandContextBar({
         >
           Using <span className="font-medium text-white">{brand.name}</span>
           <span className="mx-2 text-white/25">·</span>
-          <span className="text-white/45">Brand guidelines applied</span>
+          <span className="text-white/45">Brand kit applied</span>
         </button>
         <button
           type="button"
@@ -266,6 +290,16 @@ export function PosterCreativeWorkspace({
   resultsSlot,
   creditsAlertSlot,
   onBackToCompose,
+  adGoal = null,
+  onAdGoalChange,
+  goalDetails = {},
+  onGoalDetailsChange,
+  placement = null,
+  onPlacementChange,
+  referenceStills = [],
+  onReferenceStillsChange,
+  messageCopy = null,
+  onMessageCopyChange,
 }: PosterCreativeWorkspaceProps) {
   const isCarousel = creativeFormat === "carousel" && !!onCreativeFormatChange;
   const [catalogOpen, setCatalogOpen] = useState(false);
@@ -327,10 +361,16 @@ export function PosterCreativeWorkspace({
 
   const showProductPicker = !hasProduct || changingProduct;
 
-  const stillThumbs = useMemo(() => {
-    const urls = productImageUrls.slice(1);
-    return urls;
-  }, [productImageUrls]);
+  const [stillThumbs, setStillThumbs] = useState<string[]>([]);
+  useEffect(() => {
+    if (!onReferenceStillsChange) {
+      setStillThumbs(productImageUrls.slice(1));
+      return;
+    }
+    const urls = referenceStills.map((f) => URL.createObjectURL(f));
+    setStillThumbs(urls);
+    return () => urls.forEach((u) => URL.revokeObjectURL(u));
+  }, [onReferenceStillsChange, referenceStills, productImageUrls]);
 
   useEffect(() => {
     if (hasProduct && !changingProduct) {
@@ -380,6 +420,11 @@ export function PosterCreativeWorkspace({
     if (!files?.length) return;
     const next = Array.from(files).filter((f) => f.type.startsWith("image/"));
     if (!next.length) return;
+    // Stills are context (setting, mood, lifestyle) — never added as product photos.
+    if (onReferenceStillsChange) {
+      onReferenceStillsChange([...referenceStills, ...next].slice(0, 2));
+      return;
+    }
     onProductImagesChange([...productImages, ...next].slice(0, 8));
   }
 
@@ -576,6 +621,55 @@ export function PosterCreativeWorkspace({
                 </button>
               )}
             </div>
+
+            {!isCarousel && messageCopy && onMessageCopyChange && (
+              <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 sm:p-5">
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/55">
+                    Your message
+                  </h3>
+                  <p className="text-xs text-white/40">
+                    This exact text goes on the poster. Edit it now — no credits used.
+                  </p>
+                </div>
+                <div className="mt-3 grid gap-3 sm:grid-cols-[2fr_1fr]">
+                  <label className="block">
+                    <span className="mb-1 block text-xs text-white/55">Headline</span>
+                    <input
+                      value={messageCopy.headline}
+                      onChange={(e) => onMessageCopyChange({ ...messageCopy, headline: e.target.value })}
+                      maxLength={120}
+                      className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-base font-medium text-white outline-none focus:border-blue-500/45"
+                    />
+                    {messageCopy.headline.trim().split(/\s+/).filter(Boolean).length > 8 && (
+                      <span className="mt-1 block text-[11px] text-amber-300/80">
+                        Long headlines are harder to read on a phone — aim for 6 words or fewer.
+                      </span>
+                    )}
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-xs text-white/55">Button (CTA)</span>
+                    <input
+                      value={messageCopy.cta}
+                      onChange={(e) => onMessageCopyChange({ ...messageCopy, cta: e.target.value })}
+                      maxLength={40}
+                      placeholder="No button"
+                      className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none placeholder:text-white/30 focus:border-blue-500/45"
+                    />
+                  </label>
+                  <label className="block sm:col-span-2">
+                    <span className="mb-1 block text-xs text-white/55">Supporting line (optional)</span>
+                    <input
+                      value={messageCopy.supporting}
+                      onChange={(e) => onMessageCopyChange({ ...messageCopy, supporting: e.target.value })}
+                      maxLength={160}
+                      placeholder="Leave empty for a cleaner poster"
+                      className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none placeholder:text-white/30 focus:border-blue-500/45"
+                    />
+                  </label>
+                </div>
+              </div>
+            )}
 
             <div className="grid gap-4 md:grid-cols-3">
               {creativeDirections.map((dir, idx) => {
@@ -954,7 +1048,9 @@ export function PosterCreativeWorkspace({
                       Reference stills
                     </h3>
                     <p className="mt-0.5 text-xs text-white/35">
-                      Supporting product or context images
+                      {onReferenceStillsChange
+                        ? "Setting, mood or lifestyle photos (up to 2) — used as context, never as the product"
+                        : "Supporting product or context images"}
                     </p>
                   </div>
                   <button
@@ -982,10 +1078,20 @@ export function PosterCreativeWorkspace({
                     {stillThumbs.map((src, idx) => (
                       <div
                         key={idx}
-                        className="h-14 w-14 overflow-hidden rounded-lg border border-white/10"
+                        className="relative h-14 w-14 overflow-hidden rounded-lg border border-white/10"
                       >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={src} alt="" className="h-full w-full object-cover" />
+                        <img src={src} alt={`Reference still ${idx + 1}`} className="h-full w-full object-cover" />
+                        {onReferenceStillsChange && (
+                          <button
+                            type="button"
+                            onClick={() => onReferenceStillsChange(referenceStills.filter((_, i) => i !== idx))}
+                            className="absolute right-0.5 top-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-black/70 text-[11px] text-white/80 hover:text-white"
+                            aria-label={`Remove reference still ${idx + 1}`}
+                          >
+                            ×
+                          </button>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -996,21 +1102,85 @@ export function PosterCreativeWorkspace({
             {/* RIGHT — Creative direction */}
             <section className="space-y-4 lg:col-span-8">
               <div className={surfaceClass("p-4 sm:p-6")}>
+                {onAdGoalChange && (
+                  <div className="mb-6 border-b border-white/[0.06] pb-5">
+                    <h2 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/55">
+                      What&apos;s this ad for?
+                    </h2>
+                    <div className="mt-3 flex flex-wrap gap-2" role="radiogroup" aria-label="Ad goal">
+                      {GOAL_OPTIONS.map((g) => {
+                        const selected = adGoal === g.id;
+                        return (
+                          <button
+                            key={g.id}
+                            type="button"
+                            role="radio"
+                            aria-checked={selected}
+                            onClick={() => onAdGoalChange(selected ? null : g.id)}
+                            className={cn(
+                              "rounded-full border px-3 py-1.5 text-xs font-medium transition",
+                              selected
+                                ? "border-transparent text-white"
+                                : "border-white/10 bg-white/[0.04] text-white/70 hover:border-white/20 hover:text-white"
+                            )}
+                            style={selected ? { background: BLUE.solid } : undefined}
+                          >
+                            {g.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {(() => {
+                      const option = GOAL_OPTIONS.find((g) => g.id === adGoal);
+                      if (!option) return null;
+                      return (
+                        <div className="mt-3 space-y-3">
+                          <p className="text-xs text-white/45">{option.hint}</p>
+                          {option.fields.length > 0 && (
+                            <div className="grid gap-3 sm:grid-cols-2">
+                              {option.fields.map((f) => (
+                                <label key={f.key} className="block">
+                                  <span className="mb-1 block text-xs text-white/55">
+                                    {f.label}
+                                    {f.required ? "" : " (optional)"}
+                                  </span>
+                                  <input
+                                    value={goalDetails[f.key] || ""}
+                                    onChange={(e) => onGoalDetailsChange?.({ ...goalDetails, [f.key]: e.target.value })}
+                                    placeholder={f.placeholder}
+                                    className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none placeholder:text-white/30 focus:border-blue-500/45"
+                                  />
+                                </label>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+
                 <div className="mb-4">
                   <h2 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/55">
-                    Creative direction
+                    {onAdGoalChange && adGoal ? "Anything else? (optional)" : "Creative direction"}
                   </h2>
                   <p className="mt-1 text-sm text-white/50">
-                    Describe what you want the poster to communicate.
+                    {onAdGoalChange && adGoal
+                      ? "Product details, an idea or a tone you want — or leave it empty."
+                      : "Describe what you want the poster to communicate."}
                   </p>
                 </div>
 
                 <textarea
                   value={creativePrompt}
                   onChange={(e) => onCreativePromptChange(e.target.value)}
-                  rows={6}
-                  placeholder="Create a festive Christmas promotion highlighting the product…"
-                  className="min-h-[140px] w-full resize-y rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-[15px] leading-relaxed text-white outline-none placeholder:text-white/30 focus:border-blue-500/45"
+                  rows={onAdGoalChange && adGoal ? 3 : 6}
+                  placeholder={
+                    onAdGoalChange && adGoal
+                      ? "e.g. Made with 100% Kerala coconuts — keep it warm and homely"
+                      : "Create a festive Christmas promotion highlighting the product…"
+                  }
+                  className="min-h-[96px] w-full resize-y rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-[15px] leading-relaxed text-white outline-none placeholder:text-white/30 focus:border-blue-500/45"
                 />
 
                 <div className="mt-2 flex justify-end">
@@ -1172,6 +1342,38 @@ export function PosterCreativeWorkspace({
                   </div>
                 )}
 
+                {onPlacementChange ? (
+                <div className="mt-6 border-t border-white/[0.06] pt-5">
+                  <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45">
+                    Where will it run?
+                  </h3>
+                  <div className="mt-3 flex flex-wrap gap-2" role="radiogroup" aria-label="Placement">
+                    {PLACEMENT_OPTIONS.map((p) => {
+                      const selected = placement === p.id;
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          role="radio"
+                          aria-checked={selected}
+                          onClick={() => onPlacementChange(p.id)}
+                          className={cn(
+                            "inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-medium transition",
+                            selected
+                              ? "border-transparent text-white"
+                              : "border-white/10 bg-black/25 text-white/65 hover:border-white/20 hover:text-white"
+                          )}
+                          style={selected ? { background: BLUE.solid } : undefined}
+                        >
+                          <FormatGlyph ratio={p.aspectRatio as AspectRatio} selected={selected} />
+                          <span>{p.label}</span>
+                          <span className={selected ? "text-white/75" : "text-white/35"}>{p.aspectRatio}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                ) : (
                 <div className="mt-6 border-t border-white/[0.06] pt-5">
                   <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45">
                     Format
@@ -1199,6 +1401,7 @@ export function PosterCreativeWorkspace({
                     })}
                   </div>
                 </div>
+                )}
 
                 {isCarousel && (
                   <div className="mt-6 border-t border-white/[0.06] pt-5">

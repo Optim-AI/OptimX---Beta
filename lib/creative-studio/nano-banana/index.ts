@@ -6,6 +6,8 @@
 export {
   getGeminiImageModel,
   getPosterImageModel,
+  getPosterImageSize,
+  detectImageMimeType,
   getNanoBananaApiKey,
   getNanoBananaApiKeySource,
   normalizeImageForGemini,
@@ -18,11 +20,13 @@ export {
   isUnsupportedGeminiImageMime,
   generateGeminiImage,
   GEMINI_IMAGE_ALLOWED_ASPECTS,
+  GEMINI_IMAGE_SIZES,
   GEMINI_IMAGE_UNSUPPORTED_MIMES,
 } from "./client";
 
 export type {
   GeminiImageAspectRatio,
+  GeminiImageSize,
   GeminiImageReferencePart,
   GenerateGeminiImageInput,
   GenerateGeminiImageResult,

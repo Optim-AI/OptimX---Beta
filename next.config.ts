@@ -20,6 +20,10 @@ const nextConfig = {
   // spawns /var/task/node_modules/ffmpeg-static/ffmpeg (ENOENT) during voiceover mux.
   outputFileTracingIncludes: {
     '/api/commercial/generate': ['./node_modules/ffmpeg-static/ffmpeg'],
+    // Template posters fall back to this font when a brand font can't be fetched
+    // (read from disk at runtime, so tracing can't see it). Poster generation is
+    // reachable from several API routes, so include it for all of them.
+    '/api/**/*': ['./node_modules/next/dist/compiled/@vercel/og/noto-sans-v27-latin-regular.ttf'],
   },
   webpack: (config: any, { isServer }: { isServer: boolean; dev: boolean }) => {
     if (isServer) {

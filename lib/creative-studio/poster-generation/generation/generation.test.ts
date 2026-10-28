@@ -27,6 +27,14 @@ import {
 import { generatePostersForSession } from "./generate-poster";
 import { PosterGenerationError } from "./generation-errors";
 import { strategistInputFromBrief } from "../strategy/from-brief";
+import { trimPosterPhrase } from "./copy-density";
+import { EMPTY_IDENTITY } from "@/lib/brand-kit/types";
+import { missingGoalDetails } from "../brief-options";
+import { applyCopyEdits } from "../strategy/copy-edits";
+import {
+  detectImageMimeType,
+  getPosterImageSize,
+} from "@/lib/creative-studio/nano-banana/client";
 
 function assert(cond: unknown, msg: string): asserts cond {
   if (!cond) throw new Error(`FAIL: ${msg}`);
@@ -297,6 +305,8 @@ async function seedSession(opts?: {
   concepts?: number;
   overrides?: Partial<MarketingStrategy>;
   brief?: Partial<CreativeBrief>;
+  /** Applied to concept_1 */
+  concept?: Partial<CreativeConcept>;
 }) {
   const repo = new MemoryRepo();
   const service = new PosterGenerationSessionService(repo);
@@ -312,6 +322,7 @@ async function seedSession(opts?: {
   const concepts = Array.from({ length: n }, (_, i) =>
     makeConcept(`concept_${i + 1}`)
   );
+  if (opts?.concept) concepts[0] = { ...concepts[0], ...opts.concept };
   // diversify territories for multi
   if (concepts[1]) {
     concepts[1] = {
@@ -457,18 +468,287 @@ async function run() {
   assert(malformed, "empty headline fails");
 
   // 11–15 provider / prompt
+  // Fresh posters compile to a concise art-director brief
+  assert(spec.artDirection, "spec carries art direction");
   const prompt = compileNanoBananaPrompt(spec);
-  assert(prompt.includes("GenerationSpecification"), "role section");
-  assert(prompt.includes("26G PROTEIN"), "exact copy in prompt");
-  assert(prompt.includes("INSPIRATION ONLY"), "design handling");
-  assert(prompt.includes("HARD PRODUCT LOCK"), "product hard lock");
-  assert(prompt.includes("THEME LOCK"), "theme lock section");
-  assert(
-    /THEME\(Premium\)|Premium:|premium/i.test(prompt),
-    "theme recipe blended into prompt"
-  );
+  assert(prompt.startsWith("Create a finished, professional advertising poster"), "brief opening");
+  assert(prompt.includes('"26G PROTEIN"'), "exact copy in prompt");
+  assert(prompt.includes("design reference sets mood and craft only"), "design handling");
+  assert(prompt.includes("feature exactly this product as the hero"), "product fidelity");
+  assert(prompt.includes("Look and feel — Premium"), "theme in brief");
   assert(prompt.includes("4:5"), "aspect in prompt");
-  assert(!prompt.includes("Build muscle faster") || prompt.includes("Forbidden"), "forbidden noted");
+  assert(prompt.includes("Do not state or imply: Build muscle faster"), "forbidden noted");
+  assert(!/THEME\(|\| Concept\/DNA|LOCK/.test(prompt), "no blended theme strings or LOCK shouting");
+  const words = prompt.split(/\s+/).length;
+  assert(words < 600, `brief stays concise (${words} words)`);
+  assert(
+    (prompt.match(/"Dark Chocolate Protein Oats"/g) || []).length === 1,
+    "duplicate copy line rendered once"
+  );
+
+  // Copy density + de-duplication: product line repeated as supporting copy and a badge
+  // repeating the headline are dropped; the lifestyle concept uses the balanced budget.
+  assert(spec.artDirection!.copyDensity === "balanced", "lifestyle → balanced density");
+  const roles = spec.copyHierarchy.map((s) => s.role);
+  assert(roles[0] === "primary", "headline first");
+  assert(!roles.includes("badge"), "badge repeating headline dropped");
+  assert(
+    roles.filter((r) => r === "secondary" || r === "product_line").length === 1,
+    "one secondary-or-product line"
+  );
+  const texts = spec.copyHierarchy.map((s) => s.text.toLowerCase());
+  assert(new Set(texts).size === texts.length, "no duplicate copy slots");
+
+  // Punchline concepts render the headline only (no strategy CTA)
+  const punchSpec = buildGenerationSpecification({
+    sessionId: "sess_gen",
+    brief: makeBrief(),
+    strategy,
+    concept: { ...concept, territory: "product_hero" },
+    dna,
+    product: contexts.product,
+    brand: contexts.brand,
+    references: contexts.references,
+    variantIndex: 0,
+  });
+  // Launch objective: punchline budget keeps only the headline plus the CTA the objective needs
+  assert(
+    punchSpec.copyHierarchy.map((s) => s.role).join(",") === "primary,cta",
+    `punchline launch → headline + CTA (${punchSpec.copyHierarchy.map((s) => s.role).join(",")})`
+  );
+  const awarenessPunch = buildGenerationSpecification({
+    sessionId: "sess_gen",
+    brief: makeBrief(),
+    strategy: makeStrategy({ objective: "brand_awareness" }),
+    concept: { ...concept, territory: "product_hero" },
+    dna,
+    product: contexts.product,
+    brand: contexts.brand,
+    references: contexts.references,
+    variantIndex: 0,
+  });
+  assert(
+    awarenessPunch.copyHierarchy.length === 1 && awarenessPunch.copyHierarchy[0].role === "primary",
+    "punchline awareness → headline only"
+  );
+
+  // A user's own CTA survives every budget, exactly as typed
+  const ctaOverride = "Order your first box today and save";
+  const overrideSpec2 = buildGenerationSpecification({
+    sessionId: "sess_gen",
+    brief: makeBrief(),
+    strategy: makeStrategy({
+      userOverrides: { cta: ctaOverride },
+    }),
+    concept: { ...concept, territory: "product_hero" },
+    dna,
+    product: contexts.product,
+    brand: contexts.brand,
+    references: contexts.references,
+    variantIndex: 0,
+  });
+  assert(overrideSpec2.renderCopy.cta === ctaOverride, "user CTA kept exactly");
+  assert(
+    validateGenerationSpecification(overrideSpec2, makeStrategy({ userOverrides: { cta: ctaOverride } })).ok,
+    "user CTA spec validates"
+  );
+
+  // Trimming never leaves a dangling word
+  assert(
+    trimPosterPhrase("Glowing skin in just seven days", 4) === "Glowing skin",
+    "trim drops dangling words"
+  );
+
+  // Brand Kit: the brand's own system replaces the theme's colour/type guidance
+  const kitSpec = buildGenerationSpecification({
+    sessionId: "sess_gen",
+    brief: makeBrief(),
+    strategy,
+    concept,
+    dna,
+    product: contexts.product,
+    brand: contexts.brand,
+    references: contexts.references,
+    variantIndex: 0,
+    brandKit: {
+      id: "kit_1",
+      name: "FuelCo",
+      websiteUrl: "https://fuelco.test",
+      isDefault: true,
+      logo: { url: "https://cdn.fuelco.test/kit-logo.svg" },
+      colors: [
+        { hex: "#1f3a8a", role: "primary" },
+        { hex: "#f59e0b", role: "accent" },
+        { hex: "#ffffff", role: "background" },
+      ],
+      fonts: {
+        heading: { family: "Playfair Display", source: "google" },
+        body: { family: "Inter", source: "google" },
+      },
+      guidelines: { mustInclude: ["Logo in the top-left corner"], dos: ["Lots of white space"], donts: ["Gradients"] },
+      identity: { ...EMPTY_IDENTITY },
+      createdAt: "",
+      updatedAt: "",
+    },
+  });
+  const kitPrompt = compileNanoBananaPrompt(kitSpec);
+  assert(kitPrompt.includes("Brand style — FuelCo"), "brand style section");
+  assert(kitPrompt.includes("#1f3a8a (the main brand colour"), "palette with roles");
+  assert(kitPrompt.includes("Set the headline in Playfair Display"), "kit heading font");
+  assert(kitPrompt.includes("call to action in Inter"), "kit body font");
+  assert(kitPrompt.includes("- Must include: Logo in the top-left corner"), "must-include rule");
+  assert(kitPrompt.includes("- Lots of white space"), "do rule");
+  assert(/Avoid gradients;/.test(kitPrompt), "don't rule added to avoid list");
+  assert(!kitPrompt.includes("Restrained, sophisticated palette"), "theme colour guidance replaced by brand palette");
+  assert(!kitPrompt.includes("Elegant hierarchy"), "theme typography replaced by brand fonts");
+  assert(
+    kitSpec.references.some((r) => r.kind === "logo" && r.url === "https://cdn.fuelco.test/kit-logo.svg"),
+    "kit logo attached"
+  );
+
+  // Ad formats: the objective decides CTA, badge prominence and format labels
+  const specFor = (strategyOverrides: Partial<MarketingStrategy>, briefOverrides: Partial<CreativeBrief> = {}, conceptOverrides: Partial<CreativeConcept> = {}) =>
+    buildGenerationSpecification({
+      sessionId: "sess_gen",
+      brief: makeBrief(briefOverrides),
+      strategy: makeStrategy(strategyOverrides),
+      concept: { ...concept, ...conceptOverrides },
+      dna,
+      product: contexts.product,
+      brand: contexts.brand,
+      references: contexts.references,
+      variantIndex: 0,
+    });
+
+  const saleSpec = specFor(
+    { objective: "limited_time_offer", copy: { headline: "30% off this weekend", productLine: "Vitamin C Serum", cta: "Shop the sale", badges: ["Flat 30% off"] } },
+    { visualDirection: "bold" },
+    { territory: "product_hero" }
+  );
+  const salePrompt = compileNanoBananaPrompt(saleSpec);
+  assert(saleSpec.artDirection?.adFormat?.kind === "offer", "sale → offer format");
+  assert(saleSpec.copyHierarchy.some((s) => s.role === "cta"), "sale keeps its CTA under a punchline budget");
+  assert(saleSpec.copyHierarchy.some((s) => s.role === "badge"), "sale keeps its offer badge");
+  assert(salePrompt.includes("solid, high-contrast button"), "sale CTA is a button");
+  assert(salePrompt.includes("the offer badge — the second focal point"), "offer badge is prominent");
+  assert(salePrompt.includes("Make the offer unmissable"), "offer layout rule");
+  assert(/Make the Bold direction unmistakable:/.test(salePrompt), "theme cues enforced");
+  assert(!salePrompt.includes("small and understated"), "no understated CTA");
+
+  const baSpec = specFor(
+    { objective: "product_benefit", copy: { headline: "Frizz to smooth after one use", productLine: "Kesh Hair Oil", cta: null, badges: [] } },
+    { userInstruction: "Before and after style ad: frizzy to smooth" }
+  );
+  const baLabels = baSpec.copyHierarchy.filter((s) => s.role === "label").map((s) => s.text);
+  assert(baLabels.join(",") === "Before,After", `before/after labels approved even when the headline says "after" (${baLabels})`);
+  assert(compileNanoBananaPrompt(baSpec).includes('"Before": a short format label'), "labels rendered in the brief");
+
+  const proofSpec = specFor(
+    { objective: "product_promotion", copy: { headline: "4.8★ from 12,000+ customers", productLine: "Wild Hive Honey", cta: "Taste it", badges: ["Rated 4.8/5 by 12,000+ customers"] } },
+    { userInstruction: "Social proof poster using our 4.8 rating" },
+    { territory: "product_hero" }
+  );
+  assert(proofSpec.artDirection?.adFormat?.kind === "social_proof", "rating brief → social proof format");
+  assert(compileNanoBananaPrompt(proofSpec).includes("a large rating seal or review card"), "proof badge is the hero");
+
+  // The user's goal decides the ad format, even when the objective/wording suggest otherwise
+  const goalSpec = specFor(
+    { objective: "product_promotion" },
+    { adGoal: "before_after", userInstruction: "Show our oats", transformationHint: "sleepy to energised" }
+  );
+  assert(goalSpec.artDirection?.adFormat?.kind === "before_after", "explicit goal → before/after format");
+  assert(goalSpec.copyHierarchy.some((s) => s.role === "label" && s.text === "Before"), "goal adds Before/After labels");
+  const awarenessGoal = specFor({ objective: "limited_time_offer" }, { adGoal: "awareness" });
+  assert(awarenessGoal.artDirection?.adFormat?.kind === "awareness", "goal wins over inferred offer");
+
+  // A user-written supporting line renders even under a headline-only budget
+  const userLine = specFor(
+    { userOverrides: { message: "Ready in 3 minutes" } },
+    {},
+    { territory: "product_hero" }
+  );
+  assert(userLine.renderCopy.supporting === "Ready in 3 minutes", "user supporting line kept under punchline budget");
+
+  // Required goal details
+  assert(missingGoalDetails("offer", {}).join() === "Offer", "offer needs the offer text");
+  assert(missingGoalDetails("offer", { offer: "30% off" }).length === 0, "offer satisfied");
+  assert(missingGoalDetails("launch", {}).length === 0, "launch needs nothing extra");
+
+  // Copy edits: saved as exact overrides; empty headline rejected
+  const edited = applyCopyEdits(makeStrategy(), { headline: "  New.  Dark oats ", cta: "", supporting: "Ready in 3 minutes" });
+  assert(edited.copy.headline === "New. Dark oats" && edited.userOverrides.headline === "New. Dark oats", "headline edit normalised + override");
+  assert(edited.copy.cta === null && edited.userOverrides.cta === null, "cleared CTA removes the button");
+  assert(edited.userOverrides.message === "Ready in 3 minutes", "supporting edit stored");
+  assert(edited.id === makeStrategy().id, "same strategy id keeps concepts valid");
+  let emptyRejected = false;
+  try {
+    applyCopyEdits(makeStrategy(), { headline: "   " });
+  } catch (e) {
+    emptyRejected = (e as { code?: string }).code === "VALIDATION";
+  }
+  assert(emptyRejected, "empty headline rejected");
+  const editedSpec = buildGenerationSpecification({
+    sessionId: "sess_gen",
+    brief: makeBrief(),
+    strategy: edited,
+    concept,
+    dna,
+    product: contexts.product,
+    brand: contexts.brand,
+    references: contexts.references,
+    variantIndex: 0,
+  });
+  assert(validateGenerationSpecification(editedSpec, edited).ok, "edited copy spec validates");
+  assert(editedSpec.renderCopy.headline === "New. Dark oats", "edited headline rendered exactly");
+
+  // Reference stills reach the brief as context, never as product
+  const stillBrief = makeBrief({
+    supportingReferences: [{ id: "still_0", role: "supporting_still", image: { url: "https://cdn.example.com/kitchen.jpg" } }],
+  });
+  const stillCtx = strategistInputFromBrief(stillBrief);
+  const stillSpec = buildGenerationSpecification({
+    sessionId: "sess_gen",
+    brief: stillBrief,
+    strategy,
+    concept,
+    dna,
+    product: stillCtx.product,
+    brand: stillCtx.brand,
+    references: stillCtx.references,
+    variantIndex: 0,
+  });
+  assert(
+    stillSpec.references.some((r) => r.kind === "supporting" && r.url === "https://cdn.example.com/kitchen.jpg"),
+    "still attached as supporting reference"
+  );
+  assert(
+    !stillSpec.references.some((r) => r.kind === "product" && r.url === "https://cdn.example.com/kitchen.jpg"),
+    "still never attached as product"
+  );
+  assert(compileNanoBananaPrompt(stillSpec).includes("it is not the product"), "brief explains the context photo");
+
+  // Specs saved before artDirection existed still compile with the legacy prompt
+  const legacyPrompt = compileNanoBananaPrompt({ ...spec, artDirection: null });
+  assert(legacyPrompt.includes("=== ROLE ==="), "legacy fallback for old specs");
+
+  // Concise per-image notes on fresh briefs
+  const freshReq = buildImageGenerationRequest({ specification: spec, userId: "user_1" });
+  const productRef = freshReq.referenceImages.find((r) => r.kind === "product");
+  assert(
+    productRef?.instruction === "Product photo: the real product to feature exactly as shown.",
+    "concise product reference note"
+  );
+
+  // Output size + image type detection
+  assert(getPosterImageSize() === "2K", "posters default to 2K");
+  assert(
+    detectImageMimeType(Buffer.from([0xff, 0xd8, 0xff, 0xe0])) === "image/jpeg",
+    "JPEG detected"
+  );
+  assert(
+    detectImageMimeType(Buffer.from([0x89, 0x50, 0x4e, 0x47])) === "image/png",
+    "PNG detected"
+  );
 
   const iterSpec = {
     ...spec,
@@ -511,10 +791,10 @@ async function run() {
     "product reference must be first"
   );
   assert(
-    /exact user-uploaded product|USER-UPLOADED PRODUCT/i.test(
+    /real product to feature exactly as shown/i.test(
       req.referenceImages[0]?.instruction || ""
     ),
-    "strong product instruction"
+    "product instruction"
   );
   assert(req.metadata.generationId === spec.generationId, "generation id in meta");
 
@@ -603,6 +883,58 @@ async function run() {
   assert(multi.successfulVariants === 3, "3 success");
   assert(multi.creditsCharged === 3, "3 credits");
   assert(multi.session.assets.filter((a) => a.status === "generated").length === 3, "3 assets");
+
+  // 17b three variants of a chosen direction = that concept first, then the other concepts
+  const picked = await generatePostersForSession({
+    sessionId: "sess_multi",
+    userId: "user_1",
+    conceptId: "concept_2",
+    variantCount: 3,
+    forceRegenerate: true,
+    sessionService: service2,
+    provider: new MockProvider([{ ok: true }, { ok: true }, { ok: true }]),
+    skipStorage: true,
+    credits: { getBalance: async () => 10, deduct: async () => true },
+  });
+  assert(
+    picked.outcomes.map((o) => o.conceptId).join(",") === "concept_2,concept_1,concept_3",
+    `chosen concept first, then siblings (${picked.outcomes.map((o) => o.conceptId).join(",")})`
+  );
+
+  // 17c same copy → posters reused; edited headline → regenerated, never stale
+  const sameCopy = await generatePostersForSession({
+    sessionId: "sess_multi",
+    userId: "user_1",
+    conceptId: "concept_2",
+    variantCount: 1,
+    sessionService: service2,
+    provider: new MockProvider([{ ok: true }]),
+    skipStorage: true,
+    credits: { getBalance: async () => 10, deduct: async () => true },
+  });
+  assert(sameCopy.reused === true && sameCopy.creditsCharged === 0, "unchanged copy reuses posters");
+  const sessNow = await service2.getSession("sess_multi", "user_1");
+  await service2.updateStrategy(
+    "sess_multi",
+    "user_1",
+    applyCopyEdits(sessNow.strategy!, { headline: "Breakfast, upgraded" })
+  );
+  const afterEdit = await generatePostersForSession({
+    sessionId: "sess_multi",
+    userId: "user_1",
+    conceptId: "concept_2",
+    variantCount: 1,
+    sessionService: service2,
+    provider: new MockProvider([{ ok: true }]),
+    skipStorage: true,
+    credits: { getBalance: async () => 10, deduct: async () => true },
+  });
+  assert(afterEdit.reused === false && afterEdit.creditsCharged === 1, "edited headline regenerates instead of reusing stale posters");
+  assert(
+    afterEdit.outcomes[0].specification.renderCopy.headline === "Breakfast, upgraded",
+    "new poster uses the edited headline"
+  );
+  assert((await service2.getSession("sess_multi", "user_1")).concepts.length === 3, "copy edit kept the concepts");
 
   // 18 insufficient credits
   let insuf = false;
@@ -763,6 +1095,82 @@ async function run() {
     strategy
   );
   assert(!badAlign.ok, "strategy rewrite fails validation");
+
+  // ── Template path (POSTER_TEMPLATES) ─────────────────────────
+  {
+    const sharpLib = (await import("sharp")).default;
+    const { loadFont } = await import("@/lib/creative-studio/poster-templates/fonts");
+    const { buildPalette } = await import("@/lib/creative-studio/poster-templates/palette");
+    const offline = async () => ({ ok: false, text: async () => "", arrayBuffer: async () => new ArrayBuffer(0) });
+    const font = await loadFont("Test Font", 700, offline);
+    const cutoutPng = await sharpLib({ create: { width: 300, height: 500, channels: 4, background: { r: 30, g: 60, b: 160, alpha: 1 } } }).png().toBuffer();
+    const scenePng = await sharpLib({ create: { width: 800, height: 1000, channels: 3, background: "#e9dcc8" } }).jpeg().toBuffer();
+    const productOnly: Partial<CreativeConcept> = {
+      territory: "product_hero",
+      humanPresence: "none",
+      productTreatment: "hero packshot on a stone plinth",
+      visualStory: "The pack stands alone, catching morning light",
+    };
+    const templateDeps = {
+      templates: true,
+      getCutout: async () => ({ ok: true, png: cutoutPng, url: "https://cdn.example.com/cut.png", provider: "mock", quality: null, cached: false }),
+      loadBrandAssets: async () => ({ palette: buildPalette(null), fonts: { heading: font, body: font }, logo: null }),
+      skipStorage: true,
+      credits: { getBalance: async () => 10, deduct: async () => true },
+    };
+
+    // Launch → product hero scene: one text-free scene call, product + copy composited in code
+    const { service: launchSvc } = await seedSession({ brief: { adGoal: "launch" }, concept: productOnly });
+    const sceneProvider = new MockProvider([{ ok: true, imageBuffer: scenePng }]);
+    const launch = await generatePostersForSession({ sessionId: "sess_gen", userId: "user_1", variantCount: 1, sessionService: launchSvc, provider: sceneProvider, ...templateDeps });
+    const launchAsset = launch.outcomes[0].asset;
+    assert(launch.successfulVariants === 1 && launch.creditsCharged === 1, "template poster costs 1 credit");
+    assert(launchAsset.template?.id === "split-panel", `product-hero concept → split panel (${launchAsset.template?.id})`);
+    assert(launchAsset.template?.manifest.copy.headline === "26G PROTEIN", "template renders the approved headline");
+    assert(launchAsset.template?.cutoutUrl === "https://cdn.example.com/cut.png", "cut-out recorded on the asset");
+    // Scene call, then the harmonize pass (its mock answer is unusable, so the plain composite is kept)
+    assert(sceneProvider.calls.length === 2, `scene + harmonize calls (${sceneProvider.calls.length})`);
+    assert(sceneProvider.calls[1].referenceImages[0].label.startsWith("BASE POSTER"), "harmonize edits the composite");
+    assert(launchAsset.template?.manifest.harmonized === false, "unusable harmonize result is discarded");
+    const sceneCall = sceneProvider.calls[0];
+    assert(sceneCall.prompt.includes("NO text") && !sceneCall.prompt.includes("26G PROTEIN"), "scene prompt is text-free");
+    assert(!sceneCall.referenceImages.some((r) => r.kind === "product" || r.kind === "logo"), "no product/logo refs for the scene");
+    assert(launchAsset.imageUrl.startsWith("data:image/png"), "composited PNG");
+
+    // Offer → offer hero on the brand colour: no image-model call at all
+    const { service: offerSvc } = await seedSession({ brief: { adGoal: "offer" }, concept: productOnly });
+    const unusedProvider = new MockProvider([]);
+    const offer = await generatePostersForSession({ sessionId: "sess_gen", userId: "user_1", variantCount: 1, sessionService: offerSvc, provider: unusedProvider, ...templateDeps });
+    assert(offer.outcomes[0].asset.template?.id === "offer-hero", "offer uses the offer hero");
+    assert(unusedProvider.calls.length === 0, "brand-fill template needs no AI call");
+
+    // A concept with people in it can't be a template → full-AI path for that variant
+    const { service: handsSvc } = await seedSession({ brief: { adGoal: "launch" } });
+    const handsProvider = new MockProvider([{ ok: true }]);
+    const hands = await generatePostersForSession({ sessionId: "sess_gen", userId: "user_1", variantCount: 1, sessionService: handsSvc, provider: handsProvider, ...templateDeps });
+    assert(!hands.outcomes[0].asset.template, "people-led concept uses the full-AI path");
+    assert(handsProvider.calls[0].prompt.startsWith("Create a finished"), "full poster prompt for people-led concept");
+
+    // No clean cut-out → the current full-AI path, unchanged
+    const { service: fallbackSvc } = await seedSession({ brief: { adGoal: "launch" }, concept: productOnly });
+    const fullProvider = new MockProvider([{ ok: true }]);
+    const fallback = await generatePostersForSession({
+      sessionId: "sess_gen", userId: "user_1", variantCount: 1, sessionService: fallbackSvc, provider: fullProvider, ...templateDeps,
+      getCutout: async () => ({ ok: false, png: null, url: null, provider: "none", quality: null, cached: false, error: "off" }),
+    });
+    assert(fallback.successfulVariants === 1 && !fallback.outcomes[0].asset.template, "falls back without a cut-out");
+    assert(fullProvider.calls[0].prompt.startsWith("Create a finished, professional advertising poster"), "fallback uses the poster prompt");
+
+    // Flag off → template code never runs
+    const { service: offSvc } = await seedSession({ brief: { adGoal: "launch" }, concept: productOnly });
+    let cutoutAsked = false;
+    await generatePostersForSession({
+      sessionId: "sess_gen", userId: "user_1", variantCount: 1, sessionService: offSvc, provider: new MockProvider([{ ok: true }]), ...templateDeps,
+      templates: false,
+      getCutout: async () => { cutoutAsked = true; throw new Error("should not run"); },
+    });
+    assert(!cutoutAsked, "flag off skips cut-outs");
+  }
 
   console.log("poster-generation generation.test.ts: PASS");
 }

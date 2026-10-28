@@ -4,6 +4,7 @@ import { DEFAULT_AD_BUILDER_DATA } from '@/app/web/src/components/creative-studi
 import { claimGuestSession } from '@/lib/onboarding/guest-session';
 import { campaignAccess } from '@/lib/audit/access';
 import { buildCampaignSessionPayload, campaignPath } from '@/lib/audit/campaign';
+import { connectAuditBrand } from '@/lib/brand-kit/server';
 import { getAudit, getAuditViewer, lockAuditCampaign, setAuditCampaign } from '@/lib/audit/store';
 import type { AuditBrand, ContentIdea } from '@/lib/audit/types';
 
@@ -67,6 +68,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         host: row.normalizedHost,
         defaultAdBuilderData: DEFAULT_AD_BUILDER_DATA as unknown as Record<string, unknown>,
       });
+      // The audit's brand becomes (or fills) the user's Brand Kit; the session uses the kit.
+      const kitSnapshot = await connectAuditBrand(userId, payload.brandSnapshot);
+      if (kitSnapshot) payload.brandSnapshot = kitSnapshot as unknown as Record<string, unknown>;
       let name = payload.name;
       for (let n = 2; n < 50 && (await CreativeStudioSessionDAO.existsByNameAndType(userId, name, payload.sessionType)); n++) {
         name = `${payload.name} (${n})`;

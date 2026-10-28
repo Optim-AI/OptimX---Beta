@@ -13,6 +13,8 @@
 
 import type { BrandSnapshot, Product } from "@/app/web/src/components/creative-studio/types";
 
+import type { CompositionManifest } from "../poster-templates/types";
+
 // ─────────────────────────────────────────────────────────────
 // Shared literals (aligned with current UI)
 // ─────────────────────────────────────────────────────────────
@@ -44,6 +46,29 @@ export const PRODUCT_SOURCE_KINDS = [
   "manual",
 ] as const;
 export type ProductSourceKind = (typeof PRODUCT_SOURCE_KINDS)[number];
+
+/** The ad goal picked in the composer (what kind of ad this is). */
+export const POSTER_AD_GOALS = [
+  "launch",
+  "offer",
+  "festive",
+  "feature",
+  "before_after",
+  "social_proof",
+  "awareness",
+] as const;
+export type PosterAdGoal = (typeof POSTER_AD_GOALS)[number];
+
+/** Goal → strategist objective (the strategist's own objective vocabulary). */
+export const AD_GOAL_OBJECTIVE: Record<PosterAdGoal, string> = {
+  launch: "product_launch",
+  offer: "limited_time_offer",
+  festive: "seasonal_campaign",
+  feature: "product_feature",
+  before_after: "product_benefit",
+  social_proof: "product_promotion",
+  awareness: "brand_awareness",
+};
 
 export const REFERENCE_ASSET_ROLES = [
   "product_packshot",
@@ -166,6 +191,14 @@ export type CreativeBrief = {
   objectiveHint?: string | null;
   audienceHint?: string | null;
   offerHint?: string | null;
+  /** Ad goal picked by the user — decides the ad format when present */
+  adGoal?: PosterAdGoal | null;
+  /** Social proof the user supplied (rating, reviews, customer count) — a factual claim */
+  proofHint?: string | null;
+  /** Festive / seasonal occasion and any order-by date */
+  occasionHint?: string | null;
+  /** Before/after: the change the product makes */
+  transformationHint?: string | null;
   constraints: string[];
   /** Product packshots / logos */
   productReferences: PosterReferenceAsset[];
@@ -321,9 +354,78 @@ export type GenerationSpecReference = {
 };
 
 export type GenerationCopySlot = {
-  role: "primary" | "secondary" | "supporting" | "cta" | "badge" | "product_line";
+  role: "primary" | "secondary" | "supporting" | "cta" | "badge" | "product_line" | "label";
   text: string;
   importance: "required" | "optional";
+};
+
+/**
+ * Unblended creative inputs for the image prompt compiler.
+ * Theme, concept and DNA stay separate so the compiler can write one
+ * coherent art-director brief instead of concatenating them field by field.
+ */
+export type PosterArtDirection = {
+  productName: string;
+  brandName: string | null;
+  brandColors: string[];
+  brandFont: string | null;
+  hasProductReference: boolean;
+  hasLogoReference: boolean;
+  hasDesignReference: boolean;
+  theme: {
+    label: string;
+    summary: string;
+    mood: string;
+    colorStrategy: string;
+    typography: string;
+    graphicLanguage: string;
+    compositionBias: string;
+    lighting: string;
+    /** Cues that make the theme recognisable (theme recipe "must") */
+    must?: string[];
+    avoid: string[];
+  };
+  /** Ad format for the objective (see generation/ad-format.ts); absent on older specs */
+  adFormat?: {
+    kind: string;
+    ctaGuidance: string;
+    badgeGuidance: string;
+    heroBadge: boolean;
+    layoutRule: string;
+  } | null;
+  concept: {
+    name: string;
+    visualStory: string;
+    subject: string;
+    humanPresence: string;
+    environment: string;
+    productTreatment: string;
+    supportingElements: string;
+    cameraDirection: string;
+    photographyStyle: string;
+    lighting: string;
+    composition: string;
+    colorTreatment: string;
+    typographyTreatment: string;
+    graphicLanguage: string;
+    mood: string;
+    ctaTreatment: string;
+    aspectNotes: string;
+  };
+  copyDensity: "punchline" | "tags" | "balanced" | "informative";
+  textBudgetRule: string;
+  /** Extra direction from the caller, e.g. carousel slide position and series consistency */
+  additionalRequirements?: string[];
+  /** The brand's own design system; when present it takes priority over the theme's look */
+  brandKit?: {
+    name: string;
+    colors: Array<{ hex: string; role: "primary" | "secondary" | "accent" | "background" | "text" }>;
+    headingFont: string | null;
+    bodyFont: string | null;
+    mustInclude: string[];
+    dos: string[];
+    donts: string[];
+  } | null;
 };
 
 export type GenerationSpecification = {
@@ -404,6 +506,8 @@ export type GenerationSpecification = {
     message?: string | null;
     offer?: string | null;
   };
+  /** Raw creative inputs for the art-director prompt; absent on specs saved before it existed */
+  artDirection?: PosterArtDirection | null;
   /** Final compiled prompt string — DERIVATIVE only, optional until provider compile */
   compiledPrompt?: string | null;
   /** Phase 8 — lineage when this spec was produced by iteration */
@@ -803,6 +907,16 @@ export type PosterGeneratedAsset = {
   versionNumber?: number;
   /** Latest preferred version in a lineage (soft flag — originals stay immutable) */
   isActive?: boolean;
+  /** Set when the poster was composed from a template (scene + cut-out + code-rendered type) */
+  template?: PosterTemplateAssetInfo | null;
+};
+
+export type PosterTemplateAssetInfo = {
+  id: string;
+  version: number;
+  sceneUrl: string | null;
+  cutoutUrl: string | null;
+  manifest: CompositionManifest;
 };
 
 /**

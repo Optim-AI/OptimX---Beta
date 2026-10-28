@@ -21,6 +21,7 @@ import {
   MessageSquare,
   Trash2,
   ChevronsUpDown,
+  Palette,
   type LucideIcon,
 } from 'lucide-react';
 import { supabase } from '@/auth/supabase/client';
@@ -54,6 +55,7 @@ const NAV_SECTIONS: NavSection[] = [
     label: 'Create',
     items: [
       { href: '/brand-studio', label: 'Brand Studio', Icon: Orbit },
+      { href: '/brand-kit', label: 'Brand Kit', Icon: Palette },
       { href: '/content-studio', label: 'Ad Studio', Icon: ImageIcon, betaBadge: true },
       { href: '/create-campaign', label: 'Create Campaign', Icon: PlusCircle, featureKey: 'create_campaigns' },
     ],
@@ -362,7 +364,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             <button
               type="button"
               onClick={() => onBrandGuideline()}
-              title={collapsed ? 'Brand guideline' : undefined}
+              title={collapsed ? 'Brand kit' : undefined}
               className={`mb-1 flex w-full items-center gap-2.5 rounded-lg py-2 text-[13px] transition-colors ${
                 collapsed ? 'justify-center px-2' : 'px-2.5'
               }`}
@@ -377,7 +379,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               }}
             >
               <FileText size={16} strokeWidth={1.75} />
-              {!collapsed && <span>Brand guideline</span>}
+              {!collapsed && <span>Brand kit</span>}
             </button>
           )}
 
