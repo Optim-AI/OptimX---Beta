@@ -387,17 +387,17 @@ const Contact = () => {
                       className="font-semibold mb-2"
                       style={{ color: colors.foreground }}
                     >
-                      Marketing Optimisation Benefits
+                      What a Launch Creative Sprint includes
                     </h3>
                     <div
                       className="space-y-2 text-sm"
                       style={{ color: colors.mutedForeground }}
                     >
-                      <p>✓ AI-powered campaign automation</p>
-                      <p>✓ Advanced audience targeting</p>
-                      <p>✓ Real-time performance Optimisation</p>
-                      <p>✓ Multi-platform content management</p>
-                      <p>✓ Data-driven insights & analytics</p>
+                      <p>✓ Brand + 3-competitor snapshot</p>
+                      <p>✓ 1 campaign concept with 3 creative angles</p>
+                      <p>✓ 12 static ad creatives with captions and hooks</p>
+                      <p>✓ 2 × 15-second video ads</p>
+                      <p>✓ A 2-week posting calendar</p>
                     </div>
                   </CardContent>
                 </Card>

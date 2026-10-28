@@ -1,114 +1,30 @@
 'use client';
 
-import React, { useState, useRef, useEffect, memo } from 'react';
+import React from 'react';
 import Image from 'next/image';
 import colors from '@/lib/ui/colors';
 import { useScrollAnimation } from '../hooks/use-scroll-animation';
 
-type CarouselMediaItem = { type: 'image'; src: string } | { type: 'video'; src: string };
-
-const AD_CREATIVE_IMAGES = [
-  '/images/partners/download__5_-2d306f55-d9c8-4c5b-acbd-5b6812d25c56.png',
-  '/images/partners/jimmys-cocktails-green-apple-martini.png',
-  '/images/partners/download__2_-df378dbd-3706-431d-bbfd-8f2286e45de1.png',
-  '/images/partners/plum-cc332b6e-16f6-42a6-937c-cca1d9a11816.png',
-  '/images/partners/eaa4a0c4-064b-487b-8d58-a28b77d2a015_1763752969200_gen-b7af8568-d936-4c20-a335-9a90a4f28709.png',
-  '/images/partners/download_dark_choco-b1dee636-d24e-4528-840a-9cee4a332923.png',
-  '/images/partners/download__23_-5bb7c097-7ed8-4e26-9f09-b2c3c0dab73f.png',
-  '/images/partners/download__24_-f934ff9b-83a1-48c1-a07b-1bdd9ceb13a9.png',
-  '/images/partners/download__8_-acc0be34-f324-4ae1-a42b-803835bca987.png',
-  '/images/partners/wild_date-a0935436-0c67-4d06-a04a-92172fdb7fd9.png',
-  '/images/partners/download__10_-0c8442ce-4905-42ec-a447-17f470161620.png',
-  '/images/partners/bombay-shaving-legend-365.png',
-  '/images/partners/boat-stone-350-deadpool.png',
-];
-
-const AD_CREATIVE_VIDEOS: string[] = [
-  '/videos/1772472492670_video.mp4',
-  '/videos/1772472655830_video.mp4',
-  '/videos/1772472814538_video.mp4',
-  '/videos/1772472925195_video.mp4',
-  '/videos/Bike%20ad%20test.mp4',
-  '/videos/download%20(4).mp4',
-  '/videos/video-video_1770977065725_f0zb0n7nw.mp4',
-  '/videos/video-video_1771484100449_crs2lp30d.mp4',
-  '/videos/1772519732573_video%20(1).mp4',
-];
-
-function interleaveMedia(images: string[], videos: string[]): CarouselMediaItem[] {
-  const result: CarouselMediaItem[] = [];
-  const maxLen = Math.max(images.length, videos.length);
-  for (let i = 0; i < maxLen; i++) {
-    if (i < images.length) result.push({ type: 'image', src: images[i] });
-    if (i < videos.length) result.push({ type: 'video', src: videos[i] });
-  }
-  return result;
-}
-
-const AD_CREATIVE_MEDIA: CarouselMediaItem[] = interleaveMedia(
-  AD_CREATIVE_IMAGES,
-  AD_CREATIVE_VIDEOS
-);
-
-const IMAGE_ALT_BY_SRC: Record<string, string> = {
-  '/images/partners/boat-stone-350-deadpool.png':
-    'SkalX AI ad creative for a consumer electronics product',
-  '/images/partners/bombay-shaving-legend-365.png':
-    'SkalX AI poster creative for a personal care brand',
-  '/images/partners/jimmys-cocktails-green-apple-martini.png':
-    'SkalX AI advertising creative for a beverage product',
-  '/images/partners/plum-cc332b6e-16f6-42a6-937c-cca1d9a11816.png':
-    'SkalX AI ad creative for a beauty product',
-  '/images/partners/wild_date-a0935436-0c67-4d06-a04a-92172fdb7fd9.png':
-    'SkalX AI ad creative for a food and beverage product',
+/**
+ * Sample work — fictional brands only. Never real client or third-party brand work.
+ * Files live in /public/images/samples (see README there for required sizes).
+ */
+type Sample = {
+  src: string;
+  format: 'Feed 4:5' | 'Story 9:16' | 'Video 9:16';
+  alt: string;
 };
 
-function mediaAlt(item: CarouselMediaItem, ordinal: number): string {
-  if (item.type === 'video') {
-    return `SkalX AI short video ad creative example ${ordinal}`;
-  }
-  return IMAGE_ALT_BY_SRC[item.src] ?? `SkalX AI ad creative example ${ordinal}`;
-}
+const SAMPLES: Sample[] = [
+  { src: '/images/samples/sample-feed-01.png', format: 'Feed 4:5', alt: 'Sample feed ad for a fictional snack brand' },
+  { src: '/images/samples/sample-story-01.png', format: 'Story 9:16', alt: 'Sample story ad for a fictional brand' },
+  { src: '/images/samples/sample-feed-02.png', format: 'Feed 4:5', alt: 'Sample feed ad for a fictional beverage brand' },
+  { src: '/images/samples/sample-video-01.png', format: 'Video 9:16', alt: 'Frame from a sample video ad for a fictional brand' },
+  { src: '/images/samples/sample-feed-03.png', format: 'Feed 4:5', alt: 'Sample feed ad for a fictional skincare brand' },
+  { src: '/images/samples/sample-story-02.png', format: 'Story 9:16', alt: 'Sample story ad for a fictional brand' },
+  { src: '/images/samples/sample-feed-04.png', format: 'Feed 4:5', alt: 'Sample feed ad for a fictional personal-care brand' },
+];
 
-const LazyVideo = memo(function LazyVideo({ src, label }: { src: string; label: string }) {
-  const ref = useRef<HTMLVideoElement>(null);
-  const [isVisible, setIsVisible] = useState(false);
-
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setIsVisible(true);
-          observer.disconnect();
-        }
-      },
-      { rootMargin: '200px' }
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
-
-  return (
-    <video
-      ref={ref}
-      src={isVisible ? src : undefined}
-      muted
-      loop
-      playsInline
-      autoPlay={isVisible}
-      preload="none"
-      className="absolute inset-0 w-full h-full object-cover"
-      aria-label={label}
-    />
-  );
-});
-
-/**
- * Extracted from Hero — same assets, lazy video, and CSS scroll animation.
- * Mounted once on the homepage as the creative proof section.
- */
 const CreativeShowcase: React.FC = () => {
   const { elementRef, isVisible } = useScrollAnimation({ threshold: 0.1 });
 
@@ -118,25 +34,8 @@ const CreativeShowcase: React.FC = () => {
       className="py-16 md:py-24 relative overflow-hidden section-solid"
       style={{ backgroundColor: '#121212' }}
     >
-      <style jsx>{`
-        @keyframes adCarouselScroll {
-          0% {
-            transform: translateX(0);
-          }
-          100% {
-            transform: translateX(-50%);
-          }
-        }
-        .showcase-ad-carousel-track {
-          animation: adCarouselScroll 45s linear infinite;
-        }
-        @media (prefers-reduced-motion: reduce) {
-          .showcase-ad-carousel-track {
-            animation: none;
-          }
-        }
-      `}</style>
-
+      {/* Hero "See what you get" target until the Phase 2 deliverables section lands. */}
+      <span id="what-you-get" className="absolute top-0 left-0" aria-hidden />
       <div
         ref={elementRef}
         className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10"
@@ -151,48 +50,52 @@ const CreativeShowcase: React.FC = () => {
             className="text-3xl md:text-[40px] font-normal leading-tight mb-4"
             style={{ color: colors.foreground }}
           >
-            From product to campaign-ready creative.
+            Sample work
           </h2>
           <p className="text-lg font-extralight" style={{ color: colors.mutedForeground }}>
-            Create personalized marketing content across products, formats, and campaigns.
+            Feed ads, story ads and short video ads, made from product photos.
           </p>
         </div>
 
-        <div className="relative overflow-hidden -mx-4 sm:mx-0">
-          <div className="showcase-ad-carousel-track flex gap-4 w-max" style={{ width: 'max-content' }}>
-            {[...AD_CREATIVE_MEDIA, ...AD_CREATIVE_MEDIA].map((item, index) => {
-              const ordinal = (index % AD_CREATIVE_MEDIA.length) + 1;
-              const alt = mediaAlt(item, ordinal);
-              return (
-              <div
-                key={index}
-                className="flex-shrink-0 w-[220px] sm:w-[260px] md:w-[280px] rounded-[16px] overflow-hidden"
-                style={{
-                  border: '1px solid rgba(255,255,255,0.08)',
-                  boxShadow: '0 4px 12px hsl(0 0% 0% / 0.3)',
-                }}
-              >
-                <div className="relative aspect-[3/4] w-full">
-                  {item.type === 'image' ? (
+        <ul
+          className="flex gap-4 overflow-x-auto snap-x snap-mandatory pb-4 items-end"
+          aria-label="Sample creatives for fictional brands"
+        >
+          {SAMPLES.map((item) => {
+            const tall = item.format !== 'Feed 4:5';
+            return (
+              <li key={item.src} className="flex-shrink-0 snap-start">
+                <figure className="m-0">
+                  <div
+                    className={`relative rounded-[16px] overflow-hidden ${
+                      tall ? 'w-[180px] sm:w-[200px] aspect-[9/16]' : 'w-[220px] sm:w-[260px] aspect-[4/5]'
+                    }`}
+                    style={{
+                      border: '1px solid rgba(255,255,255,0.08)',
+                      boxShadow: '0 4px 12px hsl(0 0% 0% / 0.3)',
+                    }}
+                  >
                     <Image
                       src={item.src}
-                      alt={alt}
+                      alt={item.alt}
                       fill
+                      loading="lazy"
                       className="object-cover"
-                      sizes="(max-width: 640px) 220px, (max-width: 768px) 260px, 280px"
+                      sizes={tall ? '200px' : '(max-width: 640px) 220px, 260px'}
                     />
-                  ) : (
-                    <LazyVideo
-                      src={item.src}
-                      label={alt}
-                    />
-                  )}
-                </div>
-              </div>
-              );
-            })}
-          </div>
-        </div>
+                  </div>
+                  <figcaption className="mt-2 text-xs" style={{ color: colors.mutedForeground }}>
+                    {item.format}
+                  </figcaption>
+                </figure>
+              </li>
+            );
+          })}
+        </ul>
+
+        <p className="mt-4 text-sm text-center" style={{ color: colors.mutedForeground }}>
+          Sample work for fictional brands. Not client campaigns.
+        </p>
       </div>
     </section>
   );

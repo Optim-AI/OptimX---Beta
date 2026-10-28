@@ -27,13 +27,13 @@ const FinalCTA: React.FC = () => {
             className="text-4xl md:text-5xl lg:text-[46px] font-normal mb-6 leading-tight"
             style={{ color: colors.foreground }}
           >
-            Your next campaign starts here.
+            See it before you pay.
           </h2>
           <p
             className="text-xl mb-10 max-w-3xl mx-auto font-extralight"
             style={{ color: colors.mutedForeground }}
           >
-            Tell SkalX about your brand. We&apos;ll take it from there.
+            We&apos;ll make one ad for your brand, free.
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-4">
@@ -48,7 +48,7 @@ const FinalCTA: React.FC = () => {
                 boxShadow: '0 0 32px hsl(213 100% 55% / 0.35)',
               }}
             >
-              <Link href="/#home">Get my free audit →</Link>
+              <Link href="/free-ad">Get one free ad for your brand →</Link>
             </Button>
           </div>
           <Link href="/Contact" className="text-sm" style={{ color: colors.mutedForeground }}>

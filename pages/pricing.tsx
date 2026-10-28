@@ -91,6 +91,7 @@ export default function PricingPage() {
           onBack={() => router.push('/')}
           continuing={continuing}
           backLabel="← Back to home"
+          hideComingSoonRows
           introCopy={
             fromAudit
               ? 'Your free audit is saved to your account. Choose a plan to create campaigns — or head home anytime.'

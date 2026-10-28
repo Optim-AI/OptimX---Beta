@@ -32,7 +32,7 @@ const FAQ: React.FC = () => {
     {
       question: 'Which platforms can I use my creatives on?',
       answer:
-        'Export campaign-ready assets and use them across the channels you already advertise on. Meta and other integrations continue to expand inside the product.',
+        'You get ready-to-use files (feed, story and short video formats) to post or run on Instagram, Meta or anywhere else you advertise. We don\'t post or run ads for you.',
     },
     {
       question: 'How does SkalX understand my brand?',

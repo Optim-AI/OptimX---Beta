@@ -29,8 +29,8 @@ function withAlpha(token: string, alpha: number) {
 }
 
 /**
- * Public hero — marketing CTA surface.
- * Website URL starts the free marketing audit (/audit/:id); no signup required.
+ * Public hero — primary CTA is the free-ad request (/free-ad).
+ * Secondary: website URL starts the free marketing audit (/audit/:id); no signup required.
  * Creative carousel lives in CreativeShowcase on the homepage.
  */
 const Hero: React.FC = () => {
@@ -329,21 +329,68 @@ const Hero: React.FC = () => {
             className="text-center mb-4 mx-auto max-w-6xl animate-[fadeUp_0.7s_cubic-bezier(0.16,1,0.3,1)_both"
             style={{ animationDelay: "0.1s" }}
           >
+            <p
+              className="text-xs sm:text-sm uppercase tracking-[0.2em] mb-4 font-medium"
+              style={{ color: colors.primary }}
+            >
+              For D2C food, beverage and personal-care brands
+            </p>
             <h1
               className="text-4xl sm:text-[46px] font-normal leading-tight tracking-tight max-w-4xl mx-auto"
               style={{ color: colors.foreground }}
             >
-              Your AI Marketing team, from research to results.
+              Fresh ad creatives for your brand. Every week. Without an agency.
             </h1>
           </div>
           <p
-            className="text-center text-xl mb-8 max-w-3xl mx-auto font-extralight animate-[fadeUp_0.7s_cubic-bezier(0.16,1,0.3,1)_both"
+            className="text-center text-lg sm:text-xl mb-8 max-w-3xl mx-auto font-extralight animate-[fadeUp_0.7s_cubic-bezier(0.16,1,0.3,1)_both"
             style={{ color: colors.mutedForeground, animationDelay: "0.25s" }}
           >
-            Get a free AI-powered marketing audit for your brand. Discover what competitors are
-            posting, what&apos;s working in your niche, and what you should create next.
+            Send us your product photos. In 7 days you get 12 on-brand ads and 2 short video ads,
+            ready for Instagram and Meta. Fixed price, no retainer.
           </p>
 
+          <div
+            className="flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-3 mb-4 max-w-md sm:max-w-none mx-auto animate-[fadeUp_0.7s_cubic-bezier(0.16,1,0.3,1)_both"
+            style={{ animationDelay: "0.35s" }}
+          >
+            <Button
+              asChild
+              variant="hero"
+              size="lg"
+              className="px-8 py-4 text-base rounded-xl"
+              style={{
+                background: colors.gradientPrimary,
+                color: colors.primaryForeground,
+                boxShadow: colors.shadowGlow,
+              }}
+            >
+              <Link href="/free-ad">Get one free ad for your brand</Link>
+            </Button>
+            <Button
+              asChild
+              variant="outline"
+              size="lg"
+              className="px-8 py-4 text-base rounded-xl"
+              style={{
+                background: "transparent",
+                color: colors.foreground,
+                border: "1px solid rgba(255,255,255,0.2)",
+              }}
+            >
+              <Link href="/#what-you-get">See what you get</Link>
+            </Button>
+          </div>
+          <p className="text-center text-sm mb-14" style={{ color: colors.mutedForeground }}>
+            Built in Chennai · Delivered in 7 days · Pay half upfront
+          </p>
+
+          <h2
+            className="text-center text-lg sm:text-xl font-normal mb-4"
+            style={{ color: colors.foreground }}
+          >
+            Not ready? Get a free marketing audit of your website.
+          </h2>
           <form
             onSubmit={startAudit}
             noValidate
@@ -463,7 +510,7 @@ const Hero: React.FC = () => {
 
           <div className="text-center">
             <Link href="/pricing" className="text-sm font-medium" style={{ color: colors.primary }}>
-              Don&apos;t have a website? Explore plans
+              See pricing
             </Link>
           </div>
         </div>

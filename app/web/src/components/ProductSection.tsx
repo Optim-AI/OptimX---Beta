@@ -10,7 +10,7 @@ import colors from '@/lib/ui/colors';
 /**
  * Truthful Product section based on current SkalX capabilities in the repo:
  * Brand Studio (posters), Ad Studio, commercial video, Creative Intelligence,
- * campaign flows, analytics (coming soon / gated).
+ * campaign flows. Do not list features that are not live.
  */
 type ProductItem = {
   icon: typeof Palette;
@@ -62,13 +62,8 @@ const GROUPS: { label: string; items: ProductItem[] }[] = [
     ],
   },
   {
-    label: 'Optimize',
+    label: 'Refine',
     items: [
-      {
-        icon: LineChart,
-        title: 'Analytics',
-        desc: 'Performance views and workspace analytics as they roll out in-product.',
-      },
       {
         icon: LineChart,
         title: 'Insights',
@@ -165,18 +160,19 @@ const ProductSection: React.FC = () => {
           </div>
 
           <div
-            className="relative rounded-2xl overflow-hidden aspect-[3/4] max-w-md mx-auto w-full"
+            className="relative rounded-2xl overflow-hidden aspect-[4/5] max-w-md mx-auto w-full"
             style={{
               border: '1px solid rgba(255,255,255,0.08)',
               boxShadow: '0 24px 64px rgba(0,0,0,0.45)',
             }}
           >
             <Image
-              src="/images/partners/boat-stone-350-deadpool.png"
-              alt="Example SkalX poster creative"
+              src="/images/samples/sample-feed-02.png"
+              alt="Sample feed ad for a fictional beverage brand"
               fill
               className="object-cover"
               sizes="(max-width: 1024px) 90vw, 400px"
+              loading="lazy"
             />
             <div
               className="absolute inset-x-0 bottom-0 p-5"
@@ -185,15 +181,15 @@ const ProductSection: React.FC = () => {
               }}
             >
               <p className="text-sm" style={{ color: 'rgba(255,255,255,0.85)' }}>
-                Real creatives generated with SkalX Brand Studio.
+                Sample work for a fictional brand. Not a client campaign.
               </p>
             </div>
           </div>
         </div>
 
         <div className="text-center mt-14">
-          <Link href="/#home" className="text-lg font-medium" style={{ color: colors.primary }}>
-            Get my free audit →
+          <Link href="/free-ad" className="text-lg font-medium" style={{ color: colors.primary }}>
+            Get one free ad for your brand →
           </Link>
         </div>
       </div>

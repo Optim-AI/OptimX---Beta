@@ -83,10 +83,10 @@ const Footer: React.FC = () => {
               />
             </div>
             <p className="text-sm leading-relaxed mb-4" style={{ color: colors.mutedForeground }}>
-              An AI Marketing Team — Without Expanding Headcount.
+              Ad creatives for D2C brands, delivered in 7 days.
             </p>
-            <Link href="/#home" className="text-sm font-medium" style={{ color: colors.primary }}>
-              Get my free audit →
+            <Link href="/free-ad" className="text-sm font-medium" style={{ color: colors.primary }}>
+              Get one free ad →
             </Link>
           </div>
 

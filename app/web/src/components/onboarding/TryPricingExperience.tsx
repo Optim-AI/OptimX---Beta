@@ -33,6 +33,8 @@ type Props = {
   continuing?: boolean;
   backLabel?: string;
   introCopy?: string;
+  /** Drop comparison rows that list any not-yet-live feature (public /pricing). */
+  hideComingSoonRows?: boolean;
 };
 
 const DEFAULT_BACK_LABEL = '← Back to your poster';
@@ -88,8 +90,12 @@ export default function TryPricingExperience({
   continuing = false,
   backLabel = DEFAULT_BACK_LABEL,
   introCopy = DEFAULT_INTRO,
+  hideComingSoonRows = false,
 }: Props) {
   const headingId = useId();
+  const comparisonRows = hideComingSoonRows
+    ? PLAN_COMPARISON_ROWS.filter((row) => !Object.values(row.values).includes('coming_soon'))
+    : PLAN_COMPARISON_ROWS;
   const [openRow, setOpenRow] = useState<string | null>(PLAN_COMPARISON_ROWS[0]?.id ?? null);
   const [trialDialogOpen, setTrialDialogOpen] = useState(false);
 
@@ -343,7 +349,7 @@ export default function TryPricingExperience({
               </tr>
             </thead>
             <tbody>
-              {PLAN_COMPARISON_ROWS.map((row) => (
+              {comparisonRows.map((row) => (
                 <tr
                   key={row.id}
                   style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
@@ -369,7 +375,7 @@ export default function TryPricingExperience({
 
         {/* Comparison — mobile accordion */}
         <div className="md:hidden space-y-2">
-          {PLAN_COMPARISON_ROWS.map((row) => {
+          {comparisonRows.map((row) => {
             const open = openRow === row.id;
             return (
               <div key={row.id} className="rounded-xl overflow-hidden" style={glass}>

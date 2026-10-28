@@ -26,8 +26,8 @@ const STEPS = [
   },
   {
     id: '05',
-    title: 'Learn and optimize',
-    desc: 'Use insights and recommendations to refine what you create next.',
+    title: 'Refine the next set',
+    desc: 'Use brand and competitor context to decide what to create next.',
   },
 ];
 
@@ -265,13 +265,13 @@ const HowCreditsWork: React.FC = () => {
                   </>
                 )}
                 {i === 2 && (
-                  <div className="relative aspect-[3/4] max-w-[200px] mx-auto rounded-xl overflow-hidden"
+                  <div className="relative aspect-[4/5] max-w-[200px] mx-auto rounded-xl overflow-hidden"
                     style={{ border: '1px solid rgba(255,255,255,0.1)' }}
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
-                      src="/images/partners/plum-cc332b6e-16f6-42a6-937c-cca1d9a11816.png"
-                      alt="Sample personalized creative"
+                      src="/images/samples/sample-feed-03.png"
+                      alt="Sample creative for a fictional skincare brand"
                       className="absolute inset-0 w-full h-full object-cover"
                     />
                   </div>

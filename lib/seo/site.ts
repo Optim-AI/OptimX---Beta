@@ -9,13 +9,12 @@ export const WWW_HOST = `www.${CANONICAL_HOST}`;
 
 export const SITE_ORIGIN = `https://${CANONICAL_HOST}`;
 export const SITE_NAME = "SkalX AI";
-export const SITE_TAGLINE = "Your AI Marketing Partner";
+export const SITE_TAGLINE = "Ad creatives for D2C brands in 7 days";
 
-export const DEFAULT_TITLE =
-  "SkalX AI — AI Marketing Platform for Ad Creatives, Posters & Video Ads";
+export const DEFAULT_TITLE = "SkalX — Ad creatives for D2C brands in 7 days";
 
 export const DEFAULT_DESCRIPTION =
-  "SkalX AI is an AI-powered marketing platform that understands your brand and generates campaign-ready ad creatives, posters, and short marketing videos so teams launch faster.";
+  "Send us your product photos. In 7 days you get 12 on-brand ad creatives and 2 short video ads for Instagram and Meta. Fixed price, no retainer. Get one free ad first.";
 
 /** Absolute asset used in Open Graph / Organization schema (existing public logo). */
 export const SITE_LOGO_URL = `${SITE_ORIGIN}/images/SkalX_Logo.png`;
@@ -36,6 +35,7 @@ export const SITE_SAME_AS = [
 /** Public marketing / legal routes that should be indexed (Pages Router paths). */
 export const INDEXABLE_PATHS = [
   "/",
+  "/free-ad",
   "/ai-ad-generator",
   "/About",
   "/Contact",
@@ -105,6 +105,6 @@ export function shouldNoIndexPath(pathname: string | undefined | null): boolean 
 
 export function buildPageTitle(pageTitle?: string): string {
   if (!pageTitle) return DEFAULT_TITLE;
-  if (pageTitle.includes(SITE_NAME)) return pageTitle;
+  if (pageTitle === DEFAULT_TITLE || pageTitle.includes(SITE_NAME)) return pageTitle;
   return `${pageTitle} | ${SITE_NAME}`;
 }

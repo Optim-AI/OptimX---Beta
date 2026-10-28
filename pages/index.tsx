@@ -90,8 +90,9 @@ const Home: React.FC = () => {
       <noscript>
         <div style={{ padding: "2rem", maxWidth: 720, margin: "0 auto", color: "#fff" }}>
           <p>
-            {SITE_NAME} is an AI marketing platform for ad creatives, poster generation, and
-            short video ads. Visit {SITE_ORIGIN} with JavaScript enabled for the full experience.
+            {SITE_NAME} makes ad creatives for D2C brands: 12 on-brand ads and 2 short video ads
+            in 7 days, fixed price. Visit {SITE_ORIGIN} with JavaScript enabled for the full
+            experience, or go to {SITE_ORIGIN}/free-ad to request one free ad.
           </p>
         </div>
       </noscript>

@@ -1,12 +1,10 @@
-"use client";
-
-import React, { useEffect, useRef } from "react";
+import React from "react";
 import Link from "next/link";
 import Header from "../app/web/src/components/Header";
 import Footer from "../app/web/src/components/Footer";
-// **As requested** — importing from your relative file path
 import colors from '@/lib/ui/colors';
 import PageSeo from "@/components/seo/PageSeo";
+import { SITE_SUPPORT_EMAIL } from "@/lib/seo/site";
 
 const addAlpha = (hsl: string, alpha: number) => {
   if (!hsl) return hsl;
@@ -16,58 +14,28 @@ const addAlpha = (hsl: string, alpha: number) => {
   return hsl;
 };
 
+// TODO: add AJ's LinkedIn profile URL; the link renders once this is set.
+const FOUNDER_LINKEDIN_URL = "";
+
+const SPRINT_ITEMS = [
+  "Brand + 3-competitor snapshot",
+  "1 campaign concept with 3 creative angles",
+  "12 static ad creatives (4:5 feed + 9:16 story) with captions and hooks",
+  "2 × 15-second video ads",
+  "A 2-week posting calendar",
+  "1 revision round (up to 3 assets)",
+];
+
+/**
+ * About — founder-led, no traction claims. We have no paying customers yet;
+ * do not add client counts, logos, results or "trusted by" copy here.
+ */
 export default function About() {
-  const observerRef = useRef<IntersectionObserver | null>(null);
-
-  useEffect(() => {
-    // Reveal function that's robust: tries class toggle, then inline styles as fallback.
-    const reveal = (el: Element) => {
-      // keep the class toggle for existing CSS-based animation
-      try {
-        el.classList.add("animate-in");
-      } catch (e) {
-        /* ignore */
-      }
-
-      // Inline fallback: ensure element becomes visible even if .animate-in CSS missing.
-      const htmlEl = el as HTMLElement;
-      htmlEl.style.transition = htmlEl.style.transition || "all 700ms ease-out";
-      htmlEl.style.opacity = "1";
-      htmlEl.style.transform = "translateY(0) translateZ(0)";
-      htmlEl.style.pointerEvents = "auto";
-    };
-
-    // If IntersectionObserver is available, use it
-    if ("IntersectionObserver" in window) {
-      observerRef.current = new IntersectionObserver(
-        (entries) => {
-          entries.forEach((entry) => {
-            if (entry.isIntersecting) {
-              reveal(entry.target);
-              // optionally unobserve after reveal so we don't toggle repeatedly
-              observerRef.current?.unobserve(entry.target);
-            }
-          });
-        },
-        { threshold: 0.1 }
-      );
-
-      const elements = document.querySelectorAll(".fade-in-section");
-      if (elements.length === 0) {
-        // Nothing matched — reveal nothing to avoid surprises.
-        return;
-      }
-      elements.forEach((el) => observerRef.current?.observe(el));
-    } else {
-      // No IntersectionObserver support — reveal all immediately
-      const elements = document.querySelectorAll(".fade-in-section");
-      elements.forEach((el) => reveal(el));
-    }
-
-    return () => {
-      observerRef.current?.disconnect();
-    };
-  }, []);
+  const cardStyle = {
+    background: addAlpha(colors.card, 0.5),
+    border: `1px solid ${addAlpha(colors.border, 0.5)}`,
+    borderRadius: "1.25rem",
+  };
 
   return (
     <div
@@ -79,160 +47,123 @@ export default function About() {
     >
       <PageSeo
         title="About SkalX AI"
-        description="Learn about SkalX AI — an AI marketing platform that helps growing brands create campaign-ready ad creatives, posters, and short marketing videos."
+        description="SkalX makes ad creatives for Indian D2C brands — 12 on-brand ads and 2 short video ads in 7 days. Built in Chennai by product designer AJ."
         path="/About"
       />
       <Header />
 
       <main className="pt-32 pb-20">
-        {/* Hero Section */}
-        <section className="py-24 px-4">
-          <div
-            className="container mx-auto max-w-5xl text-center fade-in-section opacity-0 transition-all duration-1000 ease-out translate-y-8"
-            style={{ color: colors.foreground }}
-          >
+        <section className="py-16 md:py-24 px-4">
+          <div className="container mx-auto max-w-4xl">
             <p
               className="text-sm uppercase tracking-[0.3em] mb-6 font-light"
               style={{ color: colors.mutedForeground }}
             >
-              Who We Are
+              About SkalX
             </p>
             <h1
-              className="text-5xl md:text-7xl font-light mb-8 leading-tight tracking-tight"
+              className="text-4xl md:text-6xl font-light mb-12 leading-tight tracking-tight"
               style={{ color: colors.foreground }}
             >
-              Building smarter marketing
-              <br />
-              <span className="font-normal" style={{ color: colors.foreground }}>
-                with SkalX AI
-              </span>
+              Good creative shouldn&apos;t need an agency budget.
             </h1>
-            <p
-              className="text-lg md:text-xl max-w-2xl mx-auto font-light leading-relaxed"
-              style={{ color: colors.mutedForeground }}
-            >
-              We believe marketing should be simple, not overwhelming.
-            </p>
-          </div>
-        </section>
 
-        {/* Quote 1 */}
-        <section className="py-20 px-4">
-          <div
-            className="container mx-auto max-w-3xl text-center fade-in-section opacity-0 transition-all duration-1000 ease-out translate-y-8"
-            style={{ color: addAlpha(colors.foreground, 0.8) }}
-          >
-            <blockquote className="text-2xl md:text-3xl font-light italic leading-relaxed">
-              &quot;The best marketing doesn&apos;t feel like marketing at all.&quot;
-            </blockquote>
-          </div>
-        </section>
-
-        {/* Our Story */}
-        <section className="py-24 px-4">
-          <div
-            className="container mx-auto max-w-4xl fade-in-section opacity-0 transition-all duration-1000 ease-out translate-y-8"
-            style={{ color: colors.foreground }}
-          >
-            <div className="grid md:grid-cols-2 gap-16 items-start">
-              <div>
-                <h2
-                  className="text-4xl md:text-5xl font-light mb-8 leading-tight"
-                  style={{ color: colors.foreground }}
-                >
-                  Our Story
-                </h2>
+            <div className="grid md:grid-cols-[200px_1fr] gap-8 md:gap-12 items-start">
+              {/* TODO: replace with /public/images/founder-aj.jpg (800×800) via next/image */}
+              <div
+                role="img"
+                aria-label="Photo of AJ, founder of SkalX (placeholder)"
+                className="w-40 h-40 md:w-[200px] md:h-[200px] rounded-2xl flex items-center justify-center text-4xl font-light"
+                style={{ ...cardStyle, color: colors.mutedForeground }}
+              >
+                AJ
               </div>
               <div className="space-y-6">
-                <p
-                  className="text-lg font-light leading-relaxed"
-                  style={{ color: colors.mutedForeground }}
-                >
-                  Every SMB owner dreams of growth, but most struggle with one
-                  big hurdle:{" "}
-                  <span style={{ color: colors.foreground, fontWeight: 400 }}>
-                    marketing
-                  </span>
-                  . Running ads, posting across platforms, and tracking results
-                  is overwhelming, expensive, and built for big brands — not the
-                  local store down the street.
+                <p className="text-xl md:text-2xl font-light leading-relaxed" style={{ color: colors.foreground }}>
+                  Hi, I&apos;m AJ. I&apos;m a product designer from Chennai, and I built SkalX because
+                  good creative shouldn&apos;t need an agency budget. We&apos;re early, and we&apos;re
+                  taking on our first founding brands now — you&apos;ll work with me directly.
                 </p>
-                <p
-                  className="text-lg font-light leading-relaxed"
-                  style={{ color: colors.mutedForeground }}
-                >
-                  We saw countless SMBs losing time and money, stuck between
-                  overpriced agencies and confusing tools. That&apos;s when the idea
-                  for{" "}
-                  <span style={{ color: colors.foreground, fontWeight: 400 }}>
-                    SkalX AI
-                  </span>{" "}
-                  was born — a simple, AI-powered platform that puts the power
-                  of marketing back into the hands of small businesses.
+                <p className="text-base" style={{ color: colors.mutedForeground }}>
+                  Write to me at{" "}
+                  <a href={`mailto:${SITE_SUPPORT_EMAIL}`} className="underline" style={{ color: colors.foreground }}>
+                    {SITE_SUPPORT_EMAIL}
+                  </a>
+                  {FOUNDER_LINKEDIN_URL ? (
+                    <>
+                      {" "}or find me on{" "}
+                      <a
+                        href={FOUNDER_LINKEDIN_URL}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="underline"
+                        style={{ color: colors.foreground }}
+                      >
+                        LinkedIn
+                      </a>
+                    </>
+                  ) : null}
+                  .
                 </p>
               </div>
             </div>
           </div>
         </section>
 
-        {/* Divider */}
         <div className="container mx-auto max-w-4xl px-4">
-          <div
-            className="h-px"
-            style={{ background: addAlpha(colors.border, 0.5) }}
-          />
+          <div className="h-px" style={{ background: addAlpha(colors.border, 0.5) }} />
         </div>
 
-        {/* The Team */}
-        <section className="py-24 px-4">
-          <div
-            className="container mx-auto max-w-4xl fade-in-section opacity-0 transition-all duration-1000 ease-out translate-y-8"
-            style={{ color: colors.foreground }}
-          >
-            <h2
-              className="text-3xl md:text-4xl font-light mb-16 text-center"
-              style={{ color: colors.foreground }}
-            >
-              Behind SkalX AI
+        <section className="py-16 md:py-24 px-4">
+          <div className="container mx-auto max-w-4xl grid md:grid-cols-2 gap-12 items-start">
+            <div>
+              <h2 className="text-3xl md:text-4xl font-light mb-6 leading-tight" style={{ color: colors.foreground }}>
+                What we do
+              </h2>
+              <p className="text-lg font-light leading-relaxed" style={{ color: colors.mutedForeground }}>
+                D2C ads go stale in a week or two, and every new SKU, city or quick-commerce launch
+                needs its own set. We make those creatives for you with SkalX, our in-house tool,
+                and deliver them in 7 days for a fixed price.
+              </p>
+            </div>
+            <div className="p-8" style={cardStyle}>
+              <h3 className="text-xl font-normal mb-4" style={{ color: colors.foreground }}>
+                The Launch Creative Sprint
+              </h3>
+              <ul className="space-y-3 text-base font-light" style={{ color: colors.mutedForeground }}>
+                {SPRINT_ITEMS.map((item) => (
+                  <li key={item} className="flex items-start gap-3">
+                    <span aria-hidden style={{ color: colors.primary }}>•</span>
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        <section className="py-16 md:py-24 px-4">
+          <div className="container mx-auto max-w-4xl">
+            <h2 className="text-3xl md:text-4xl font-light mb-12" style={{ color: colors.foreground }}>
+              Who&apos;s behind SkalX
             </h2>
-            <div className="grid md:grid-cols-2 gap-12">
-              <div
-                className="space-y-4 p-8 rounded-2xl transition-all duration-500"
-                style={{
-                  background: addAlpha(colors.card, 0.5),
-                  border: `1px solid ${addAlpha(colors.border, 0.5)}`,
-                  borderRadius: "1.25rem",
-                }}
-              >
+            <div className="grid md:grid-cols-2 gap-8">
+              <div className="space-y-4 p-8" style={cardStyle}>
                 <h3 className="text-2xl font-normal" style={{ color: colors.foreground }}>
                   Sudharsan AJ
                 </h3>
-                <p
-                  className="text-sm uppercase tracking-wider"
-                  style={{ color: colors.mutedForeground }}
-                >
+                <p className="text-sm uppercase tracking-wider" style={{ color: colors.mutedForeground }}>
                   Founder
                 </p>
                 <p className="font-light leading-relaxed" style={{ color: colors.mutedForeground }}>
-                  With a background in product, design, and user experience, I&apos;ve worked closely with startups and small businesses. I&apos;ve seen firsthand how much energy owners waste trying to make sense of marketing.
+                  Product designer. Works with every founding brand directly, from brief to final files.
                 </p>
               </div>
-
-              <div
-                className="space-y-4 p-8 rounded-2xl transition-all duration-500"
-                style={{
-                  background: addAlpha(colors.card, 0.5),
-                  border: `1px solid ${addAlpha(colors.border, 0.5)}`,
-                  borderRadius: "1.25rem",
-                }}
-              >
+              <div className="space-y-4 p-8" style={cardStyle}>
                 <h3 className="text-2xl font-normal" style={{ color: colors.foreground }}>
                   Bharath Kumar Thulasidoss
                 </h3>
-                <p
-                  className="text-sm uppercase tracking-wider"
-                  style={{ color: colors.mutedForeground }}
-                >
+                <p className="text-sm uppercase tracking-wider" style={{ color: colors.mutedForeground }}>
                   Technical Co-Founder
                 </p>
                 <p className="font-light leading-relaxed" style={{ color: colors.mutedForeground }}>
@@ -243,163 +174,24 @@ export default function About() {
           </div>
         </section>
 
-        {/* Quote 2 */}
-        <section className="py-20 px-4">
-          <div
-            className="container mx-auto max-w-3xl text-center fade-in-section opacity-0 transition-all duration-1000 ease-out translate-y-8"
-            style={{ color: addAlpha(colors.foreground, 0.8) }}
-          >
-            <blockquote className="text-2xl md:text-3xl font-light italic leading-relaxed">
-              &quot;Simplicity is the ultimate sophistication.&quot;
-            </blockquote>
-          </div>
-        </section>
-
-        {/* Journey */}
-        <section className="py-24 px-4">
-          <div
-            className="container mx-auto max-w-4xl fade-in-section opacity-0 transition-all duration-1000 ease-out translate-y-8"
-            style={{ color: colors.foreground }}
-          >
-            <div className="grid md:grid-cols-2 gap-16 items-start">
-              <div>
-                <h2
-                  className="text-4xl md:text-5xl font-light mb-8 leading-tight"
-                  style={{ color: colors.foreground }}
-                >
-                  Our Journey
-                </h2>
-              </div>
-              <div className="space-y-6">
-                <p className="text-lg font-light leading-relaxed" style={{ color: colors.mutedForeground }}>
-                  Like many startups, SkalX AI began as a simple idea on paper — one dashboard for everything. Along the way, we refined our product by listening to SMB owners:
-                </p>
-                <ul className="space-y-4 text-lg font-light" style={{ color: colors.mutedForeground }}>
-                  <li className="flex items-start gap-3">
-                    <span style={{ color: colors.primary, marginTop: 4 }}>•</span>
-                    <span>Simplifying campaign creation with templates and AI</span>
-                  </li>
-                  <li className="flex items-start gap-3">
-                    <span style={{ color: colors.primary, marginTop: 4 }}>•</span>
-                    <span>Automating scheduling across multiple platforms</span>
-                  </li>
-                  <li className="flex items-start gap-3">
-                    <span style={{ color: colors.primary, marginTop: 4 }}>•</span>
-                    <span>Building insights that connect directly to sales, not vanity likes</span>
-                  </li>
-                </ul>
-                <p className="text-lg font-light leading-relaxed" style={{ color: colors.mutedForeground }}>
-                  Today, SkalX AI is on its way to becoming the{" "}
-                  <span style={{ color: colors.foreground, fontWeight: 400 }}>
-                    go-to marketing partner for SMBs
-                  </span>
-                  , already simplifying campaigns for businesses who once thought digital marketing was &quot;too complicated.&quot;
-                </p>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* Divider */}
-        <div className="container mx-auto max-w-4xl px-4">
-          <div
-            className="h-px"
-            style={{ background: addAlpha(colors.border, 0.5) }}
-          />
-        </div>
-
-        {/* Mission & Vision */}
-        <section className="py-24 px-4">
-          <div
-            className="container mx-auto max-w-5xl fade-in-section opacity-0 transition-all duration-1000 ease-out translate-y-8"
-            style={{ color: colors.foreground }}
-          >
-            <div className="text-center mb-20">
-              <h2 className="text-4xl md:text-5xl font-light mb-8 leading-tight" style={{ color: colors.foreground }}>
-                Mission & Vision
-              </h2>
-            </div>
-            <div className="grid md:grid-cols-2 gap-16">
-              <div
-                className="space-y-6 p-10 rounded-3xl"
-                style={{
-                  background: `linear-gradient(135deg, ${addAlpha(
-                    colors.primary,
-                    0.05
-                  )} 0%, ${addAlpha(colors.accent, 0.05)} 100%)`,
-                }}
-              >
-                <h3 className="text-2xl font-normal mb-4" style={{ color: colors.foreground }}>
-                  Our Mission
-                </h3>
-                <p className="text-lg font-light leading-relaxed" style={{ color: colors.mutedForeground }}>
-                  Make modern marketing <span style={{ color: colors.foreground, fontWeight: 400 }}>effortless, affordable, and accessible</span> for every small business.
-                </p>
-              </div>
-              <div
-                className="space-y-6 p-10 rounded-3xl"
-                style={{
-                  background: `linear-gradient(135deg, ${addAlpha(
-                    colors.accent,
-                    0.05
-                  )} 0%, ${addAlpha(colors.primary, 0.05)} 100%)`,
-                }}
-              >
-                <h3 className="text-2xl font-normal mb-4" style={{ color: colors.foreground }}>
-                  Our Vision
-                </h3>
-                <p className="text-lg font-light leading-relaxed" style={{ color: colors.mutedForeground }}>
-                  Become the <span style={{ color: colors.foreground, fontWeight: 400 }}>default marketing tool for SMBs worldwide</span> — the way Google Ads became the standard for big brands, SkalX AI will be for small businesses.
-                </p>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* Final Quote */}
-        <section className="py-20 px-4">
-          <div
-            className="container mx-auto max-w-3xl text-center fade-in-section opacity-0 transition-all duration-1000 ease-out translate-y-8"
-            style={{ color: addAlpha(colors.foreground, 0.8) }}
-          >
-            <blockquote className="text-2xl md:text-3xl font-light italic leading-relaxed">
-              &quot;One simple platform, powered by AI, guiding owners to grow smarter without the chaos.&quot;
-            </blockquote>
-          </div>
-        </section>
-
-        {/* Closing CTA */}
-        <section className="py-32 px-4">
-          <div
-            className="container mx-auto max-w-4xl text-center fade-in-section opacity-0 transition-all duration-1000 ease-out translate-y-8"
-            style={{ color: colors.foreground }}
-          >
-            <div
-              className="rounded-[3rem] p-16 md:p-24"
+        <section className="py-16 md:py-24 px-4">
+          <div className="container mx-auto max-w-3xl text-center">
+            <h2 className="text-3xl md:text-5xl font-light mb-6 leading-tight" style={{ color: colors.foreground }}>
+              See it before you pay.
+            </h2>
+            <p className="text-lg md:text-xl mb-10 font-light" style={{ color: colors.mutedForeground }}>
+              We&apos;ll make one ad for your brand, free.
+            </p>
+            <Link
+              href="/free-ad"
+              className="inline-block px-10 py-4 rounded-full text-lg font-normal"
               style={{
-                background: `linear-gradient(135deg, ${addAlpha(colors.primary, 0.1)} 0%, ${addAlpha(colors.accent, 0.05)} 50%, ${addAlpha(colors.primary, 0.05)} 100%)`,
+                background: colors.primary,
+                color: colors.primaryForeground,
               }}
             >
-              <h2 className="text-4xl md:text-6xl font-light mb-8 leading-tight" style={{ color: colors.foreground }}>
-                Let&apos;s Build Smarter
-                <br />
-                Campaigns Together
-              </h2>
-              <p className="text-lg md:text-xl mb-12 font-light max-w-2xl mx-auto leading-relaxed" style={{ color: colors.mutedForeground }}>
-                Ready to transform your marketing approach? Join us in making marketing simple, powerful, and human.
-              </p>
-              <Link
-                href="/try"
-                className="inline-block px-12 py-4 rounded-full text-lg font-normal transition-all duration-300"
-                style={{
-                  background: colors.primary,
-                  color: colors.primaryForeground,
-                  boxShadow: colors.shadowGlow,
-                }}
-              >
-                Try Now
-              </Link>
-            </div>
+              Get one free ad for your brand
+            </Link>
           </div>
         </section>
       </main>
