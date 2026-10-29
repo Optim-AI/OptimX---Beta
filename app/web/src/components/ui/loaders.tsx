@@ -6,6 +6,7 @@
 import * as React from "react";
 import { cn } from "../../../../../lib/utils";
 import colors from "@/lib/ui/colors";
+import { Megaphone, PenTool, Rocket, Search, TrendingUp } from "lucide-react";
 
 type SpinnerProps = Omit<React.HTMLAttributes<HTMLSpanElement>, "children"> & {
   /** Pixel size; otherwise h-/w- classes or 1em */
@@ -96,6 +97,32 @@ export function StepProgress({
         Step {current + 1} of {steps.length}
         {hint ? ` · ${hint}` : ""}
       </p>
+    </div>
+  );
+}
+
+const MORPH_ICONS = [Search, PenTool, Megaphone, TrendingUp, Rocket];
+
+/**
+ * Slow-page loader: one small tile where marketing icons (research → design →
+ * marketing → growth → scale) transform into each other.
+ */
+export function IconMorphLoader({ label = "Loading" }: { label?: string }) {
+  const [i, setI] = React.useState(0);
+  React.useEffect(() => {
+    const t = setInterval(() => setI((n) => (n + 1) % MORPH_ICONS.length), 850);
+    return () => clearInterval(t);
+  }, []);
+  const prev = (i + MORPH_ICONS.length - 1) % MORPH_ICONS.length;
+  return (
+    <div className="sx-morph-wrap" role="status" aria-label={label}>
+      <div className="sx-morph" aria-hidden>
+        {MORPH_ICONS.map((Icon, n) => (
+          <span key={n} className={`sx-morph-icon${n === i ? " on" : n === prev ? " off" : ""}`}>
+            <Icon className="h-[22px] w-[22px]" strokeWidth={1.75} />
+          </span>
+        ))}
+      </div>
     </div>
   );
 }

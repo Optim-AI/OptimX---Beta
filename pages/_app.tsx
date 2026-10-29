@@ -16,6 +16,7 @@ const FAVICON_PNG = `${SITE_ORIGIN}/icon-512.png`;
 const FAVICON_ICO = `${SITE_ORIGIN}/favicon.ico`;
 const APPLE_TOUCH_ICON = `${SITE_ORIGIN}/apple-touch-icon.png`;
 
+import { IconMorphLoader } from "@/app/web/src/components/ui/loaders";
 const LiquidGlassAnimator = dynamic(() => import("../app/web/src/components/LiquidGlassAnimator").then((m) => m.default), { ssr: false });
 
 // System font stack - no network fetch during build (avoids Google Fonts failure in restricted environments)
@@ -35,13 +36,21 @@ export default function MyApp({ Component, pageProps }: AppProps) {
   React.useEffect(() => {
     let completeTimer: number | undefined;
 
-    const handleStart = () => {
-      setLoading(true);
+    let startTimer: number | undefined;
+    // Only for a different page that's slow to load: nothing for fast navigations, shallow
+    // updates, or query/hash changes on the same page (e.g. after sign-in redirects).
+    const SLOW_MS = 600;
+    const handleStart = (url: string, opts?: { shallow?: boolean }) => {
+      if (opts?.shallow) return;
+      if (url.split(/[?#]/)[0] === window.location.pathname) return;
       if (completeTimer) { clearTimeout(completeTimer); completeTimer = undefined; }
+      if (startTimer) clearTimeout(startTimer);
+      startTimer = window.setTimeout(() => setLoading(true), SLOW_MS);
     };
     const handleComplete = () => {
+      if (startTimer) { clearTimeout(startTimer); startTimer = undefined; }
       if (completeTimer) clearTimeout(completeTimer);
-      completeTimer = window.setTimeout(() => setLoading(false), 180);
+      completeTimer = window.setTimeout(() => setLoading(false), 120);
     };
 
     Router.events.on("routeChangeStart", handleStart);
@@ -50,6 +59,7 @@ export default function MyApp({ Component, pageProps }: AppProps) {
 
     return () => {
       if (completeTimer) clearTimeout(completeTimer);
+      if (startTimer) clearTimeout(startTimer);
       Router.events.off("routeChangeStart", handleStart);
       Router.events.off("routeChangeComplete", handleComplete);
       Router.events.off("routeChangeError", handleComplete);
@@ -94,65 +104,10 @@ export default function MyApp({ Component, pageProps }: AppProps) {
           font-family: ${fontFamily};
         }
 
-        /* Full-page loader container */
-        .global-loader-container {
-          position: fixed;
-          inset: 0;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          background: #121212;
-          z-index: 99999;
-          -webkit-font-smoothing: antialiased;
-          -moz-osx-font-smoothing: grayscale;
-        }
-
-        /* The provided loader CSS (exact animation) */
-        .loader {
-          --r1: 154%;
-          --r2: 68.5%;
-          width: 60px;
-          aspect-ratio: 1;
-          border-radius: 50%;
-          background: radial-gradient(var(--r1) var(--r2) at top, #0000 79.5%, #269af2 80%),
-            radial-gradient(var(--r1) var(--r2) at bottom, #269af2 79.5%, #0000 80%),
-            radial-gradient(var(--r1) var(--r2) at top, #0000 79.5%, #269af2 80%), #ccc;
-          background-size: 50.5% 220%;
-          background-position: -100% 0%, 0% 0%, 100% 0%;
-          background-repeat: no-repeat;
-          animation: l9 2s infinite linear;
-        }
-
-        @keyframes l9 {
-          33% {
-            background-position: 0% 33%, 100% 33%, 200% 33%;
-          }
-          66% {
-            background-position: -100% 66%, 0% 66%, 100% 66%;
-          }
-          100% {
-            background-position: 0% 100%, 100% 100%, 200% 100%;
-          }
-        }
-
-        /* optional: reduced motion respect */
-        @media (prefers-reduced-motion: reduce) {
-          .loader {
-            animation: none;
-          }
-        }
       `}</style>
 
-      {/* Loader overlay */}
-      {loading && (
-        <div
-          className="global-loader-container"
-          aria-hidden={!loading}
-          aria-busy={loading}
-        >
-          <div className="loader" />
-        </div>
-      )}
+      {/* Only for page loads that are actually slow (styles in globals.css) */}
+      {loading && <IconMorphLoader label="Loading page" />}
 
       {/* App content */}
       <main style={{ fontFamily }}>
