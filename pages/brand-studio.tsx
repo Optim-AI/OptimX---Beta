@@ -3,36 +3,34 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
-import { showAlert, showError } from '@/app/web/src/components/ui/alert-modal-api';
+import { showError } from '@/app/web/src/components/ui/alert-modal-api';
 import Link from 'next/link';
 import Sidebar from '@/app/web/src/components/Sidebar';
+import { ArrowRight, Clapperboard, Image as ImageIcon, LayoutTemplate, Play, Trash2, Video } from 'lucide-react';
+import { ShimmerTile } from '@/app/web/src/components/ui/loaders';
 import colors from '@/lib/ui/colors';
 import {
   type BrandSnapshot,
   type SessionListItem,
   type SessionType,
   SessionNameModal,
-  BrandOnboarding,
   formatTimestamp,
-  mapFullAnalyzeToBrandSnapshot,
 } from '@/app/web/src/components/creative-studio';
-import { authFetch, safeResponseJson } from '@/lib/utils';
-import { saveBrandSnapshot } from '@/app/web/src/components/creative-studio/utils';
+import { authFetch } from '@/lib/utils';
 import BrandKitCard from '@/app/web/src/components/creative-studio/BrandKitCard';
 
 export default function BrandStudioLanding() {
   const router = useRouter();
 
   // Session state
-  const [sessions, setSessions] = useState<SessionListItem[]>([]);
+  const [sessions, setSessions] = useState<Array<SessionListItem & { cover?: string | null; coverKind?: 'image' | 'video' }>>([]);
+  const [sessionFilter, setSessionFilter] = useState<'all' | 'poster' | 'video'>('all');
+  const [showAllSessions, setShowAllSessions] = useState(false);
   const [isLoadingSessions, setIsLoadingSessions] = useState(true);
 
   // Brand state
   const [brand, setBrand] = useState<BrandSnapshot | null>(null);
-  const [showBrandOnboarding, setShowBrandOnboarding] = useState(false);
   const [brandLoaded, setBrandLoaded] = useState(false);
-  const [isAnalyzingBrand, setIsAnalyzingBrand] = useState(false);
-  const [onboardingMode, setOnboardingMode] = useState<'website' | 'manual'>('website');
 
   // Session naming modal state
   const [showNameModal, setShowNameModal] = useState(false);
@@ -91,18 +89,27 @@ export default function BrandStudioLanding() {
     async function loadSessions() {
       setIsLoadingSessions(true);
       try {
-        const response = await authFetch('/api/creative-studio/sessions');
+        const response = await authFetch('/api/creative-studio/sessions?includeMedia=1&limit=100');
         const data = await response.json();
 
         if (data.ok) {
           setSessions(
-            data.sessions.map((s: any) => ({
-              id: s.id,
-              name: s.name,
-              sessionType: s.sessionType,
-              updatedAt: s.updatedAt,
-              createdAt: s.createdAt,
-            }))
+            data.sessions
+              // Brand Studio sessions only (Photo Studio shoots live in Photo Studio).
+              .filter((s: any) => s.sessionType === 'poster' || s.sessionType === 'video')
+              .map((s: any) => {
+                const poster = Array.isArray(s.generatedPosters) ? s.generatedPosters.find((u: unknown) => typeof u === 'string' && u) : null;
+                const video = Array.isArray(s.generatedVideos) ? s.generatedVideos.find((v: any) => v?.url)?.url : null;
+                return {
+                  id: s.id,
+                  name: s.name,
+                  sessionType: s.sessionType,
+                  updatedAt: s.updatedAt,
+                  createdAt: s.createdAt,
+                  cover: poster || video || null,
+                  coverKind: poster ? 'image' as const : video ? 'video' as const : undefined,
+                };
+              })
           );
         }
       } catch (err) {
@@ -135,18 +142,22 @@ export default function BrandStudioLanding() {
         // no snapshot available
       }
       if (cancelled) return;
+      // No brand yet: the page shows a Brand Kit setup banner instead of a pop-up.
       setBrandLoaded(true);
-      setShowBrandOnboarding(true);
     })();
     return () => { cancelled = true; };
   }, []);
 
   // ============== Session Handlers ==============
 
+  /** Brand Studio builds from the Brand Kit, so set that up first. */
+  function goToBrandKitSetup() {
+    void router.push({ pathname: '/brand-kit', query: { welcome: '1' } });
+  }
+
   function handleStartPosterSession() {
     if (!brand) {
-      setShowBrandOnboarding(true);
-      setNewSessionType('poster');
+      goToBrandKitSetup();
       return;
     }
     setNewSessionType('poster');
@@ -155,8 +166,7 @@ export default function BrandStudioLanding() {
 
   function handleStartVideoSession() {
     if (!brand) {
-      setShowBrandOnboarding(true);
-      setNewSessionType('video');
+      goToBrandKitSetup();
       return;
     }
     setNewSessionType('video');
@@ -165,7 +175,7 @@ export default function BrandStudioLanding() {
 
   async function handleCreateSession(name: string, sessionTypeOverride?: 'poster' | 'video') {
     if (!brand) {
-      showAlert('Please set up your brand first.', 'Brand Required');
+      goToBrandKitSetup();
       return;
     }
 
@@ -241,81 +251,7 @@ export default function BrandStudioLanding() {
 
   // ============== Brand Handlers ==============
 
-  async function handleWebsiteBrandSetup(website: string) {
-    setIsAnalyzingBrand(true);
-    // Keep onboarding modal open so user sees "Analyzing..." UI
 
-    // Market research runs in the background and is saved to the brand (see /brand-research).
-    void authFetch('/api/brand/research', { method: 'POST', body: JSON.stringify({ url: website }) }).catch(() => null);
-
-    try {
-      const response = await authFetch('/api/brand/fullAnalyze', {
-        method: 'POST',
-        body: JSON.stringify({ url: website }),
-      });
-
-      const data = await safeResponseJson<{ result?: unknown; error?: string; details?: string }>(response);
-
-      // API returns { result: {...} } on success, { error: string } on failure
-      if (data.result) {
-        const brandSnapshot = mapFullAnalyzeToBrandSnapshot(data.result);
-        setBrand(brandSnapshot);
-        await saveBrandSnapshot(brandSnapshot);
-        setShowBrandOnboarding(false);
-        // The brand is now the user's Brand Kit — review it there.
-        router.push('/brand-kit');
-      } else {
-        const errorMsg = data.error || data.details || 'Could not analyze website.';
-        setShowBrandOnboarding(true);
-        showError(`${errorMsg} Please try manual setup.`);
-      }
-    } catch (err: any) {
-      console.error('Brand analysis error:', err);
-      setShowBrandOnboarding(true);
-      showError(`Error analyzing website: ${err?.message || 'Unknown error'}. Please try manual setup.`);
-    } finally {
-      setIsAnalyzingBrand(false);
-    }
-  }
-
-  async function handleManualBrandSetup(data: {
-    name: string;
-    offering: string;
-    audience: string;
-    personality?: string;
-    colors?: { primary?: string; secondary?: string; accent?: string };
-    tagline?: string;
-  }) {
-    const brandSnapshot: BrandSnapshot = {
-      name: data.name,
-      description: `${data.name} offers ${data.offering} to ${data.audience}.`,
-      audience: data.audience,
-      offering: data.offering,
-      tone: data.personality || 'professional',
-      colors: data.colors,
-      tagline: data.tagline,
-      personality: data.personality,
-    };
-
-    setBrand(brandSnapshot);
-    await saveBrandSnapshot(brandSnapshot);
-    setShowBrandOnboarding(false);
-    // The brand is now the user's Brand Kit — add the logo, colours and fonts there.
-    router.push('/brand-kit');
-  }
-
-  function handleSkipBrandSetup() {
-    const minimalBrand: BrandSnapshot = {
-      name: 'My Brand',
-      description: '',
-      audience: '',
-      offering: '',
-      tone: 'professional',
-    };
-    setBrand(minimalBrand);
-    saveBrandSnapshot(minimalBrand);
-    setShowBrandOnboarding(false);
-  }
 
   // ============== Separate sessions by type ==============
 
@@ -331,213 +267,234 @@ export default function BrandStudioLanding() {
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col h-full overflow-hidden" style={{ backgroundColor: colors.card, borderLeft: `1px solid ${colors.border}` }}>
-        {/* Header */}
-        <div className="border-b flex-shrink-0" style={{ borderColor: colors.border, backgroundColor: colors.card }}>
-          <div className="max-w-4xl mx-auto px-6 py-4">
-            <div className="flex items-center justify-between">
+      <div className="flex-1 flex flex-col h-full overflow-hidden" style={{ backgroundColor: colors.background }}>
+        <div className="flex-1 overflow-y-auto">
+          <div className="mx-auto max-w-6xl px-6 py-8">
+            {/* Header */}
+            <header className="flex flex-wrap items-end justify-between gap-4">
               <div>
                 <h1 className="text-2xl font-semibold" style={{ color: colors.foreground }}>Brand Studio</h1>
-                <p className="text-sm mt-1" style={{ color: colors.mutedForeground }}>
-                  Create poster-ready creatives and video-first ad concepts
+                <p className="mt-1 text-sm" style={{ color: colors.mutedForeground }}>
+                  On-brand posters and video ads, built from your Brand Kit.
                 </p>
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-2">
                 {creditsPending && (imageCredits === 0 || imageCredits === null) && (
-                  <div
-                    className="px-3 py-2 rounded-lg text-sm max-w-xs"
-                    style={{
-                      background: 'hsl(45 90% 50% / 0.15)',
-                      border: '1px solid hsl(45 90% 50% / 0.35)',
-                      color: colors.foreground,
-                    }}
-                  >
-                    Payment received — plan credits are still confirming. This page refreshes automatically.
-                  </div>
+                  <span className="rounded-full px-3 py-1.5 text-xs" style={{ background: 'hsl(45 90% 50% / 0.15)', color: colors.foreground }}>
+                    Payment received — credits are confirming…
+                  </span>
                 )}
-                {/* Image Credits */}
                 {imageCredits !== null && (
-                  <div className="flex items-center gap-2 px-4 py-2 rounded-lg" style={{ background: 'hsl(213 100% 55% / 0.15)', border: '1px solid hsl(213 100% 55% / 0.35)' }}>
-                    <svg className="w-5 h-5" style={{ color: colors.primary }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                    <span className="font-semibold" style={{ color: colors.primary }}>{imageCredits}</span>
-                    <span className="text-sm" style={{ color: colors.primary }}>images</span>
-                  </div>
+                  <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs" style={{ border: `1px solid ${colors.border}`, color: colors.mutedForeground }}>
+                    <ImageIcon className="h-3.5 w-3.5" style={{ color: colors.primary }} />
+                    <strong style={{ color: colors.foreground }}>{imageCredits}</strong> image credits
+                  </span>
                 )}
-
-                {/* Video Credits */}
                 {videoCredits !== null && (
-                  <div className="flex items-center gap-2 px-4 py-2 rounded-lg" style={{ background: 'hsl(270 80% 55% / 0.15)', border: '1px solid hsl(270 80% 55% / 0.3)' }}>
-                    <svg className="w-5 h-5" style={{ color: 'hsl(270 80% 65%)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                    </svg>
-                    <span className="font-semibold" style={{ color: 'hsl(270 80% 70%)' }}>{videoCredits}</span>
-                    <span className="text-sm" style={{ color: 'hsl(270 80% 65%)' }}>video</span>
-                  </div>
+                  <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs" style={{ border: `1px solid ${colors.border}`, color: colors.mutedForeground }}>
+                    <Video className="h-3.5 w-3.5" style={{ color: 'hsl(270 80% 70%)' }} />
+                    <strong style={{ color: colors.foreground }}>{videoCredits}</strong> video credits
+                  </span>
                 )}
               </div>
-            </div>
-          </div>
-        </div>
+            </header>
 
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto">
-          <div className="max-w-4xl mx-auto px-6 py-8">
             {/* Guided banner (shown when user skipped onboarding) */}
             {router.query.guided === '1' && (
-              <div className="mb-6 p-4 rounded-xl flex items-center justify-between gap-4" style={{ backgroundColor: 'hsl(213 100% 55% / 0.12)', border: `1px solid hsl(213 100% 55% / 0.35)` }}>
-                <div>
-                  <p className="font-medium" style={{ color: colors.foreground }}>Quick tip</p>
-                  <p className="text-sm mt-0.5" style={{ color: colors.mutedForeground }}>
-                    Set up your brand and workspace for better results. You can do this anytime from your brand settings.
-                  </p>
-                </div>
-                <Link
-                  href="/onboardingInfo"
-                  className="shrink-0 px-4 py-2 rounded-lg font-medium text-sm"
-                  style={{ backgroundColor: colors.primary, color: 'white' }}
-                >
-                  Set up workspace
+              <div className="mt-6 flex items-center justify-between gap-4 rounded-xl p-4" style={{ backgroundColor: 'hsl(213 100% 55% / 0.12)', border: '1px solid hsl(213 100% 55% / 0.35)' }}>
+                <p className="text-sm" style={{ color: colors.foreground }}>Set up your brand for better results. You can do this anytime.</p>
+                <Link href="/brand-kit" className="shrink-0 rounded-lg px-4 py-2 text-sm font-medium" style={{ backgroundColor: colors.primary, color: 'white' }}>
+                  Set up Brand Kit
                 </Link>
               </div>
             )}
 
-            {/* AI disclaimer note */}
-            <div className="mb-8 p-4 rounded-xl relative z-10" style={{ backgroundColor: 'hsl(30 60% 22%)', border: '1px solid hsl(30 50% 40%)' }}>
-              <p className="text-sm leading-relaxed" style={{ color: '#FAFAFA' }}>
-                <strong style={{ color: '#FAFAFA' }}>Note:</strong> If a generation glitches or looks incorrect,{' '}
-                <Link href="/report" className="font-medium underline" style={{ color: 'hsl(38 92% 65%)' }}>
-                  send us a screenshot
-                </Link>
-                {' '}and we&apos;ll refund the credit as an apology. We&apos;re continuously improving the system to deliver better results every day. Subject to Terms &amp; Conditions.
-              </p>
-            </div>
-
-            {/* Recent Sessions */}
-            {sessions.length > 0 && (
-              <div className="mb-12">
-                <h2 className="text-lg font-semibold mb-4" style={{ color: colors.foreground }}>Recent Sessions</h2>
-                <div className="max-h-[420px] overflow-y-auto overflow-x-hidden rounded-xl pr-1 -mr-1">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {sessions.map((session) => (
-                      <div
-                        key={session.id}
-                        onClick={() => handleSessionClick(session)}
-                        className="group relative text-left p-4 rounded-xl hover:shadow-sm transition-all cursor-pointer"
-                        style={{ backgroundColor: colors.background, border: `1px solid ${colors.border}` }}
-                      >
-                        <button
-                          onClick={(e) => handleSessionDelete(e, session.id)}
-                          className="absolute top-3 right-3 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500/20"
-                          style={{ color: colors.destructive }}
-                          title="Delete session"
-                          aria-label="Delete session"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                        </button>
-                        <div className="flex items-center gap-3 mb-2">
-                          <span className="text-xl">
-                            {session.sessionType === 'poster' ? '🖼️' : '🎬'}
-                          </span>
-                          <span
-                            className="text-xs px-2 py-0.5 rounded-full"
-                            style={session.sessionType === 'poster' ? { background: 'hsl(213 100% 55% / 0.2)', color: colors.primary } : { background: 'hsl(270 80% 55% / 0.2)', color: 'hsl(270 80% 70%)' }}
-                          >
-                            {session.sessionType === 'poster' ? 'Poster' : 'Video'}
-                          </span>
-                        </div>
-                        <h3 className="font-medium truncate" style={{ color: colors.foreground }}>{session.name}</h3>
-                        <p className="text-xs mt-1" style={{ color: colors.mutedForeground }}>
-                          {formatTimestamp(session.updatedAt)}
-                        </p>
-                      </div>
+            {/* Create — the main action, first */}
+            <section className="mt-8 grid grid-cols-1 gap-4 md:grid-cols-2">
+              {([
+                {
+                  type: 'poster' as const,
+                  onClick: handleStartPosterSession,
+                  Icon: LayoutTemplate,
+                  title: 'New poster',
+                  body: 'Strategy, three concepts, then finished posters and carousels in your brand style.',
+                  tint: 'hsl(213 100% 60%)',
+                  chips: ['Feed and story sizes', 'Carousels', 'Your product, untouched'],
+                },
+                {
+                  type: 'video' as const,
+                  onClick: handleStartVideoSession,
+                  Icon: Clapperboard,
+                  title: 'New video',
+                  body: 'Script, scenes and a finished video ad from your product and brand.',
+                  tint: 'hsl(270 80% 70%)',
+                  chips: ['Reels and shorts', 'Voiceover', 'Scene by scene'],
+                },
+              ]).map((c) => (
+                <button
+                  key={c.type}
+                  type="button"
+                  onClick={c.onClick}
+                  disabled={isCreatingSession}
+                  className="group relative overflow-hidden rounded-2xl p-6 text-left transition-all hover:-translate-y-0.5 disabled:opacity-60"
+                  style={{ background: colors.card, border: `1px solid ${colors.border}` }}
+                >
+                  <span aria-hidden className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full opacity-20 blur-3xl transition-opacity group-hover:opacity-35" style={{ background: c.tint }} />
+                  <div className="flex items-start justify-between gap-4">
+                    <span className="flex h-11 w-11 items-center justify-center rounded-xl" style={{ background: `color-mix(in srgb, ${c.tint} 18%, transparent)`, color: c.tint }}>
+                      <c.Icon className="h-5 w-5" />
+                    </span>
+                    <ArrowRight className="h-5 w-5 opacity-40 transition-all group-hover:translate-x-1 group-hover:opacity-100" style={{ color: colors.foreground }} />
+                  </div>
+                  <p className="mt-5 text-lg font-semibold" style={{ color: colors.foreground }}>{c.title}</p>
+                  <p className="mt-1 text-sm leading-relaxed" style={{ color: colors.mutedForeground }}>{c.body}</p>
+                  <div className="mt-4 flex flex-wrap gap-1.5">
+                    {c.chips.map((chip) => (
+                      <span key={chip} className="rounded-full px-2.5 py-1 text-[11px]" style={{ background: colors.secondary, color: colors.mutedForeground }}>{chip}</span>
                     ))}
                   </div>
-                </div>
-              </div>
-            )}
-
-            {/* Brand Kit (replaces the old Brand Guideline) */}
-            {brandLoaded && <BrandKitCard brand={brand} />}
-
-            {/* Create New Section */}
-            <div>
-              <h2 className="text-lg font-semibold mb-2" style={{ color: colors.foreground }}>
-                Create something
-              </h2>
-              <p className="text-sm mb-6" style={{ color: colors.mutedForeground }}>
-                Start a poster or video session
-              </p>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                {/* Poster — primary */}
-                <button
-                  onClick={handleStartPosterSession}
-                  disabled={isCreatingSession}
-                  className="group relative text-left rounded-2xl p-6 transition-all hover:scale-[1.01] disabled:opacity-60"
-                  style={{
-                    backgroundColor: colors.background,
-                    border: `1px solid ${colors.border}`,
-                    boxShadow: `0 0 0 1px hsl(213 100% 55% / 0.15)`,
-                  }}
-                >
-                  <div
-                    className="flex items-center justify-center w-12 h-12 rounded-xl mb-4"
-                    style={{ backgroundColor: 'hsl(213 100% 55% / 0.18)', color: colors.primary }}
-                  >
-                    <svg viewBox="0 0 48 48" className="w-7 h-7" fill="none" stroke="currentColor" strokeWidth="1.5">
-                      <rect x="6" y="8" width="36" height="32" rx="3" />
-                      <line x1="12" y1="28" x2="28" y2="28" />
-                      <line x1="12" y1="34" x2="22" y2="34" />
-                    </svg>
-                  </div>
-                  <div className="text-lg font-semibold" style={{ color: colors.foreground }}>
-                    Poster
-                  </div>
-                  <p className="mt-1.5 text-sm leading-relaxed" style={{ color: colors.mutedForeground }}>
-                    Create campaign-ready advertising posters
-                  </p>
-                  {isCreatingSession && newSessionType === 'poster' && (
-                    <p className="mt-3 text-xs" style={{ color: colors.primary }}>
-                      Opening studio…
-                    </p>
+                  {isCreatingSession && newSessionType === c.type && (
+                    <p className="mt-3 text-xs" style={{ color: c.tint }}>Opening studio…</p>
                   )}
                 </button>
+              ))}
+            </section>
 
-                {/* Video */}
-                <button
-                  onClick={handleStartVideoSession}
-                  className="group relative text-left rounded-2xl p-6 transition-all hover:scale-[1.01]"
-                  style={{ backgroundColor: colors.background, border: `1px solid ${colors.border}` }}
-                >
-                  <div
-                    className="flex items-center justify-center w-12 h-12 rounded-xl mb-4"
-                    style={{ backgroundColor: 'hsl(270 80% 55% / 0.18)', color: 'hsl(270 80% 70%)' }}
-                  >
-                    <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                    </svg>
-                  </div>
-                  <div className="text-lg font-semibold" style={{ color: colors.foreground }}>
-                    Video
-                  </div>
-                  <p className="mt-1.5 text-sm leading-relaxed" style={{ color: colors.mutedForeground }}>
-                    Create video-first advertising concepts
-                  </p>
-                </button>
-              </div>
-            </div>
-
-            {/* Loading State */}
-            {isLoadingSessions && (
-              <div className="mt-8 flex items-center justify-center" style={{ color: colors.mutedForeground }}>
-                <div className="animate-spin rounded-full h-5 w-5 border-2 border-gray-300 border-t-gray-600 mr-2" />
-                Loading sessions...
+            {/* Brand Kit strip, or a setup prompt when there's no brand yet */}
+            {brandLoaded && brand && (
+              <div className="mt-8">
+                <BrandKitCard brand={brand} />
               </div>
             )}
+            {brandLoaded && !brand && (
+              <div className="mt-8 flex flex-wrap items-center justify-between gap-4 rounded-2xl p-5" style={{ background: 'hsl(213 100% 55% / 0.1)', border: '1px solid hsl(213 100% 55% / 0.35)' }}>
+                <div>
+                  <p className="text-sm font-semibold" style={{ color: colors.foreground }}>Set up your Brand Kit first</p>
+                  <p className="mt-0.5 text-sm" style={{ color: colors.mutedForeground }}>
+                    Paste your website and we&apos;ll pull in your logo, colours, fonts and what you sell. Every poster and video uses it.
+                  </p>
+                </div>
+                <button type="button" onClick={goToBrandKitSetup} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium" style={{ background: colors.primary, color: colors.primaryForeground }}>
+                  Set up Brand Kit <ArrowRight className="h-4 w-4" />
+                </button>
+              </div>
+            )}
+
+            {/* Recent sessions */}
+            <section className="mt-10">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h2 className="text-base font-semibold" style={{ color: colors.foreground }}>Recent sessions</h2>
+                {sessions.length > 0 && (
+                  <div role="tablist" aria-label="Session type" className="inline-flex rounded-lg p-1" style={{ background: colors.secondary }}>
+                    {([
+                      ['all', 'All', sessions.length],
+                      ['poster', 'Posters', sessions.filter((x) => x.sessionType === 'poster').length],
+                      ['video', 'Videos', sessions.filter((x) => x.sessionType === 'video').length],
+                    ] as const).map(([id, label, n]) => {
+                      const on = sessionFilter === id;
+                      return (
+                        <button key={id} role="tab" aria-selected={on} type="button" onClick={() => { setSessionFilter(id); setShowAllSessions(false); }}
+                          className="rounded-md px-3 py-1 text-xs transition-colors"
+                          style={on ? { background: colors.card, color: colors.foreground } : { color: colors.mutedForeground }}>
+                          {label} <span className="opacity-60">{n}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {isLoadingSessions ? (
+                <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+                  {Array.from({ length: 4 }, (_, i) => (
+                    <div key={i} className="space-y-2">
+                      <ShimmerTile className="aspect-[4/3]" />
+                      <ShimmerTile className="h-3 w-2/3 rounded" />
+                    </div>
+                  ))}
+                </div>
+              ) : sessions.length === 0 ? (
+                <p className="mt-4 rounded-xl px-4 py-8 text-center text-sm" style={{ border: `1px dashed ${colors.border}`, color: colors.mutedForeground }}>
+                  Your poster and video sessions will appear here.
+                </p>
+              ) : (
+                (() => {
+                  const list = sessions.filter((x) => sessionFilter === 'all' || x.sessionType === sessionFilter);
+                  const shown = showAllSessions ? list : list.slice(0, 8);
+                  return (
+                    <>
+                      <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+                        {shown.map((session) => {
+                          const isPoster = session.sessionType === 'poster';
+                          const tint = isPoster ? 'hsl(213 100% 60%)' : 'hsl(270 80% 70%)';
+                          return (
+                            <div
+                              key={session.id}
+                              role="button"
+                              tabIndex={0}
+                              onClick={() => handleSessionClick(session)}
+                              onKeyDown={(e) => { if (e.key === 'Enter') handleSessionClick(session); }}
+                              className="group relative cursor-pointer overflow-hidden rounded-xl transition-all hover:-translate-y-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+                              style={{ background: colors.card, border: `1px solid ${colors.border}` }}
+                            >
+                              <div className="relative aspect-[4/3] w-full overflow-hidden" style={{ background: colors.secondary }}>
+                                {session.cover && session.coverKind === 'image' ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img src={session.cover} alt="" loading="lazy" className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]" />
+                                ) : session.cover && session.coverKind === 'video' ? (
+                                  <>
+                                    <video src={session.cover} muted preload="metadata" playsInline className="h-full w-full object-cover" />
+                                    <span className="absolute inset-0 flex items-center justify-center">
+                                      <span className="flex h-9 w-9 items-center justify-center rounded-full bg-black/55"><Play className="ml-0.5 h-4 w-4 text-white" fill="white" /></span>
+                                    </span>
+                                  </>
+                                ) : (
+                                  <span className="flex h-full w-full items-center justify-center" style={{ color: tint }}>
+                                    {isPoster ? <LayoutTemplate className="h-7 w-7 opacity-60" /> : <Clapperboard className="h-7 w-7 opacity-60" />}
+                                  </span>
+                                )}
+                                <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium backdrop-blur" style={{ background: 'rgba(0,0,0,0.55)', color: '#fff' }}>
+                                  {isPoster ? <ImageIcon className="h-3 w-3" /> : <Video className="h-3 w-3" />}
+                                  {isPoster ? 'Poster' : 'Video'}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => handleSessionDelete(e, session.id)}
+                                  className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-lg opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100"
+                                  style={{ background: 'rgba(0,0,0,0.6)', color: '#fff' }}
+                                  title="Delete session"
+                                  aria-label={`Delete ${session.name}`}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                              <div className="px-3 py-2.5">
+                                <p className="truncate text-sm font-medium" style={{ color: colors.foreground }}>{session.name}</p>
+                                <p className="mt-0.5 text-[11px]" style={{ color: colors.mutedForeground }}>{formatTimestamp(session.updatedAt)}</p>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      {list.length > 8 && (
+                        <div className="mt-4 text-center">
+                          <button type="button" onClick={() => setShowAllSessions((v) => !v)} className="rounded-lg px-4 py-2 text-sm" style={{ border: `1px solid ${colors.border}`, color: colors.foreground }}>
+                            {showAllSessions ? 'Show fewer' : `Show all ${list.length}`}
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()
+              )}
+            </section>
+
+            {/* Refund note — quiet footnote */}
+            <p className="mt-10 pb-6 text-center text-xs leading-relaxed" style={{ color: colors.mutedForeground }}>
+              A generation looks off?{' '}
+              <Link href="/report" className="underline underline-offset-2" style={{ color: colors.foreground }}>Send us a screenshot</Link>
+              {' '}and we&apos;ll refund the credit. Subject to Terms &amp; Conditions.
+            </p>
           </div>
         </div>
 
@@ -549,18 +506,6 @@ export default function BrandStudioLanding() {
           onSubmit={handleCreateSession}
           isLoading={isCreatingSession}
         />
-
-        {/* Brand Onboarding Modal */}
-        {showBrandOnboarding && (
-          <BrandOnboarding
-            mode={onboardingMode}
-            onModeChange={setOnboardingMode}
-            onWebsiteSubmit={handleWebsiteBrandSetup}
-            onManualSubmit={handleManualBrandSetup}
-            onSkip={handleSkipBrandSetup}
-            isLoading={isAnalyzingBrand}
-          />
-        )}
 
         {/* Delete Confirmation Modal */}
         {deleteSessionId && (

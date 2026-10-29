@@ -35,7 +35,7 @@ import {
   RefreshCw,
   History,
 } from "lucide-react";
-import { ArcSpinner } from "@/app/web/src/components/ui/loaders";
+import { ArcSpinner, StepProgress } from "@/app/web/src/components/ui/loaders";
 import PosterEditModal from "@/app/web/src/components/content-studio/PosterEditModal";
 import {
   AngleMeta,
@@ -238,7 +238,7 @@ export default function ContentStudioPage() {
       }
       if (cancelled) return;
       setBrandLoaded(true);
-      setShowBrandOnboarding(true);
+      // No brand yet: a banner suggests the Brand Kit; the scan still works without it.
     })();
     return () => { cancelled = true; };
   }, []);
@@ -1116,140 +1116,123 @@ export default function ContentStudioPage() {
         <Sidebar />
       </div>
       <div className="flex-1 flex flex-col h-full overflow-hidden" style={{ backgroundColor: colors.card, borderLeft: `1px solid ${colors.border}` }}>
-        {/* Sticky Header */}
-        <div className="border-b flex-shrink-0" style={{ borderColor: colors.border, backgroundColor: colors.card }}>
-          <div className="max-w-6xl mx-auto px-6 py-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h1 className="text-2xl font-semibold flex items-center gap-2" style={{ color: colors.foreground }}>
-                  Content Studio
-                  <span
-                    className="shrink-0"
-                    style={{
-                      fontSize: 10,
-                      padding: '2px 6px',
-                      borderRadius: 4,
-                      background: 'rgba(34, 197, 94, 0.2)',
-                      color: '#22c55e',
-                      fontWeight: 600,
-                    }}
-                  >
-                    Beta
-                  </span>
-                </h1>
-                <p className="text-sm mt-1" style={{ color: colors.mutedForeground }}>
-                  Turn your website into high-converting ads
-                </p>
-              </div>
-              <div className="flex items-center gap-3">
-                {creditsPending && (imageCredits === 0 || imageCredits === null) && (
-                  <div
-                    className="px-3 py-2 rounded-lg text-sm max-w-xs"
-                    style={{
-                      background: 'hsl(45 90% 50% / 0.15)',
-                      border: '1px solid hsl(45 90% 50% / 0.35)',
-                      color: colors.foreground,
-                    }}
-                  >
-                    Payment received — plan credits are still confirming.
-                  </div>
-                )}
-                {imageCredits !== null && (
-                  <div className="flex items-center gap-2 px-4 py-2 rounded-lg" style={{ background: 'hsl(213 100% 55% / 0.15)', border: '1px solid hsl(213 100% 55% / 0.35)' }}>
-                    <svg className="w-5 h-5" style={{ color: colors.primary }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                    <span className="font-semibold" style={{ color: colors.primary }}>{imageCredits}</span>
-                    <span className="text-sm" style={{ color: colors.primary }}>images</span>
-                  </div>
-                )}
-                {videoCredits !== null && (
-                  <div className="flex items-center gap-2 px-4 py-2 rounded-lg" style={{ background: 'hsl(270 80% 55% / 0.15)', border: '1px solid hsl(270 80% 55% / 0.3)' }}>
-                    <svg className="w-5 h-5" style={{ color: 'hsl(270 80% 65%)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                    </svg>
-                    <span className="font-semibold" style={{ color: 'hsl(270 80% 70%)' }}>{videoCredits}</span>
-                    <span className="text-sm" style={{ color: 'hsl(270 80% 65%)' }}>video</span>
-                  </div>
-                )}
-              </div>
+        {/* Header */}
+        <div className="flex-shrink-0 border-b" style={{ borderColor: colors.border, backgroundColor: colors.card }}>
+          <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-6 py-4">
+            <div>
+              <h1 className="flex items-center gap-2 text-2xl font-semibold" style={{ color: colors.foreground }}>
+                Ad Studio
+                <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold" style={{ background: "rgba(34, 197, 94, 0.18)", color: "#22c55e" }}>Beta</span>
+              </h1>
+              <p className="mt-0.5 text-sm" style={{ color: colors.mutedForeground }}>
+                Your website → a marketer&apos;s strategy for each product → ready-to-run ads.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {creditsPending && (imageCredits === 0 || imageCredits === null) && (
+                <span className="rounded-full px-3 py-1.5 text-xs" style={{ background: "hsl(45 90% 50% / 0.15)", color: colors.foreground }}>
+                  Payment received — credits are confirming…
+                </span>
+              )}
+              {imageCredits !== null && (
+                <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs" style={{ border: `1px solid ${colors.border}`, color: colors.mutedForeground }}>
+                  <ImageIcon className="h-3.5 w-3.5" style={{ color: colors.primary }} />
+                  <strong style={{ color: colors.foreground }}>{imageCredits}</strong> image credits
+                </span>
+              )}
+              {videoCredits !== null && (
+                <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs" style={{ border: `1px solid ${colors.border}`, color: colors.mutedForeground }}>
+                  <Video className="h-3.5 w-3.5" style={{ color: "hsl(270 80% 70%)" }} />
+                  <strong style={{ color: colors.foreground }}>{videoCredits}</strong> video credits
+                </span>
+              )}
             </div>
           </div>
         </div>
 
         <div className="flex-1 overflow-y-auto">
         <div className="max-w-6xl mx-auto px-6 py-10">
-          {/* Beta feature note */}
-          <div className="mb-6 p-4 rounded-xl" style={{ backgroundColor: 'rgba(34, 197, 94, 0.12)', border: '1px solid rgba(34, 197, 94, 0.35)' }}>
-            <p className="text-sm leading-relaxed" style={{ color: '#e8f5e9' }}>
-              <strong style={{ color: '#e8f5e9' }}>Beta Feature:</strong> This feature is still in Beta, so you might notice occasional glitches or unexpected results. If you spot anything off or have ideas for improvement,{' '}
-              <Link href="/report" className="font-medium underline" style={{ color: '#4ade80' }}>
-                send us feedback here
-              </Link>
-              . Your input directly helps us refine the experience.
-            </p>
-          </div>
-
           {(step === "entry" || step === "results") && (
-            <div className="flex flex-col items-center py-12">
-              <div className="flex flex-col items-center mb-8">
-                <div className="flex items-center justify-center w-14 h-14 rounded-full mb-4" style={{ background: "hsl(213 100% 55% / 0.15)" }}>
-                  <Sparkles className="w-7 h-7" style={{ color: colors.primary }} />
+            <div className="flex flex-col items-center">
+              {/* No Brand Kit yet: suggest it, without blocking the scan */}
+              {brandLoaded && !brandGuideline && (
+                <div className="mb-6 flex w-full max-w-6xl flex-wrap items-center justify-between gap-3 rounded-xl px-4 py-3" style={{ background: "hsl(213 100% 55% / 0.1)", border: "1px solid hsl(213 100% 55% / 0.3)" }}>
+                  <p className="text-sm" style={{ color: colors.foreground }}>
+                    Set up your Brand Kit so every ad uses your logo, colours and fonts.
+                  </p>
+                  <Link href="/brand-kit?welcome=1" className="inline-flex items-center gap-1 text-sm font-medium" style={{ color: colors.primary }}>
+                    Set up Brand Kit <ChevronRight className="h-4 w-4" />
+                  </Link>
                 </div>
-                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium mb-4" style={{ background: "hsl(213 100% 55% / 0.15)", color: colors.primary }}>
-                  AI-Powered Ad Studio
-                  <span
-                    className="shrink-0"
-                    style={{
-                      fontSize: 10,
-                      padding: '2px 6px',
-                      borderRadius: 4,
-                      background: 'rgba(34, 197, 94, 0.2)',
-                      color: '#22c55e',
-                      fontWeight: 600,
-                    }}
-                  >
-                    Beta
-                  </span>
-                </div>
-                <h1 className="text-4xl md:text-5xl font-bold tracking-tight max-w-6xl mx-auto text-center" style={{ color: colors.foreground }}>
-                  Let&apos;s turn your website into high converting ads
-                </h1>
-                <p className="text-lg max-w-2xl mx-auto text-center mt-2" style={{ color: colors.mutedForeground }}>
-                  Paste your website URL and we&apos;ll extract products, generate ad creatives, and build campaigns all in one place.
-                </p>
-              </div>
+              )}
 
-              <div
-                className="w-full max-w-4xl rounded-2xl border p-6 sm:p-8"
-                style={{
-                  background: colors.card,
-                  borderColor: colors.border,
-                }}
-              >
-                <div className="flex gap-3">
-                  <Input
-                    placeholder="Paste Website URL"
-                    value={url}
-                    onChange={(e) => setUrl(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && handleAnalyze()}
-                    className="flex-1 min-w-0 bg-[hsl(0_0%_12%)] text-[hsl(0_0%_95%)] placeholder:text-[hsl(0_0%_50%)] rounded-lg h-12 text-sm"
-                    style={{ border: "1px solid hsl(213 100% 55%)" }}
-                  />
-                  <Button
-                    onClick={handleAnalyze}
-                    disabled={!url.trim()}
-                    className="flex-shrink-0 px-12 rounded-lg h-12 text-sm font-medium"
-                    style={{
-                      background: colors.primary,
-                      color: colors.primaryForeground,
-                    }}
+              {!hasFetchedProducts ? (
+                <div className="flex w-full flex-col items-center py-10">
+                  <h2 className="max-w-3xl text-center text-3xl font-semibold tracking-tight md:text-4xl" style={{ color: colors.foreground }}>
+                    Turn your website into ads that sell
+                  </h2>
+                  <p className="mt-3 max-w-xl text-center text-base" style={{ color: colors.mutedForeground }}>
+                    We read your site, find your products and build a strategy for each one — angles, hooks and finished creatives.
+                  </p>
+                  <form
+                    className="mt-8 flex w-full max-w-2xl flex-col gap-2 rounded-2xl p-2 sm:flex-row"
+                    style={{ background: colors.card, border: `1px solid ${colors.border}` }}
+                    onSubmit={(e) => { e.preventDefault(); handleAnalyze(); }}
                   >
-                    <Search className="w-5 h-5 mr-2" />
-                    Analyze Website
-                  </Button>
+                    <div className="relative flex-1">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2" style={{ color: colors.mutedForeground }} />
+                      <Input
+                        placeholder="yourbrand.com"
+                        value={url}
+                        onChange={(e) => setUrl(e.target.value)}
+                        aria-label="Website URL"
+                        className="h-12 border-0 bg-transparent pl-9 text-sm shadow-none focus-visible:ring-0"
+                        style={{ color: colors.foreground }}
+                      />
+                    </div>
+                    <Button type="submit" disabled={!url.trim()} className="h-12 rounded-xl px-6 text-sm font-medium" style={{ background: colors.primary, color: colors.primaryForeground }}>
+                      <Sparkles className="mr-2 h-4 w-4" /> Find my products
+                    </Button>
+                  </form>
+                  <ol className="mt-10 grid w-full max-w-3xl grid-cols-1 gap-3 sm:grid-cols-3">
+                    {[
+                      ["1", "Paste your website", "We find your products, prices and photos."],
+                      ["2", "Pick a product", "Get a strategy: buyer, angles and hooks."],
+                      ["3", "Create the ads", "Posters, carousels and videos per angle."],
+                    ].map(([n, t, d]) => (
+                      <li key={n} className="rounded-xl p-4" style={{ background: colors.card, border: `1px solid ${colors.border}` }}>
+                        <span className="flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold" style={{ background: "hsl(213 100% 55% / 0.15)", color: colors.primary }}>{n}</span>
+                        <p className="mt-2 text-sm font-medium" style={{ color: colors.foreground }}>{t}</p>
+                        <p className="mt-0.5 text-xs" style={{ color: colors.mutedForeground }}>{d}</p>
+                      </li>
+                    ))}
+                  </ol>
                 </div>
-              </div>
+              ) : (
+                <form
+                  className="flex w-full max-w-6xl flex-wrap items-center gap-2 rounded-xl p-2"
+                  style={{ background: colors.card, border: `1px solid ${colors.border}` }}
+                  onSubmit={(e) => { e.preventDefault(); handleAnalyze(); }}
+                >
+                  <div className="relative min-w-[220px] flex-1">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2" style={{ color: colors.mutedForeground }} />
+                    <Input
+                      value={url}
+                      onChange={(e) => setUrl(e.target.value)}
+                      aria-label="Website URL"
+                      placeholder="yourbrand.com"
+                      className="h-10 border-0 bg-transparent pl-9 text-sm shadow-none focus-visible:ring-0"
+                      style={{ color: colors.foreground }}
+                    />
+                  </div>
+                  <Button type="submit" variant="outline" disabled={!url.trim()} className="h-10 rounded-lg text-sm" style={{ borderColor: colors.border, color: colors.foreground }}>
+                    <RefreshCw className="mr-2 h-4 w-4" /> Scan again
+                  </Button>
+                  <Button type="button" variant="ghost" onClick={handleStartOver} className="h-10 rounded-lg text-sm" style={{ color: colors.mutedForeground }}>
+                    Start over
+                  </Button>
+                </form>
+              )}
 
               {hasFetchedProducts && (
                 <div className="w-full max-w-6xl mt-8">
@@ -1284,71 +1267,8 @@ export default function ContentStudioPage() {
                             {brand?.name && `${brand.name} • `}
                             {products.length} products detected
                           </h2>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={handleStartOver}
-                            style={{ borderColor: colors.border, color: colors.mutedForeground }}
-                          >
-                            Start over
-                          </Button>
+                          <span className="text-xs" style={{ color: colors.mutedForeground }}>Pick one to plan its ads</span>
                         </div>
-
-                        {brand && (
-                <section
-                  className="rounded-2xl p-6 border shadow-sm"
-                  style={{
-                    background: colors.card,
-                    borderColor: colors.border,
-                  }}
-                >
-                  <h2 className="text-lg font-semibold mb-4" style={{ color: colors.foreground }}>
-                    Brand Summary
-                  </h2>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <span className="text-sm" style={{ color: colors.mutedForeground }}>
-                        Brand Name
-                      </span>
-                      <p className="font-medium" style={{ color: colors.foreground }}>
-                        {brand.name}
-                      </p>
-                    </div>
-                    <div>
-                      <span className="text-sm" style={{ color: colors.mutedForeground }}>
-                        Brand Tone
-                      </span>
-                      <p className="font-medium" style={{ color: colors.foreground }}>
-                        {brand.tone || "—"}
-                      </p>
-                    </div>
-                    <div>
-                      <span className="text-sm" style={{ color: colors.mutedForeground }}>
-                        Industry
-                      </span>
-                      <p className="font-medium" style={{ color: colors.foreground }}>
-                        {brand.industry || "—"}
-                      </p>
-                    </div>
-                    <div>
-                      <span className="text-sm" style={{ color: colors.mutedForeground }}>
-                        Target Audience
-                      </span>
-                      <p className="font-medium" style={{ color: colors.foreground }}>
-                        {brand.targetAudience || "—"}
-                      </p>
-                    </div>
-                    <div className="md:col-span-2">
-                      <span className="text-sm" style={{ color: colors.mutedForeground }}>
-                        Primary Value Proposition
-                      </span>
-                      <p className="font-medium" style={{ color: colors.foreground }}>
-                        {brand.primaryValueProposition || "—"}
-                      </p>
-                    </div>
-                  </div>
-                </section>
-              )}
 
               {/* Brand Kit (replaces the old Brand Guideline) */}
               {brandLoaded && (
@@ -1358,61 +1278,48 @@ export default function ContentStudioPage() {
               )}
 
               <section>
-                <h2 className="text-lg font-semibold mb-4" style={{ color: colors.foreground }}>
-                  Product Library
-                </h2>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
                   {products.map((p, i) => {
                     const isSelected = selectedProduct?.product_name === p.product_name;
                     return (
-                      <div
+                      <button
                         key={i}
+                        type="button"
                         onClick={() => handleProductClick(p, i)}
-                        className="relative rounded-xl p-4 border-2 cursor-pointer transition-all hover:border-[hsl(213_100%_55%)] hover:shadow-lg"
-                        style={{
-                          background: colors.card,
-                          borderColor: isSelected ? colors.primary : colors.border,
-                        }}
+                        className="group relative overflow-hidden rounded-xl text-left transition-all hover:-translate-y-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+                        style={{ background: colors.card, border: `1px solid ${isSelected ? colors.primary : colors.border}`, boxShadow: isSelected ? `0 0 0 1px ${colors.primary}` : undefined }}
                       >
-                        {isSelected && (
-                          <div
-                            className="absolute top-3 right-3 z-10 flex items-center justify-center w-6 h-6 rounded-full"
-                            style={{ background: colors.primary }}
-                          >
-                            <Check className="w-3.5 h-3.5" style={{ color: colors.primaryForeground }} />
-                          </div>
-                        )}
-                        <div
-                          className="aspect-square rounded-lg mb-3 overflow-hidden bg-[hsl(0_0%_18%)]"
-                          style={{ minHeight: 140 }}
-                        >
+                        <div className="relative aspect-[4/5] w-full overflow-hidden" style={{ background: colors.secondary }}>
                           {p.product_images?.[0] ? (
-                            <img
-                              src={p.product_images[0]}
-                              alt={p.product_name}
-                              className="w-full h-full object-cover"
-                            />
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={p.product_images[0]} alt={p.product_name} loading="lazy" className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]" />
                           ) : (
-                            <div
-                              className="w-full h-full flex items-center justify-center"
-                              style={{ color: colors.mutedForeground }}
-                            >
-                              <ImageIcon className="w-12 h-12" />
-                            </div>
+                            <span className="flex h-full w-full items-center justify-center" style={{ color: colors.mutedForeground }}>
+                              <ImageIcon className="h-10 w-10" />
+                            </span>
+                          )}
+                          {p.price && (
+                            <span className="absolute left-2 top-2 rounded-full px-2 py-0.5 text-[11px] font-medium backdrop-blur" style={{ background: "rgba(0,0,0,0.6)", color: "#fff" }}>
+                              {p.price}
+                            </span>
+                          )}
+                          {isSelected ? (
+                            <span className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full" style={{ background: colors.primary }}>
+                              <Check className="h-3.5 w-3.5" style={{ color: colors.primaryForeground }} />
+                            </span>
+                          ) : (
+                            <span className="absolute inset-x-2 bottom-2 flex items-center justify-center gap-1 rounded-lg py-1.5 text-xs font-medium opacity-0 transition-opacity group-hover:opacity-100" style={{ background: colors.primary, color: colors.primaryForeground }}>
+                              Plan ads <ChevronRight className="h-3.5 w-3.5" />
+                            </span>
                           )}
                         </div>
-                        <h3 className="font-semibold truncate" style={{ color: colors.foreground }}>
-                          {p.product_name}
-                        </h3>
-                        {p.price && (
-                          <p className="text-sm font-medium" style={{ color: colors.primary }}>
-                            {p.price}
+                        <div className="px-3 py-2.5">
+                          <p className="truncate text-sm font-medium" style={{ color: colors.foreground }}>{p.product_name}</p>
+                          <p className="mt-0.5 line-clamp-2 text-xs" style={{ color: colors.mutedForeground }}>
+                            {p.short_benefit || p.description || "—"}
                           </p>
-                        )}
-                        <p className="text-sm truncate" style={{ color: colors.mutedForeground }}>
-                          {p.short_benefit || p.description || "—"}
-                        </p>
-                      </div>
+                        </div>
+                      </button>
                     );
                   })}
                 </div>
@@ -1431,38 +1338,43 @@ export default function ContentStudioPage() {
               {/* Ad Generation Section - tab-based, opens when product is selected */}
               {sessions.length > 0 && (
                 <>
-                {/* Tab bar - browser-like */}
-                <div className="w-full max-w-6xl mt-6 flex items-center gap-1 pb-2" style={{ borderBottom: `1px solid ${colors.border}` }}>
-                  <div className="flex items-center gap-1 overflow-x-auto flex-1 min-w-0">
-                    {sessions.map((s) => (
-                      <div
-                        key={s.id}
-                        className="flex items-center gap-1 px-1 rounded-t-lg text-sm font-medium shrink-0 transition-colors"
-                        style={{
-                          background: activeSessionId === s.id ? colors.card : "transparent",
-                          color: activeSessionId === s.id ? colors.foreground : colors.mutedForeground,
-                          border: `1px solid ${activeSessionId === s.id ? colors.border : "transparent"}`,
-                          borderBottom: activeSessionId === s.id ? `1px solid ${colors.card}` : "none",
-                        }}
-                      >
-                        <button
-                          type="button"
-                          onClick={() => setActiveSessionId(s.id)}
-                          className="flex items-center gap-2 px-3 py-2 rounded-md hover:opacity-90"
+                {/* Open products — one pill per product being planned */}
+                <div className="mt-6 flex w-full max-w-6xl items-center gap-2 pb-3" style={{ borderBottom: `1px solid ${colors.border}` }}>
+                  <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto">
+                    {sessions.map((s) => {
+                      const on = activeSessionId === s.id;
+                      const thumb = s.product.product_images?.[0];
+                      return (
+                        <div
+                          key={s.id}
+                          className="flex shrink-0 items-center gap-1 rounded-full py-1 pl-1 pr-2 text-sm transition-colors"
+                          style={{
+                            background: on ? colors.card : "transparent",
+                            color: on ? colors.foreground : colors.mutedForeground,
+                            border: `1px solid ${on ? colors.primary : colors.border}`,
+                          }}
                         >
-                          <span className="truncate max-w-[140px]">{s.product.product_name}</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => closeSession(s.id)}
-                          aria-label={`Close ${s.product.product_name}`}
-                          className="p-0.5 rounded hover:bg-black/10"
-                          style={{ color: colors.mutedForeground }}
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    ))}
+                          <button type="button" onClick={() => setActiveSessionId(s.id)} className="flex items-center gap-2 rounded-full pr-1">
+                            <span className="h-7 w-7 shrink-0 overflow-hidden rounded-full" style={{ background: colors.secondary }}>
+                              {thumb ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img src={thumb} alt="" className="h-full w-full object-cover" />
+                              ) : null}
+                            </span>
+                            <span className="max-w-[160px] truncate font-medium">{s.product.product_name}</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => closeSession(s.id)}
+                            aria-label={`Close ${s.product.product_name}`}
+                            className="rounded-full p-1 hover:bg-white/10"
+                            style={{ color: colors.mutedForeground }}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      );
+                    })}
                   </div>
 
                   {/* Recently closed tabs history button */}
@@ -2145,36 +2057,25 @@ export default function ContentStudioPage() {
           )}
 
           {step === "scanning" && (
-            <div className="text-center py-24 space-y-8 max-w-lg mx-auto">
-              <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl" style={{ background: "hsl(213 100% 55% / 0.2)" }}>
-                <ArcSpinner className="w-10 h-10 animate-spin" style={{ color: colors.primary }} />
-              </div>
-              <div className="space-y-1">
-                <h2 className="text-xl font-semibold" style={{ color: colors.foreground }}>
-                  {SCAN_MESSAGES[scanMessageIndex].text}
-                </h2>
-                <p className="text-sm" style={{ color: colors.mutedForeground }}>
-                  {SCAN_MESSAGES[scanMessageIndex].detail}
-                </p>
-              </div>
-              <div className="space-y-2">
-                <Progress value={scanProgress} className="max-w-md mx-auto h-2.5 rounded-full" />
-                <p className="text-xs" style={{ color: colors.mutedForeground }}>
-                  Estimated time: 3–6 minutes
-                </p>
-              </div>
-              <div
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm animate-pulse"
-                style={{
-                  background: "hsl(213 100% 55% / 0.08)",
-                  color: colors.mutedForeground,
-                }}
-              >
-                <span className="text-lg" role="img" aria-hidden>☕</span>
-                <span>Grab a coffee and relax in the meantime</span>
+            <div className="mx-auto flex max-w-md flex-col items-center py-24">
+              <div className="w-full rounded-2xl p-6" style={{ background: colors.card, border: `1px solid ${colors.border}` }}>
+                <StepProgress
+                  step={scanMessageIndex}
+                  estimatedMs={240_000}
+                  hint="usually 3–6 minutes — you can grab a coffee"
+                  steps={SCAN_MESSAGES.map((m) => m.text)}
+                />
+                <p className="mt-3 text-xs" style={{ color: colors.mutedForeground }}>{SCAN_MESSAGES[scanMessageIndex].detail}</p>
               </div>
             </div>
           )}
+
+          {/* Beta note — quiet footnote */}
+          <p className="mt-12 pb-6 text-center text-xs" style={{ color: colors.mutedForeground }}>
+            Ad Studio is in beta. Something look off?{" "}
+            <Link href="/report" className="underline underline-offset-2" style={{ color: colors.foreground }}>Tell us</Link>
+            {" "}— it helps us improve it.
+          </p>
         </div>
         </div>
       </div>
