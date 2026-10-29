@@ -16,7 +16,6 @@ import {
   Target,
   Zap,
   Download,
-  Loader2,
   Megaphone,
   Sparkles,
   Facebook,
@@ -34,6 +33,7 @@ import {
   History,
   ChevronDown,
 } from "lucide-react";
+import { ArcSpinner } from "@/app/web/src/components/ui/loaders";
 import {
   ResponsiveContainer,
   BarChart,
@@ -886,6 +886,13 @@ ${strategies.market_gap_analysis?.length ? `<h3>Market Gap Analysis</h3><ul>${st
                 <p className="text-sm mt-1" style={{ color: colors.mutedForeground }}>
                   AI-powered competitive intelligence &amp; ad generation
                 </p>
+                <p className="text-sm mt-2" style={{ color: colors.foreground }}>
+                  Creative Intelligence is now part of{" "}
+                  <Link href="/brand-research" className="underline" style={{ color: colors.primary }}>Brand Research</Link>
+                  {" "}(competitors, their live ads, what buyers say) and{" "}
+                  <Link href="/content-studio" className="underline" style={{ color: colors.primary }}>Ad Studio</Link>
+                  {" "}(angles and campaign plans). Your earlier runs stay here.
+                </p>
               </div>
               <div className="flex items-center gap-3">
                 {imageCredits !== null && (
@@ -1081,7 +1088,7 @@ ${strategies.market_gap_analysis?.length ? `<h3>Market Gap Analysis</h3><ul>${st
                   >
                     {isAnalyzingCompetitors ? (
                       <>
-                        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                        <ArcSpinner className="mr-2 h-5 w-5 animate-spin" />
                         Analyzing {competitorAnalysisResults.length + 1} of {competitorAnalysisUrls.filter(Boolean).length}…
                       </>
                     ) : (
@@ -1218,7 +1225,7 @@ ${strategies.market_gap_analysis?.length ? `<h3>Market Gap Analysis</h3><ul>${st
                 >
                   {isAnalyzing ? (
                     <>
-                      <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                      <ArcSpinner className="mr-2 h-5 w-5 animate-spin" />
                       {progressStep > 0 && progressStep <= 6
                         ? ["Analyzing website…", "Discovering competitors…", "Fetching Meta & Google ad intelligence…", "Mining reviews…", "Identifying hooks…", "Building strategy…"][progressStep - 1]
                         : "Analyze & Generate Strategy"}
@@ -1349,7 +1356,7 @@ ${strategies.market_gap_analysis?.length ? `<h3>Market Gap Analysis</h3><ul>${st
                 {isRegenerating && (
                   <div className="mb-6 p-4 rounded-xl" style={{ background: colors.card, border: `1px solid ${colors.border}` }}>
                     <div className="flex items-center gap-3 mb-2">
-                      <Loader2 className="w-5 h-5 animate-spin" style={{ color: colors.primary }} />
+                      <ArcSpinner className="w-5 h-5 animate-spin" style={{ color: colors.primary }} />
                       <p className="text-sm font-medium" style={{ color: colors.foreground }}>Re-analyzing brand...</p>
                     </div>
                     <Progress value={(progressStep / 7) * 100} className="h-2 rounded-full" />
@@ -1926,7 +1933,7 @@ ${strategies.market_gap_analysis?.length ? `<h3>Market Gap Analysis</h3><ul>${st
                                 style={{ backgroundColor: colors.primary, color: colors.primaryForeground }}
                               >
                                 {generatingFromHook?.hookId === hook.id && generatingFromHook?.type === "poster" ? (
-                                  <Loader2 size={14} className="mr-1.5 animate-spin" />
+                                  <ArcSpinner size={14} className="mr-1.5 animate-spin" />
                                 ) : (
                                   <Image size={14} className="mr-1.5" />
                                 )}
@@ -1940,7 +1947,7 @@ ${strategies.market_gap_analysis?.length ? `<h3>Market Gap Analysis</h3><ul>${st
                                 style={{ borderColor: colors.border, color: colors.foreground }}
                               >
                                 {generatingFromHook?.hookId === hook.id && generatingFromHook?.type === "video" ? (
-                                  <Loader2 size={14} className="mr-1.5 animate-spin" />
+                                  <ArcSpinner size={14} className="mr-1.5 animate-spin" />
                                 ) : (
                                   <Video size={14} className="mr-1.5" />
                                 )}
@@ -1964,7 +1971,7 @@ ${strategies.market_gap_analysis?.length ? `<h3>Market Gap Analysis</h3><ul>${st
                                 title="Generate creatives from this hook"
                               >
                                 {generatingCreativeHookId === hook.id ? (
-                                  <Loader2 size={16} className="animate-spin" />
+                                  <ArcSpinner size={16} className="animate-spin" />
                                 ) : (
                                   <Sparkles size={16} />
                                 )}
@@ -2178,7 +2185,7 @@ ${strategies.market_gap_analysis?.length ? `<h3>Market Gap Analysis</h3><ul>${st
                   </div>
                   {isLoadingComparisonSummary && (
                     <div className="flex items-center gap-3 py-8" style={{ color: colors.mutedForeground }}>
-                      <Loader2 size={24} className="animate-spin" />
+                      <ArcSpinner size={24} className="animate-spin" />
                       <span>Generating insights…</span>
                     </div>
                   )}

@@ -43,9 +43,9 @@ function isIterationSpec(spec: GenerationSpecification): boolean {
 
 const SLOT_GUIDANCE: Record<GenerationCopySlot["role"], string> = {
   primary: "the headline — the largest text on the poster and the first thing the eye reads",
-  product_line: "the product name — small and clean, set close to the headline",
-  secondary: "one supporting line — clearly smaller than the headline",
-  supporting: "one supporting line — clearly smaller than the headline",
+  product_line: "the product name — set close to the headline in the same bold typeface, never as small, thin caption text",
+  secondary: "one supporting line — smaller than the headline but bold enough to read at a glance (semibold, at least half the headline's size); never thin, light or grey caption text",
+  supporting: "one supporting line — smaller than the headline but bold enough to read at a glance (semibold, at least half the headline's size); never thin, light or grey caption text",
   badge: "a compact tag",
   cta: "the call to action — a clear button, smaller than the headline",
   label: "a short format label on its half — clear, medium size, high contrast",
@@ -269,6 +269,7 @@ export function compileArtDirectorBrief(
     [
       `Text — render exactly ${slots.length === 1 ? "this line" : `these ${slots.length} lines`}, spelled exactly as written, each one once, and no other words:`,
       ...textLines,
+      "No other words anywhere: no extra captions, star ratings, review or customer counts, testimonials, quote boxes, or colour codes (hex values describe colours; never print them).",
       art.hasProductReference
         ? "Text printed on the product packaging stays as it appears in the product photo."
         : "",

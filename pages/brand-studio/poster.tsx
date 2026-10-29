@@ -56,6 +56,7 @@ import {
   placementForAspect,
 } from '@/lib/creative-studio/poster-generation/brief-options';
 import CarouselStudio from '@/app/web/src/components/creative-studio/CarouselStudio';
+import CreativeViewer, { type ViewerBrand } from '@/app/web/src/components/creative-studio/CreativeViewer';
 import {
   getLatestCarousel,
   loadCarouselPreference,
@@ -65,6 +66,7 @@ import {
   type PublicCarouselCampaign,
 } from '@/app/web/src/components/creative-studio/carousel-client';
 import { authFetch, safeResponseJson } from '@/lib/utils';
+import { friendlyError } from "@/lib/api-errors";
 import PosterEditModal from '@/app/web/src/components/content-studio/PosterEditModal';
 import type { MarketingStrategy, PosterGenerationSession } from '@/lib/creative-studio/poster-generation/types';
 
@@ -478,7 +480,7 @@ export default function PosterSessionPage() {
         
       } catch (err: any) {
         console.error('Error loading session:', err);
-        setError(err.message || 'Failed to load session');
+        setError(friendlyError(err, 'Failed to load session'));
       } finally {
         setIsLoading(false);
       }
@@ -766,8 +768,8 @@ export default function PosterSessionPage() {
     } catch (err: any) {
       console.error('Brand analysis error:', err);
       addMessage('system', pickMessage([
-        `Something went wrong: ${err.message || 'Unknown error'}. Try again or set up your brand manually.`,
-        `Couldn't analyze that — ${err.message || 'Unknown error'}. Want to try a different URL or add your brand manually?`,
+        `Something went wrong: ${friendlyError(err, "the request didn't go through")}. Try again or set up your brand manually.`,
+        `Couldn't analyze that — ${friendlyError(err, "the request didn't go through")}. Want to try a different URL or add your brand manually?`,
       ]));
       // Keep modal open on error
     } finally {
@@ -2267,7 +2269,7 @@ export default function PosterSessionPage() {
         showError(data.error || "Failed to regenerate poster");
       }
     } catch (err: any) {
-      showError(err.message || "Failed to regenerate poster");
+      showError(friendlyError(err, "Failed to regenerate poster"));
     }
   }
 
@@ -2427,8 +2429,8 @@ export default function PosterSessionPage() {
     } catch (error: any) {
       console.error('Error using poster as reference:', error);
       addMessage('system', pickMessage([
-        `Couldn't use that as reference — ${error.message || 'Unknown error'}. Try again?`,
-        `Something went wrong: ${error.message || 'Unknown error'}. Want to try another poster?`,
+        `Couldn't use that as reference — ${friendlyError(error, "the request didn't go through")}. Try again?`,
+        `Something went wrong: ${friendlyError(error, "the request didn't go through")}. Want to try another poster?`,
       ]));
     } finally {
       // Reset the flag after a short delay
@@ -2552,8 +2554,8 @@ export default function PosterSessionPage() {
             setThinkingMessages([]);
             console.error('Error fetching image:', err);
             addMessage('system', pickMessage([
-              `Couldn't fetch that — ${err.message || 'Unknown error'}. Try uploading the image directly.`,
-              `Something went wrong: ${err.message || 'Unknown error'}. Upload the image instead?`,
+              `Couldn't fetch that — ${friendlyError(err, "the request didn't go through")}. Try uploading the image directly.`,
+              `Something went wrong: ${friendlyError(err, "the request didn't go through")}. Upload the image instead?`,
             ]));
           }
         }, 0);
@@ -2884,6 +2886,7 @@ export default function PosterSessionPage() {
           creativeFormat === 'carousel' && carouselViewOpen && carouselCampaign ? (
             <CarouselStudio
               campaign={carouselCampaign}
+              brand={brand ? { name: brand.name, logo: brand.logo || brand.logoUrl, website: brand.website_url } : undefined}
               onCampaignChange={setCarouselCampaign}
               onRegenerateStory={() => handlePlanCarousel(true)}
               isPlanning={isPlanningCarousel}
@@ -2929,6 +2932,8 @@ export default function PosterSessionPage() {
           (pipelineStage === 'ready' || phase === 'ready') && generatedPosters.length > 0 ? (
             <PosterGrid
               posters={generatedPosters}
+              viewerBrand={brand ? { name: brand.name, logo: brand.logo || brand.logoUrl, website: brand.website_url } : undefined}
+              viewerCaption={[messageCopy?.headline, messageCopy?.supporting].filter(Boolean).join(" ") || undefined}
               posterMeta={engineResultMeta}
               creditsUsed={lastCreditsCharged}
               posterPrompt={posterPrompt}
@@ -3120,6 +3125,8 @@ export default function PosterSessionPage() {
 
 function PosterGrid({
   posters,
+  viewerBrand,
+  viewerCaption,
   posterMeta = [],
   creditsUsed = null,
   posterPrompt,
@@ -3143,6 +3150,8 @@ function PosterGrid({
   canCreateCampaigns = true,
 }: {
   posters: string[];
+  viewerBrand?: ViewerBrand;
+  viewerCaption?: string;
   posterMeta?: Array<{
     generationId: string;
     status: "ready" | "review" | "failed";
@@ -3235,124 +3244,51 @@ function PosterGrid({
 
   return (
     <>
-      {/* Image Preview Modal */}
+      {/* Image Preview — full size or as an Instagram / Facebook feed ad */}
       {previewImage && previewIndex !== null && (
-        <div
-          className="fixed inset-0 bg-black/90 flex items-center justify-center z-50"
-          onClick={() => setPreviewIndex(null)}
-        >
-          <button
-            onClick={() => setPreviewIndex(null)}
-            className="fixed top-4 right-4 z-50 p-2 bg-white/10 hover:bg-white/20 rounded-full text-white transition-colors"
-            aria-label="Close preview"
-          >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-
-          {posters.length > 1 && (
-            <>
-              <button
-                type="button"
-                aria-label="Previous poster"
-                className="fixed left-4 top-1/2 -translate-y-1/2 z-50 p-3 rounded-full bg-white/10 hover:bg-white/20 text-white"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setPreviewIndex((previewIndex - 1 + posters.length) % posters.length);
-                }}
-              >
-                ←
-              </button>
-              <button
-                type="button"
-                aria-label="Next poster"
-                className="fixed right-4 top-1/2 -translate-y-1/2 z-50 p-3 rounded-full bg-white/10 hover:bg-white/20 text-white"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setPreviewIndex((previewIndex + 1) % posters.length);
-                }}
-              >
-                →
-              </button>
-            </>
-          )}
-          
-          <div 
-            className="relative w-full h-full flex items-center justify-center p-8"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <img
-              src={previewImage}
-              alt="Preview"
-              className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
-              style={{ imageRendering: 'auto' }}
-            />
-          </div>
-          
-          <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 flex flex-wrap justify-center gap-2 z-50 px-4">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                void handleDownload(previewImage, previewIndex);
-              }}
-              className="px-4 py-2 rounded-lg text-sm font-medium shadow-lg transition-colors"
-              style={{ backgroundColor: colors.card, color: colors.foreground, border: `1px solid ${colors.border}` }}
-            >
-              Download
-            </button>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                void onSavePoster(previewImage, previewIndex);
-              }}
-              disabled={savingPoster === previewIndex}
-              className="px-4 py-2 rounded-lg text-sm font-medium shadow-lg transition-colors disabled:opacity-50"
-              style={{ backgroundColor: colors.card, color: colors.foreground, border: `1px solid ${colors.border}` }}
-            >
-              {savingPoster === previewIndex ? 'Saving…' : 'Save'}
-            </button>
-            {onEditPoster && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onEditPoster(previewIndex);
-                  setPreviewIndex(null);
-                }}
-                className="px-4 py-2 rounded-lg text-sm font-medium shadow-lg transition-colors"
-                style={{ backgroundColor: colors.card, color: colors.foreground, border: `1px solid ${colors.border}` }}
-              >
-                Edit
-              </button>
-            )}
-            {onUseAsReferenceRequest && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onUseAsReferenceRequest(previewImage, previewIndex);
-                  setPreviewIndex(null);
-                }}
-                className="px-4 py-2 rounded-lg text-sm font-medium shadow-lg transition-colors"
-                style={{ backgroundColor: colors.card, color: colors.foreground, border: `1px solid ${colors.border}` }}
-              >
-                Use as reference
-              </button>
-            )}
-            {canCreateCampaigns && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  void onCreateCampaign(previewImage, previewIndex);
-                }}
-                disabled={creatingCampaign === previewIndex}
-                className="px-4 py-2 rounded-lg text-sm font-medium shadow-lg text-white transition-colors disabled:opacity-50"
-                style={{ backgroundColor: colors.primary }}
-              >
-                {creatingCampaign === previewIndex ? 'Creating…' : 'Create campaign'}
-              </button>
-            )}
-          </div>
-        </div>
+        <CreativeViewer
+          items={posters.map((url, i) => ({
+            id: `${i}-${url.slice(-24)}`,
+            images: [url],
+            title: posterMeta[i]?.versionNumber ? `Version ${posterMeta[i]!.versionNumber}` : `Poster ${i + 1}`,
+            caption: viewerCaption,
+          }))}
+          index={previewIndex}
+          onIndexChange={setPreviewIndex}
+          onClose={() => setPreviewIndex(null)}
+          brand={viewerBrand || { name: "yourbrand" }}
+          renderActions={(item, idx) => {
+            const url = item.images[0];
+            const btn = "px-4 py-2 rounded-lg text-sm font-medium shadow-lg transition-colors disabled:opacity-50";
+            const style = { backgroundColor: colors.card, color: colors.foreground, border: `1px solid ${colors.border}` };
+            return (
+              <>
+                <button className={btn} style={style} onClick={() => void handleDownload(url, idx)}>Download</button>
+                <button className={btn} style={style} disabled={savingPoster === idx} onClick={() => void onSavePoster(url, idx)}>
+                  {savingPoster === idx ? "Saving…" : "Save"}
+                </button>
+                {onEditPoster && (
+                  <button className={btn} style={style} onClick={() => { onEditPoster(idx); setPreviewIndex(null); }}>Edit</button>
+                )}
+                {onUseAsReferenceRequest && (
+                  <button className={btn} style={style} onClick={() => { onUseAsReferenceRequest(url, idx); setPreviewIndex(null); }}>
+                    Use as reference
+                  </button>
+                )}
+                {canCreateCampaigns && (
+                  <button
+                    className={`${btn} text-white`}
+                    style={{ backgroundColor: colors.primary }}
+                    disabled={creatingCampaign === idx}
+                    onClick={() => void onCreateCampaign(url, idx)}
+                  >
+                    {creatingCampaign === idx ? "Creating…" : "Create campaign"}
+                  </button>
+                )}
+              </>
+            );
+          }}
+        />
       )}
 
       <div className="w-full space-y-8">
@@ -3529,28 +3465,17 @@ function PosterGrid({
                       ? `Version ${meta.versionNumber}`
                       : `Poster ${String(idx + 1).padStart(2, '0')}`}
                   </p>
-                  {meta && (
+                  {meta?.status === "failed" && (
                     <button
                       type="button"
                       className="text-[11px]"
-                      style={{
-                        color:
-                          meta.status === "ready"
-                            ? "hsl(142 70% 45%)"
-                            : meta.status === "failed"
-                              ? colors.destructive
-                              : "hsl(38 90% 55%)",
-                      }}
+                      style={{ color: colors.destructive }}
                       title={meta.qcSummary || undefined}
                       onClick={() =>
                         setExpandedQcIndex(expandedQcIndex === idx ? null : idx)
                       }
                     >
-                      {meta.status === "ready"
-                        ? "✓ Ready"
-                        : meta.status === "failed"
-                          ? "Failed"
-                          : "⚠ Needs improvement"}
+                      Failed
                     </button>
                   )}
                 </div>
@@ -3586,13 +3511,6 @@ function PosterGrid({
                       </>
                     )}
                   </div>
-                )}
-                {meta?.status === "review" &&
-                  expandedQcIndex !== idx &&
-                  meta.qcSummary && (
-                  <p className="text-xs mb-2 line-clamp-2" style={{ color: colors.mutedForeground }}>
-                    {meta.qcIssues?.[0] || meta.qcSummary}
-                  </p>
                 )}
                 {/* Poster - Clickable for preview, with menu overlay */}
                 <div

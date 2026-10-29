@@ -8,19 +8,16 @@ import BrandKitCard from "@/app/web/src/components/creative-studio/BrandKitCard"
 import Sidebar from "@/app/web/src/components/Sidebar";
 import colors from "@/lib/ui/colors";
 import { authFetch, safeResponseJson } from "@/lib/utils";
+import { friendlyError } from "@/lib/api-errors";
 import { showError, showAlert } from "@/app/web/src/components/ui/alert-modal-api";
 import {
   type BrandSnapshot,
   BrandOnboarding,
   mapFullAnalyzeToBrandSnapshot,
-  fetchPosterCreativeDirectorVariants,
-  buildPosterPrompt,
-  getThemeForBrand,
 } from "@/app/web/src/components/creative-studio";
 import { DEFAULT_AD_BUILDER_DATA, saveBrandSnapshot } from "@/app/web/src/components/creative-studio/utils";
 import type { Product } from "@/app/web/src/components/creative-studio/types";
 import {
-  Loader2,
   Search,
   ImageIcon,
   Video,
@@ -38,6 +35,7 @@ import {
   RefreshCw,
   History,
 } from "lucide-react";
+import { ArcSpinner } from "@/app/web/src/components/ui/loaders";
 import PosterEditModal from "@/app/web/src/components/content-studio/PosterEditModal";
 import {
   AngleMeta,
@@ -46,6 +44,9 @@ import {
   angleCreativeBrief,
 } from "@/app/web/src/components/content-studio/StrategyBrief";
 import type { StrategyAngle, StrategyBrief } from "@/lib/research/product-strategy";
+import { CarouselStudio } from "@/app/web/src/components/creative-studio/CarouselStudio";
+import CreativeViewer from "@/app/web/src/components/creative-studio/CreativeViewer";
+import type { PublicCarouselCampaign } from "@/app/web/src/components/creative-studio/carousel-client";
 import { Button } from "@/app/web/src/components/ui/button";
 import { Input } from "@/app/web/src/components/ui/input";
 import { Progress } from "@/app/web/src/components/ui/progress";
@@ -122,6 +123,9 @@ type AdGenerationSession = {
   versionHistory?: VersionHistoryItem[];
   currentVersionId?: string | null;
   isRegenerating?: boolean;
+  /** Carousel plan items → a planned/generating carousel from the Brand Studio engine */
+  carousel?: { itemIndex: number; campaign: PublicCarouselCampaign } | null;
+  planningCarouselItem?: number | null;
 };
 
 const SCAN_MESSAGES = [
@@ -164,6 +168,9 @@ export default function ContentStudioPage() {
   const recentlyClosedBtnRef = React.useRef<HTMLButtonElement>(null);
 
   const { credits, fetchSubscription } = useSubscription();
+  /** Slides per carousel plan item (by plan index); 5 by default. */
+  const [carouselSlides, setCarouselSlides] = useState<Record<number, number>>({});
+  const [viewerIndex, setViewerIndex] = useState<number | null>(null);
 
   const [imageCredits, setImageCredits] = useState<number | null>(null);
   const [videoCredits, setVideoCredits] = useState<number | null>(null);
@@ -389,6 +396,8 @@ export default function ContentStudioPage() {
     }, 10000);
 
     try {
+      // Brand Research in the background, so product strategies can build on it.
+      void authFetch("/api/brand/research", { method: "POST", body: JSON.stringify({ url: normalized }) }).catch(() => null);
       const res = await authFetch("/api/content-studio/scan", {
         method: "POST",
         body: JSON.stringify({ url: normalized }),
@@ -439,9 +448,9 @@ export default function ContentStudioPage() {
     } catch (err: any) {
       clearInterval(msgInterval);
       clearInterval(progressInterval);
-      setError(err.message || "Failed to scan website");
+      setError(friendlyError(err, "Failed to scan website"));
       setStep("entry");
-      showError(err.message || "Failed to scan website");
+      showError(friendlyError(err, "Failed to scan website"));
     }
   };
 
@@ -731,6 +740,12 @@ export default function ContentStudioPage() {
     }
   };
 
+  const viewerBrand = {
+    name: brandGuideline?.name || brand?.name || "yourbrand",
+    logo: brandGuideline?.logo || brandGuideline?.logoUrl || null,
+    website: url ? normalizeUrl(url) : brandGuideline?.website_url || null,
+  };
+
   const handleGeneratePoster = async (angle?: AdAngle) => {
     if (!activeSession || !selectedProduct) return;
     const sessionId = activeSession.id;
@@ -741,175 +756,38 @@ export default function ContentStudioPage() {
     const angleId = angle ? angle.title : "__default__";
     updateSession(sessionId, () => ({ generatingAngleId: angleId }));
     try {
-      const productImages = selectedProduct.product_images || [];
-      const productImage = productImages[0];
-      let productDataUrl: string | undefined;
-      const refDataUrls: string[] = [];
-
-      if (productImage && productImage.startsWith("http")) {
-        const fetchRes = await authFetch("/api/creative-studio/fetch-image", {
-          method: "POST",
-          body: JSON.stringify({ url: productImage }),
-        });
-        const fetchData = await fetchRes.json();
-        if (fetchData.ok && fetchData.dataUrl) {
-          productDataUrl = fetchData.dataUrl;
-        }
-      }
-
-      for (const imgUrl of productImages.slice(1, 3)) {
-        if (imgUrl?.startsWith("http")) {
-          try {
-            const r = await authFetch("/api/creative-studio/fetch-image", {
-              method: "POST",
-              body: JSON.stringify({ url: imgUrl }),
-            });
-            const d = await r.json();
-            if (d.ok && d.dataUrl) refDataUrls.push(d.dataUrl);
-          } catch {
-            /* skip */
-          }
-        }
-      }
-
-      const brandSnapshot: BrandSnapshot | null =
-        brandGuideline ||
-        (brand
-          ? {
-              name: brand.name,
-              description: brand.primaryValueProposition,
-              audience: brand.targetAudience,
-              offering: brand.industry,
-              tone: brand.tone,
-              brandVoice:
-                /professional|corporate/i.test(brand.tone)
-                  ? "Professional"
-                  : /playful|fun|energetic/i.test(brand.tone)
-                    ? "Playful"
-                    : /minimal|clean|simple/i.test(brand.tone)
-                      ? "Minimalist"
-                      : "Bold",
-              coreValueProp: brand.primaryValueProposition,
-            }
-          : null);
-
-      const angleText = angle
-        ? angleCreativeBrief(angle)
-        : selectedProduct.short_benefit || selectedProduct.description;
-      const benefits = selectedProduct.key_benefits || [];
-
-      const themeHint = getThemeForBrand(brandSnapshot, angle);
-      const theme: "commercial" | "professional" =
-        angle && /clinical|proven|science|lab|performance/i.test(angle.title)
-          ? "professional"
-          : themeHint === "professional" || themeHint === "minimal"
-            ? "professional"
-            : "commercial";
-      const aspectRatio: "1:1" | "4:5" | "9:16" | "1.91:1" = "4:5";
-      const target = { width: 1080, height: 1350 };
-
-      const userRequest = [
-        `Create a marketing poster for ${selectedProduct.product_name}.`,
-        `Ad angle / creative brief: ${angleText}`,
-        benefits.length ? `Key benefits: ${benefits.join("; ")}` : null,
-      ]
-        .filter(Boolean)
-        .join("\n");
-
-      const directorResult = await fetchPosterCreativeDirectorVariants({
-        authFetch,
-        userRequest,
-        theme,
-        aspectRatio,
-        brand: brandSnapshot,
-        variantCount: 3,
-        hasProductImage: !!productDataUrl,
-        hasLogo: !!(brandSnapshot?.logo || brandSnapshot?.logoUrl),
-        productName: selectedProduct.product_name,
-        productDescription: selectedProduct.description,
-        productBenefits: benefits,
-        audience: brandSnapshot?.audience || selectedProduct.target_audience,
-        campaignObjective: "Drive sales and product consideration",
-        creativeBrief: angleText,
-        platform: "Instagram / Meta feed",
+      // Same poster engine as Brand Studio (strategist → concepts → art-directed posters),
+      // driven by this angle and the product's campaign strategy.
+      const brief = activeSession.campaignStrategy?.brief;
+      const res = await authFetch("/api/content-studio/engine-posters", {
+        method: "POST",
+        body: JSON.stringify({
+          product: selectedProduct,
+          brand,
+          angle: angle
+            ? {
+                title: angle.title,
+                explanation: angle.explanation,
+                angle: angle.angle,
+                insight: angle.insight,
+                message: angle.message,
+                proof: angle.proof,
+                audience: angle.audience,
+                funnel: angle.funnel,
+              }
+            : null,
+          campaign: brief
+            ? { bigIdea: brief.big_idea.line, positioning: brief.positioning, avoid: brief.avoid }
+            : null,
+        }),
       });
-
-      const variantPrompts: string[] =
-        directorResult.usedDirector && directorResult.prompts.length > 0
-          ? directorResult.prompts.slice(0, 3)
-          : ([1, 2, 3] as const).map((variantNum) =>
-              buildPosterPrompt({
-                userRequest,
-                theme,
-                aspectRatio,
-                brand: brandSnapshot,
-                hasProductImage: !!productDataUrl,
-                variant: variantNum,
-                productName: selectedProduct.product_name,
-                productDescription: selectedProduct.description,
-                productBenefits: benefits,
-              })
-            );
-
-      // Pad if needed
-      while (variantPrompts.length < 3) {
-        const n = (variantPrompts.length + 1) as 1 | 2 | 3;
-        variantPrompts.push(
-          buildPosterPrompt({
-            userRequest,
-            theme,
-            aspectRatio,
-            brand: brandSnapshot,
-            hasProductImage: !!productDataUrl,
-            variant: n,
-            productName: selectedProduct.product_name,
-            productDescription: selectedProduct.description,
-            productBenefits: benefits,
-          })
-        );
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 402) {
+        setInsufficientCreditsType("image");
+        return;
       }
-
-      const basePayload = {
-        mode: "generate" as const,
-        theme,
-        target,
-        aspectLabel: aspectRatio,
-        brandName: brandGuideline?.name || brand?.name || "",
-        brandSnapshot,
-        tone: brandGuideline?.tone || brand?.tone || theme,
-        productDataUrl,
-        productProvided: !!productDataUrl,
-        refDataUrls,
-      };
-
-      const results = await Promise.allSettled(
-        variantPrompts.map((prompt) =>
-          authFetch("/api/generate-campaign", {
-            method: "POST",
-            body: JSON.stringify({
-              ...basePayload,
-              prompt,
-              description: prompt,
-            }),
-          }).then(async (response) => {
-            const data = await response.json();
-            return { data };
-          })
-        )
-      );
-
-      const posters: string[] = [];
-      let lastError = "";
-      for (const result of results) {
-        if (result.status === "fulfilled") {
-          const { data } = result.value;
-          if (data.ok && data.image) {
-            posters.push(data.image as string);
-          } else if (data.error) lastError = data.error;
-        } else {
-          lastError = result.reason?.message || "Unknown error";
-        }
-      }
+      const posters: string[] = data.ok && Array.isArray(data.images) ? data.images : [];
+      const lastError: string = data.error || "";
 
       if (posters.length > 0) {
         updateSession(sessionId, (s) => ({
@@ -933,7 +811,7 @@ export default function ContentStudioPage() {
         showError(lastError || "Failed to generate posters");
       }
     } catch (err: any) {
-      showError(err.message || "Failed to generate poster");
+      showError(friendlyError(err, "Failed to generate poster"));
     } finally {
       updateSession(sessionId, () => ({ generatingAngleId: null }));
     }
@@ -956,11 +834,53 @@ export default function ContentStudioPage() {
       };
       if (isVideo) {
         await handleVideoAdClick(angle);
+      } else if (/carousel/i.test(item.content_type)) {
+        await handlePlanCarousel(angle, index, false);
       } else {
         await handleGeneratePoster(angle);
       }
     } finally {
       updateSession(sessionId, () => ({ generatingCampaignItem: null }));
+    }
+  };
+
+  /** Plan a carousel (story across N slides, no credits); CarouselStudio then generates it. */
+  const handlePlanCarousel = async (angle: AdAngle, index: number, replan: boolean) => {
+    if (!activeSession || !selectedProduct) return;
+    const sessionId = activeSession.id;
+    const slideCount = carouselSlides[index] ?? 5;
+    updateSession(sessionId, () => ({ planningCarouselItem: index }));
+    try {
+      const brief = activeSession.campaignStrategy?.brief;
+      const res = await authFetch("/api/content-studio/engine-carousel", {
+        method: "POST",
+        body: JSON.stringify({
+          product: selectedProduct,
+          brand,
+          slideCount,
+          angle: {
+            title: angle.title,
+            explanation: angle.explanation,
+            angle: angle.angle,
+            insight: angle.insight,
+            message: angle.message,
+            proof: angle.proof,
+            audience: angle.audience,
+            funnel: angle.funnel,
+          },
+          campaign: brief ? { bigIdea: brief.big_idea.line, positioning: brief.positioning, avoid: brief.avoid } : null,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.campaign) throw new Error(data.error || "Couldn't plan the carousel.");
+      updateSession(sessionId, () => ({ carousel: { itemIndex: index, campaign: data.campaign } }));
+      if (!replan) {
+        setTimeout(() => document.getElementById("adstudio-carousel")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+      }
+    } catch (err: any) {
+      showError(friendlyError(err, "Couldn't plan the carousel."));
+    } finally {
+      updateSession(sessionId, () => ({ planningCarouselItem: null }));
     }
   };
 
@@ -980,7 +900,7 @@ export default function ContentStudioPage() {
         showError(data.error || "Failed to generate campaign");
       }
     } catch (err: any) {
-      showError(err.message || "Failed to generate campaign");
+      showError(friendlyError(err, "Failed to generate campaign"));
     } finally {
       setLoadingCampaign(false);
     }
@@ -1046,7 +966,7 @@ export default function ContentStudioPage() {
         showError(data.error || "Failed to create video session");
       }
     } catch (err: any) {
-      showError(err.message || "Failed to create video session");
+      showError(friendlyError(err, "Failed to create video session"));
     } finally {
       updateSession(sessionId, () => ({ creatingVideoAngleId: null }));
     }
@@ -1113,7 +1033,7 @@ export default function ContentStudioPage() {
         showError(data.error || "Failed to regenerate poster");
       }
     } catch (err: any) {
-      showError(err.message || "Failed to regenerate poster");
+      showError(friendlyError(err, "Failed to regenerate poster"));
     }
   };
 
@@ -1802,7 +1722,10 @@ export default function ContentStudioPage() {
                                 }}
                               >
                                 {activeSession.generatingAngleId === angle.title ? (
-                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                  <>
+                                    <ArcSpinner className="w-3 h-3 animate-spin mr-1" />
+                                    Designing 3 posters… 1–2 min
+                                  </>
                                 ) : (
                                   <>
                                     <ImageIcon className="w-3 h-3 mr-1" />
@@ -1822,7 +1745,7 @@ export default function ContentStudioPage() {
                                 }}
                               >
                                 {activeSession.creatingVideoAngleId === angle.title ? (
-                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                  <ArcSpinner className="w-3 h-3 animate-spin" />
                                 ) : (
                                   <>
                                     <Video className="w-3 h-3 mr-1" />
@@ -1910,7 +1833,8 @@ export default function ContentStudioPage() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
                     {activeSession.campaignPlan.map((item, i) => {
                       const isVideo = /video/i.test(item.content_type);
-                      const isPosterOrCarousel = /poster|carousel/i.test(item.content_type);
+                      const isCarousel = /carousel/i.test(item.content_type);
+                      const isPosterOrCarousel = !isCarousel && /poster/i.test(item.content_type);
                       const isGenerating = activeSession.generatingCampaignItem === i;
                       return (
                         <div
@@ -1988,6 +1912,22 @@ export default function ContentStudioPage() {
                           )}
                           {!item.angle && !item.rationale && <div className="mb-2" />}
 
+                          {isCarousel && (
+                            <label className="flex items-center justify-between gap-2 mb-2 text-xs" style={{ color: colors.mutedForeground }}>
+                              Slides
+                              <select
+                                value={carouselSlides[i] ?? 5}
+                                onChange={(e) => setCarouselSlides((m) => ({ ...m, [i]: Number(e.target.value) }))}
+                                className="rounded-md px-2 py-1 text-xs"
+                                style={{ background: colors.muted, color: colors.foreground, border: `1px solid ${colors.border}` }}
+                              >
+                                {[3, 4, 5, 6, 7, 8].map((n) => (
+                                  <option key={n} value={n}>{n} slides · {n} credits</option>
+                                ))}
+                              </select>
+                            </label>
+                          )}
+
                           <Button
                             size="sm"
                             onClick={() => handleCampaignItemGenerate(item, i)}
@@ -2003,24 +1943,66 @@ export default function ContentStudioPage() {
                             }}
                           >
                             {isGenerating ? (
-                              <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />
+                              <ArcSpinner className="w-3.5 h-3.5 animate-spin mr-1.5" />
                             ) : isVideo ? (
                               <Play className="w-3.5 h-3.5 mr-1.5" />
                             ) : (
                               <ImageIcon className="w-3.5 h-3.5 mr-1.5" />
                             )}
                             {isGenerating
-                              ? "Generating..."
+                              ? isCarousel
+                                ? "Planning the slide story…"
+                                : "Generating..."
                               : isVideo
                                 ? "Generate Video Ad"
-                                : isPosterOrCarousel
-                                  ? "Generate Poster"
-                                  : "Generate Creative"}
+                                : isCarousel
+                                  ? activeSession.carousel?.itemIndex === i
+                                    ? "Plan carousel again"
+                                    : `Plan ${carouselSlides[i] ?? 5}-slide carousel`
+                                  : isPosterOrCarousel
+                                    ? "Generate Poster"
+                                    : "Generate Creative"}
                           </Button>
                         </div>
                       );
                     })}
                   </div>
+                </section>
+              )}
+
+              {activeSession.carousel && (
+                <section id="adstudio-carousel" className="rounded-xl p-6 border" style={{ background: colors.card, borderColor: colors.border }}>
+                  <h2 className="text-lg font-semibold" style={{ color: colors.foreground }}>
+                    Carousel · Day {activeSession.campaignPlan[activeSession.carousel.itemIndex]?.day ?? ""}
+                  </h2>
+                  <p className="text-xs mt-0.5 mb-4" style={{ color: colors.mutedForeground }}>
+                    &ldquo;{activeSession.campaignPlan[activeSession.carousel.itemIndex]?.hook}&rdquo; — one story across {activeSession.carousel.campaign.slideCount} slides. Review the story, then generate the slides.
+                  </p>
+                  <CarouselStudio
+                    campaign={activeSession.carousel.campaign}
+                    onCampaignChange={(c) =>
+                      updateSession(activeSession.id, (s) => ({ carousel: s.carousel ? { ...s.carousel, campaign: c } : s.carousel }))
+                    }
+                    onRegenerateStory={async () => {
+                      const idx = activeSession.carousel!.itemIndex;
+                      const item = activeSession.campaignPlan[idx];
+                      if (!item) return;
+                      const source = item.angle
+                        ? activeSession.adAngles.find((a) => a.angle?.toLowerCase() === item.angle?.toLowerCase())
+                        : undefined;
+                      await handlePlanCarousel(
+                        { ...(source || {}), title: item.hook, explanation: item.description, message: item.description || source?.message },
+                        idx,
+                        true
+                      );
+                    }}
+                    isPlanning={activeSession.planningCarouselItem != null}
+                    creditsAvailable={credits?.imageCredits.total ?? null}
+                    onCreditsChanged={() => void fetchSubscription({ force: true })}
+                    onError={(message) => showError(message)}
+                    onNotice={(message) => showAlert(message)}
+                    brand={viewerBrand}
+                  />
                 </section>
               )}
 
@@ -2052,7 +2034,8 @@ export default function ContentStudioPage() {
                           <img
                             src={img}
                             alt={`Creative ${i + 1}`}
-                            className="w-full h-full object-cover"
+                            className="w-full h-full object-cover cursor-zoom-in"
+                            onClick={() => setViewerIndex(i)}
                           />
                           <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                           <div className="absolute bottom-0 left-0 right-0 p-3 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -2164,7 +2147,7 @@ export default function ContentStudioPage() {
           {step === "scanning" && (
             <div className="text-center py-24 space-y-8 max-w-lg mx-auto">
               <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl" style={{ background: "hsl(213 100% 55% / 0.2)" }}>
-                <Loader2 className="w-10 h-10 animate-spin" style={{ color: colors.primary }} />
+                <ArcSpinner className="w-10 h-10 animate-spin" style={{ color: colors.primary }} />
               </div>
               <div className="space-y-1">
                 <h2 className="text-xl font-semibold" style={{ color: colors.foreground }}>
@@ -2205,6 +2188,40 @@ export default function ContentStudioPage() {
           onManualSubmit={handleManualBrandSetup}
           onSkip={handleSkipBrandSetup}
           isLoading={isAnalyzingBrand}
+        />
+      )}
+
+      {/* Creative viewer: full size or Instagram / Facebook feed preview */}
+      {viewerIndex !== null && activeSession && activeSession.generatedPosters[viewerIndex] && (
+        <CreativeViewer
+          items={activeSession.generatedPosters.map((img, i) => ({
+            id: `${i}-${img.slice(-24)}`,
+            images: [img],
+            title: `Poster ${i + 1}`,
+            caption: selectedProduct?.short_benefit || selectedProduct?.description?.slice(0, 160),
+            headline: selectedProduct?.product_name,
+          }))}
+          index={viewerIndex}
+          onIndexChange={setViewerIndex}
+          onClose={() => setViewerIndex(null)}
+          brand={viewerBrand}
+          renderActions={(item, i) => (
+            <>
+              <Button size="sm" variant="secondary" onClick={() => handleDownload(item.images[0], `creative-${i + 1}.png`)}>
+                <Download className="w-3.5 h-3.5 mr-1" /> Download
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => {
+                  setViewerIndex(null);
+                  setEditingPosterIndex(i);
+                }}
+                style={{ background: colors.primary, color: colors.primaryForeground }}
+              >
+                <Pencil className="w-3.5 h-3.5 mr-1" /> Edit
+              </Button>
+            </>
+          )}
         />
       )}
 

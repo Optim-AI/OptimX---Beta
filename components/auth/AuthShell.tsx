@@ -20,7 +20,7 @@ type AuthShellProps = {
   submitLabel: string;
   loadingLabel: string;
   loading: boolean;
-  error: string | null;
+  error: React.ReactNode | null;
   info: string | null;
   secondary?: React.ReactNode;
   children: React.ReactNode;

@@ -2,12 +2,14 @@
  * Product cut-out providers: user's product photo → PNG with transparent background.
  *
  * Hosted APIs are the production providers (CUTOUT_PROVIDER, or whichever key
- * is set). `local-uniform` is a development-only fallback for studio packshots
- * on a light, plain background.
+ * is set). `builtin-isnet` is the free on-server model (Photo Studio's default
+ * when no key is set). `local-uniform` is a development-only fallback for studio
+ * packshots on a light, plain background.
  */
 
 import axios from "axios";
 import sharp from "sharp";
+import { BuiltInCutoutProvider } from "./builtin";
 
 export type CutoutInput = { buffer: Buffer; mimeType: string };
 
@@ -128,14 +130,20 @@ export class LocalUniformCutoutProvider implements CutoutProvider {
  * image model place the product (current behaviour). The local fallback damages
  * white labels/soles on light backgrounds, so it is opt-in for development only
  * (CUTOUT_PROVIDER=local).
+ *
+ * `builtin: true` (Photo Studio) falls back to the built-in ISNet model instead of
+ * null, so exact shots work without a paid key. CUTOUT_PROVIDER=none turns all
+ * cut-outs off; CUTOUT_PROVIDER=builtin forces the built-in model everywhere.
  */
-export function getCutoutProvider(env: NodeJS.ProcessEnv = process.env): CutoutProvider | null {
+export function getCutoutProvider(env: NodeJS.ProcessEnv = process.env, opts: { builtin?: boolean } = {}): CutoutProvider | null {
   const choice = (env.CUTOUT_PROVIDER || "").trim().toLowerCase();
   const photoroom = env.PHOTOROOM_API_KEY?.trim();
   const removebg = env.REMOVE_BG_API_KEY?.trim();
+  if (choice === "none") return null;
   if (choice === "local") return new LocalUniformCutoutProvider();
+  if (choice === "builtin") return new BuiltInCutoutProvider();
   if ((choice === "photoroom" || !choice) && photoroom) return new PhotoroomCutoutProvider(photoroom);
   if ((choice === "removebg" || !choice) && removebg) return new RemoveBgCutoutProvider(removebg);
-  if (choice) console.warn(`[cutout] CUTOUT_PROVIDER=${choice} but its API key is not set; cut-outs are off`);
-  return null;
+  if (choice) console.warn(`[cutout] CUTOUT_PROVIDER=${choice} but its API key is not set; ${opts.builtin ? "using the built-in model" : "cut-outs are off"}`);
+  return opts.builtin ? new BuiltInCutoutProvider() : null;
 }

@@ -1,7 +1,8 @@
 'use client';
 
 import React from 'react';
-import { Check, Loader2 } from 'lucide-react';
+import { Check } from 'lucide-react';
+import { ArcSpinner } from '@/app/web/src/components/ui/loaders';
 import colors from '@/lib/ui/colors';
 import type { OnboardingDemoProgressStage } from '@/lib/onboarding/try-onboarding';
 
@@ -73,7 +74,7 @@ export default function DemoGeneratingProgress({
                 {done ? (
                   <Check className="h-3.5 w-3.5 text-white" />
                 ) : active ? (
-                  <Loader2
+                  <ArcSpinner
                     className="h-3.5 w-3.5 animate-spin"
                     style={{ color: colors.primary }}
                   />

@@ -116,6 +116,20 @@ export function copyDensityForConcept(
   return "balanced";
 }
 
+/**
+ * A second line earns its place only with a concrete fact the headline can't carry
+ * (price, offer, number, time, guarantee). Restating the headline in smaller, thinner
+ * type is what makes a poster look amateur.
+ */
+export const SECONDARY_TYPE_RULE =
+  "Any secondary line is set confidently (semibold or bold, at least half the headline's size, in a brand colour) — never small, thin, light-weight or grey body text. If a line can't be set that way, leave it out.";
+
+export function isConcreteSupportingLine(text: string | null | undefined): boolean {
+  const t = (text || "").trim();
+  if (!t) return false;
+  return /[0-9₹$€£%]/.test(t) || /\b(free|off|save|offer|deal|launch(?:ing|es)?|new|limited|only|order|delivery|ships?|guarantee[d]?|refund|returns?|trial|today|tonight|weekend)\b/i.test(t);
+}
+
 export type DensityFilteredCopy = {
   density: PosterCopyDensity;
   headline: string;
@@ -134,8 +148,10 @@ export type DensityFilteredCopy = {
 export function filterCopyForDensity(options: {
   strategy: MarketingStrategy;
   density: PosterCopyDensity;
+  /** The real packshot is in the poster, so a product-name text line only repeats the pack. */
+  hasProductImage?: boolean;
 }): DensityFilteredCopy {
-  const { strategy, density } = options;
+  const { strategy, density, hasProductImage = false } = options;
   const overrides = strategy.userOverrides || {};
 
   const hasHeadlineOverride = !!(overrides.headline && overrides.headline.trim());
@@ -147,8 +163,9 @@ export function filterCopyForDensity(options: {
     overrides.message && overrides.message.trim()
       ? overrides.message.trim()
       : null;
-  const strategySupporting = strategy.copy.supporting?.trim() || null;
-  const productLine = strategy.copy.productLine?.trim() || null;
+  const rawSupporting = strategy.copy.supporting?.trim() || null;
+  const strategySupporting = isConcreteSupportingLine(rawSupporting) ? rawSupporting : null;
+  const productLine = hasProductImage ? null : strategy.copy.productLine?.trim() || null;
   const overrideCta =
     overrides.cta && overrides.cta.trim() ? overrides.cta.trim() : null;
   const strategyCta = strategy.copy.cta?.trim() || null;
@@ -212,7 +229,8 @@ export function filterCopyForDensity(options: {
           null,
         badges: shortBadges(2, 4),
         textBudgetRule:
-          "TEXT BUDGET = INFORMATIVE but still poster-tight. Headline + one short supporting line max. No brochure paragraphs or stacked captions.",
+          "TEXT BUDGET = INFORMATIVE but still poster-tight. Headline + one short supporting line max. No brochure paragraphs or stacked captions. " +
+          SECONDARY_TYPE_RULE,
       };
     case "balanced":
     default:
@@ -242,7 +260,8 @@ export function filterCopyForDensity(options: {
               : null,
           badges: shortBadges(1, 3),
           textBudgetRule:
-            "TEXT BUDGET = BALANCED. Headline is hero. At most one short secondary line OR product line — never both. Skip decorative captions and arrow callouts.",
+            "TEXT BUDGET = BALANCED. Headline is hero. At most one short secondary line OR product line — never both. Skip decorative captions and arrow callouts. " +
+            SECONDARY_TYPE_RULE,
         };
       }
   }

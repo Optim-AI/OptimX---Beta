@@ -6,10 +6,13 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { getUserIdFromRequest } from "@/auth/request";
 import { getGeminiApiKey } from "@/lib/gemini-config";
 import { buildProductStrategy, type StrategyProductInput } from "@/lib/research/product-strategy";
-import { getBrandResearch, researchMatchesBrandName } from "@/lib/research/store";
+import { getBrandResearch, researchMatchesBrandName, saveBrandResearch } from "@/lib/research/store";
+import { researchBrand } from "@/lib/research/brand-research";
+import { getUserBrand } from "@/lib/brand-kit/server";
 
 export const config = {
-  maxDuration: 120,
+  // Up to ~2 min the first time a site is seen (brand research + product strategy).
+  maxDuration: 240,
 };
 
 type AdAngle = { title: string; explanation: string };
@@ -179,14 +182,36 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    // Saved brand research (site + web) sharpens the strategy; only use it for this brand's site.
-    const brandResearch = await getBrandResearch(userId, website).catch(() => null);
-    const usable = website || !brandResearch ? brandResearch : researchMatchesBrandName(brandResearch, brand?.name) ? brandResearch : null;
+    // One source of truth: brand facts from the Brand Kit, market read from Brand Research.
+    // If this site has no research yet, run it now so the strategy and Brand Research agree.
+    const [{ snapshot: kitBrand }, saved] = await Promise.all([
+      getUserBrand(userId).catch(() => ({ snapshot: null })),
+      getBrandResearch(userId, website).catch(() => null),
+    ]);
+    let brandResearch = website || !saved ? saved : researchMatchesBrandName(saved, brand?.name) ? saved : null;
+    if (!brandResearch && website) {
+      brandResearch = await researchBrand(website)
+        .then(async ({ research }) => {
+          if (research) await saveBrandResearch(userId, research).catch(() => null);
+          return research;
+        })
+        .catch((e) => {
+          console.warn("[Content Studio] brand research failed", (e as Error)?.message);
+          return null;
+        });
+    }
 
+    const sameBrand = kitBrand?.name && brand?.name && kitBrand.name.toLowerCase().replace(/[^a-z0-9]/g, "") === String(brand.name).toLowerCase().replace(/[^a-z0-9]/g, "");
     const { strategy, timings } = await buildProductStrategy({
       product: product as StrategyProductInput,
-      brand: { ...(brand || {}), website },
-      brandResearch: usable,
+      brand: {
+        name: brand?.name || kitBrand?.name,
+        tone: (sameBrand && (kitBrand?.brand_tone?.join(", ") || kitBrand?.tone)) || brand?.tone,
+        industry: (sameBrand && kitBrand?.industry) || brand?.industry,
+        targetAudience: (sameBrand && kitBrand?.audience) || brand?.targetAudience,
+        website,
+      },
+      brandResearch,
     });
     console.log("[Content Studio] strategy", { userId, timings, research: strategy.campaign_strategy.brief.research });
 

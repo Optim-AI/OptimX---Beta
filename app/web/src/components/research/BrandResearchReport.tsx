@@ -2,9 +2,12 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { ArrowRight, ExternalLink, Loader2, RefreshCw } from 'lucide-react';
+import { ArrowRight, ExternalLink, RefreshCw } from 'lucide-react';
+import { ArcSpinner, StepProgress } from '@/app/web/src/components/ui/loaders';
 import colors from '@/lib/ui/colors';
 import type { BrandResearch, EvidenceBasis, ResearchInsight } from '@/lib/research/brand-research';
+import type { CompetitorAdsEntry, CompetitorAdsReport } from '@/lib/research/competitor-ads';
+import { adLibrarySearchUrl, countryCodeFor } from '@/lib/research/ad-library-links';
 
 const BASIS: Record<EvidenceBasis, { label: string; fg: string; bg: string }> = {
   site: { label: 'From your site', fg: 'hsl(142 70% 60%)', bg: 'hsl(142 70% 40% / 0.14)' },
@@ -76,13 +79,19 @@ function evidenceLine(r: BrandResearch): string {
 export function ResearchPending({ label = 'Researching your market' }: { label?: string }) {
   return (
     <div className="rounded-2xl p-5" style={{ background: colors.card, border: `1px solid ${colors.border}` }}>
-      <div className="flex items-center gap-3">
-        <Loader2 className="h-4 w-4 animate-spin" style={{ color: colors.primary }} />
-        <p className="text-sm" style={{ color: colors.foreground }}>{label}…</p>
-      </div>
-      <p className="mt-2 text-xs leading-relaxed" style={{ color: colors.mutedForeground }}>
-        Reading competitors, prices and what buyers say on Reddit and in reviews. This takes about a minute and keeps running if you carry on.
-      </p>
+      <p className="mb-3 text-xs font-medium uppercase tracking-[0.15em]" style={{ color: colors.mutedForeground }}>{label}</p>
+      <StepProgress
+        className="max-w-md"
+        estimatedMs={70_000}
+        hint="about a minute — it keeps running if you carry on"
+        steps={[
+          'Reading your website…',
+          'Finding who you compete with…',
+          'Reading what buyers say on Reddit and in reviews…',
+          'Comparing prices and positioning…',
+          'Writing your market read…',
+        ]}
+      />
     </div>
   );
 }
@@ -145,9 +154,104 @@ type FullProps = {
   research: BrandResearch;
   onRefresh?: () => void;
   refreshing?: boolean;
+  onCheckAds?: () => void;
+  checkingAds?: boolean;
 };
 
-export default function BrandResearchReport({ research: r, onRefresh, refreshing }: FullProps) {
+function daysLabel(d?: number): string {
+  if (d === undefined) return '';
+  if (d < 1) return 'started today';
+  if (d < 60) return `running ${d} days`;
+  return `running ${Math.round(d / 30)} months`;
+}
+
+function CompetitorAdsCard({ research, onCheckAds, checkingAds }: { research: BrandResearch; onCheckAds?: () => void; checkingAds?: boolean }) {
+  const report: CompetitorAdsReport | undefined = research.competitor_ads;
+  const country = report?.country ?? countryCodeFor(research.snapshot.market);
+  const entries: CompetitorAdsEntry[] =
+    report?.competitors ??
+    research.competitors.map((c) => ({ name: c.name, libraryUrl: adLibrarySearchUrl(c.name, country), activeAds: 0, ads: [] }));
+  const withAds = entries.filter((e) => e.ads.length);
+  const note =
+    report?.status === 'ok'
+      ? null
+      : report?.status === 'none_found'
+        ? "Meta only shares ad details through its API for ads shown in the EU, so these competitors' ads can't be read here. Open their live ads directly:"
+        : "Live ad details aren't available right now. Open each competitor's live ads in Meta's Ad Library:";
+
+  return (
+    <Card title="Competitor ads" hint="What your competitors are running on Facebook and Instagram right now. Ads that have run for months are usually the ones that work.">
+      {report?.status === 'ok' && (report.patterns.length > 0 || report.implication) && (
+        <div className="mb-5 rounded-xl p-4" style={{ background: colors.secondary }}>
+          {report.patterns.length > 0 && (
+            <ul className="list-disc space-y-1 pl-4 text-sm" style={{ color: colors.foreground }}>
+              {report.patterns.map((p) => <li key={p}>{p}</li>)}
+            </ul>
+          )}
+          {report.implication && <p className="mt-2 text-xs leading-relaxed" style={{ color: colors.mutedForeground }}><strong style={{ color: colors.foreground }}>For you: </strong>{report.implication}</p>}
+        </div>
+      )}
+
+      {withAds.length > 0 && (
+        <div className="space-y-5">
+          {withAds.map((e) => (
+            <div key={e.name}>
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <p className="text-sm font-medium" style={{ color: colors.foreground }}>
+                  {e.name} <span className="text-xs font-normal" style={{ color: colors.mutedForeground }}>· {e.activeAds} active ad{e.activeAds === 1 ? '' : 's'}</span>
+                </p>
+                <a href={e.libraryUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs hover:underline" style={{ color: colors.primary }}>
+                  All their ads <ExternalLink className="h-3 w-3" />
+                </a>
+              </div>
+              {e.leadsWith && <p className="mt-1 text-xs" style={{ color: colors.mutedForeground }}>Leads with: {e.leadsWith}</p>}
+              <div className="mt-2 grid gap-2 md:grid-cols-2">
+                {e.ads.map((a) => (
+                  <a key={a.id} href={a.libraryUrl} target="_blank" rel="noopener noreferrer" className="block rounded-lg p-3 transition-colors hover:brightness-110" style={{ background: colors.secondary }}>
+                    {a.title && <p className="text-xs font-medium" style={{ color: colors.foreground }}>{a.title}</p>}
+                    <p className="mt-0.5 line-clamp-4 text-xs leading-relaxed" style={{ color: colors.mutedForeground }}>{a.body}</p>
+                    <p className="mt-2 text-[10px]" style={{ color: colors.mutedForeground }}>
+                      {[daysLabel(a.daysRunning), a.platforms.map((p) => p.toLowerCase()).join(', ')].filter(Boolean).join(' · ')}
+                    </p>
+                  </a>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {(note || withAds.length < entries.length) && (
+        <div className={withAds.length ? 'mt-5' : ''}>
+          {note && <p className="mb-3 text-xs leading-relaxed" style={{ color: colors.mutedForeground }}>{note}</p>}
+          <div className="flex flex-wrap gap-2">
+            {entries
+              .filter((e) => !e.ads.length)
+              .map((e) => (
+                <a key={e.name} href={e.libraryUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs hover:underline" style={{ background: colors.secondary, color: colors.foreground }}>
+                  See {e.name}&apos;s live ads <ExternalLink className="h-3 w-3" />
+                </a>
+              ))}
+          </div>
+        </div>
+      )}
+
+      {onCheckAds && report?.status !== 'ok' && (
+        <button
+          type="button"
+          onClick={onCheckAds}
+          disabled={checkingAds}
+          className="mt-4 inline-flex items-center gap-1.5 text-xs font-medium disabled:opacity-60"
+          style={{ color: colors.primary }}
+        >
+          <RefreshCw className={`h-3.5 w-3.5 ${checkingAds ? 'animate-spin' : ''}`} /> {checkingAds ? 'Checking…' : 'Check their ads again'}
+        </button>
+      )}
+    </Card>
+  );
+}
+
+export default function BrandResearchReport({ research: r, onRefresh, refreshing, onCheckAds, checkingAds }: FullProps) {
   const cv = r.customer_voice;
   return (
     <div className="space-y-5">
@@ -282,6 +386,8 @@ export default function BrandResearchReport({ research: r, onRefresh, refreshing
           </div>
         )}
       </Card>
+
+      {r.competitors.length > 0 && <CompetitorAdsCard research={r} onCheckAds={onCheckAds} checkingAds={checkingAds} />}
 
       <Card title="What buyers say" hint="From Reddit, reviews and forums about your category.">
         <div className="grid gap-5 md:grid-cols-3">

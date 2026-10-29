@@ -85,6 +85,8 @@ export type StrategyBrief = {
   measurement: { primary_kpi: string; early_signal: string; decision_rule: string };
   sources: ResearchSource[];
   research: "web" | "brand_research" | "product_only";
+  /** True when the saved Brand Research was used (and the strategy kept to it). */
+  alignedWithBrandResearch?: boolean;
 };
 
 export type ProductStrategy = {
@@ -138,14 +140,15 @@ function productBlock(p: StrategyProductInput, b: StrategyBrandInput): string {
     .join("\n");
 }
 
-function productResearchPrompt(p: StrategyProductInput, b: StrategyBrandInput, market?: string): string {
+function productResearchPrompt(p: StrategyProductInput, b: StrategyBrandInput, market?: string, knownCompetitors: string[] = []): string {
   return `You are researching one product for an ad strategy. Use Google Search (Reddit, Amazon/Flipkart/G2 reviews, YouTube, forums, competitor sites).
 
 ${productBlock(p, b)}
 ${market ? `Market: ${market}` : ""}
+${knownCompetitors.length ? `Competitors already identified for this brand: ${knownCompetitors.join(", ")}.` : ""}
 
 Find:
-1. 3-5 products a buyer would directly compare this with: brand, product, price, the main claim they advertise.
+1. 3-5 products a buyer would directly compare this with: brand, product, price, the main claim they advertise.${knownCompetitors.length ? " Start with the competing product from each already-identified competitor that sells one; add at most 2 other brands only if buyers clearly compare them." : ""}
 2. What buyers of this kind of product praise, and what they complain about — specific, with where you saw it.
 3. When and why people go looking for this kind of product (occasions, trigger moments), and what stops them buying.
 4. How competitors advertise it: common hooks, claims and formats — and which are overused.
@@ -172,6 +175,14 @@ function strategyPrompt(input: {
 }): string {
   const { product, brand, productResearch, brandResearch } = input;
   const digest = researchDigest(brandResearch);
+  const canonical = brandResearch
+    ? `
+=== CONSISTENCY WITH BRAND RESEARCH (the user already sees this research; do not contradict it) ===
+- Market sophistication: the brand research says stage ${brandResearch.market.sophistication.stage}. Use the same stage unless this product sits in a clearly different sub-market; if so, say why in the implication.
+- Competitors: ${brandResearch.competitors.map((c) => c.name).join(", ") || "(none)"}. When naming competitors in your reasoning, use these names; other brands only as product-level alternatives from the product research.
+- Positioning must fit the brand's claimed position ("${brandResearch.positioning.claimed}") and may sharpen it for this product, not replace it.
+- Saturated claims and white space from the brand research apply here too.`
+    : "";
   return `Write the ad strategy for this product.
 
 === PRODUCT (from the brand's own site — basis "site") ===
@@ -182,6 +193,7 @@ ${productResearch ? JSON.stringify(productResearch) : "(unavailable — insights
 
 === BRAND RESEARCH (earlier; site + web) ===
 ${digest || "(none)"}
+${canonical}
 
 Work through it in order, then return JSON:
 1. Situation — market sophistication stage and what it means for the message; the buyer's dominant awareness level and what it means; the competitive frame (what they compare against, including non-obvious alternatives).
@@ -266,7 +278,12 @@ function positioningText(v: unknown): string {
 
 export function normalizeStrategy(
   raw: any,
-  ctx: { sources: ResearchSource[]; research: StrategyBrief["research"]; alternatives: StrategyBrief["alternatives"] }
+  ctx: {
+    sources: ResearchSource[];
+    research: StrategyBrief["research"];
+    alternatives: StrategyBrief["alternatives"];
+    alignedWithBrandResearch?: boolean;
+  }
 ): ProductStrategy {
   const angles: StrategyAngle[] = (Array.isArray(raw?.angles) ? raw.angles : [])
     .map((a: any) => {
@@ -345,6 +362,7 @@ export function normalizeStrategy(
     },
     sources: ctx.sources.slice(0, 15),
     research: ctx.research,
+    alignedWithBrandResearch: ctx.alignedWithBrandResearch ?? false,
   };
 
   return {
@@ -371,19 +389,22 @@ export async function buildProductStrategy(input: {
   const brandResearch = input.brandResearch ?? null;
 
   let t = Date.now();
-  const grounded = await groundedResearch(productResearchPrompt(product, brand, brandResearch?.snapshot.market), {
-    label: "product-market",
-    timeoutMs: 60_000,
-  }).catch((e) => {
+  const grounded = await groundedResearch(
+    productResearchPrompt(product, brand, brandResearch?.snapshot.market, brandResearch?.competitors.map((c) => c.name) ?? []),
+    { label: "product-market", timeoutMs: 60_000 }
+  ).catch((e) => {
     console.warn("[productStrategy] product research failed", (e as Error)?.message);
     return null;
   });
   timings.research = Date.now() - t;
   const productResearch = grounded ? parseJsonLoose<any>(grounded.text) : null;
+  const ownBrand = (brand.name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 
   const alternatives: StrategyBrief["alternatives"] = (Array.isArray(productResearch?.alternatives) ? productResearch.alternatives : [])
     .map((a: any) => ({ name: s(a?.name, 100), price: s(a?.price, 60) || undefined, claim: s(a?.claim, 160) || undefined }))
     .filter((a: { name: string }) => a.name)
+    // The brand's own products are not alternatives to compete against.
+    .filter((a: { name: string }) => !ownBrand || !a.name.toLowerCase().replace(/[^a-z0-9]/g, "").includes(ownBrand))
     .slice(0, 5);
 
   t = Date.now();
@@ -397,6 +418,7 @@ export async function buildProductStrategy(input: {
     sources: grounded?.sources ?? [],
     research: productResearch ? "web" : brandResearch ? "brand_research" : "product_only",
     alternatives,
+    alignedWithBrandResearch: Boolean(brandResearch),
   });
   if (!strategy.angles.length) throw new Error("Strategy came back without usable angles");
   return { strategy, timings };

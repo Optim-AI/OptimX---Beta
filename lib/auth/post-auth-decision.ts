@@ -42,7 +42,8 @@ export type PostAuthState = {
   now?: Date;
 };
 
-export const POST_AUTH_WORKSPACE_PATH = '/content-studio';
+/** Workspace entry: sends users without a Brand Kit to set one up, others to Ad Studio. */
+export const POST_AUTH_WORKSPACE_PATH = '/workspace';
 
 const IN_PROGRESS_STATUSES = new Set([
   'brand_started',

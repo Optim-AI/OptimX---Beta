@@ -1,7 +1,7 @@
 import React from "react";
 import PageSeo from "@/components/seo/PageSeo";
 import MarketingLayout from "@/app/web/src/components/marketing/MarketingLayout";
-import { FounderContacts, FounderPhoto } from "@/app/web/src/components/marketing/FounderNote";
+import { FounderContacts, FounderPhoto, FounderSignature } from "@/app/web/src/components/marketing/FounderNote";
 import { ButtonLink, Eyebrow } from "@/app/web/src/components/marketing/ui";
 import { FOUNDER, PILLARS, STARTING_PRICE } from "@/lib/marketing/content";
 
@@ -26,11 +26,11 @@ export default function About() {
         >
           Good creative shouldn&apos;t need an agency budget.
         </h1>
-        <div className="mt-14 grid items-start gap-8 md:grid-cols-12">
-          <FounderPhoto className="w-40 sm:w-52 md:col-span-3 md:w-full" />
-          <div className="md:col-span-8 md:col-start-5">
+        <div className="mt-14 grid items-start gap-8 md:grid-cols-[clamp(200px,20vw,260px)_minmax(0,1fr)] md:items-stretch md:gap-12">
+          <FounderPhoto className="w-48 sm:w-56 md:aspect-auto md:h-full md:w-full" />
+          <div className="min-w-0">
             <p className="font-display text-[clamp(1.5rem,2.8vw,2.1rem)] leading-snug">{FOUNDER.note}</p>
-            <p className="mt-5 font-medium">— {FOUNDER.name}, Chennai</p>
+            <FounderSignature />
             <div className="mt-2">
               <FounderContacts />
             </div>

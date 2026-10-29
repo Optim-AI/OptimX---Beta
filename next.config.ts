@@ -26,6 +26,17 @@ const nextConfig = {
     // (read from disk at runtime, so tracing can't see it). Poster generation is
     // reachable from several API routes, so include it for all of them.
     '/api/**/*': ['./node_modules/next/dist/compiled/@vercel/og/noto-sans-v27-latin-regular.ttf'],
+    // Photo Studio's built-in background removal loads onnxruntime-node at runtime
+    // (hidden from tracing so no other route carries it). Ship only the Linux x64
+    // CPU runtime (~46 MB); the CUDA download is skipped via .npmrc.
+    '/api/photo-studio/{start,shoot}': [
+      './node_modules/onnxruntime-node/package.json',
+      './node_modules/onnxruntime-node/dist/*.js',
+      './node_modules/onnxruntime-node/bin/napi-v6/linux/x64/onnxruntime_binding.node',
+      './node_modules/onnxruntime-node/bin/napi-v6/linux/x64/libonnxruntime.so.1',
+      './node_modules/onnxruntime-common/package.json',
+      './node_modules/onnxruntime-common/dist/cjs/**',
+    ],
   },
   webpack: (config: any, { isServer }: { isServer: boolean; dev: boolean }) => {
     if (isServer) {

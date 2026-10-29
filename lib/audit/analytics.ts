@@ -1,6 +1,7 @@
 /** Funnel events via the existing Vercel Analytics integration (client-side). */
 
 import { getSafeNextPath } from '@/lib/routing/safe-next';
+import { POST_AUTH_WORKSPACE_PATH } from '@/lib/auth/post-auth-decision';
 
 export type AuditFunnelEvent =
   | 'audit_started'
@@ -70,6 +71,22 @@ export function auditReturnPath(next: unknown): string | null {
   return null;
 }
 
+/** App pages a signed-out person can be returned to after signing in again. */
+const APP_RETURN_PREFIXES = [
+  '/photo-studio', '/brand-kit', '/brand-studio', '/content-studio', '/brand-research',
+  '/image-library', '/create-campaign', '/library', '/integrations', '/analytics', '/settings', '/buy-credits',
+];
+
+export function appReturnPath(next: unknown): string | null {
+  const safe = getSafeNextPath(next, '');
+  return APP_RETURN_PREFIXES.some((p) => safe === p || safe.startsWith(`${p}/`) || safe.startsWith(`${p}?`)) ? safe : null;
+}
+
 export function resolvePostAuthPath(decisionPath: string, next: unknown): string {
-  return auditReturnPath(next) ?? decisionPath;
+  const audit = auditReturnPath(next);
+  if (audit) return audit;
+  // Back to the page their session ended on — only for people the app would let in
+  // anyway (onboarding/pricing still comes first for everyone else).
+  if (decisionPath === POST_AUTH_WORKSPACE_PATH) return appReturnPath(next) ?? decisionPath;
+  return decisionPath;
 }

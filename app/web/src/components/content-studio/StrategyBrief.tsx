@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
-import { ChevronDown, ExternalLink, Loader2 } from 'lucide-react';
+import React, { useState } from 'react';
+import { ChevronDown, ExternalLink } from 'lucide-react';
+import { ArcSpinner, StepProgress } from '@/app/web/src/components/ui/loaders';
 import colors from '@/lib/ui/colors';
 import { BasisChip } from '@/app/web/src/components/research/BrandResearchReport';
 import type { StrategyAngle, StrategyBrief } from '@/lib/research/product-strategy';
@@ -16,25 +17,9 @@ const STAGES = [
 
 /** Staged progress for the ~45s research + strategy run. */
 export function StrategyLoading() {
-  const [i, setI] = useState(0);
-  useEffect(() => {
-    const id = window.setInterval(() => setI((n) => Math.min(n + 1, STAGES.length - 1)), 9000);
-    return () => window.clearInterval(id);
-  }, []);
   return (
     <div className="py-8">
-      <div className="flex items-center gap-3">
-        <Loader2 className="h-5 w-5 animate-spin" style={{ color: colors.primary }} />
-        <p className="text-sm" style={{ color: colors.foreground }}>{STAGES[i]}</p>
-      </div>
-      <div className="mt-4 flex gap-1">
-        {STAGES.map((_, n) => (
-          <div key={n} className="h-1 flex-1 rounded-full transition-colors" style={{ background: n <= i ? colors.primary : colors.muted }} />
-        ))}
-      </div>
-      <p className="mt-3 text-xs" style={{ color: colors.mutedForeground }}>
-        Researching this product&apos;s market before writing the strategy. Takes about 45 seconds.
-      </p>
+      <StepProgress steps={STAGES} estimatedMs={45_000} hint="researching this product's market first, about 45 seconds" />
     </div>
   );
 }
@@ -64,6 +49,14 @@ export function StrategyBriefPanel({ brief }: { brief: StrategyBrief }) {
               : brief.research === 'brand_research'
                 ? 'Built from your brand research'
                 : 'Built from the product page only — web research was unavailable'}
+            {brief.alignedWithBrandResearch && (
+              <>
+                {' · '}
+                <a href="/brand-research" className="underline" style={{ color: colors.primary }}>
+                  consistent with your Brand Research
+                </a>
+              </>
+            )}
           </p>
         </div>
         <div className="flex flex-wrap gap-2 text-xs">

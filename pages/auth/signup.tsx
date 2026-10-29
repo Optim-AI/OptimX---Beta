@@ -17,6 +17,7 @@ import {
 } from "@/lib/auth/client-post-auth";
 import { trackAuditEvent } from "@/lib/audit/analytics";
 import AuthShell from "@/components/auth/AuthShell";
+import { authErrorMessage, classifyAuthError } from "@/lib/auth/auth-errors";
 
 export default function SignUpPage(): React.ReactElement {
   const router = useRouter();
@@ -27,7 +28,7 @@ export default function SignUpPage(): React.ReactElement {
   const [showPw, setShowPw] = useState(false);
   const [agreed, setAgreed] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<React.ReactNode | null>(null);
   const [info, setInfo] = useState<string | null>(null);
 
   const nextSuffix =
@@ -38,6 +39,21 @@ export default function SignUpPage(): React.ReactElement {
   function isValidEmail(value: string) {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
   }
+
+  // Coming from "Log in" with an unknown email: keep what they typed.
+  useEffect(() => {
+    if (typeof router.query.email === "string" && !email) setEmail(router.query.email);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router.query.email]);
+
+  const alreadyRegistered = () => (
+    <>
+      You already have an account with this email.{" "}
+      <Link href={`/auth/signin${nextSuffix}`} style={{ textDecoration: "underline" }}>Log in</Link>
+      {" · "}
+      <Link href="/auth/forgot-password" style={{ textDecoration: "underline" }}>Reset password</Link>
+    </>
+  );
 
   async function routeAfterAuth() {
     const decision = await fetchPostAuthDestination();
@@ -86,12 +102,12 @@ export default function SignUpPage(): React.ReactElement {
         options: { redirectTo },
       });
       if (oauthError) {
-        setError(oauthError.message);
+        setError(authErrorMessage(oauthError));
       } else if (data?.url) {
         window.location.href = data.url;
       }
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(authErrorMessage(e));
     }
   };
 
@@ -140,21 +156,28 @@ export default function SignUpPage(): React.ReactElement {
       });
 
       if (signUpError) {
-        setError(signUpError.message || "Failed to create account.");
+        setError(classifyAuthError(signUpError) === "already_registered" ? alreadyRegistered() : authErrorMessage(signUpError));
         setLoading(false);
         return;
       }
 
+      const user = (data as { user?: { id?: string; identities?: unknown[] } } | null)?.user ?? null;
+      // With email confirmation on, Supabase hides an existing account by returning a
+      // user with no identities and no session.
+      if (user && Array.isArray(user.identities) && user.identities.length === 0) {
+        setError(alreadyRegistered());
+        return;
+      }
       trackAuditEvent("signup_completed", { method: "email", fromAudit: Boolean(auditNext) });
-      const user = (data as { user?: { id?: string } } | null)?.user ?? null;
-      if (user?.id) {
+      // Only a session means they're signed in; otherwise they must confirm their email first.
+      if (data?.session) {
         await routeAfterAuth();
         return;
       }
 
-      setInfo("Account created. Please check your email to confirm and then sign in.");
+      setInfo(`Account created. We sent a confirmation link to ${email} — open it to finish signing up.`);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(authErrorMessage(e));
     } finally {
       setLoading(false);
     }

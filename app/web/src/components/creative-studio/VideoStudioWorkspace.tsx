@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import CreativeViewer from './CreativeViewer';
 import { useRouter } from 'next/router';
 import {
   ArrowLeft,
@@ -230,6 +231,8 @@ export default function VideoStudioWorkspace({
 
   const title = commercialTitle(adBuilderData, sessionName);
   const hasVideo = Boolean(selectedVideo?.url);
+  const [feedPreview, setFeedPreview] = useState(false);
+  const videosWithUrl = generatedVideos.filter((v) => v.url);
   const isBusy = isGeneratingVideo || isGeneratingScript;
   const showStage = stageOpened || isBusy || hasVideo;
 
@@ -956,6 +959,23 @@ export default function VideoStudioWorkspace({
       className="flex-1 flex flex-col min-w-0 h-full overflow-hidden"
       style={{ background: STUDIO_BG, borderLeft: `1px solid ${LINE}` }}
     >
+      {feedPreview && videosWithUrl.length > 0 && (
+        <CreativeViewer
+          items={videosWithUrl.map((v, i) => ({
+            id: v.id,
+            images: [],
+            videoUrl: v.url,
+            title: `Video ${i + 1}`,
+            caption: brand?.tagline || brand?.coreValueProp || undefined,
+            headline: brand?.name,
+          }))}
+          index={Math.max(0, videosWithUrl.findIndex((v) => v.id === selectedVideo?.id))}
+          onIndexChange={(i) => onSelectVideo(videosWithUrl[i].id)}
+          onClose={() => setFeedPreview(false)}
+          brand={{ name: brand?.name || 'yourbrand', logo: brand?.logo || brand?.logoUrl, website: brand?.website_url }}
+          initialMode="instagram"
+        />
+      )}
       <div
         className="flex-shrink-0 px-4 h-11 flex items-center justify-between"
         style={{ borderBottom: `1px solid ${LINE}`, background: RAIL_BG }}
@@ -1578,17 +1598,21 @@ export default function VideoStudioWorkspace({
                       ? productionStatus === 'regenerating'
                         ? 'Regenerating'
                         : 'Generating'
-                      : productionStatus === 'manual_review'
-                        ? 'Needs review'
-                        : hasVideo
-                          ? qcDecision === 'accept'
-                            ? 'Ready'
-                            : qcDecision === 'regenerate'
-                              ? 'Review suggested'
-                              : 'Ready'
-                          : 'Directing'}
+                      : hasVideo
+                        ? 'Ready'
+                        : 'Directing'}
                   </p>
                 </div>
+                {hasVideo && (
+                  <button
+                    type="button"
+                    onClick={() => setFeedPreview(true)}
+                    className="shrink-0 rounded-md px-2.5 py-1 text-[11px] font-medium"
+                    style={{ color: '#F4F4F7', border: '1px solid rgba(255,255,255,0.12)' }}
+                  >
+                    Preview in feed
+                  </button>
+                )}
                 {generatedVideos.length > 1 && (
                   <div className="flex items-center gap-1.5 text-[11px]" style={{ color: MUTED }}>
                     {generatedVideos.map((video, index) => (
@@ -1855,11 +1879,10 @@ export default function VideoStudioWorkspace({
                     ) : qcDecision === 'manual_review' || productionStatus === 'manual_review' ? (
                       <>
                         <p className="text-[13px] font-medium" style={{ color: '#F4F4F7' }}>
-                          Needs review
+                          Commercial ready
                         </p>
                         <p className="text-[12px] mt-1" style={{ color: MUTED }}>
-                          Automated checks could not confidently verify something. You can keep this
-                          version or regenerate.
+                          Not quite right? Regenerate or edit this version.
                         </p>
                       </>
                     ) : (

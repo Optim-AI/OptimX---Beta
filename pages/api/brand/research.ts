@@ -7,6 +7,7 @@ import { getUserIdFromRequest } from "@/auth/request";
 import { normalizeAuditUrl } from "@/lib/audit/url-safety";
 import { researchBrand } from "@/lib/research/brand-research";
 import { getBrandResearch, saveBrandResearch } from "@/lib/research/store";
+import { researchCompetitorAds } from "@/lib/research/competitor-ads";
 
 export const config = {
   maxDuration: 180,
@@ -32,6 +33,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const check = normalizeAuditUrl(req.body?.url);
   if (!check.ok) return res.status(400).json({ ok: false, error: check.message });
   const force = req.body?.force === true;
+
+  // Refresh only the competitor ads on saved research (fast; e.g. after a new Meta token).
+  if (req.body?.adsOnly === true) {
+    const saved = await getBrandResearch(userId, check.url).catch(() => null);
+    if (!saved) return res.status(404).json({ ok: false, error: "Run the research first." });
+    saved.competitor_ads = await researchCompetitorAds({
+      competitors: saved.competitors.map((c) => c.name),
+      market: saved.snapshot.market,
+      accessToken: process.env.META_AD_LIBRARY_ACCESS_TOKEN,
+    });
+    await saveBrandResearch(userId, saved);
+    return res.status(200).json({ ok: true, research: saved, reused: false });
+  }
 
   try {
     if (!force) {

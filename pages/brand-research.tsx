@@ -5,8 +5,10 @@ import Head from "next/head";
 import Sidebar from "../app/web/src/components/Sidebar";
 import colors from "@/lib/ui/colors";
 import { authFetch } from "@/lib/utils";
+import { friendlyError } from "@/lib/api-errors";
 import { toast } from "sonner";
-import { Globe, Loader2, Search } from "lucide-react";
+import { Globe, Search } from "lucide-react";
+import { ArcSpinner, ShimmerTile } from "@/app/web/src/components/ui/loaders";
 import BrandResearchReport, { ResearchPending } from "@/app/web/src/components/research/BrandResearchReport";
 import type { BrandResearch } from "@/lib/research/brand-research";
 
@@ -20,6 +22,7 @@ export default function BrandResearchPage(): JSX.Element {
   const [website, setWebsite] = useState("");
   const [research, setResearch] = useState<BrandResearch | null>(null);
   const [running, setRunning] = useState(false);
+  const [checkingAds, setCheckingAds] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -62,6 +65,24 @@ export default function BrandResearchPage(): JSX.Element {
     [website]
   );
 
+  const checkAds = useCallback(async () => {
+    if (!research) return;
+    setCheckingAds(true);
+    try {
+      const res = await authFetch("/api/brand/research", {
+        method: "POST",
+        body: JSON.stringify({ url: research.websiteUrl, adsOnly: true }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json?.research) throw new Error(json?.error || "Couldn't check competitor ads.");
+      setResearch(json.research);
+    } catch (e) {
+      toast.error(friendlyError(e));
+    } finally {
+      setCheckingAds(false);
+    }
+  }, [research]);
+
   return (
     <div className="h-screen flex overflow-hidden app-page" style={{ background: colors.background }}>
       <Head>
@@ -103,20 +124,30 @@ export default function BrandResearchPage(): JSX.Element {
               className="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-60"
               style={{ background: colors.primary, color: colors.primaryForeground }}
             >
-              {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+              {running ? <ArcSpinner className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
               {running ? "Researching…" : research ? "Research again" : "Research my market"}
             </button>
           </form>
 
           <div className="mt-6">
             {loading ? (
-              <div className="flex items-center gap-2 text-sm" style={{ color: colors.mutedForeground }}>
-                <Loader2 className="h-4 w-4 animate-spin" /> Loading…
+              <div className="space-y-4" role="status" aria-label="Loading your research">
+                <ShimmerTile className="h-28" />
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <ShimmerTile className="h-40" />
+                  <ShimmerTile className="h-40" />
+                </div>
               </div>
             ) : running && !research ? (
               <ResearchPending />
             ) : research ? (
-              <BrandResearchReport research={research} onRefresh={() => run(true)} refreshing={running} />
+              <BrandResearchReport
+                research={research}
+                onRefresh={() => run(true)}
+                refreshing={running}
+                onCheckAds={checkAds}
+                checkingAds={checkingAds}
+              />
             ) : (
               <div className="rounded-xl p-6" style={{ background: colors.card, border: `1px solid ${colors.border}` }}>
                 <p className="text-sm" style={{ color: colors.foreground }}>No research yet.</p>

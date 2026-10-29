@@ -3,7 +3,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { ArrowLeft, Loader2, Upload } from 'lucide-react';
+import { ArrowLeft, Upload } from 'lucide-react';
+import { ArcSpinner } from '@/app/web/src/components/ui/loaders';
 import { supabase } from '@/auth/supabase/client';
 import { authFetch } from '@/lib/utils';
 import colors from '@/lib/ui/colors';
@@ -688,7 +689,7 @@ export default function TryPage() {
           </>
         ) : (
           <>
-            <Loader2 className="h-8 w-8 animate-spin" style={{ color: colors.primary }} />
+            <ArcSpinner className="h-8 w-8 animate-spin" style={{ color: colors.primary }} />
             <span className="sr-only">Loading</span>
           </>
         )}

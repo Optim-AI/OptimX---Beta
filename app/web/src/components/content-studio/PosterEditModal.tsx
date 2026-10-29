@@ -2,7 +2,8 @@
 // Natural-language poster iteration (Phase 8) with legacy fallback
 
 import React, { useEffect, useState } from "react";
-import { Check, Loader2, X } from "lucide-react";
+import { Check, X } from "lucide-react";
+import { ArcSpinner } from "@/app/web/src/components/ui/loaders";
 import { Button } from "@/app/web/src/components/ui/button";
 
 export type PosterIterationPlanPreview = {
@@ -265,7 +266,7 @@ export default function PosterEditModal({
 
             {step === "generating" && (
               <div className="flex flex-1 flex-col items-center justify-center gap-3 py-8 text-center">
-                <Loader2 className="h-6 w-6 animate-spin text-blue-400" />
+                <ArcSpinner className="h-6 w-6 animate-spin text-blue-400" />
                 <p className="text-sm text-white/80">Creating your update…</p>
                 <p className="text-xs text-white/40">
                   Checking the final creative after generation
@@ -291,7 +292,7 @@ export default function PosterEditModal({
                 >
                   {isWorking ? (
                     <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <ArcSpinner className="h-4 w-4 animate-spin" />
                       Understanding change…
                     </>
                   ) : engineMode ? (

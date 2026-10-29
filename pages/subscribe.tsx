@@ -3,7 +3,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
-import { ArrowLeft, Check, Loader2 } from 'lucide-react';
+import { ArrowLeft, Check } from 'lucide-react';
+import { ArcSpinner } from '@/app/web/src/components/ui/loaders';
 import { supabase } from '@/auth/supabase/client';
 import { authFetch } from '@/lib/utils';
 import colors from '@/lib/ui/colors';
@@ -32,7 +33,7 @@ declare global {
 
 type PagePhase = 'loading' | 'checkout' | 'already_subscribed';
 
-const WORKSPACE_PATH = '/content-studio';
+const WORKSPACE_PATH = '/workspace';
 
 /** Clear any leftover activation flags from earlier checkout builds. */
 function clearCheckoutSessionFlags() {
@@ -384,7 +385,7 @@ export default function SubscribePage() {
         className="min-h-screen flex items-center justify-center"
         style={{ background: colors.background, color: colors.foreground }}
       >
-        <Loader2 className="h-6 w-6 animate-spin" style={{ color: colors.primary }} />
+        <ArcSpinner className="h-6 w-6 animate-spin" style={{ color: colors.primary }} />
       </main>
     );
   }
@@ -561,7 +562,7 @@ export default function SubscribePage() {
             >
               {submitting ? (
                 <span className="inline-flex items-center gap-2 justify-center">
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <ArcSpinner className="h-4 w-4 animate-spin" />
                   Opening checkout…
                 </span>
               ) : error ? (

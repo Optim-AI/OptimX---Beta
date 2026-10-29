@@ -83,7 +83,7 @@ async function handleGetSessions(
   const includeMediaData = includeMedia === "1" || includeMedia === "true";
 
   try {
-    const sessionType = (type === "poster" || type === "video") ? type : undefined;
+    const sessionType = (type === "poster" || type === "video" || type === "photo") ? type : undefined;
 
     const data = await CreativeStudioSessionDAO.listByUser(userId, {
       sessionType,

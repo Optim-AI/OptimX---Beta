@@ -8,12 +8,12 @@ import {
   Check,
   ImagePlus,
   Link2,
-  Loader2,
   Package,
   Sparkles,
   Upload,
   X,
 } from "lucide-react";
+import { ArcSpinner, DotWave } from "@/app/web/src/components/ui/loaders";
 import type { BrandSnapshot, PosterConfig, Product } from "./types";
 import { ASPECT_RATIOS, POSTER_THEMES } from "./utils";
 import { cn } from "@/lib/utils";
@@ -499,10 +499,7 @@ export function PosterCreativeWorkspace({
       {isGenerating && !brandReviewSlot && (
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-6 py-16">
           <div className="w-full max-w-md space-y-6 text-center">
-            <Loader2
-              className="mx-auto h-8 w-8 animate-spin"
-              style={{ color: BLUE.solid }}
-            />
+            <DotWave className="mx-auto text-2xl" style={{ color: BLUE.solid }} label="Working on your creative" />
             <div>
               <h2 className="text-lg font-medium tracking-tight text-white">
                 {generatingHeadline(thinkingMessages)}
@@ -721,7 +718,7 @@ export function PosterCreativeWorkspace({
                   className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm text-white/75 transition hover:bg-white/[0.08] hover:text-white disabled:opacity-45"
                 >
                   {isRegeneratingDirections ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <ArcSpinner className="h-4 w-4 animate-spin" />
                   ) : (
                     <Sparkles className="h-4 w-4" />
                   )}
@@ -742,7 +739,7 @@ export function PosterCreativeWorkspace({
               >
                 {isGenerating || isPlanningCarousel ? (
                   <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <ArcSpinner className="h-4 w-4 animate-spin" />
                     {isPlanningCarousel ? "Planning story…" : "Creating…"}
                   </>
                 ) : (
@@ -841,7 +838,7 @@ export function PosterCreativeWorkspace({
                         )}
                       >
                         {isScanningProducts ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
+                          <ArcSpinner className="h-4 w-4 animate-spin" />
                         ) : (
                           <BookOpen className="h-4 w-4" />
                         )}
@@ -922,7 +919,7 @@ export function PosterCreativeWorkspace({
                           style={{ background: BLUE.solid }}
                         >
                           {isScanningProducts ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
+                            <ArcSpinner className="h-4 w-4 animate-spin" />
                           ) : null}
                           Import
                         </button>
@@ -954,7 +951,7 @@ export function PosterCreativeWorkspace({
 
                         {isScanningProducts && fetchedProducts.length === 0 ? (
                           <div className="flex items-center gap-2 py-6 text-sm text-white/50">
-                            <Loader2
+                            <ArcSpinner
                               className="h-4 w-4 animate-spin"
                               style={{ color: BLUE.text }}
                             />
@@ -1191,7 +1188,7 @@ export function PosterCreativeWorkspace({
                     className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-white/55 transition hover:bg-white/[0.06] hover:text-white/80 disabled:opacity-40"
                   >
                     {isEnhancingPrompt ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      <ArcSpinner className="h-3.5 w-3.5 animate-spin" />
                     ) : (
                       <Sparkles className="h-3.5 w-3.5" style={{ color: BLUE.text }} />
                     )}
@@ -1219,7 +1216,7 @@ export function PosterCreativeWorkspace({
                           />
                         ) : (
                           <div className="flex h-full w-full items-center justify-center">
-                            <Loader2
+                            <ArcSpinner
                               className="h-4 w-4 animate-spin"
                               style={{ color: BLUE.text }}
                             />
@@ -1481,7 +1478,7 @@ export function PosterCreativeWorkspace({
                   >
                     {isGenerating ? (
                       <>
-                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <ArcSpinner className="h-4 w-4 animate-spin" />
                         Creating…
                       </>
                     ) : (

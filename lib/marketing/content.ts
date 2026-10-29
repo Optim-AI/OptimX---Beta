@@ -118,8 +118,8 @@ export const FOUNDER = {
   email: SITE_SUPPORT_EMAIL,
   // TODO: AJ's LinkedIn profile URL. The link renders once this is set.
   linkedinUrl: '',
-  // TODO: add /public/images/founder-aj.jpg (800×800) and set this to '/images/founder-aj.jpg'.
-  photo: '',
+  // 800×800 WebP in /public/images.
+  photo: '/images/founder-aj-2.webp',
 } as const;
 
 /** Primary CTA: the website box at the top of the homepage (research → ideas → sign-up → pricing). */

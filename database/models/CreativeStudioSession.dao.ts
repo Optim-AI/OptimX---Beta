@@ -62,7 +62,7 @@ export class CreativeStudioSessionDAO {
   static async listByUser(
     userId: string,
     options?: {
-      sessionType?: 'poster' | 'video';
+      sessionType?: 'poster' | 'video' | 'photo';
       limit?: number;
     }
   ): Promise<CreativeStudioSession[]> {

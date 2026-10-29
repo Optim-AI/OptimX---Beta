@@ -1,17 +1,21 @@
 // pages/brand-kit.tsx
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { JSX } from "react";
 import Head from "next/head";
 import Link from "next/link";
+import { useRouter } from "next/router";
 import Sidebar from "../app/web/src/components/Sidebar";
 import { Button } from "../app/web/src/components/ui/button";
 import colors from "@/lib/ui/colors";
 import { authFetch } from "@/lib/utils";
+import { friendlyError, readJson, responseError } from "@/lib/api-errors";
 import { showConfirm } from "@/app/web/src/components/ui/alert-modal-api";
 import { toast } from "sonner";
 import { mapFullAnalyzeToBrandSnapshot } from "@/app/web/src/components/creative-studio/utils";
 import { identityFromSnapshot } from "@/lib/brand-kit/snapshot";
-import { Globe, Loader2, Plus, Trash2, Star, X } from "lucide-react";
+import { Globe, Plus, Trash2, Star, X } from "lucide-react";
+import { ArcSpinner, ShimmerTile, StepProgress } from "@/app/web/src/components/ui/loaders";
+import { KitOverview, ReviewTips, SetupGuide } from "@/app/web/src/components/brand-kit/KitOverview";
 import {
   BRAND_COLOR_ROLES,
   BRAND_FONT_SOURCES,
@@ -103,9 +107,9 @@ const fieldStyle: React.CSSProperties = {
 };
 const inputClass = "w-full rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/60";
 
-function Section(props: { title: string; hint?: string; children: React.ReactNode }) {
+function Section(props: { id?: string; title: string; hint?: string; children: React.ReactNode }) {
   return (
-    <section className="rounded-xl p-5" style={{ background: colors.card, border: `1px solid ${colors.border}` }}>
+    <section id={props.id} className="scroll-mt-6 rounded-xl p-5" style={{ background: colors.card, border: `1px solid ${colors.border}` }}>
       <h2 className="text-sm font-semibold" style={{ color: colors.foreground }}>{props.title}</h2>
       {props.hint && <p className="mt-1 text-xs" style={{ color: colors.mutedForeground }}>{props.hint}</p>}
       <div className="mt-4 space-y-3">{props.children}</div>
@@ -222,6 +226,7 @@ function PosterPreview({ draft }: { draft: Draft }) {
 export default function BrandKitPage(): JSX.Element {
   const [kits, setKits] = useState<BrandKit[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [saved, setSaved] = useState<string>(JSON.stringify(emptyDraft()));
   const [saving, setSaving] = useState(false);
@@ -230,8 +235,33 @@ export default function BrandKitPage(): JSX.Element {
   const [extraction, setExtraction] = useState<BrandKitExtraction | null>(null);
   const [rulesText, setRulesText] = useState({ mustInclude: "", dos: "", donts: "" });
   const [valuesText, setValuesText] = useState("");
+  // view = saved kit as summary cards; edit = the form (always for a new kit).
+  const [mode, setMode] = useState<"view" | "edit">("edit");
+  const [showTips, setShowTips] = useState(false);
+  const [importedOnce, setImportedOnce] = useState(false);
+  const [justCreated, setJustCreated] = useState(false);
+  const mainRef = useRef<HTMLElement>(null);
+  const router = useRouter();
 
   const dirty = JSON.stringify(draft) !== saved;
+
+  const scrollTo = useCallback((id?: string) => {
+    // Wait for the mode switch to render.
+    requestAnimationFrame(() => {
+      const el = id ? document.getElementById(id) : null;
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+      else {
+        // The page scrolls the window on desktop and <main> where it's height-capped.
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        mainRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+      }
+    });
+  }, []);
+
+  // First visit: put the cursor in the website box without scrolling past the guide.
+  useEffect(() => {
+    if (!loading && kits.length === 0) document.getElementById("kit-import-url")?.focus({ preventScroll: true });
+  }, [loading, kits.length]);
 
   const selectDraft = useCallback((d: Draft) => {
     setDraft(d);
@@ -249,14 +279,17 @@ export default function BrandKitPage(): JSX.Element {
   const loadKits = useCallback(async (selectId?: string | null) => {
     try {
       const res = await authFetch("/api/brand-kits");
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.error || "Could not load brand kits.");
+      const json = await readJson<any>(res);
+      if (!res.ok) throw new Error(responseError(res, json, "We couldn't load your Brand Kit."));
+      setLoadError(null);
       const list: BrandKit[] = json.kits || [];
       setKits(list);
       const pick = list.find((k) => k.id === selectId) || list[0];
       selectDraft(pick ? kitToDraft(pick) : emptyDraft());
+      setMode(pick ? "view" : "edit");
     } catch (e) {
-      toast.error((e as Error).message);
+      // Don't fall through to the empty "new kit" form: that would look like a fresh start.
+      setLoadError(friendlyError(e, "We couldn't load your Brand Kit."));
     } finally {
       setLoading(false);
     }
@@ -346,8 +379,8 @@ export default function BrandKitPage(): JSX.Element {
     // Two reads in parallel: the site's styles (fast) and what the brand is (AI analysis, slower).
     const styles = authFetch("/api/brand-kits/extract", { method: "POST", body: JSON.stringify({ url }) })
       .then(async (res) => {
-        const json = await res.json();
-        if (!res.ok) throw new Error(json?.error || "Could not read that website.");
+        const json = await readJson<any>(res);
+        if (!res.ok) throw new Error(responseError(res, json, "We couldn't read that website. Check the address and try again."));
         const ex: BrandKitExtraction = json.extraction;
         setExtraction(ex);
         setDraft((d) => ({
@@ -370,8 +403,8 @@ export default function BrandKitPage(): JSX.Element {
     void authFetch("/api/brand/research", { method: "POST", body: JSON.stringify({ url: fullUrl }) }).catch(() => null);
     const brand = authFetch("/api/brand/fullAnalyze", { method: "POST", body: JSON.stringify({ url: fullUrl }) })
       .then(async (res) => {
-        const json = await res.json();
-        if (!res.ok || !json?.result) throw new Error(json?.error || "Could not analyse the brand.");
+        const json = await readJson<any>(res);
+        if (!res.ok || !json?.result) throw new Error(responseError(res, json, "We couldn't analyse the brand."));
         const found = identityFromSnapshot(mapFullAnalyzeToBrandSnapshot(json.result));
         const foundName = json.result?.facts?.company_name;
         // Only fill empty fields so re-importing never overwrites what you wrote.
@@ -390,6 +423,10 @@ export default function BrandKitPage(): JSX.Element {
       });
     const [stylesResult, brandResult] = await Promise.allSettled([styles, brand]);
     setImporting(null);
+    if (stylesResult.status === "fulfilled" || brandResult.status === "fulfilled") {
+      setImportedOnce(true);
+      setShowTips(true);
+    }
     if (stylesResult.status === "fulfilled" && brandResult.status === "fulfilled") {
       toast.success("Imported your brand and its look. Check each section, then save.");
     } else if (stylesResult.status === "fulfilled") {
@@ -397,12 +434,13 @@ export default function BrandKitPage(): JSX.Element {
     } else if (brandResult.status === "fulfilled") {
       toast.warning("Imported 'About the brand'. We couldn't read the site's styles — set the logo, colours and fonts by hand.");
     } else {
-      toast.error((stylesResult.reason as Error)?.message || "Could not read that website.");
+      toast.error(friendlyError(stylesResult.reason, "We couldn't read that website. Check the address and try again."));
     }
   }
 
   async function handleSave() {
     setSaving(true);
+    const wasNew = !draft.id;
     const payload = draftPayload({
       ...draft,
       guidelines: {
@@ -416,12 +454,17 @@ export default function BrandKitPage(): JSX.Element {
         method: draft.id ? "PUT" : "POST",
         body: JSON.stringify(payload),
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.error || "Could not save the brand kit.");
-      toast.success("Brand kit saved.");
+      const json = await readJson<any>(res);
+      if (!res.ok) throw new Error(responseError(res, json, "We couldn't save your Brand Kit. Your changes are still here — try again."));
+      toast.success(wasNew ? "Brand kit created." : "Brand kit saved.");
       await loadKits(json.kit.id);
+      setShowTips(false);
+      setJustCreated(wasNew);
+      scrollTo();
+      // The welcome flag has done its job once a kit exists.
+      if (router.query.welcome) void router.replace("/brand-kit", undefined, { shallow: true });
     } catch (e) {
-      toast.error((e as Error).message);
+      toast.error(friendlyError(e, "We couldn't save your Brand Kit. Your changes are still here — try again."));
     } finally {
       setSaving(false);
     }
@@ -455,21 +498,50 @@ export default function BrandKitPage(): JSX.Element {
     return (
       <div className="min-h-screen flex app-page" style={{ background: colors.background }}>
         <Sidebar />
+        <main className="min-w-0 flex-1 p-6" role="status" aria-label="Loading your Brand Kit">
+          <div className="mx-auto max-w-6xl space-y-5 pt-2">
+            <ShimmerTile className="h-7 w-40 rounded-lg" />
+            <ShimmerTile className="h-4 w-96 max-w-full rounded" />
+            <div className="grid grid-cols-1 gap-5 pt-4 lg:grid-cols-[minmax(0,1fr)_300px]">
+              <div className="space-y-5">
+                <ShimmerTile className="h-32" />
+                <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+                  <ShimmerTile className="h-44" />
+                  <ShimmerTile className="h-44" />
+                </div>
+                <ShimmerTile className="h-40" />
+              </div>
+              <ShimmerTile className="aspect-[4/5]" />
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="min-h-screen flex app-page" style={{ background: colors.background }}>
+        <Sidebar />
         <main className="flex-1 flex items-center justify-center p-6">
-          <p style={{ color: colors.mutedForeground, fontSize: 15 }}>Loading brand kits…</p>
+          <div className="max-w-sm rounded-2xl p-6 text-center" style={{ background: colors.card, border: `1px solid ${colors.border}` }}>
+            <p className="text-sm font-semibold" style={{ color: colors.foreground }}>{loadError}</p>
+            <p className="mt-1 text-xs" style={{ color: colors.mutedForeground }}>Nothing you saved is lost. This is usually a connection hiccup.</p>
+            <Button type="button" className="mt-4" onClick={() => { setLoading(true); void loadKits(); }}>Try again</Button>
+          </div>
         </main>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex app-page" style={{ background: colors.background }}>
+    <div className="h-screen flex overflow-hidden app-page" style={{ background: colors.background }}>
       <Head>
         <title>Brand Kit | SkalX AI</title>
         {fontHref && <link rel="stylesheet" href={fontHref} />}
       </Head>
       <Sidebar />
-      <main className="min-w-0 flex-1 overflow-y-auto">
+      <main ref={mainRef} className="min-w-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
           <header className="flex flex-wrap items-end justify-between gap-4">
             <div>
@@ -495,7 +567,13 @@ export default function BrandKitPage(): JSX.Element {
                 <button
                   key={k.id}
                   type="button"
-                  onClick={async () => { if (!active && (await confirmDiscard())) selectDraft(kitToDraft(k)); }}
+                  onClick={async () => {
+                    if (!active && (await confirmDiscard())) {
+                      selectDraft(kitToDraft(k));
+                      setMode("view");
+                      setJustCreated(false);
+                    }
+                  }}
                   className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm"
                   style={{
                     background: active ? colors.accent : colors.secondary,
@@ -511,7 +589,15 @@ export default function BrandKitPage(): JSX.Element {
             })}
             <button
               type="button"
-              onClick={async () => { if (await confirmDiscard()) selectDraft(emptyDraft()); }}
+              onClick={async () => {
+                if (await confirmDiscard()) {
+                  selectDraft(emptyDraft());
+                  setMode("edit");
+                  setJustCreated(false);
+                  setShowTips(false);
+                  setImportedOnce(false);
+                }
+              }}
               className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm"
               style={{ background: "transparent", color: colors.mutedForeground, border: `1px dashed ${colors.border}` }}
             >
@@ -519,9 +605,32 @@ export default function BrandKitPage(): JSX.Element {
             </button>
           </nav>
 
+          {mode === "view" && draft.id ? (
+            <div className="mt-6">
+              <KitOverview
+                kit={draft}
+                justCreated={justCreated}
+                preview={<PosterPreview draft={draft} />}
+                onEdit={(section) => {
+                  setMode("edit");
+                  setJustCreated(false);
+                  scrollTo(section);
+                }}
+                onReimport={() => {
+                  setMode("edit");
+                  setJustCreated(false);
+                  scrollTo("kit-import");
+                  requestAnimationFrame(() => document.getElementById("kit-import-url")?.focus());
+                }}
+              />
+            </div>
+          ) : (
           <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
             <div className="min-w-0 space-y-5">
+              {!draft.id && kits.length === 0 && <SetupGuide step={importedOnce ? 2 : 1} importing={!!importing} />}
+              {showTips && <ReviewTips onDismiss={() => setShowTips(false)} />}
               <Section
+                id="kit-import"
                 title={draft.id ? "Update from your website" : "Start from your website"}
                 hint="We read your site to learn what your brand is about and to find its logo, colours and fonts. Review everything before saving."
               >
@@ -532,6 +641,7 @@ export default function BrandKitPage(): JSX.Element {
                   <div className="relative flex-1">
                     <Globe className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2" style={{ color: colors.mutedForeground }} />
                     <input
+                      id="kit-import-url"
                       aria-label="Website URL"
                       className={`${inputClass} pl-9`}
                       style={fieldStyle}
@@ -542,10 +652,19 @@ export default function BrandKitPage(): JSX.Element {
                   </div>
                   <Button type="submit" disabled={!!importing || !importUrl.trim()}>
                     {importing ? (
-                      <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> {importing === "styles" ? "Reading site…" : "Understanding your brand…"}</>
+                      <><ArcSpinner className="mr-2 h-4 w-4 animate-spin" /> {importing === "styles" ? "Reading site…" : "Understanding your brand…"}</>
                     ) : "Import"}
                   </Button>
                 </form>
+                {importing && (
+                  <StepProgress
+                    className="pt-2"
+                    estimatedMs={40_000}
+                    hint="usually under a minute"
+                    step={importing === "styles" ? 0 : 1}
+                    steps={["Reading your website — logo, colours and fonts…", "Understanding what you sell and who it's for…"]}
+                  />
+                )}
                 {extraction?.warnings.length ? (
                   <ul className="list-disc pl-5 text-xs" style={{ color: colors.mutedForeground }}>
                     {extraction.warnings.map((w) => <li key={w}>{w}</li>)}
@@ -567,7 +686,7 @@ export default function BrandKitPage(): JSX.Element {
                 </label>
               </Section>
 
-              <Section title="About the brand" hint="What your posters and videos say comes from here: who you are, what you sell and how you sound.">
+              <Section id="kit-about" title="About the brand" hint="What your posters and videos say comes from here: who you are, what you sell and how you sound.">
                 <div>
                   <Label htmlFor="id-description">What the brand does</Label>
                   <textarea id="id-description" rows={2} className={inputClass} style={fieldStyle}
@@ -624,7 +743,7 @@ export default function BrandKitPage(): JSX.Element {
                 </div>
               </Section>
 
-              <Section title="Logo" hint="Use a transparent PNG or SVG. Posters place it small and unaltered.">
+              <Section id="kit-logo" title="Logo" hint="Use a transparent PNG or SVG. Posters place it small and unaltered.">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
                   <div
                     className="flex h-24 w-full shrink-0 items-center justify-center rounded-lg p-3 sm:w-40"
@@ -669,7 +788,7 @@ export default function BrandKitPage(): JSX.Element {
                 )}
               </Section>
 
-              <Section title="Colours" hint="Give each colour a role so posters use them the way your brand does.">
+              <Section id="kit-colours" title="Colours" hint="Give each colour a role so posters use them the way your brand does.">
                 {draft.colors.map((c, i) => (
                   <div key={i} className="grid grid-cols-[44px_minmax(0,1fr)_minmax(0,1fr)_36px] items-center gap-2">
                     <input type="color" aria-label={`Colour ${i + 1}`} value={normalizeHex(c.hex) || "#000000"}
@@ -696,14 +815,14 @@ export default function BrandKitPage(): JSX.Element {
                 )}
               </Section>
 
-              <Section title="Typography" hint="Image models approximate fonts by name today; exact brand fonts on posters are coming next.">
+              <Section id="kit-typography" title="Typography" hint="Image models approximate fonts by name today; exact brand fonts on posters are coming next.">
                 <FontField id="font-heading" label="Headline font" value={draft.fonts.heading} suggestions={fontSuggestions} sourceFor={fontSourceFor}
                   onChange={(f) => setDraft((d) => ({ ...d, fonts: { ...d.fonts, heading: f } }))} />
                 <FontField id="font-body" label="Body and button font" value={draft.fonts.body} suggestions={fontSuggestions} sourceFor={fontSourceFor}
                   onChange={(f) => setDraft((d) => ({ ...d, fonts: { ...d.fonts, body: f } }))} />
               </Section>
 
-              <Section title="Brand rules" hint="One rule per line. These are added to every poster brief.">
+              <Section id="kit-rules" title="Brand rules" hint="One rule per line. These are added to every poster brief.">
                 {([
                   ["mustInclude", "Every poster must include", "Logo in the top-left corner\n@fuelco handle in the footer"],
                   ["dos", "Do", "Use lots of white space\nShow the product in natural light"],
@@ -722,7 +841,8 @@ export default function BrandKitPage(): JSX.Element {
                 ))}
               </Section>
 
-              <div className="flex flex-wrap items-center justify-between gap-3 pb-10">
+              <div className="sticky bottom-0 z-10 -mx-1 flex flex-wrap items-center justify-between gap-3 rounded-xl px-4 py-3"
+                style={{ background: colors.card, border: `1px solid ${colors.border}`, boxShadow: "0 -8px 24px rgba(0,0,0,0.25)" }}>
                 {draft.id ? (
                   <button type="button" onClick={() => void handleDelete()} className="flex items-center gap-1.5 text-sm"
                     style={{ color: colors.destructive }}>
@@ -731,8 +851,21 @@ export default function BrandKitPage(): JSX.Element {
                 ) : <span />}
                 <div className="flex items-center gap-3">
                   {dirty && <span className="text-xs" style={{ color: colors.mutedForeground }}>Unsaved changes</span>}
+                  {draft.id && (
+                    <button type="button" className="text-sm" style={{ color: colors.mutedForeground }}
+                      onClick={async () => {
+                        if (!(await confirmDiscard())) return;
+                        const kit = kits.find((k) => k.id === draft.id);
+                        if (kit) selectDraft(kitToDraft(kit));
+                        setMode("view");
+                        setShowTips(false);
+                        scrollTo();
+                      }}>
+                      Cancel
+                    </button>
+                  )}
                   <Button type="button" onClick={() => void handleSave()} disabled={saving || !draft.name.trim()}>
-                    {saving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving…</> : draft.id ? "Save changes" : "Create kit"}
+                    {saving ? <><ArcSpinner className="mr-2 h-4 w-4 animate-spin" /> Saving…</> : draft.id ? "Save changes" : "Create kit"}
                   </Button>
                 </div>
               </div>
@@ -746,6 +879,8 @@ export default function BrandKitPage(): JSX.Element {
               </p>
             </aside>
           </div>
+          )}
+          <div className="h-10" />
         </div>
       </main>
     </div>

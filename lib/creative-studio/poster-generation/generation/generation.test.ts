@@ -482,9 +482,10 @@ async function run() {
   const words = prompt.split(/\s+/).length;
   assert(words < 600, `brief stays concise (${words} words)`);
   assert(
-    (prompt.match(/"Dark Chocolate Protein Oats"/g) || []).length === 1,
-    "duplicate copy line rendered once"
+    (prompt.match(/"Dark Chocolate Protein Oats"/g) || []).length === 0,
+    "no product-name text line when the real packshot is in the poster"
   );
+  assert(/star ratings, review or customer counts, testimonials/.test(prompt), "invented ratings/reviews are banned");
 
   // Copy density + de-duplication: product line repeated as supporting copy and a badge
   // repeating the headline are dropped; the lifestyle concept uses the balanced budget.
@@ -493,8 +494,8 @@ async function run() {
   assert(roles[0] === "primary", "headline first");
   assert(!roles.includes("badge"), "badge repeating headline dropped");
   assert(
-    roles.filter((r) => r === "secondary" || r === "product_line").length === 1,
-    "one secondary-or-product line"
+    roles.filter((r) => r === "secondary" || r === "product_line").length <= 1,
+    "at most one secondary-or-product line"
   );
   const texts = spec.copyHierarchy.map((s) => s.text.toLowerCase());
   assert(new Set(texts).size === texts.length, "no duplicate copy slots");

@@ -8,10 +8,10 @@ import {
   Check,
   ExternalLink,
   Info,
-  Loader2,
   RefreshCw,
   Sparkles,
 } from 'lucide-react';
+import { ArcSpinner } from '@/app/web/src/components/ui/loaders';
 import { supabase } from '@/auth/supabase/client';
 import { authFetch } from '@/lib/utils';
 import colors from '@/lib/ui/colors';
@@ -253,7 +253,7 @@ export default function AuditPage() {
 
         {!notFound && !audit && (
           <section className="card center" aria-busy="true">
-            <Loader2 className="spin" size={22} />
+            <ArcSpinner className="spin" size={22} />
             <p className="muted">{loadError || 'Loading your audit…'}</p>
           </section>
         )}
@@ -269,7 +269,7 @@ export default function AuditPage() {
                 const current = !done && AUDIT_STAGES.find((s) => !audit.progress.completed.includes(s)) === stage;
                 return (
                   <li key={stage} className={done ? 'done' : current ? 'current' : ''}>
-                    <span className="dot">{done ? <Check size={14} /> : current ? <Loader2 size={14} className="spin" /> : null}</span>
+                    <span className="dot">{done ? <Check size={14} /> : current ? <ArcSpinner size={14} className="spin" /> : null}</span>
                     {STAGE_LABELS[stage]}
                   </li>
                 );
@@ -510,7 +510,7 @@ export default function AuditPage() {
                 disabled={selected == null || continuing}
                 onClick={() => continueToPlans()}
               >
-                {continuing ? <Loader2 size={16} className="spin" /> : <Sparkles size={16} />}
+                {continuing ? <ArcSpinner size={16} className="spin" /> : <Sparkles size={16} />}
                 {continuing
                   ? 'Continuing…'
                   : authed

@@ -12,6 +12,7 @@ import {
 } from "@/lib/routing/safe-next";
 import { fetchPostAuthDestination, resolvePostAuthPath } from "@/lib/auth/client-post-auth";
 import AuthShell from "@/components/auth/AuthShell";
+import { authErrorMessage, classifyAuthError } from "@/lib/auth/auth-errors";
 
 export default function SignInPage(): React.ReactElement {
   const router = useRouter();
@@ -20,7 +21,7 @@ export default function SignInPage(): React.ReactElement {
   const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<React.ReactNode | null>(null);
 
   const nextSuffix =
     typeof router.query.next === "string"
@@ -85,12 +86,29 @@ export default function SignInPage(): React.ReactElement {
         password,
       });
       if (signError) {
-        setError(signError.message);
+        const kind = classifyAuthError(signError);
+        if (kind === "invalid_credentials") {
+          // Could be a new person on the wrong page, or a typo: offer both.
+          const signupHref = `/auth/signup?${new URLSearchParams({
+            email,
+            ...(typeof router.query.next === "string" ? { next: getSafeNextPath(router.query.next, "/try") } : {}),
+          })}`;
+          setError(
+            <>
+              {authErrorMessage(signError)} New to SkalX?{" "}
+              <Link href={signupHref} style={{ textDecoration: "underline" }}>Create an account</Link>
+              {" · "}
+              <Link href="/auth/forgot-password" style={{ textDecoration: "underline" }}>Reset password</Link>
+            </>
+          );
+        } else {
+          setError(authErrorMessage(signError));
+        }
       } else if ((data as { user?: unknown } | null)?.user) {
         await routeAfterAuth();
       }
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(authErrorMessage(e));
     } finally {
       setLoading(false);
     }
@@ -107,7 +125,7 @@ export default function SignInPage(): React.ReactElement {
         options: { redirectTo },
       });
       if (oauthError) {
-        setError(oauthError.message);
+        setError(authErrorMessage(oauthError));
       } else if (data?.url) {
         window.location.href = data.url;
       }

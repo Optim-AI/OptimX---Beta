@@ -7,6 +7,8 @@ import { normalizeStrategy } from "./product-strategy";
 import { parseJsonLoose } from "./gemini";
 import { carryResearchForward, researchMatchesBrandName } from "./store";
 import type { SiteEvidence } from "./site-crawl";
+import { adLibrarySearchUrl, countryCodeFor } from "./ad-library-links";
+import { researchCompetitorAds } from "./competitor-ads";
 
 function section(name: string, fn: () => void) {
   console.log(`=== ${name} ===`);
@@ -127,3 +129,24 @@ section("research storage helpers", () => {
     assert.equal(researchMatchesBrandName(research, "TW"), false);
   });
 });
+
+section("competitor ads", () => {
+  check("maps markets to Ad Library country codes by whole word", () => {
+    assert.deepEqual(["India", "Australia", "USA", "United Kingdom", "global"].map(countryCodeFor), ["IN", "AU", "US", "GB", "ALL"]);
+  });
+  check("library link searches active ads of every type", () => {
+    const u = new URL(adLibrarySearchUrl("Yoga Bar", "IN"));
+    assert.equal(u.hostname, "www.facebook.com");
+    assert.equal(u.searchParams.get("q"), "Yoga Bar");
+    assert.equal(u.searchParams.get("country"), "IN");
+    assert.equal(u.searchParams.get("active_status"), "active");
+  });
+});
+
+void (async () => {
+  const noToken = await researchCompetitorAds({ competitors: ["Yoga Bar", "Phab"], market: "India", accessToken: "" });
+  assert.equal(noToken.status, "no_token");
+  assert.equal(noToken.competitors.length, 2);
+  assert.ok(noToken.competitors.every((c) => c.libraryUrl.includes("country=IN")));
+  console.log("  ok  no token still returns Ad Library links");
+})();

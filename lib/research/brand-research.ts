@@ -13,6 +13,7 @@
  */
 
 import { crawlSite, formatSiteEvidence, type SiteEvidence } from "./site-crawl";
+import { researchCompetitorAds, type CompetitorAdsReport } from "./competitor-ads";
 import {
   generateResearchJson,
   groundedResearch,
@@ -114,6 +115,8 @@ export type BrandResearch = {
   site_findings: Array<{ finding: string; impact: "high" | "medium" | "low"; fix: string }>;
   opportunities: Array<{ title: string; why: string; play: string; evidence: string }>;
   sources: ResearchSource[];
+  /** Live Meta ads of the named competitors (absent on research saved before this existed). */
+  competitor_ads?: CompetitorAdsReport;
   evidence: {
     pages_read: number;
     products_found: number;
@@ -534,6 +537,18 @@ export async function researchBrand(
     research = normalizeResearch(raw, { site, sources, webStatus, notes });
   } catch (e) {
     console.warn("[brandResearch] synthesis failed", (e as Error)?.message);
+  }
+
+  if (research?.competitors.length) {
+    const r = research;
+    r.competitor_ads = await timed(timings, "ads", () =>
+      researchCompetitorAds({
+        competitors: r.competitors.map((c) => c.name),
+        market: r.snapshot.market,
+        brandName: profile.company_name,
+        accessToken: process.env.META_AD_LIBRARY_ACCESS_TOKEN,
+      })
+    ).catch(() => undefined);
   }
 
   return { site, profile, research, timings };

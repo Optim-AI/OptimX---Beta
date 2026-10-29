@@ -15,7 +15,8 @@ import { Label } from "../app/web/src/components/ui/label";
 import { Textarea } from "../app/web/src/components/ui/textarea";
 import { toast } from "../app/web/src/hooks/use-toast";
 import { authFetch } from "@/lib/utils";
-import { Flag, AlertCircle, MessageSquare, Upload, X, CheckCircle, Loader2, Clock, Eye, CheckCircle2, Ticket } from "lucide-react";
+import { Flag, AlertCircle, MessageSquare, Upload, X, CheckCircle, Clock, Eye, CheckCircle2, Ticket } from "lucide-react";
+import { ArcSpinner } from "@/app/web/src/components/ui/loaders";
 import colors from "@/lib/ui/colors";
 
 const MAX_IMAGES = 3;
@@ -471,7 +472,7 @@ export default function ReportPage() {
 
             {reportsLoading ? (
               <div className="flex items-center justify-center py-12">
-                <Loader2 size={24} className="animate-spin" style={{ color: colors.mutedForeground }} />
+                <ArcSpinner size={24} className="animate-spin" style={{ color: colors.mutedForeground }} />
               </div>
             ) : myReports.length === 0 ? (
               <div

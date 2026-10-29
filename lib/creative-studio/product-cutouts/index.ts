@@ -8,11 +8,13 @@
 import { createHash } from "crypto";
 import sharp from "sharp";
 import { dataUrlToBuffer, detectImageMimeType, fetchUrlToBuffer } from "@/lib/creative-studio/nano-banana";
+import { BUILTIN_CUTOUT_ID } from "./builtin";
 import { getCutoutProvider, type CutoutProvider } from "./providers";
 import { assessCutout, type CutoutQuality } from "./quality";
 
 export type { CutoutProvider } from "./providers";
 export { getCutoutProvider, LocalUniformCutoutProvider } from "./providers";
+export { BuiltInCutoutProvider, BUILTIN_CUTOUT_ID, warmBuiltInCutout } from "./builtin";
 export { assessCutout } from "./quality";
 
 export type ProductCutout = {
@@ -74,7 +76,10 @@ const dbCache: CutoutCache = {
     await db
       .insert(productCutouts)
       .values({ userId, ...row, quality: row.quality })
-      .onConflictDoNothing();
+      .onConflictDoUpdate({
+        target: [productCutouts.userId, productCutouts.sourceHash],
+        set: { ...row, quality: row.quality },
+      });
   },
 };
 
@@ -109,7 +114,9 @@ export async function getProductCutout(
   }
   const sourceHash = createHash("sha256").update(sourceBuffer).digest("hex").slice(0, 40);
 
-  const hit = await cache.get(input.userId, sourceHash).catch(() => null);
+  const cached = await cache.get(input.userId, sourceHash).catch(() => null);
+  // A built-in cut-out is redone once a paid provider is set up (the upgrade path).
+  const hit = cached && cached.provider === BUILTIN_CUTOUT_ID && provider.id !== BUILTIN_CUTOUT_ID ? null : cached;
   if (hit) {
     if (!hit.ok || !hit.cutoutUrl) {
       return { ok: false, png: null, url: null, provider: hit.provider, quality: (hit.quality as CutoutQuality) ?? null, cached: true, error: "This product photo couldn't be cut out cleanly." };
