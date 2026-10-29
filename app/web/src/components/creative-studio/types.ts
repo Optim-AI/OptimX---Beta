@@ -1,3 +1,4 @@
+import type { BrandResearch } from "@/lib/research/brand-research";
 // Brand Studio Shared Types
 // Extracted from pages/creative-studio.tsx for modularity
 
@@ -39,6 +40,8 @@ export type BrandSnapshot = {
   pricePositioning?: "budget" | "mid-range" | "premium";
   /** Product image URLs from website analysis or upload (http or data URL) */
   productImages?: string[];
+  /** Market research from /api/brand/research (site + live web), saved server-side */
+  research?: BrandResearch;
 };
 
 export type Phase =

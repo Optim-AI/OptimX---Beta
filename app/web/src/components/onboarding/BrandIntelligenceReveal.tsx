@@ -11,6 +11,11 @@ import type {
   BrandSnapshot,
   Product,
 } from '@/app/web/src/components/creative-studio/types';
+import type { BrandResearch } from '@/lib/research/brand-research';
+import {
+  BrandResearchHighlights,
+  ResearchPending,
+} from '@/app/web/src/components/research/BrandResearchReport';
 
 const glass = {
   background: 'hsl(0 0% 12% / 0.75)',
@@ -27,6 +32,8 @@ type Props = {
   onContinue: () => void;
   continueError?: string | null;
   catalogLoading?: boolean;
+  research?: BrandResearch | null;
+  researchPending?: boolean;
 };
 
 export default function BrandIntelligenceReveal({
@@ -38,6 +45,8 @@ export default function BrandIntelligenceReveal({
   onContinue,
   continueError,
   catalogLoading,
+  research,
+  researchPending,
 }: Props) {
   const cards = buildBrandInsightCards(brand, brandName);
   const [visibleCount, setVisibleCount] = useState(0);
@@ -63,7 +72,7 @@ export default function BrandIntelligenceReveal({
         Here&apos;s what we picked up.
       </h1>
       <p className="mb-10 font-light" style={{ color: colors.mutedForeground }}>
-        Your brand has a clear visual language. Pick a product — we&apos;ll shape creatives around it.
+        From your website and what the market says about it. Pick a product — we&apos;ll shape creatives around it.
       </p>
 
       {cards.length === 0 ? (
@@ -103,6 +112,16 @@ export default function BrandIntelligenceReveal({
           ))}
         </div>
       )}
+
+      {research ? (
+        <div className="mb-10">
+          <BrandResearchHighlights research={research} />
+        </div>
+      ) : researchPending ? (
+        <div className="mb-10">
+          <ResearchPending label="Researching your competitors and customers" />
+        </div>
+      ) : null}
 
       {(catalogLoading || products.length > 0) && (
         <div className="mb-10">

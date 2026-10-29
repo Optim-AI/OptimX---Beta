@@ -3,14 +3,14 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { JSDOM } from "jsdom";
 import { Readability } from "@mozilla/readability";
 
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const SERPAPI_KEY = process.env.SERPAPI_KEY || "";
+import { getGeminiApiKey } from "@/lib/gemini-config";
+import { normalizeAuditUrl } from "@/lib/audit/url-safety";
+// Browser-style agent: Shopify rate-limits agents containing "bot" (429).
+import { crawlSite, PAGE_FETCH_HEADERS } from "@/lib/research/site-crawl";
+import { profileBrand } from "@/lib/research/brand-research";
 
-type Competitor = {
-  domain: string;
-  title?: string;
-  snippet?: string;
-  url?: string;
+export const config = {
+  maxDuration: 60,
 };
 
 /* ---------------------- HELPERS ---------------------- */
@@ -23,14 +23,8 @@ function toAbsolute(base: string, src: string) {
 }
 
 /* ---------------------- PAGE SCRAPING ---------------------- */
-async function fetchPageData(url: string) {
-  const resp = await fetch(url, {
-    redirect: "follow",
-    headers: { "User-Agent": "optimx-brand-bot/1.0" }
-  });
-  if (!resp.ok) throw new Error("Failed to fetch page");
-
-  const html = await resp.text();
+/** Visual brand signals (logo, colours, fonts, images) from the homepage HTML. */
+async function fetchPageData(url: string, html: string) {
   const dom = new JSDOM(html, { url });
   const doc = dom.window.document;
 
@@ -255,7 +249,7 @@ async function fetchPageData(url: string) {
     try {
       const logoUrl = toAbsolute(url, logo);
       const logoResponse = await fetch(logoUrl, {
-        headers: { "User-Agent": "optimx-brand-bot/1.0" },
+        headers: PAGE_FETCH_HEADERS,
         redirect: "follow",
       });
       
@@ -306,291 +300,10 @@ async function fetchPageData(url: string) {
   };
 }
 
-/* ---------------------- SERP COMPETITORS ---------------------- */
-async function findCompetitorsSerp(
-  query: string,
-  siteDomain: string
-): Promise<Competitor[]> {
-  if (!SERPAPI_KEY) return [];
-
-  const res = await fetch(
-    `https://serpapi.com/search.json?engine=google&q=${encodeURIComponent(
-      query
-    )}&api_key=${SERPAPI_KEY}&num=5`
-  );
-
-  if (!res.ok) return [];
-  const j = (await res.json()) as any;
-
-  return (j.organic_results || [])
-    .filter((r: any) => r.link && !r.link.includes(siteDomain))
-    .slice(0, 5)
-    .map((r: any) => ({
-      domain: new URL(r.link).hostname,
-      title: r.title,
-      snippet: r.snippet,
-      url: r.link
-    }));
-}
-
-/* ---------------------- OPENAI CALL ---------------------- */
-async function callOpenAI(prompt: string) {
-  if (!OPENAI_API_KEY) {
-    throw new Error("OPENAI_API_KEY is not configured");
-  }
-
-  try {
-  const resp = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${OPENAI_API_KEY}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      model: "gpt-4o-mini",
-      messages: [
-        { role: "system", content: "Return ONLY valid JSON." },
-        { role: "user", content: prompt }
-      ],
-      temperature: 0,
-      max_tokens: 800
-    })
-  });
-
-    if (!resp.ok) {
-      const errorText = await resp.text();
-      console.error("OpenAI API error:", resp.status, errorText);
-      throw new Error(`OpenAI API error: ${resp.status} - ${errorText}`);
-    }
-
-  const j = await resp.json();
-    const content = j.choices?.[0]?.message?.content || "{}";
-    
-    if (!content || content.trim() === "") {
-      console.warn("OpenAI returned empty response");
-      return "{}";
-    }
-    
-    return content;
-  } catch (e: any) {
-    console.error("OpenAI call failed:", e?.message || e);
-    throw e;
-  }
-}
-
-/* ---------------------- AI IMAGE RANKING ---------------------- */
-async function rankImagesWithAI(images: string[], context: any) {
-  if (!images.length) return [];
-
-  const prompt = `
-You are selecting product visuals for marketing.
-
-Pick images that most likely represent real products or offerings.
-Ignore logos, icons, UI elements, patterns, or backgrounds.
-
-Return JSON:
-{
-  "ranked": ["url1", "url2", "url3"]
-}
-
-Images:
-${images.join("\n")}
-
-Brand context:
-${JSON.stringify({
-    name: context.facts?.company_name,
-    category: context.classification?.category,
-    offering: context.facts?.what_they_sell
-  })}
-`;
-
-  try {
-    const resp = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [
-          { role: "system", content: "Return ONLY valid JSON." },
-          { role: "user", content: prompt }
-        ],
-        temperature: 0
-      })
-    });
-
-    const j = await resp.json();
-    const parsed = JSON.parse(j.choices?.[0]?.message?.content || "{}");
-
-    return Array.isArray(parsed.ranked) ? parsed.ranked : [];
-  } catch {
-    return [];
-  }
-}
-
-/* ---------------------- PROMPTS ---------------------- */
-const factsPrompt = (d: any) => `
-Extract ONLY verifiable facts from this website.
-
-Return JSON:
-{
-  "company_name":"",
-  "what_they_sell":[],
-  "who_it_is_for":[],
-  "business_model":"",
-  "pricing_signals":"cheap|mid|premium|unclear",
-  "claims_made":[]
-}
-
-IMPORTANT: Extract the company/brand name from the title, URL, or page content. The company name is required.
-
-PAGE TITLE: ${d.title || 'Unknown'}
-META DESCRIPTION: ${d.metaDesc || 'None'}
-URL: ${d.url || 'Unknown'}
-
-PAGE CONTENT:
-${d.text || 'No text content extracted'}
-`;
-
-const classificationPrompt = (facts: any) => `
-Classify this business.
-
-Return JSON:
-{
-  "category":"SaaS|D2C|Marketplace|Service|Local",
-  "customer_type":"B2B|B2C|B2B2C|D2C",
-  "stage":"early|growth|mature",
-  "positioning":"cost|quality|speed|niche|brand-led"
-}
-
-FACTS:
-${JSON.stringify(facts)}
-`;
-
-const positioningPrompt = (facts: any, cls: any) => `
-Analyze brand positioning.
-
-Return JSON:
-{
-  "primary_value_proposition":"",
-  "intended_positioning":"",
-  "perceived_positioning":""
-}
-
-FACTS:${JSON.stringify(facts)}
-CLASS:${JSON.stringify(cls)}
-`;
-
-const competitionPrompt = (facts: any, pos: any, comps: any[]) => `
-Compare with competitors.
-
-Return JSON:
-{
-  "summary":"",
-  "comparison":[]
-}
-
-FACTS:${JSON.stringify(facts)}
-POSITIONING:${JSON.stringify(pos)}
-COMPETITORS:${JSON.stringify(comps)}
-`;
-
-const teardownPrompt = (ctx: any) => `
-Give website teardown.
-
-Return JSON:
-{
-  "clarity_score":1,
-  "trust_score":1,
-  "action_plan":[]
-}
-
-CONTEXT:${JSON.stringify(ctx)}
-`;
-
-const brandVoicePrompt = (aboutUsText: string, facts: any) => `
-Analyze the brand voice and core value proposition from the About Us section and company information.
-
-Return JSON:
-{
-  "brand_voice": "Professional|Playful|Minimalist|Bold",
-  "core_value_prop": "A concise, compelling hook that captures the brand's main value proposition (max 100 characters)"
-}
-
-About Us Text:
-${aboutUsText || 'No About Us section found'}
-
-Company Facts:
-${JSON.stringify(facts)}
-
-Instructions:
-- brand_voice: Choose ONE of: "Professional" (formal, corporate, trustworthy), "Playful" (fun, energetic, casual), "Minimalist" (clean, simple, understated), or "Bold" (confident, striking, attention-grabbing)
-- core_value_prop: Extract the single most compelling value proposition or unique selling point. This should be a hook that would grab attention in marketing. Keep it concise and punchy.
-`;
-
-const brandIntelligencePrompt = (data: any, facts: any, positioning: any) => `
-Analyze brand visual intelligence from website data.
-
-Return JSON:
-{
-  "visual_style": {
-    "minimal_vs_detailed": "minimal|detailed|balanced",
-    "flat_vs_realistic": "flat|realistic|mixed",
-    "illustration_vs_photography": "illustration|photography|mixed",
-    "light_vs_dark": "light|dark|balanced"
-  },
-  "typography_intent": {
-    "style": "modern|bold|playful|premium|minimal|classic",
-    "contrast": "high|medium|low"
-  },
-  "brand_personality": "confident|friendly|youthful|premium|bold|playful|professional|minimal",
-  "product_category": "specific product category like 'earbuds', 'headphones', 'smartwatches', 'accessories', etc.",
-  "price_positioning": "budget|mid-range|premium|unclear"
-}
-
-Website data:
-- Has hero section: ${data.visualIndicators?.hasHero}
-- Has illustrations: ${data.visualIndicators?.hasIllustrations}
-- Has photography: ${data.visualIndicators?.hasPhotography}
-- Has dark theme: ${data.visualIndicators?.hasDarkTheme}
-- Available colors: ${data.cssColors?.join(', ') || 'none'}
-- Theme color: ${data.themeColor || 'none'}
-
-Facts: ${JSON.stringify(facts)}
-Positioning: ${JSON.stringify(positioning)}
-`;
-
-const brandKitPrompt = (data: any, facts: any, positioning: any) => `
-Analyze the brand content and extract structured brand kit data for a Brand Guideline UI (like Pomeli or Canva Brand Kit).
-
-Return JSON with these exact keys:
-{
-  "brand_aesthetic": ["minimalist", "modern", "scientific", "elegant"],
-  "brand_tone": ["transparent", "friendly", "educational"],
-  "brand_values": ["100% Vegan", "Cruelty-Free", "Sustainability"],
-  "business_overview": "2-sentence summary: what the company does, industry, unique value proposition, product categories.",
-  "tagline": "brand tagline or slogan if found, else empty string"
-}
-
-Rules:
-- brand_aesthetic: 4-6 descriptors (e.g. scientific, minimalist, sophisticated, modern, elegant, luxury, playful)
-- brand_tone: 3-5 tone descriptors (e.g. transparent, friendly, educational, delightful, professional)
-- brand_values: key differentiators, certifications, commitments (e.g. "100% Vegan", "PETA certified")
-- business_overview: exactly 2 sentences, max 200 chars total
-- tagline: exact tagline from site or empty ""
-
-PAGE TITLE: ${data.title || 'Unknown'}
-META DESCRIPTION: ${data.metaDesc || 'None'}
-URL: ${data.url || 'Unknown'}
-ABOUT/CONTENT: ${data.aboutUsText?.substring(0, 1500) || 'No content'}
-
-Facts: ${JSON.stringify(facts)}
-Positioning: ${JSON.stringify(positioning)}
-`;
-
 /* ---------------------- MAIN HANDLER ---------------------- */
+// Fast brand profile for onboarding and the Brand Kit: the site's own pages plus
+// one Gemini call. Market research (competitors, customer voice) runs separately
+// in /api/brand/research because it needs live web search and takes ~1 minute.
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
@@ -601,241 +314,107 @@ export default async function handler(
   const userId = await getUserIdFromRequest(req);
   if (!userId) return res.status(401).json({ error: "Authentication required" });
 
-  const { url } = req.body;
-  if (!url) return res.status(400).json({ error: "Missing url" });
+  const check = normalizeAuditUrl(req.body?.url);
+  if (!check.ok) return res.status(400).json({ error: check.message });
+  const url = check.url;
 
-  if (!OPENAI_API_KEY) {
-    console.error("OPENAI_API_KEY is not configured");
-    return res.status(500).json({ error: "Server configuration error: OpenAI API key missing" });
+  if (!getGeminiApiKey()) {
+    console.error("GEMINI_API_KEY is not configured");
+    return res.status(503).json({ error: "Server configuration error: Gemini API key missing" });
   }
 
   try {
-    let data: any;
+    let site;
     try {
-      data = await fetchPageData(url);
+      site = await crawlSite(url);
     } catch (e: any) {
       console.error("Failed to fetch page data:", e?.message || e);
-      throw new Error(`Failed to fetch or parse website: ${e?.message || "Unknown error"}`);
+      return res.status(422).json({ error: "We couldn't open that website. Check the address and try again." });
     }
+    const data = await fetchPageData(site.url, site.homeHtml);
 
-    let domain: string;
-    try {
-      domain = new URL(url).hostname;
-    } catch (e) {
-      console.error("Invalid URL:", url);
-      throw new Error("Invalid URL provided");
-    }
+    const imageCandidates = [...new Set(data.allImages as string[])]
+      .filter((u) => /^https?:\/\//.test(u) && !/\.(svg|gif)(\?|$)/i.test(u) && !/logo|icon|sprite|payment|badge|avatar/i.test(u))
+      .slice(0, 40);
 
-    const competitors = await findCompetitorsSerp(
-      `${data.title} ${data.metaDesc}`,
-      domain
-    );
+    const profile = await profileBrand(site, imageCandidates);
+    const finalImages = profile.product_images.length ? profile.product_images : imageCandidates.slice(0, 6);
 
-    // Parse OpenAI responses with error handling
-    let facts: any = {};
-    let classification: any = {};
-    let positioning: any = {};
-    let competition: any = {};
-    let brandVoiceData: any = {};
-    let teardown: any = {};
-    let brandIntelligence: any = {};
-    let brandKit: any = {};
-
-    try {
-      const factsJson = await callOpenAI(factsPrompt(data));
-      facts = JSON.parse(factsJson || "{}");
-    } catch (e: any) {
-      console.error("Failed to parse facts:", e);
-      const msg = String(e?.message || "");
-      if (msg.includes("invalid_api_key") || msg.includes("Incorrect API key")) {
-        throw new Error(
-          "OpenAI API key is invalid. Set a real OPENAI_API_KEY in .env.local and restart the server."
-        );
-      }
-      if (msg.includes("OPENAI_API_KEY is not configured")) {
-        throw new Error("OPENAI_API_KEY is missing. Add it to .env.local and restart the server.");
-      }
-      throw new Error("Failed to extract brand facts");
-    }
-
-    try {
-      const classificationJson = await callOpenAI(classificationPrompt(facts));
-      classification = JSON.parse(classificationJson || "{}");
-    } catch (e) {
-      console.error("Failed to parse classification:", e);
-      // Continue with empty classification
-    }
-
-    try {
-      const positioningJson = await callOpenAI(positioningPrompt(facts, classification));
-      positioning = JSON.parse(positioningJson || "{}");
-    } catch (e) {
-      console.error("Failed to parse positioning:", e);
-      // Continue with empty positioning
-    }
-
-    try {
-      const competitionJson = await callOpenAI(competitionPrompt(facts, positioning, competitors));
-      competition = JSON.parse(competitionJson || "{}");
-    } catch (e) {
-      console.error("Failed to parse competition:", e);
-      // Continue with empty competition
-    }
-
-    try {
-      const teardownJson = await callOpenAI(
-        teardownPrompt({ facts, classification, positioning, competition })
-      );
-      teardown = JSON.parse(teardownJson || "{}");
-    } catch (e) {
-      console.error("Failed to parse teardown:", e);
-      // Continue with empty teardown
-    }
-
-    // Extract expanded brand intelligence
-    try {
-      const brandIntelligenceJson = await callOpenAI(brandIntelligencePrompt(data, facts, positioning));
-      brandIntelligence = JSON.parse(brandIntelligenceJson || "{}");
-    } catch (e) {
-      console.error("Failed to parse brand intelligence:", e);
-      // Continue with empty brand intelligence
-    }
-
-    // Extract brand kit (aesthetic, tone, values, business overview)
-    try {
-      const brandKitJson = await callOpenAI(brandKitPrompt(data, facts, positioning));
-      brandKit = JSON.parse(brandKitJson || "{}");
-    } catch (e) {
-      console.error("Failed to parse brand kit:", e);
-    }
-
-    // Analyze brand voice and core value prop from About Us section
-    try {
-      if (data.aboutUsText && data.aboutUsText.length > 50) {
-        const brandVoiceJson = await callOpenAI(brandVoicePrompt(data.aboutUsText, facts));
-        brandVoiceData = JSON.parse(brandVoiceJson || "{}");
-        console.log("✅ Brand voice analysis:", brandVoiceData);
-      } else {
-        console.warn("⚠️ No About Us text found, skipping brand voice analysis");
-        // Infer brand voice from personality if available
-        if (brandIntelligence.brand_personality) {
-          const personality = brandIntelligence.brand_personality.toLowerCase();
-          if (personality.includes('professional') || personality.includes('premium')) {
-            brandVoiceData.brand_voice = "Professional";
-          } else if (personality.includes('playful') || personality.includes('friendly')) {
-            brandVoiceData.brand_voice = "Playful";
-          } else if (personality.includes('minimal')) {
-            brandVoiceData.brand_voice = "Minimalist";
-          } else if (personality.includes('bold') || personality.includes('confident')) {
-            brandVoiceData.brand_voice = "Bold";
-          }
-        }
-        // Use primary value proposition from positioning as core value prop
-        if (positioning.primary_value_proposition) {
-          brandVoiceData.core_value_prop = positioning.primary_value_proposition.substring(0, 100);
-        }
-      }
-    } catch (e) {
-      console.error("Failed to parse brand voice:", e);
-      // Continue with empty brand voice data
-    }
-
-    const rankedImages = await rankImagesWithAI(
-      data.allImages,
-      { facts, classification }
-    );
-
-    const finalImages =
-      rankedImages.length > 0
-        ? rankedImages.slice(0, 6)
-        : data.allImages.slice(0, 6);
-
-    // Extract primary colors from CSS colors and theme color
-    // Create array of primary colors (hex codes) - prioritize theme color, then CSS colors
+    // Primary colours: theme colour first, then CSS colours (up to 5)
     const primaryColorsArray: string[] = [];
     if (data.themeColor && /^#[0-9A-Fa-f]{3,6}$/i.test(data.themeColor)) {
       primaryColorsArray.push(data.themeColor);
     }
-    // Add unique CSS colors (up to 5 total)
-    if (data.cssColors && Array.isArray(data.cssColors)) {
-      for (const color of data.cssColors) {
-        if (color && /^#[0-9A-Fa-f]{3,6}$/i.test(color) && !primaryColorsArray.includes(color)) {
-          primaryColorsArray.push(color);
-          if (primaryColorsArray.length >= 5) break;
-        }
+    for (const color of data.cssColors || []) {
+      if (color && /^#[0-9A-Fa-f]{3,6}$/i.test(color) && !primaryColorsArray.includes(color)) {
+        primaryColorsArray.push(color);
+        if (primaryColorsArray.length >= 5) break;
       }
     }
-    
-    // Legacy color format for backward compatibility
-    const extractedColors = {
-      primary: primaryColorsArray[0] || null,
-      secondary: primaryColorsArray[1] || null,
-      accent: primaryColorsArray[2] || null,
-    };
 
-    // Map visual style from API response
-    const visualStyle = brandIntelligence.visual_style ? {
-      minimalVsDetailed: brandIntelligence.visual_style.minimal_vs_detailed || undefined,
-      flatVsRealistic: brandIntelligence.visual_style.flat_vs_realistic || undefined,
-      illustrationVsPhotography: brandIntelligence.visual_style.illustration_vs_photography || undefined,
-      lightVsDark: brandIntelligence.visual_style.light_vs_dark || undefined,
-    } : null;
-
-    // Map typography intent
-    const typographyIntent = brandIntelligence.typography_intent ? {
-      style: brandIntelligence.typography_intent.style || undefined,
-      contrast: brandIntelligence.typography_intent.contrast || undefined,
-    } : null;
-
-    // Log logo extraction for debugging
-    console.log("🎨 Logo extraction result:", {
-      logo: data.logo,
-      ogImage: data.ogImage,
-      hasLogo: !!data.logo,
-    });
+    const vs = profile.visual_style;
+    const ti = profile.typography_intent;
+    const pricePositioning = profile.price_positioning === "unclear" ? null : profile.price_positioning;
 
     return res.status(200).json({
       result: {
-        facts,
-        classification,
-        positioning,
-        competition,
-        teardown,
-        logo: data.logo || null, // Ensure logo is explicitly set (null if not found)
-        logoUrl: data.logoUrl || null, // Original logo URL
+        // Legacy shape kept for mapFullAnalyzeToBrandSnapshot and older callers
+        facts: {
+          company_name: profile.company_name,
+          what_they_sell: profile.what_they_sell,
+          who_it_is_for: profile.who_it_is_for,
+          business_model: profile.business_model,
+          pricing_signals: pricePositioning || "unclear",
+          claims_made: profile.claims_made,
+        },
+        classification: {
+          category: profile.category,
+          customer_type: profile.customer_type,
+        },
+        positioning: {
+          primary_value_proposition: profile.value_proposition || profile.one_liner,
+          intended_positioning: profile.one_liner,
+        },
+        logo: data.logo || null,
+        logoUrl: data.logoUrl || null,
         product_images: finalImages,
         brand_assets: [...finalImages, data.logo, data.ogImage].filter(Boolean),
-        // Expanded brand intelligence
-        colors: extractedColors, // Legacy format
-        primaryColors: primaryColorsArray, // New array format
-        fontStyles: data.fontStyle || 'sans-serif', // Extracted font style
-        brandVoice: brandVoiceData.brand_voice || null, // "Professional" | "Playful" | "Minimalist" | "Bold"
-        coreValueProp: brandVoiceData.core_value_prop || positioning.primary_value_proposition || null, // Core value proposition hook
-        visualStyle: visualStyle,
-        typographyIntent: typographyIntent,
-        personality: brandIntelligence.brand_personality || null,
-        ctaPatterns: data.ctaPatterns || [],
-        productCategory: brandIntelligence.product_category || null,
-        pricePositioning: brandIntelligence.price_positioning || null,
-        // Brand Kit (Pomeli/Canva-style)
-        brand_aesthetic: Array.isArray(brandKit.brand_aesthetic) ? brandKit.brand_aesthetic : [],
-        brand_tone: Array.isArray(brandKit.brand_tone) ? brandKit.brand_tone : [],
-        brand_values: Array.isArray(brandKit.brand_values) ? brandKit.brand_values : [],
-        business_overview: brandKit.business_overview || null,
-        tagline: brandKit.tagline || null,
-        website_url: data.url || null,
-      }
+        colors: {
+          primary: primaryColorsArray[0] || null,
+          secondary: primaryColorsArray[1] || null,
+          accent: primaryColorsArray[2] || null,
+        },
+        primaryColors: primaryColorsArray,
+        fontStyles: data.fontStyle || "sans-serif",
+        brandVoice: profile.brand_voice,
+        coreValueProp: profile.value_proposition || null,
+        visualStyle: Object.keys(vs).length
+          ? {
+              minimalVsDetailed: vs.minimal_vs_detailed,
+              flatVsRealistic: vs.flat_vs_realistic,
+              illustrationVsPhotography: vs.illustration_vs_photography,
+              lightVsDark: vs.light_vs_dark,
+            }
+          : null,
+        typographyIntent: Object.keys(ti).length ? { style: ti.style, contrast: ti.contrast } : null,
+        personality: profile.personality || null,
+        ctaPatterns: site.ctas.length ? site.ctas : data.ctaPatterns || [],
+        productCategory: profile.sub_category || profile.category || null,
+        pricePositioning,
+        industry: profile.category || null,
+        brand_aesthetic: profile.brand_aesthetic,
+        brand_tone: profile.brand_tone,
+        brand_values: profile.brand_values,
+        business_overview: profile.business_overview || null,
+        tagline: profile.tagline || null,
+        website_url: site.url,
+      },
     });
   } catch (e: any) {
-    console.error("❌ Brand analysis error:", e);
-    console.error("Error stack:", e?.stack);
-    console.error("Error message:", e?.message);
+    console.error("❌ Brand analysis error:", e?.message || e);
     const message = e?.message || "Analysis failed";
-    const isConfigError =
-      typeof message === "string" &&
-      (message.includes("OPENAI_API_KEY") || message.includes("OpenAI API key"));
-    return res.status(isConfigError ? 503 : 500).json({
-      error: isConfigError ? message : "Analysis failed",
+    return res.status(500).json({
+      error: "Analysis failed",
       details: process.env.NODE_ENV === "development" ? message : undefined,
     });
   }

@@ -115,6 +115,7 @@ export function mapFullAnalyzeToBrandSnapshot(result: any): BrandSnapshot {
     brand_values: result.brand_values,
     business_overview: result.business_overview,
     website_url: result.website_url,
+    industry: result.industry || undefined,
     marketSummary:
       typeof result.competition?.summary === 'string' && result.competition.summary.trim()
         ? result.competition.summary.trim()

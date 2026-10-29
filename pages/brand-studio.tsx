@@ -245,6 +245,9 @@ export default function BrandStudioLanding() {
     setIsAnalyzingBrand(true);
     // Keep onboarding modal open so user sees "Analyzing..." UI
 
+    // Market research runs in the background and is saved to the brand (see /brand-research).
+    void authFetch('/api/brand/research', { method: 'POST', body: JSON.stringify({ url: website }) }).catch(() => null);
+
     try {
       const response = await authFetch('/api/brand/fullAnalyze', {
         method: 'POST',

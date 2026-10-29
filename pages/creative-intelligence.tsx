@@ -36,11 +36,6 @@ import {
 } from "lucide-react";
 import {
   ResponsiveContainer,
-  RadarChart,
-  PolarGrid,
-  PolarAngleAxis,
-  PolarRadiusAxis,
-  Radar,
   BarChart,
   Bar,
   XAxis,
@@ -114,6 +109,8 @@ type RunData = {
     clusterLabel: string | null;
     frequencyPct: number | null;
     samplePhrases: string[] | null;
+    /** Newer runs: where the insight was seen (web research) */
+    rawClusters?: { source?: string; about?: string; basis?: string } | null;
   }>;
   hooks: Array<{
     id: string;
@@ -1761,54 +1758,46 @@ ${strategies.market_gap_analysis?.length ? `<h3>Market Gap Analysis</h3><ul>${st
                   </SectionCard>
                 )}
 
-                {/* Customer Psychology Heatmap - where messaging should focus */}
+                {/* What buyers say — evidence, not scores. Older runs only have model-estimated frequencies. */}
                 {(painPoints.length > 0 || desiredOutcomes.length > 0) && (
-                  <SectionCard title="Customer Psychology Heatmap" icon={<BarChart3 size={20} />} onHistoryClick={scrollToHistory}>
+                  <SectionCard title="What Buyers Say" icon={<BarChart3 size={20} />} onHistoryClick={scrollToHistory}>
                     <p className="text-sm mb-4" style={{ color: colors.mutedForeground }}>
-                      Pain frequency, opportunity score, and impact on messaging.
+                      Pain points and desired outcomes, with what buyers said and where.
                     </p>
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
                         <thead>
                           <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
                             <th className="text-left py-2 px-3 font-medium" style={{ color: colors.mutedForeground }}>Insight</th>
-                            <th className="text-left py-2 px-3 font-medium" style={{ color: colors.mutedForeground }}>Pain frequency</th>
-                            <th className="text-left py-2 px-3 font-medium" style={{ color: colors.mutedForeground }}>Opportunity score</th>
-                            <th className="text-left py-2 px-3 font-medium" style={{ color: colors.mutedForeground }}>Impact on messaging</th>
+                            <th className="text-left py-2 px-3 font-medium" style={{ color: colors.mutedForeground }}>Type</th>
+                            <th className="text-left py-2 px-3 font-medium" style={{ color: colors.mutedForeground }}>What buyers said</th>
+                            <th className="text-left py-2 px-3 font-medium" style={{ color: colors.mutedForeground }}>Where</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {[...painPoints, ...desiredOutcomes]
-                            .sort((a, b) => (b.frequencyPct ?? 0) - (a.frequencyPct ?? 0))
-                            .slice(0, 8)
-                            .map((r, i) => {
-                              const freq = r.frequencyPct ?? 0;
-                              const oppScore = r.clusterType === "pain_points" ? Math.min(100, 100 - freq + 20) : Math.min(100, freq + 10);
-                              const impact = Math.round((freq * 0.6 + oppScore * 0.4));
-                              return (
-                                <tr key={i} style={{ borderBottom: `1px solid ${colors.border}` }}>
-                                  <td className="py-2 px-3 font-medium" style={{ color: colors.foreground }}>{r.clusterLabel || "—"}</td>
-                                  <td className="py-2 px-3">
-                                    <span className="text-xs px-2 py-0.5 rounded" style={{ backgroundColor: "hsl(0 84% 55% / 0.2)", color: colors.destructive }}>
-                                      {freq}%
-                                    </span>
-                                  </td>
-                                  <td className="py-2 px-3">
-                                    <span className="text-xs px-2 py-0.5 rounded" style={{ backgroundColor: "hsl(142 76% 36% / 0.2)", color: colors.green600 }}>
-                                      {oppScore}%
-                                    </span>
-                                  </td>
-                                  <td className="py-2 px-3">
-                                    <div className="flex items-center gap-2">
-                                      <div className="w-16 h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: colors.muted }}>
-                                        <div className="h-full rounded-full" style={{ width: `${impact}%`, backgroundColor: colors.primary }} />
-                                      </div>
-                                      <span style={{ color: colors.mutedForeground }}>{impact}%</span>
-                                    </div>
-                                  </td>
-                                </tr>
-                              );
-                            })}
+                          {[...painPoints.slice(0, 5), ...desiredOutcomes.slice(0, 4)].map((r, i) => (
+                            <tr key={i} className="align-top" style={{ borderBottom: `1px solid ${colors.border}` }}>
+                              <td className="py-2 px-3 font-medium" style={{ color: colors.foreground }}>{r.clusterLabel || "—"}</td>
+                              <td className="py-2 px-3">
+                                <span
+                                  className="text-xs px-2 py-0.5 rounded whitespace-nowrap"
+                                  style={
+                                    r.clusterType === "pain_points"
+                                      ? { backgroundColor: "hsl(0 84% 55% / 0.2)", color: colors.destructive }
+                                      : { backgroundColor: "hsl(142 76% 36% / 0.2)", color: colors.green600 }
+                                  }
+                                >
+                                  {r.clusterType === "pain_points" ? "Pain" : "Wants"}
+                                </span>
+                              </td>
+                              <td className="py-2 px-3 text-xs" style={{ color: colors.mutedForeground }}>
+                                {r.samplePhrases?.[0] ? `“${r.samplePhrases[0]}”` : "—"}
+                              </td>
+                              <td className="py-2 px-3 text-xs whitespace-nowrap" style={{ color: colors.mutedForeground }}>
+                                {r.rawClusters?.source || (r.rawClusters?.basis === "web" ? "Web research" : "Estimated")}
+                              </td>
+                            </tr>
+                          ))}
                         </tbody>
                       </table>
                     </div>
@@ -1845,47 +1834,6 @@ ${strategies.market_gap_analysis?.length ? `<h3>Market Gap Analysis</h3><ul>${st
                     </div>
                   </SectionCard>
                 )}
-
-                {/* Opportunity Radar - brand strengths & weaknesses */}
-                {runData.reviews?.length > 0 && (() => {
-                  const dims = ["Taste", "Health credibility", "Price perception", "Convenience", "Brand excitement"];
-                  const keywords: Record<string, string[]> = {
-                    Taste: ["taste", "flavor", "bland", "delicious", "yummy"],
-                    "Health credibility": ["health", "protein", "natural", "organic", "clean"],
-                    "Price perception": ["price", "expensive", "cheap", "value", "worth"],
-                    Convenience: ["convenient", "easy", "quick", "portable", "on-the-go"],
-                    "Brand excitement": ["love", "great", "amazing", "recommend", "excited"],
-                  };
-                  const radarData = dims.map((d) => {
-                    const kws = keywords[d].map((k) => k.toLowerCase());
-                    const matching = runData.reviews.filter((r) => {
-                      const label = (r.clusterLabel || "").toLowerCase();
-                      const phrases = (r.samplePhrases || []).join(" ").toLowerCase();
-                      return kws.some((k) => label.includes(k) || phrases.includes(k));
-                    });
-                    const score = matching.length > 0
-                      ? Math.min(100, matching.reduce((s, m) => s + (m.frequencyPct ?? 0), 0) / matching.length + 30)
-                      : 50;
-                    return { subject: d, value: Math.round(score), fullMark: 100 };
-                  });
-                  return (
-                    <SectionCard title="Opportunity Radar" icon={<Target size={20} />} onHistoryClick={scrollToHistory}>
-                      <p className="text-sm mb-4" style={{ color: colors.mutedForeground }}>
-                        Visualize brand strengths & weaknesses across key dimensions.
-                      </p>
-                      <div className="h-64">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <RadarChart data={radarData}>
-                            <PolarGrid stroke={colors.border} />
-                            <PolarAngleAxis dataKey="subject" tick={{ fill: colors.mutedForeground, fontSize: 11 }} />
-                            <PolarRadiusAxis angle={90} domain={[0, 100]} tick={{ fill: colors.mutedForeground, fontSize: 10 }} />
-                            <Radar name="Score" dataKey="value" stroke={colors.primary} fill={colors.primary + "40"} strokeWidth={2} />
-                          </RadarChart>
-                        </ResponsiveContainer>
-                      </div>
-                    </SectionCard>
-                  );
-                })()}
 
                 {/* Ranked Hooks */}
                 {runData.hooks?.length > 0 && (
@@ -2748,8 +2696,11 @@ function CompetitorAnalysisOutput({
               <ul className="space-y-2">
                 {painPoints.slice(0, 5).map((r, i) => (
                   <li key={i} className="flex items-start gap-2">
-                    <span className="text-xs px-2 py-0.5 rounded shrink-0" style={{ backgroundColor: "hsl(0 84% 55% / 0.2)", color: colors.destructive }}>{r.frequencyPct ?? "—"}%</span>
-                    <span style={{ color: colors.foreground }}>{r.clusterLabel}</span>
+                    <span className="text-xs px-2 py-0.5 rounded shrink-0" style={{ backgroundColor: "hsl(0 84% 55% / 0.2)", color: colors.destructive }}>Pain</span>
+                    <span style={{ color: colors.foreground }}>
+                      {r.clusterLabel}
+                      {r.rawClusters?.source && <span className="text-xs" style={{ color: colors.mutedForeground }}> — {r.rawClusters.source}</span>}
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -2759,8 +2710,11 @@ function CompetitorAnalysisOutput({
               <ul className="space-y-2">
                 {desiredOutcomes.slice(0, 5).map((r, i) => (
                   <li key={i} className="flex items-start gap-2">
-                    <span className="text-xs px-2 py-0.5 rounded shrink-0" style={{ backgroundColor: "hsl(142 76% 36% / 0.2)", color: colors.green600 }}>{r.frequencyPct ?? "—"}%</span>
-                    <span style={{ color: colors.foreground }}>{r.clusterLabel}</span>
+                    <span className="text-xs px-2 py-0.5 rounded shrink-0" style={{ backgroundColor: "hsl(142 76% 36% / 0.2)", color: colors.green600 }}>Wants</span>
+                    <span style={{ color: colors.foreground }}>
+                      {r.clusterLabel}
+                      {r.rawClusters?.source && <span className="text-xs" style={{ color: colors.mutedForeground }}> — {r.rawClusters.source}</span>}
+                    </span>
                   </li>
                 ))}
               </ul>

@@ -13,6 +13,8 @@ export type MarketingStrategistInput = {
   product: ProductContext;
   brand: BrandContext;
   references: ReferenceContext;
+  /** Digest of saved brand research (lib/research) — insight for framing, never product claims. */
+  marketResearch?: string;
 };
 
 /** Explicit copy/intent overrides extracted from user instruction + brief hints */

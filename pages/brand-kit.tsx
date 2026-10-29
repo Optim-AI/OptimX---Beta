@@ -2,6 +2,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import Head from "next/head";
+import Link from "next/link";
 import Sidebar from "../app/web/src/components/Sidebar";
 import { Button } from "../app/web/src/components/ui/button";
 import colors from "@/lib/ui/colors";
@@ -365,6 +366,8 @@ export default function BrandKitPage(): JSX.Element {
       });
     // The brand analysis needs a full URL ("skalxai.app" → "https://skalxai.app").
     const fullUrl = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+    // Market research runs in the background and is saved to the brand (see /brand-research).
+    void authFetch("/api/brand/research", { method: "POST", body: JSON.stringify({ url: fullUrl }) }).catch(() => null);
     const brand = authFetch("/api/brand/fullAnalyze", { method: "POST", body: JSON.stringify({ url: fullUrl }) })
       .then(async (res) => {
         const json = await res.json();
@@ -476,6 +479,13 @@ export default function BrandKitPage(): JSX.Element {
                 and it takes priority over the visual theme you pick.
               </p>
             </div>
+            <Link
+              href="/brand-research"
+              className="rounded-lg px-3 py-2 text-sm font-medium"
+              style={{ border: `1px solid ${colors.border}`, color: colors.foreground }}
+            >
+              Market research →
+            </Link>
           </header>
 
           <nav className="mt-6 flex flex-wrap items-center gap-2" aria-label="Brand kits">

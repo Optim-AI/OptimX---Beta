@@ -39,6 +39,13 @@ import {
   History,
 } from "lucide-react";
 import PosterEditModal from "@/app/web/src/components/content-studio/PosterEditModal";
+import {
+  AngleMeta,
+  StrategyBriefPanel,
+  StrategyLoading,
+  angleCreativeBrief,
+} from "@/app/web/src/components/content-studio/StrategyBrief";
+import type { StrategyAngle, StrategyBrief } from "@/lib/research/product-strategy";
 import { Button } from "@/app/web/src/components/ui/button";
 import { Input } from "@/app/web/src/components/ui/input";
 import { Progress } from "@/app/web/src/components/ui/progress";
@@ -58,7 +65,8 @@ type BrandSummary = {
   primaryValueProposition: string;
 };
 
-type AdAngle = {
+/** Older saved versions only have title + explanation; new strategy adds the reasoning. */
+type AdAngle = Partial<StrategyAngle> & {
   title: string;
   explanation: string;
 };
@@ -78,12 +86,15 @@ type CampaignPlanItem = {
   content_type: string;
   hook: string;
   description: string;
+  angle?: string;
+  rationale?: string;
 };
 
 type CampaignStrategy = {
   product_category: string;
   target_audience: string;
   content_themes: string[];
+  brief?: StrategyBrief;
 };
 
 const MAX_SESSIONS = 20;
@@ -510,7 +521,7 @@ export default function ContentStudioPage() {
       // No saved versions — generate fresh
       const res = await authFetch("/api/content-studio/ad-angles", {
         method: "POST",
-        body: JSON.stringify({ product, brand }),
+        body: JSON.stringify({ product, brand, website: url ? normalizeUrl(url) : undefined }),
       });
       const data = await res.json();
 
@@ -682,7 +693,7 @@ export default function ContentStudioPage() {
     try {
       const res = await authFetch("/api/content-studio/ad-angles", {
         method: "POST",
-        body: JSON.stringify({ product, brand }),
+        body: JSON.stringify({ product, brand, website: url ? normalizeUrl(url) : undefined }),
       });
       const data = await res.json();
 
@@ -783,7 +794,7 @@ export default function ContentStudioPage() {
           : null);
 
       const angleText = angle
-        ? `${angle.title}. ${angle.explanation}`
+        ? angleCreativeBrief(angle)
         : selectedProduct.short_benefit || selectedProduct.description;
       const benefits = selectedProduct.key_benefits || [];
 
@@ -934,9 +945,14 @@ export default function ContentStudioPage() {
     updateSession(sessionId, () => ({ generatingCampaignItem: index }));
     try {
       const isVideo = /video/i.test(item.content_type);
+      const source = item.angle
+        ? activeSession.adAngles.find((a) => a.angle?.toLowerCase() === item.angle?.toLowerCase())
+        : undefined;
       const angle: AdAngle = {
+        ...(source || {}),
         title: item.hook,
         explanation: `${item.content_type} for ${item.platform}. Goal: ${item.goal}. ${item.description}`,
+        message: item.description || source?.message,
       };
       if (isVideo) {
         await handleVideoAdClick(angle);
@@ -1000,7 +1016,7 @@ export default function ContentStudioPage() {
       const adBuilderData = {
         ...DEFAULT_AD_BUILDER_DATA,
         product: productData,
-        userDescription: `Ad angle: ${angle.title}. ${angle.explanation}`,
+        userDescription: `Ad angle: ${angleCreativeBrief(angle)}`,
         adSetup: {
           ...DEFAULT_AD_BUILDER_DATA.adSetup,
           hookType: "Auto" as const,
@@ -1730,8 +1746,12 @@ export default function ContentStudioPage() {
                   </div>
                 </section>
 
+                {!activeSession.loadingAngles && activeSession.campaignStrategy?.brief && (
+                  <StrategyBriefPanel brief={activeSession.campaignStrategy.brief} />
+                )}
+
                 <section
-                  className="rounded-xl p-6 border overflow-y-auto max-h-[600px]"
+                  className="rounded-xl p-6 border overflow-y-auto max-h-[720px]"
                   style={{
                     background: colors.card,
                     borderColor: colors.border,
@@ -1741,11 +1761,14 @@ export default function ContentStudioPage() {
                       <h2 className="text-lg font-semibold" style={{ color: colors.foreground }}>
                         Ad Angles
                       </h2>
+                      {!activeSession.loadingAngles && activeSession.adAngles.length > 0 && !activeSession.campaignStrategy?.brief && (
+                        <p className="text-xs mt-0.5" style={{ color: colors.mutedForeground }}>
+                          Basic angles from the product page. Regenerate for a researched strategy.
+                        </p>
+                      )}
                     </div>
                     {activeSession.loadingAngles ? (
-                      <div className="flex items-center justify-center py-8">
-                        <Loader2 className="w-8 h-8 animate-spin" style={{ color: colors.primary }} />
-                      </div>
+                      <StrategyLoading />
                     ) : (
                       <div className="space-y-3">
                         {activeSession.adAngles.map((angle, i) => (
@@ -1760,9 +1783,13 @@ export default function ContentStudioPage() {
                             <p className="font-medium text-sm" style={{ color: colors.foreground }}>
                               {angle.title}
                             </p>
-                            <p className="text-xs mt-1" style={{ color: colors.mutedForeground }}>
-                              {angle.explanation}
-                            </p>
+                            {angle.message ? (
+                              <AngleMeta angle={angle} />
+                            ) : (
+                              <p className="text-xs mt-1" style={{ color: colors.mutedForeground }}>
+                                {angle.explanation}
+                              </p>
+                            )}
                             <div className="flex gap-2 mt-2">
                               <Button
                                 size="sm"
@@ -1949,10 +1976,17 @@ export default function ContentStudioPage() {
                           </div>
 
                           {item.description && (
-                            <p className="text-xs mb-4" style={{ color: colors.mutedForeground }}>
+                            <p className="text-xs mb-2" style={{ color: colors.mutedForeground }}>
                               {item.description}
                             </p>
                           )}
+                          {(item.angle || item.rationale) && (
+                            <p className="text-[11px] mb-4 leading-relaxed" style={{ color: colors.mutedForeground }}>
+                              {item.angle && <span className="font-medium" style={{ color: colors.foreground }}>{item.angle}. </span>}
+                              {item.rationale}
+                            </p>
+                          )}
+                          {!item.angle && !item.rationale && <div className="mb-2" />}
 
                           <Button
                             size="sm"

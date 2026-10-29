@@ -12,6 +12,7 @@ import {
   saveBrandSnapshot,
 } from '@/app/web/src/components/creative-studio/utils';
 import type { BrandSnapshot, Product } from '@/app/web/src/components/creative-studio/types';
+import type { BrandResearch } from '@/lib/research/brand-research';
 import {
   buildTryOnboardingPatch,
   getOnboardingDemoCreatives,
@@ -81,6 +82,8 @@ export default function TryPage() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [revealError, setRevealError] = useState<string | null>(null);
+  const [research, setResearch] = useState<BrandResearch | null>(null);
+  const [researchPending, setResearchPending] = useState(false);
   const [selectedPlanId, setSelectedPlanId] = useState<MarketingPlanId | null>(null);
   const [hasActiveSubscription, setHasActiveSubscription] = useState(false);
   const [activePlanName, setActivePlanName] = useState<string | null>(null);
@@ -292,6 +295,18 @@ export default function TryPage() {
       });
 
       setAnalysisPhase('processing');
+
+      // Deep market research (~1 min) runs alongside and is saved server-side;
+      // the reveal shows it when it lands. Never blocks onboarding.
+      setResearch(null);
+      setResearchPending(true);
+      authFetch('/api/brand/research', { method: 'POST', body: JSON.stringify({ url }) })
+        .then((r) => r.json())
+        .then((j) => {
+          if (j?.ok && j.research) setResearch(j.research as BrandResearch);
+        })
+        .catch(() => null)
+        .finally(() => setResearchPending(false));
 
       const analyzePromise = authFetch('/api/brand/fullAnalyze', {
         method: 'POST',
@@ -887,6 +902,8 @@ export default function TryPage() {
             onContinue={goToDemo}
             continueError={revealError}
             catalogLoading={catalogLoading}
+            research={research ?? brandSnapshot?.research ?? null}
+            researchPending={researchPending}
           />
         )}
 

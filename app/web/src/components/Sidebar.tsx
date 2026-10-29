@@ -22,6 +22,7 @@ import {
   Trash2,
   ChevronsUpDown,
   Palette,
+  ScanSearch,
   type LucideIcon,
 } from 'lucide-react';
 import { supabase } from '@/auth/supabase/client';
@@ -64,6 +65,7 @@ const NAV_SECTIONS: NavSection[] = [
     id: 'intelligence',
     label: 'Intelligence',
     items: [
+      { href: '/brand-research', label: 'Brand Research', Icon: ScanSearch },
       { href: '/creative-intelligence', label: 'Creative Intelligence', Icon: Waypoints, betaBadge: true },
       { href: '/analytics', label: 'Analytics', Icon: ChartColumn, featureKey: 'basic_analytics' },
     ],
