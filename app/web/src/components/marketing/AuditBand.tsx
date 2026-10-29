@@ -56,7 +56,7 @@ export default function AuditBand() {
   };
 
   return (
-    <section id="audit" aria-labelledby="audit-title" className="border-y border-line bg-paper-deep">
+    <section id="audit" aria-labelledby="audit-title" className="scroll-mt-20 border-y border-line bg-paper-deep">
       <div className="mx-auto grid max-w-6xl items-center gap-8 px-4 py-14 sm:px-6 md:grid-cols-12">
         <div className="md:col-span-5">
           <h2 id="audit-title" className="font-display text-2xl font-medium leading-tight sm:text-3xl">

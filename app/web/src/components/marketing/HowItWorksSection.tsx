@@ -8,7 +8,7 @@ export default function HowItWorksSection() {
     <section id="how-it-works" aria-labelledby="how-title" className="scroll-mt-20 bg-paper-deep">
       <div className="mx-auto grid max-w-6xl gap-12 px-4 py-20 sm:px-6 md:grid-cols-12 md:py-28">
         <div className="md:col-span-4">
-          <SectionHeading id="how-title" eyebrow="How it works" title="Three steps. Seven days." />
+          <SectionHeading id="how-title" eyebrow="How it works" title="Three simple steps." />
         </div>
         <ol className="space-y-10 md:col-span-8 md:col-start-6">
           {STEPS.map((s, i) => (

@@ -18,7 +18,7 @@ const Footer: React.FC = () => {
 
   const footerLinks: Record<string, LinkItem[]> = {
     Product: [
-      { name: 'Launch Creative Sprint', href: '/#what-you-get', type: 'section' },
+      { name: 'What SkalX does', href: '/#what-you-get', type: 'section' },
       { name: 'AI Ad Generator', href: '/ai-ad-generator', type: 'route' },
       { name: 'How It Works', href: '/#how-it-works', type: 'section' },
       { name: 'Pricing', href: '/pricing', type: 'route' },
@@ -83,7 +83,7 @@ const Footer: React.FC = () => {
               />
             </div>
             <p className="text-sm leading-relaxed mb-4" style={{ color: colors.mutedForeground }}>
-              Ad creatives for D2C brands, delivered in 7 days.
+              Market research to ready-to-post creatives.
             </p>
             <Link href="/free-ad" className="text-sm font-medium" style={{ color: colors.primary }}>
               Get one free ad →

@@ -5,7 +5,7 @@ import MarketingLayout from '@/app/web/src/components/marketing/MarketingLayout'
 import { Eyebrow } from '@/app/web/src/components/marketing/ui';
 
 const STEPS = [
-  'Tell us your brand and the product to feature.',
+  'Tell us about your brand.',
   'AJ makes one ad for it using SkalX.',
   'You get it by email within 2 working days. No strings.',
 ];
@@ -16,7 +16,7 @@ export default function FreeAdPage() {
     <MarketingLayout>
       <PageSeo
         title="Get one free ad for your brand"
-        description="See it before you pay. Tell us your D2C brand and product, and we'll make one ad for it, free, within 2 working days."
+        description="See it before you pay. Tell us about your D2C brand and we'll make one ad for it, free, within 2 working days."
         path="/free-ad"
       />
       <section aria-labelledby="free-ad-title" className="mx-auto max-w-6xl px-4 pb-20 pt-10 sm:px-6 md:pb-28 md:pt-16">

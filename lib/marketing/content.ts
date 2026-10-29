@@ -1,37 +1,16 @@
 /**
- * Marketing copy for the public site. One source for prices, deliverables and FAQ
- * so the homepage, /pricing and /About never disagree.
+ * Marketing copy for the public site. One source so the homepage, /pricing and /About agree.
  *
- * Honesty rules: we have no paying customers yet. Do not add client counts, logos,
- * results, testimonials, or features that are not live (posting, scheduling, analytics).
+ * Positioning: SkalX is self-serve — research → strategy → create, on a monthly plan.
+ * Honesty rules: we have no paying customers yet. No client counts, logos, results,
+ * testimonials, fixed deliverable counts, or features that are not live (auto-posting,
+ * scheduling, performance analytics).
  */
+import { MARKETING_SUBSCRIPTION_PLANS, formatPricePlusGst } from '@/lib/billing/marketing-plans';
 import { SITE_SUPPORT_EMAIL } from '@/lib/seo/site';
 
-export const SPRINT = {
-  name: 'Launch Creative Sprint',
-  price: '₹14,999',
-  foundingPrice: '₹9,999',
-  foundingNote: 'Founding-brand price for the first 3 brands',
-  gstNote: '+ GST',
-  turnaround: '7 days',
-  paymentTerms: '50% upfront, 50% on delivery',
-  riskReversal: "Approve fewer than 6 of the 12 creatives? Don't pay the second half.",
-} as const;
-
-export type Deliverable = {
-  id: 'snapshot' | 'concept' | 'statics' | 'videos' | 'calendar' | 'revision';
-  title: string;
-  desc: string;
-};
-
-export const DELIVERABLES: Deliverable[] = [
-  { id: 'snapshot', title: 'Brand + 3-competitor snapshot', desc: 'One page on where you stand and what rivals are running.' },
-  { id: 'concept', title: '1 campaign concept, 3 angles', desc: 'A single idea, tested three ways so you can see what lands.' },
-  { id: 'statics', title: '12 static ad creatives', desc: '4:5 feed and 9:16 story sizes, with captions and hooks.' },
-  { id: 'videos', title: '2 × 15-second video ads', desc: 'Short vertical videos ready for Reels and Stories.' },
-  { id: 'calendar', title: '2-week posting calendar', desc: 'What to post, when, so the creatives get used.' },
-  { id: 'revision', title: '1 revision round', desc: 'Changes to up to 3 assets after you review.' },
-];
+/** e.g. "₹3,999 + GST" — always derived from the live plan catalog. */
+export const STARTING_PRICE = formatPricePlusGst(Math.min(...MARKETING_SUBSCRIPTION_PLANS.map((p) => p.priceInr)));
 
 export const PROBLEMS = [
   {
@@ -39,8 +18,8 @@ export const PROBLEMS = [
     body: 'The same creative stops working after a week or two. You need new ones constantly.',
   },
   {
-    title: 'Every launch needs new creative.',
-    body: 'A new SKU, a new city, a new quick-commerce listing — each one needs its own set.',
+    title: "You're guessing what customers want.",
+    body: 'Reviews, comments and competitor ads are scattered across platforms. Piecing them together takes days, so most brands skip it.',
   },
   {
     title: 'Agencies are slow and pricey.',
@@ -63,36 +42,72 @@ export const STEPS = [
   },
 ] as const;
 
+export type Pillar = {
+  id: 'research' | 'strategy' | 'create';
+  title: string;
+  lead: string;
+  points: string[];
+};
+
+export const PILLARS: Pillar[] = [
+  {
+    id: 'research',
+    title: 'Research',
+    lead: 'Know your market before you spend on it.',
+    points: [
+      'Your brand and competitor snapshot',
+      'What customers praise and complain about, from public reviews',
+      'What competitors are running right now',
+    ],
+  },
+  {
+    id: 'strategy',
+    title: 'Strategy',
+    lead: 'Turn what you learn into a plan.',
+    points: ['Campaign concepts and angles', 'Hooks that answer real customer objections', 'A posting plan'],
+  },
+  {
+    id: 'create',
+    title: 'Create',
+    lead: 'Make the content to match.',
+    points: [
+      'Static ads in feed and story sizes',
+      'Short video ads',
+      "Captions — as many as your plan's credits cover",
+    ],
+  },
+];
+
 export const COMPARISON = {
-  columns: ['Freelancer', 'Agency', 'SkalX Sprint'] as const,
+  columns: ['Freelancer', 'Agency', 'SkalX'] as const,
   rows: [
-    { label: 'Turnaround', values: ['Varies', 'Weeks', '7 days'] },
-    { label: 'Price', values: ['Per asset', 'Monthly retainer', '₹9,999 fixed (founding)'] },
-    { label: 'Video ads included', values: ['Rarely', 'Extra', '2 included'] },
-    { label: 'Competitor research', values: ['No', 'Sometimes', 'Included'] },
-    { label: 'Commitment', values: ['Per job', 'Months', 'One sprint'] },
+    { label: 'Turnaround', values: ['Varies', 'Weeks', 'Minutes'] },
+    { label: 'Price', values: ['Per asset', 'Monthly retainer', `From ${STARTING_PRICE} a month`] },
+    { label: 'Video ads', values: ['Rarely', 'Extra', 'Included'] },
+    { label: 'Market & competitor research', values: ['No', 'Sometimes', 'Included'] },
+    { label: 'Commitment', values: ['Per job', 'Months', 'Monthly, cancel anytime'] },
   ],
 } as const;
 
 export const FAQS = [
   {
     q: 'Will AI ads look generic?',
-    a: 'Every creative starts from your real product photos, colours and tone. You see a free sample before you pay anything.',
+    a: 'Every creative starts from your real product photos, colours and tone, plus what your customers actually say. Get one free ad first and judge for yourself.',
   },
-  { q: 'Who owns the creatives?', a: 'You do, once paid. Use them anywhere.' },
   {
-    q: "What if I don't like them?",
-    a: "One revision round is included, and if you approve fewer than 6 of 12 you don't pay the second half.",
+    q: 'Where does the research come from?',
+    a: 'Your website, public reviews, and the ads and posts your competitors are running.',
   },
+  {
+    q: 'How many ads and videos can I make?',
+    a: "As many as your plan's credits cover. You can buy more credits anytime.",
+  },
+  { q: 'Who owns the creatives?', a: 'You do. Use them anywhere.' },
   {
     q: 'Do you post or run ads for us?',
-    a: 'No. We deliver ready-to-use files; you or your team post and run them.',
+    a: 'No. You download ready-to-use files and post or run them yourself.',
   },
-  {
-    q: 'Can I use SkalX myself instead?',
-    a: 'Yes — see the self-serve plans on the pricing page.',
-    link: { href: '/pricing#self-serve', label: 'See self-serve plans' },
-  },
+  { q: 'Can I cancel anytime?', a: 'Yes. Plans are monthly and you can cancel anytime.' },
   { q: 'Is GST included?', a: 'Prices are + 18% GST.' },
 ] as const;
 
@@ -109,4 +124,4 @@ export const FOUNDER = {
 
 // TODO: a booking link (e.g. Cal.com / Calendly). Until then "Book a 15-min call" opens an email.
 export const BOOKING_URL = '';
-export const bookingHref = BOOKING_URL || `mailto:${SITE_SUPPORT_EMAIL}?subject=${encodeURIComponent('Book a 15-min call — Launch Creative Sprint')}`;
+export const bookingHref = BOOKING_URL || `mailto:${SITE_SUPPORT_EMAIL}?subject=${encodeURIComponent('Book a 15-min call — SkalX')}`;

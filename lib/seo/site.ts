@@ -9,12 +9,12 @@ export const WWW_HOST = `www.${CANONICAL_HOST}`;
 
 export const SITE_ORIGIN = `https://${CANONICAL_HOST}`;
 export const SITE_NAME = "SkalX AI";
-export const SITE_TAGLINE = "Ad creatives for D2C brands in 7 days";
+export const SITE_TAGLINE = "Market research to ready-to-post creatives";
 
-export const DEFAULT_TITLE = "SkalX — Ad creatives for D2C brands in 7 days";
+export const DEFAULT_TITLE = "SkalX — Market research to ready-to-post ad creatives";
 
 export const DEFAULT_DESCRIPTION =
-  "Send us your product photos. In 7 days you get 12 on-brand ad creatives and 2 short video ads for Instagram and Meta. Fixed price, no retainer. Get one free ad first.";
+  "SkalX reads what customers say about your brand and competitors, turns it into a marketing plan, and helps you create the ads and videos to match. Plans from ₹3,999/month + GST.";
 
 /** Absolute asset used in Open Graph / Organization schema (existing public logo). */
 export const SITE_LOGO_URL = `${SITE_ORIGIN}/images/SkalX_Logo.png`;

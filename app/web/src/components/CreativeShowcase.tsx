@@ -34,9 +34,7 @@ const CreativeShowcase: React.FC = () => {
       className="py-16 md:py-24 relative overflow-hidden section-solid"
       style={{ backgroundColor: '#121212' }}
     >
-      {/* Hero "See what you get" target until the Phase 2 deliverables section lands. */}
-      <span id="what-you-get" className="absolute top-0 left-0" aria-hidden />
-      <div
+            <div
         ref={elementRef}
         className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10"
         style={{

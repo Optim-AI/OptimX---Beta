@@ -1,8 +1,8 @@
 import { SITE_NAME, SITE_SUPPORT_EMAIL } from '@/lib/seo/site';
-import { sendOutboundEmail, type OutboundEmailResult } from '@/lib/email/send';
+import { sendViaResendOnly, type OutboundEmailResult } from '@/lib/email/send';
 import type { FreeAdRequest } from './validate';
 
-/** Free-ad requests go to the founder inbox unless overridden. Nothing is stored. */
+/** Free-ad requests go to info@skalxai.app (override with FREE_AD_NOTIFY_EMAIL). Nothing is stored. */
 export function getFreeAdNotifyRecipient(): string {
   return process.env.FREE_AD_NOTIFY_EMAIL?.trim() || SITE_SUPPORT_EMAIL;
 }
@@ -15,7 +15,6 @@ export function buildFreeAdEmail(data: FreeAdRequest, submittedAt: string) {
     ['Name', data.name],
     ['Brand', data.brandName],
     ['Website / Instagram', data.brandLink],
-    ['Product to feature', data.product],
     ['Email', data.email],
     ['WhatsApp', data.whatsapp || '(not provided)'],
     ['Notes', data.notes || '(none)'],
@@ -48,7 +47,8 @@ export function buildFreeAdEmail(data: FreeAdRequest, submittedAt: string) {
 
 export async function notifyFreeAdRequest(data: FreeAdRequest): Promise<OutboundEmailResult> {
   const { subject, text, html } = buildFreeAdEmail(data, new Date().toISOString());
-  return sendOutboundEmail({
+  // Resend only — no FormSubmit fallback for free-ad requests.
+  return sendViaResendOnly({
     to: getFreeAdNotifyRecipient(),
     subject,
     text,

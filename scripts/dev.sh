@@ -37,48 +37,43 @@ NC='\033[0m' # No Color
 # ============================================================
 echo -e "${YELLOW}Checking prerequisites...${NC}"
 
-# Check if Docker is running
+# Docker + Supabase CLI are only needed for login and in-app features.
+# If either is missing, warn and still start Next.js so the marketing site runs.
+SKIP_SUPABASE=0
 if ! docker info > /dev/null 2>&1; then
-    echo -e "${RED}❌ Docker is not running.${NC}"
-    echo ""
-    echo "Please start Docker Desktop and try again."
-    exit 1
+    echo -e "${YELLOW}⚠ Docker is not running — skipping local Supabase.${NC}"
+    echo "  Marketing pages will work. Start Docker Desktop for login and app features."
+    SKIP_SUPABASE=1
+elif ! command -v supabase &> /dev/null; then
+    echo -e "${YELLOW}⚠ Supabase CLI not found — skipping local Supabase.${NC}"
+    echo "  Install with: ${BLUE}brew install supabase/tap/supabase${NC}"
+    SKIP_SUPABASE=1
+else
+    echo -e "${GREEN}✓ Docker is running${NC}"
+    echo -e "${GREEN}✓ Supabase CLI installed${NC}"
 fi
-echo -e "${GREEN}✓ Docker is running${NC}"
-
-# Check if Supabase CLI is installed
-if ! command -v supabase &> /dev/null; then
-    echo -e "${RED}❌ Supabase CLI not found.${NC}"
-    echo ""
-    echo "Install with Homebrew (macOS):"
-    echo "  ${BLUE}brew install supabase/tap/supabase${NC}"
-    echo ""
-    echo "Or with npm:"
-    echo "  ${BLUE}npm install -g supabase${NC}"
-    echo ""
-    exit 1
-fi
-echo -e "${GREEN}✓ Supabase CLI installed${NC}"
 
 echo ""
 
 # ============================================================
 # 2. Start or Check Supabase
 # ============================================================
-echo -e "${YELLOW}Checking Supabase status...${NC}"
+if [ "$SKIP_SUPABASE" -eq 0 ]; then
+    echo -e "${YELLOW}Checking Supabase status...${NC}"
 
-# Check if Supabase is already running
-if supabase status > /dev/null 2>&1; then
-    echo -e "${GREEN}✓ Supabase is already running${NC}"
-else
-    echo -e "${YELLOW}Starting Supabase local stack...${NC}"
-    echo "This includes: PostgreSQL, Auth, Storage, Realtime, Studio"
-    echo ""
+    # Check if Supabase is already running
+    if supabase status > /dev/null 2>&1; then
+        echo -e "${GREEN}✓ Supabase is already running${NC}"
+    else
+        echo -e "${YELLOW}Starting Supabase local stack...${NC}"
+        echo "This includes: PostgreSQL, Auth, Storage, Realtime, Studio"
+        echo ""
 
-    supabase start
+        supabase start
 
-    echo ""
-    echo -e "${GREEN}✓ Supabase started successfully${NC}"
+        echo ""
+        echo -e "${GREEN}✓ Supabase started successfully${NC}"
+    fi
 fi
 
 # ============================================================

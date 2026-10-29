@@ -1,27 +1,17 @@
 import React from 'react';
-import { ShieldCheck } from 'lucide-react';
-import { COMPARISON, SPRINT } from '@/lib/marketing/content';
+import { COMPARISON } from '@/lib/marketing/content';
 import Reveal from './Reveal';
 import { SectionHeading } from './ui';
-
-export function RiskReversal({ className = '' }: { className?: string }) {
-  return (
-    <div className={`flex items-start gap-4 rounded-2xl border border-accent/30 bg-accent-wash p-6 text-ink ${className}`}>
-      <ShieldCheck aria-hidden className="mt-0.5 h-6 w-6 shrink-0 text-accent" />
-      <p className="font-display text-xl leading-snug sm:text-2xl">{SPRINT.riskReversal}</p>
-    </div>
-  );
-}
 
 export default function ComparisonSection() {
   const last = COMPARISON.columns.length - 1;
   return (
     <section id="compare" aria-labelledby="compare-title">
       <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6 md:py-28">
-        <SectionHeading id="compare-title" eyebrow="Compare" title="A sprint vs. the usual options." />
+        <SectionHeading id="compare-title" eyebrow="Compare" title="SkalX vs. the usual options." />
         <Reveal className="mt-10 overflow-x-auto">
           <table className="w-full min-w-[340px] table-fixed border-collapse text-left text-[14px] sm:text-base">
-            <caption className="sr-only">Freelancer, agency and SkalX Sprint compared</caption>
+            <caption className="sr-only">Freelancer, agency and SkalX compared</caption>
             <colgroup>
               <col className="w-[28%]" />
               <col />
@@ -67,7 +57,6 @@ export default function ComparisonSection() {
             </tbody>
           </table>
         </Reveal>
-        <RiskReversal className="mt-10" />
       </div>
     </section>
   );

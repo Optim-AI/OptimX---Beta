@@ -16,7 +16,6 @@ const EMPTY: FreeAdRequest = {
   name: '',
   brandName: '',
   brandLink: '',
-  product: '',
   email: '',
   whatsapp: '',
   notes: '',
@@ -30,16 +29,17 @@ type FieldSpec = {
   autoComplete?: string;
   placeholder?: string;
   multiline?: boolean;
+  /** Spans both columns on wider screens. */
+  wide?: boolean;
 };
 
 const FIELDS: FieldSpec[] = [
   { name: 'name', label: 'Name', autoComplete: 'name' },
   { name: 'brandName', label: 'Brand name', autoComplete: 'organization' },
-  { name: 'brandLink', label: 'Website or Instagram handle', placeholder: 'yourbrand.com or @yourbrand' },
-  { name: 'product', label: 'Which product should we feature?', placeholder: 'e.g. Mango chilli trail mix, 200 g' },
+  { name: 'brandLink', label: 'Website or Instagram handle', placeholder: 'yourbrand.com or @yourbrand', wide: true },
   { name: 'email', label: 'Email', type: 'email', autoComplete: 'email' },
   { name: 'whatsapp', label: 'WhatsApp number', optional: true, type: 'tel', autoComplete: 'tel', placeholder: '+91' },
-  { name: 'notes', label: 'Anything we should know?', optional: true, multiline: true },
+  { name: 'notes', label: 'Anything we should know?', optional: true, multiline: true, wide: true },
 ];
 
 function trackFreeAdRequested() {
@@ -148,7 +148,7 @@ export default function FreeAdForm() {
           },
         };
         return (
-          <div key={f.name} className={f.multiline ? 'sm:col-span-2' : undefined}>
+          <div key={f.name} className={f.wide ? 'sm:col-span-2' : undefined}>
             <label htmlFor={id} className="mb-1.5 block text-[15px] font-medium">
               {f.label}
               {f.optional ? <span className="font-normal text-ink-mute"> (optional)</span> : null}

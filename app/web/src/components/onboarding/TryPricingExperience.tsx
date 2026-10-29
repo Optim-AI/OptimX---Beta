@@ -33,12 +33,6 @@ type Props = {
   continuing?: boolean;
   backLabel?: string;
   introCopy?: string;
-  /** Drop comparison rows that list any not-yet-live feature (public /pricing). */
-  hideComingSoonRows?: boolean;
-  /** Embedded on a page that already has an h1 (public /pricing). */
-  headingLevel?: 'h1' | 'h2';
-  title?: string;
-  subtitle?: string;
 };
 
 const DEFAULT_BACK_LABEL = '← Back to your poster';
@@ -94,16 +88,8 @@ export default function TryPricingExperience({
   continuing = false,
   backLabel = DEFAULT_BACK_LABEL,
   introCopy = DEFAULT_INTRO,
-  hideComingSoonRows = false,
-  headingLevel = 'h1',
-  title,
-  subtitle = 'Choose the plan that fits your marketing workflow.',
 }: Props) {
-  const Heading = headingLevel;
   const headingId = useId();
-  const comparisonRows = hideComingSoonRows
-    ? PLAN_COMPARISON_ROWS.filter((row) => !Object.values(row.values).includes('coming_soon'))
-    : PLAN_COMPARISON_ROWS;
   const [openRow, setOpenRow] = useState<string | null>(PLAN_COMPARISON_ROWS[0]?.id ?? null);
   const [trialDialogOpen, setTrialDialogOpen] = useState(false);
 
@@ -115,9 +101,9 @@ export default function TryPricingExperience({
     return (
       <div className="max-w-xl mx-auto mt-10 sm:mt-16">
         <div className="rounded-2xl p-8 text-center" style={glass}>
-          <Heading id={headingId} className="text-2xl sm:text-3xl font-normal mb-3">
+          <h1 id={headingId} className="text-2xl sm:text-3xl font-normal mb-3">
             You&apos;re already on the {activePlanName || 'SkalX'} plan.
-          </Heading>
+          </h1>
           <p className="mb-8 font-light" style={{ color: colors.mutedForeground }}>
             Plan changes aren&apos;t available here. Continue into your workspace.
           </p>
@@ -154,17 +140,17 @@ export default function TryPricingExperience({
       >
         Plans
       </p>
-      <Heading
+      <h1
         id={headingId}
         className="text-3xl sm:text-4xl font-normal text-center mb-3 leading-tight"
       >
-        {title ?? `Ready to create more${brandName ? ` for ${brandName}` : ''}?`}
-      </Heading>
+        Ready to create more{brandName ? ` for ${brandName}` : ''}?
+      </h1>
       <p
         className="text-center text-lg font-extralight max-w-2xl mx-auto mb-2"
         style={{ color: colors.mutedForeground }}
       >
-        {subtitle}
+        Choose the plan that fits your marketing workflow.
       </p>
       <p
         className="text-center text-sm max-w-xl mx-auto mb-10"
@@ -357,7 +343,7 @@ export default function TryPricingExperience({
               </tr>
             </thead>
             <tbody>
-              {comparisonRows.map((row) => (
+              {PLAN_COMPARISON_ROWS.map((row) => (
                 <tr
                   key={row.id}
                   style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
@@ -383,7 +369,7 @@ export default function TryPricingExperience({
 
         {/* Comparison — mobile accordion */}
         <div className="md:hidden space-y-2">
-          {comparisonRows.map((row) => {
+          {PLAN_COMPARISON_ROWS.map((row) => {
             const open = openRow === row.id;
             return (
               <div key={row.id} className="rounded-xl overflow-hidden" style={glass}>

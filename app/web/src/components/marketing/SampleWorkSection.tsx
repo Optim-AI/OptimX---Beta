@@ -24,7 +24,7 @@ export default function SampleWorkSection() {
         <SectionHeading
           id="samples-title"
           eyebrow="Sample work"
-          title="What a sprint looks like."
+          title="Made with SkalX."
           intro="Feed ads, story ads and short videos, built from product photos."
         />
       </div>

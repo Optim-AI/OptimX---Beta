@@ -395,16 +395,16 @@ const AiAdGeneratorLanding: React.FC = () => {
             className="text-4xl md:text-[46px] font-normal leading-tight mb-6"
             style={{ color: colors.foreground }}
           >
-            Rather have us make them?
+            Research first, then ads
           </h2>
           <p
             className="text-lg font-extralight leading-relaxed mb-6"
             style={{ color: colors.mutedForeground }}
           >
-            The Launch Creative Sprint is done for you: 12 static ads and 2 short video ads,
-            made with SkalX from your product photos and delivered in 7 days at a fixed price.{" "}
+            SkalX reads what customers say about you and your competitors, turns it into a plan,
+            then helps you create the ads and videos to match.{" "}
             <Link href="/free-ad" style={{ color: colors.primary }}>
-              Get one free ad first
+              Get a free ad first
             </Link>
             .
           </p>

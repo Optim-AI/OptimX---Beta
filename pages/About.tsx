@@ -3,7 +3,7 @@ import PageSeo from "@/components/seo/PageSeo";
 import MarketingLayout from "@/app/web/src/components/marketing/MarketingLayout";
 import { FounderContacts, FounderPhoto } from "@/app/web/src/components/marketing/FounderNote";
 import { ButtonLink, Eyebrow } from "@/app/web/src/components/marketing/ui";
-import { DELIVERABLES, FOUNDER, SPRINT } from "@/lib/marketing/content";
+import { FOUNDER, PILLARS, STARTING_PRICE } from "@/lib/marketing/content";
 
 /**
  * About — founder-led, no traction claims. We have no paying customers yet;
@@ -14,7 +14,7 @@ export default function About() {
     <MarketingLayout>
       <PageSeo
         title="About SkalX AI"
-        description="SkalX makes ad creatives for Indian D2C brands — 12 on-brand ads and 2 short video ads in 7 days. Built in Chennai by product designer AJ."
+        description="SkalX takes Indian D2C brands from market research to ready-to-post ad creatives. Built in Chennai by product designer AJ."
         path="/About"
       />
 
@@ -45,26 +45,23 @@ export default function About() {
               What we do
             </h2>
             <p className="mt-5 text-lg text-ink-soft">
-              D2C ads go stale in a week or two, and every new SKU, city or quick-commerce launch needs its own
-              set. We make those creatives for you with SkalX, our in-house tool, and deliver them in{" "}
-              {SPRINT.turnaround} for a fixed price.
+              D2C ads go stale in a week or two, and guessing what customers want wastes budget. SkalX reads what
+              customers say about you and your competitors, turns it into a plan, then helps you create the ads and
+              videos to match — on a monthly plan from {STARTING_PRICE}.
             </p>
           </div>
-          <div className="rounded-2xl border border-line bg-surface p-7 sm:p-9 md:col-span-6 md:col-start-7">
-            <h3 className="font-display text-2xl font-medium">The {SPRINT.name}</h3>
-            <ul className="mt-5 space-y-3">
-              {DELIVERABLES.map((d) => (
-                <li key={d.id} className="flex gap-3">
-                  <span aria-hidden className="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
-                  <span>{d.title}</span>
-                </li>
-              ))}
-            </ul>
-            <p className="mt-6 text-ink-soft">
-              {SPRINT.foundingPrice} {SPRINT.gstNote} for our first 3 founding brands ({SPRINT.price} {SPRINT.gstNote}{" "}
-              after that).
-            </p>
-          </div>
+          <ol className="grid gap-4 md:col-span-6 md:col-start-7">
+            {PILLARS.map((p, i) => (
+              <li key={p.id} className="rounded-2xl border border-line bg-surface p-6">
+                <p className="text-[13px] font-semibold uppercase tracking-[0.14em] text-accent">
+                  <span aria-hidden>0{i + 1} · </span>
+                  {p.title}
+                </p>
+                <h3 className="mt-1 font-display text-xl font-medium">{p.lead}</h3>
+                <p className="mt-2 text-ink-soft">{p.points.join(" · ")}</p>
+              </li>
+            ))}
+          </ol>
         </div>
       </section>
 
@@ -78,7 +75,7 @@ export default function About() {
               <h3 className="font-display text-2xl font-medium">Sudharsan AJ</h3>
               <p className="mt-1 text-sm uppercase tracking-[0.14em] text-ink-mute">Founder</p>
               <p className="mt-4 text-ink-soft">
-                Product designer. Works with every founding brand directly, from brief to final files.
+                Product designer. Designs SkalX and answers every message from founding brands personally.
               </p>
             </div>
             <div className="rounded-2xl border border-line bg-surface p-7">

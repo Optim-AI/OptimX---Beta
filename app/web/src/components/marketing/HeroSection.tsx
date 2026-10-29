@@ -1,6 +1,7 @@
 import React from 'react';
 import Image from 'next/image';
 import { ArrowRight, Play } from 'lucide-react';
+import { STARTING_PRICE } from '@/lib/marketing/content';
 import { ButtonLink, Eyebrow, PhoneFrame } from './ui';
 
 function Caption({ children }: { children: React.ReactNode }) {
@@ -92,22 +93,23 @@ export default function HeroSection() {
             id="hero-title"
             className="font-display text-[clamp(2.5rem,6vw,4.5rem)] font-medium leading-[1.02] tracking-[-0.02em]"
           >
-            Fresh ad creatives for your brand. Every week. Without an agency.
+            From market research to ready-to-post creatives. In minutes, not weeks.
           </h1>
         </div>
         <div className="md:col-span-5">
           <p className="max-w-xl text-lg text-ink-soft sm:text-xl">
-            Send us your product photos. In 7 days you get 12 on-brand ads and 2 short video ads, ready for
-            Instagram and Meta. Fixed price, no retainer.
+            SkalX reads what customers say about you and your competitors, turns it into a marketing plan, then
+            helps you create the posts, ads and videos to match. Make as many as your plan allows.
           </p>
           <div className="mt-8 flex flex-col gap-3 sm:flex-row md:flex-col md:items-start">
-            <ButtonLink href="/free-ad">Get one free ad for your brand</ButtonLink>
-            <ButtonLink href="#what-you-get" variant="secondary">
-              See what you get
+            <ButtonLink href="/free-ad">Get a free ad</ButtonLink>
+            <ButtonLink href="#audit" variant="secondary">
+              Get a free marketing audit
             </ButtonLink>
           </div>
           <p className="mt-5 text-sm text-ink-mute">
-            Built in Chennai <span aria-hidden>·</span> Delivered in 7 days <span aria-hidden>·</span> Pay half upfront
+            Built in Chennai <span aria-hidden>·</span> Plans from {STARTING_PRICE}/month <span aria-hidden>·</span> Cancel
+            anytime
           </p>
         </div>
         <div className="md:col-span-7 md:pt-2">

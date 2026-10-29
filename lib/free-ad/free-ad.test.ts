@@ -21,15 +21,14 @@ const valid = {
   name: 'Asha',
   brandName: 'Fictional Foods',
   brandLink: '@fictionalfoods',
-  product: 'Mango trail mix',
   email: ' Asha@Example.com ',
 };
 
-run('requires the five core fields', () => {
+run('requires the four core fields', () => {
   const res = validateFreeAdRequest({});
   assert.equal(res.ok, false);
   if (res.ok) return;
-  assert.deepEqual(Object.keys(res.errors).sort(), ['brandLink', 'brandName', 'email', 'name', 'product']);
+  assert.deepEqual(Object.keys(res.errors).sort(), ['brandLink', 'brandName', 'email', 'name']);
 });
 
 run('accepts a valid request and normalizes email; optional fields may be empty', () => {

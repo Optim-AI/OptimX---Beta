@@ -43,8 +43,8 @@ export const AI_AD_GENERATOR_FAQS = [
       "You download ready-to-use files and post or run them on Instagram, Meta or anywhere you advertise. SkalX does not post or run ads for you.",
   },
   {
-    question: "Can SkalX make the creatives for me?",
+    question: "Does SkalX do market research too?",
     answer:
-      "Yes. The Launch Creative Sprint is done for you: 12 static ads and 2 short video ads in 7 days, for a fixed price. You can request one free ad first.",
+      "Yes. SkalX looks at your website, public customer reviews and competitor ads, then uses that to shape campaign ideas and hooks before you create.",
   },
 ] as const;

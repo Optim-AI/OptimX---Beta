@@ -7,7 +7,6 @@ export const FREE_AD_LIMITS = {
   name: 120,
   brandName: 160,
   brandLink: 300,
-  product: 300,
   email: 254,
   whatsapp: 22,
   notes: 2000,
@@ -17,7 +16,6 @@ export type FreeAdField =
   | 'name'
   | 'brandName'
   | 'brandLink'
-  | 'product'
   | 'email'
   | 'whatsapp'
   | 'notes';
@@ -38,7 +36,6 @@ export function validateFreeAdRequest(body: unknown): FreeAdValidation {
     name: trim(raw.name),
     brandName: trim(raw.brandName),
     brandLink: trim(raw.brandLink),
-    product: trim(raw.product),
     email: trim(raw.email).toLowerCase(),
     whatsapp: trim(raw.whatsapp),
     notes: trim(raw.notes),
@@ -48,7 +45,6 @@ export function validateFreeAdRequest(body: unknown): FreeAdValidation {
   if (!value.name) errors.name = 'Enter your name.';
   if (!value.brandName) errors.brandName = 'Enter your brand name.';
   if (!value.brandLink) errors.brandLink = 'Add your website or Instagram handle.';
-  if (!value.product) errors.product = 'Tell us which product to feature.';
   if (!value.email) errors.email = 'Enter your email.';
   else if (!EMAIL_RE.test(value.email)) errors.email = 'Enter a valid email address.';
   if (value.whatsapp && !WHATSAPP_RE.test(value.whatsapp)) {

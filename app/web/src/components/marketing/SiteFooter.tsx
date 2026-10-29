@@ -7,7 +7,7 @@ import { SITE_SUPPORT_EMAIL } from '@/lib/seo/site';
 // Same destinations as the legacy footer; section links point at the new homepage sections.
 const FOOTER_LINKS: Record<string, { name: string; href: string }[]> = {
   Product: [
-    { name: 'Launch Creative Sprint', href: '/#what-you-get' },
+    { name: 'What SkalX does', href: '/#what-you-get' },
     { name: 'AI Ad Generator', href: '/ai-ad-generator' },
     { name: 'How It Works', href: '/#how-it-works' },
     { name: 'Pricing', href: '/pricing' },
@@ -37,7 +37,7 @@ export default function SiteFooter() {
         <div className="grid grid-cols-2 gap-10 md:grid-cols-12">
           <div className="col-span-2 md:col-span-4">
             <Image src="/images/SkalX_Logo.png" alt="SkalX" width={99} height={28} className="h-7 w-auto" />
-            <p className="mt-4 max-w-xs text-ink-soft">Ad creatives for D2C brands, delivered in 7 days. Built in Chennai.</p>
+            <p className="mt-4 max-w-xs text-ink-soft">Market research to ready-to-post creatives, for D2C brands. Built in Chennai.</p>
             <a href={`mailto:${SITE_SUPPORT_EMAIL}`} className="mt-3 inline-block text-ink underline underline-offset-4">
               {SITE_SUPPORT_EMAIL}
             </a>

@@ -22,7 +22,7 @@ import FaqSection, { faqJsonLd } from "@/app/web/src/components/marketing/FaqSec
 import FinalCtaSection from "@/app/web/src/components/marketing/FinalCtaSection";
 
 /**
- * Public marketing homepage — the Launch Creative Sprint for D2C brands.
+ * Public marketing homepage — research, strategy and creatives for D2C brands (self-serve).
  * All sections render on the server so crawlers get real copy.
  * Honesty rules: no client claims, results, logos or not-yet-live features.
  */
@@ -61,8 +61,8 @@ const Home: React.FC = () => {
       <FinalCtaSection />
       <noscript>
         <p style={{ padding: "1rem", textAlign: "center" }}>
-          {SITE_NAME} makes ad creatives for D2C brands: 12 on-brand ads and 2 short video ads in 7
-          days, fixed price. Request one free ad at {SITE_ORIGIN}/free-ad.
+          {SITE_NAME} takes D2C brands from market research to ready-to-post creatives, on a monthly
+          plan. Request one free ad at {SITE_ORIGIN}/free-ad.
         </p>
       </noscript>
     </MarketingLayout>

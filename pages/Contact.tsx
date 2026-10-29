@@ -16,7 +16,7 @@ export default function Contact() {
     <MarketingLayout>
       <PageSeo
         title="Contact SkalX AI"
-        description="Questions about the Launch Creative Sprint, pricing or the self-serve plans? Write to SkalX and we'll reply within one working day."
+        description="Questions about SkalX, pricing or plans? Write to us and we'll reply within one working day."
         path="/Contact"
       />
       <section aria-labelledby="contact-title" className="mx-auto max-w-6xl px-4 pb-20 pt-10 sm:px-6 md:pb-28 md:pt-16">
@@ -30,7 +30,7 @@ export default function Contact() {
               Talk to us.
             </h1>
             <p className="mt-5 text-lg text-ink-soft">
-              Questions about the sprint, pricing or the self-serve plans? Send a message and AJ will reply by email
+              Questions about SkalX, pricing or plans? Send a message and AJ will reply by email
               within one working day.
             </p>
             <dl className="mt-10 space-y-5 border-t border-line pt-8">

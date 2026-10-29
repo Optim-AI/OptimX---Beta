@@ -1,5 +1,4 @@
 import React from 'react';
-import Link from 'next/link';
 import { Plus } from 'lucide-react';
 import { FAQS } from '@/lib/marketing/content';
 import { SectionHeading } from './ui';
@@ -30,14 +29,6 @@ export default function FaqSection() {
               </summary>
               <p className="max-w-2xl pb-6 text-ink-soft">
                 {f.a}
-                {'link' in f ? (
-                  <>
-                    {' '}
-                    <Link href={f.link.href} className="font-medium text-ink underline underline-offset-4">
-                      {f.link.label}
-                    </Link>
-                  </>
-                ) : null}
               </p>
             </details>
           ))}
