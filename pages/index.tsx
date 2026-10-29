@@ -1,7 +1,5 @@
 // pages/index.tsx
 import React from "react";
-import dynamic from "next/dynamic";
-import { HeaderSkeleton, HeroSkeleton } from "@/app/web/src/components/landing-skeletons";
 import PageSeo from "@/components/seo/PageSeo";
 import {
   absoluteUrl,
@@ -10,93 +8,64 @@ import {
   SITE_NAME,
   SITE_ORIGIN,
 } from "@/lib/seo/site";
+import MarketingLayout from "@/app/web/src/components/marketing/MarketingLayout";
+import HeroSection from "@/app/web/src/components/marketing/HeroSection";
+import ProblemSection from "@/app/web/src/components/marketing/ProblemSection";
+import HowItWorksSection from "@/app/web/src/components/marketing/HowItWorksSection";
+import WhatYouGetSection from "@/app/web/src/components/marketing/WhatYouGetSection";
+import SampleWorkSection from "@/app/web/src/components/marketing/SampleWorkSection";
+import ComparisonSection from "@/app/web/src/components/marketing/ComparisonSection";
+import PricingTeaser from "@/app/web/src/components/marketing/PricingTeaser";
+import FounderNote from "@/app/web/src/components/marketing/FounderNote";
+import AuditBand from "@/app/web/src/components/marketing/AuditBand";
+import FaqSection, { faqJsonLd } from "@/app/web/src/components/marketing/FaqSection";
+import FinalCtaSection from "@/app/web/src/components/marketing/FinalCtaSection";
 
 /**
- * Dynamically import client components.
- * Content sections use SSR so Google receives real titles, H1, and copy.
- * Parallax stays client-only (window/scroll dependent).
- */
-
-const Header = dynamic(() => import("../app/web/src/components/Header"), {
-  ssr: true,
-  loading: HeaderSkeleton,
-});
-const ParallaxBackground = dynamic(
-  () => import("../app/web/src/components/ParallaxBackground"),
-  { ssr: false }
-);
-const Hero = dynamic(() => import("../app/web/src/components/Hero"), {
-  ssr: true,
-  loading: HeroSkeleton,
-});
-const CreativeShowcase = dynamic(
-  () => import("../app/web/src/components/CreativeShowcase"),
-  { ssr: true }
-);
-const HowCreditsWork = dynamic(() => import("../app/web/src/components/HowCreditsWork"), {
-  ssr: true,
-});
-const ProductSection = dynamic(() => import("../app/web/src/components/ProductSection"), {
-  ssr: true,
-});
-const BuiltFor = dynamic(() => import("../app/web/src/components/BuiltFor"), { ssr: true });
-const AboutPreview = dynamic(() => import("../app/web/src/components/AboutPreview"), {
-  ssr: true,
-});
-const FAQ = dynamic(() => import("../app/web/src/components/FAQ"), { ssr: true });
-const FinalCTA = dynamic(() => import("../app/web/src/components/FinalCTA"), { ssr: false });
-const Footer = dynamic(() => import("../app/web/src/components/Footer"), { ssr: true });
-
-/**
- * Public marketing homepage.
- * Authenticated users stay on the marketing page; Try Now / Login handle routing.
+ * Public marketing homepage — the Launch Creative Sprint for D2C brands.
+ * All sections render on the server so crawlers get real copy.
+ * Honesty rules: no client claims, results, logos or not-yet-live features.
  */
 const Home: React.FC = () => {
   return (
-    <div className="min-h-screen relative" style={{ backgroundColor: "#121212" }}>
+    <MarketingLayout>
       <PageSeo
         title={DEFAULT_TITLE}
         description={DEFAULT_DESCRIPTION}
         path="/"
         includeSiteGraph
-        jsonLd={{
-          "@type": "WebPage",
-          "@id": `${SITE_ORIGIN}/#webpage`,
-          url: absoluteUrl("/"),
-          name: DEFAULT_TITLE,
-          description: DEFAULT_DESCRIPTION,
-          isPartOf: { "@id": `${SITE_ORIGIN}/#website` },
-          about: { "@id": `${SITE_ORIGIN}/#organization` },
-          inLanguage: "en",
-        }}
+        jsonLd={[
+          {
+            "@type": "WebPage",
+            "@id": `${SITE_ORIGIN}/#webpage`,
+            url: absoluteUrl("/"),
+            name: DEFAULT_TITLE,
+            description: DEFAULT_DESCRIPTION,
+            isPartOf: { "@id": `${SITE_ORIGIN}/#website` },
+            about: { "@id": `${SITE_ORIGIN}/#organization` },
+            inLanguage: "en",
+          },
+          faqJsonLd,
+        ]}
       />
-      <ParallaxBackground />
-      <Header />
-      <main className="relative z-10">
-        <Hero />
-        <CreativeShowcase />
-        <HowCreditsWork />
-        <ProductSection />
-        <BuiltFor />
-        <AboutPreview />
-        <FAQ />
-        <FinalCTA />
-      </main>
-      <Footer />
-      {/*
-        Noscript fallback: homepage UI is JS-enhanced; ensure brand + product
-        summary remains available when scripts are disabled.
-      */}
+      <HeroSection />
+      <ProblemSection />
+      <HowItWorksSection />
+      <WhatYouGetSection />
+      <SampleWorkSection />
+      <ComparisonSection />
+      <PricingTeaser />
+      <FounderNote />
+      <AuditBand />
+      <FaqSection />
+      <FinalCtaSection />
       <noscript>
-        <div style={{ padding: "2rem", maxWidth: 720, margin: "0 auto", color: "#fff" }}>
-          <p>
-            {SITE_NAME} makes ad creatives for D2C brands: 12 on-brand ads and 2 short video ads
-            in 7 days, fixed price. Visit {SITE_ORIGIN} with JavaScript enabled for the full
-            experience, or go to {SITE_ORIGIN}/free-ad to request one free ad.
-          </p>
-        </div>
+        <p style={{ padding: "1rem", textAlign: "center" }}>
+          {SITE_NAME} makes ad creatives for D2C brands: 12 on-brand ads and 2 short video ads in 7
+          days, fixed price. Request one free ad at {SITE_ORIGIN}/free-ad.
+        </p>
       </noscript>
-    </div>
+    </MarketingLayout>
   );
 };
 

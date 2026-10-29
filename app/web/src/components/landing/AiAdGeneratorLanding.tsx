@@ -395,15 +395,18 @@ const AiAdGeneratorLanding: React.FC = () => {
             className="text-4xl md:text-[46px] font-normal leading-tight mb-6"
             style={{ color: colors.foreground }}
           >
-            Your AI marketing partner for ad creatives
+            Rather have us make them?
           </h2>
           <p
             className="text-lg font-extralight leading-relaxed mb-6"
             style={{ color: colors.mutedForeground }}
           >
-            SkalX AI helps growing brands create marketing creatives without expanding headcount.
-            It combines brand understanding with creative generation so you can move from brand
-            context to posters, ad creatives, and short video ads faster.
+            The Launch Creative Sprint is done for you: 12 static ads and 2 short video ads,
+            made with SkalX from your product photos and delivered in 7 days at a fixed price.{" "}
+            <Link href="/free-ad" style={{ color: colors.primary }}>
+              Get one free ad first
+            </Link>
+            .
           </p>
           <p className="text-sm" style={{ color: colors.mutedForeground }}>
             Learn more on the{" "}

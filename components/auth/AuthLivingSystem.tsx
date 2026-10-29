@@ -3,54 +3,40 @@
 import React, { useEffect, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 
-const CREATIVES = [
+type ShowcaseCreative = {
+  kind: "image" | "video";
+  src: string;
+  title: string;
+  meta: string;
+  width: number;
+  height: number;
+};
+
+// Fictional-brand samples only — never real brand or client work.
+const CREATIVES: ShowcaseCreative[] = [
   {
-    kind: "image" as const,
-    src: "/images/auth/bombay-legend-365.jpg",
-    title: "Legend 365",
-    meta: "Product campaign",
-    width: 796,
-    height: 1024,
+    kind: "image",
+    src: "/images/samples/sample-feed-01.png",
+    title: "Sample work",
+    meta: "Fictional brand · Feed ad",
+    width: 1080,
+    height: 1350,
   },
   {
-    kind: "image" as const,
-    src: "/images/auth/plum-night-serum.jpg",
-    title: "Night Serum",
-    meta: "Beauty campaign",
-    width: 1024,
-    height: 584,
+    kind: "image",
+    src: "/images/samples/sample-wide-01.png",
+    title: "Sample work",
+    meta: "Fictional brand · Banner",
+    width: 1920,
+    height: 1080,
   },
   {
-    kind: "video" as const,
-    src: "/images/auth/creative-portrait.mp4",
-    title: "Campaign film",
-    meta: "Vertical video",
-    width: 480,
-    height: 848,
-  },
-  {
-    kind: "video" as const,
-    src: "/images/auth/creative-wide-1.mp4",
-    title: "Campaign film",
-    meta: "Video",
-    width: 848,
-    height: 480,
-  },
-  {
-    kind: "video" as const,
-    src: "/images/auth/creative-wide-2.mp4",
-    title: "Campaign film",
-    meta: "Video",
-    width: 848,
-    height: 480,
-  },
-  {
-    kind: "video" as const,
-    src: "/images/auth/creative-wide-3.mp4",
-    title: "Campaign film",
-    meta: "Video",
-    width: 848,
-    height: 480,
+    kind: "image",
+    src: "/images/samples/sample-story-02.png",
+    title: "Sample work",
+    meta: "Fictional brand · Story ad",
+    width: 1080,
+    height: 1920,
   },
 ];
 

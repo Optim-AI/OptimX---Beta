@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useId, useRef, useState } from 'react';
-import colors from '@/lib/ui/colors';
 import { SITE_SUPPORT_EMAIL } from '@/lib/seo/site';
 import {
   FREE_AD_LIMITS,
@@ -49,15 +48,10 @@ function trackFreeAdRequested() {
     .catch(() => undefined);
 }
 
-const inputStyle = (invalid: boolean): React.CSSProperties => ({
-  width: '100%',
-  background: 'hsl(0 0% 8%)',
-  color: colors.foreground,
-  border: `1px solid ${invalid ? colors.destructive : 'rgba(255,255,255,0.18)'}`,
-  borderRadius: 12,
-  padding: '12px 14px',
-  fontSize: 16,
-});
+const fieldClass = (invalid: boolean) =>
+  `block w-full rounded-xl border bg-surface px-4 py-3 text-base text-ink placeholder:text-ink-mute disabled:opacity-60 ${
+    invalid ? 'border-danger' : 'border-ink/25 hover:border-ink/50'
+  }`;
 
 /** Free-ad request form. Emails the founder via /api/free-ad; stores nothing. */
 export default function FreeAdForm() {
@@ -120,25 +114,20 @@ export default function FreeAdForm() {
 
   if (done) {
     return (
-      <div
-        ref={successRef}
-        tabIndex={-1}
-        role="status"
-        className="rounded-2xl p-8 text-center outline-none"
-        style={{ background: 'hsl(0 0% 12%)', border: '1px solid rgba(255,255,255,0.12)' }}
-      >
-        <p className="text-xl leading-relaxed" style={{ color: colors.foreground }}>
-          Got it. I&apos;ll send your free ad within 2 working days.
-        </p>
-        <p className="mt-2 text-lg" style={{ color: colors.mutedForeground }}>
-          — AJ
-        </p>
+      <div ref={successRef} tabIndex={-1} role="status" className="rounded-xl bg-accent-wash p-8 text-center text-ink outline-none">
+        <p className="font-display text-2xl leading-snug">Got it. I&apos;ll send your free ad within 2 working days.</p>
+        <p className="mt-2 text-lg text-ink-soft">— AJ</p>
       </div>
     );
   }
 
   return (
-    <form onSubmit={onSubmit} noValidate className="space-y-5" aria-describedby={formError ? idFor('form-error') : undefined}>
+    <form
+      onSubmit={onSubmit}
+      noValidate
+      className="grid gap-5 text-ink sm:grid-cols-2"
+      aria-describedby={formError ? idFor('form-error') : undefined}
+    >
       {FIELDS.map((f) => {
         const err = errors[f.name];
         const id = idFor(f.name);
@@ -152,30 +141,25 @@ export default function FreeAdForm() {
           'aria-required': !f.optional,
           disabled: submitting,
           placeholder: f.placeholder,
-          className: 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[hsl(213_100%_65%)]',
-          style: inputStyle(Boolean(err)),
+          className: fieldClass(Boolean(err)),
           onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
             setValues((v) => ({ ...v, [f.name]: e.target.value }));
             if (err) setErrors((prev) => ({ ...prev, [f.name]: undefined }));
           },
         };
         return (
-          <div key={f.name}>
-            <label htmlFor={id} className="block text-sm font-medium mb-2" style={{ color: colors.foreground }}>
+          <div key={f.name} className={f.multiline ? 'sm:col-span-2' : undefined}>
+            <label htmlFor={id} className="mb-1.5 block text-[15px] font-medium">
               {f.label}
-              {f.optional ? (
-                <span className="font-normal" style={{ color: colors.mutedForeground }}>
-                  {' '}(optional)
-                </span>
-              ) : null}
+              {f.optional ? <span className="font-normal text-ink-mute"> (optional)</span> : null}
             </label>
             {f.multiline ? (
-              <textarea {...common} rows={4} />
+              <textarea {...common} rows={3} />
             ) : (
               <input {...common} type={f.type || 'text'} autoComplete={f.autoComplete} inputMode={f.type === 'tel' ? 'tel' : undefined} />
             )}
             {err ? (
-              <p id={`${id}-error`} className="mt-1.5 text-sm" style={{ color: 'hsl(0 90% 70%)' }}>
+              <p id={`${id}-error`} className="mt-1.5 text-sm text-danger">
                 {err}
               </p>
             ) : null}
@@ -198,37 +182,33 @@ export default function FreeAdForm() {
       </div>
 
       {formError ? (
-        <p id={idFor('form-error')} role="alert" className="text-sm" style={{ color: 'hsl(0 90% 70%)' }}>
+        <p id={idFor('form-error')} role="alert" className="text-sm text-danger sm:col-span-2">
           {formError}
         </p>
       ) : null}
 
-      <button
-        type="submit"
-        disabled={submitting}
-        className="w-full h-12 rounded-xl text-base font-medium disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-        style={{ background: colors.gradientPrimary, color: colors.primaryForeground, border: 'none' }}
-      >
-        {submitting ? 'Sending…' : 'Get my free ad'}
-      </button>
-
-      <p className="text-sm text-center" style={{ color: colors.mutedForeground }}>
-        No payment, no signup. Made for you by the founder.
-      </p>
-
-      {WHATSAPP_NUMBER ? (
-        <p className="text-sm text-center">
-          <a
-            href={`https://wa.me/${WHATSAPP_NUMBER}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="underline"
-            style={{ color: colors.foreground }}
-          >
-            Prefer WhatsApp? Chat with us
-          </a>
-        </p>
-      ) : null}
+      <div className="sm:col-span-2">
+        <button
+          type="submit"
+          disabled={submitting}
+          className="min-h-12 w-full rounded-full bg-accent px-6 text-base font-medium text-white hover:bg-accent-deep disabled:opacity-60"
+        >
+          {submitting ? 'Sending…' : 'Get my free ad'}
+        </button>
+        <p className="mt-3 text-center text-sm text-ink-soft">No payment, no signup. Made for you by the founder.</p>
+        {WHATSAPP_NUMBER ? (
+          <p className="mt-2 text-center text-sm">
+            <a
+              href={`https://wa.me/${WHATSAPP_NUMBER}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-medium text-ink underline underline-offset-4"
+            >
+              Prefer WhatsApp? Chat with us
+            </a>
+          </p>
+        ) : null}
+      </div>
     </form>
   );
 }

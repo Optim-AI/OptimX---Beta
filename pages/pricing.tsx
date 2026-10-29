@@ -1,19 +1,19 @@
 import React, { useEffect, useState } from 'react';
-import dynamic from 'next/dynamic';
 import { useRouter } from 'next/router';
 import PageSeo from '@/components/seo/PageSeo';
-import { HeaderSkeleton } from '@/app/web/src/components/landing-skeletons';
 import TryPricingExperience from '@/app/web/src/components/onboarding/TryPricingExperience';
 import { supabase } from '@/auth/supabase/client';
 import { authFetch } from '@/lib/utils';
 import { isMarketingPlanId, type MarketingPlanId } from '@/lib/billing/marketing-plans';
 import { trackAuditEvent } from '@/lib/audit/analytics';
 
-const Header = dynamic(() => import('../app/web/src/components/Header'), { ssr: true, loading: HeaderSkeleton });
-const Footer = dynamic(() => import('../app/web/src/components/Footer'), { ssr: true });
+import MarketingLayout from '@/app/web/src/components/marketing/MarketingLayout';
+import SprintCard from '@/app/web/src/components/marketing/SprintCard';
+import { Eyebrow } from '@/app/web/src/components/marketing/ui';
 
 /**
- * Public plans page.
+ * Public pricing: done-for-you Launch Creative Sprint first, self-serve plans below.
+ * Self-serve selection/checkout logic below is unchanged.
  * After a free audit: auth → /pricing?from=audit → home (or checkout).
  * Selection hands off to /subscribe; nothing here grants access.
  */
@@ -61,6 +61,10 @@ export default function PricingPage() {
     };
   }, [router.isReady, fromAudit, claimed]);
 
+  useEffect(() => {
+    if (fromAudit) document.getElementById('self-serve')?.scrollIntoView();
+  }, [fromAudit]);
+
   const continueToCheckout = (planId: MarketingPlanId) => {
     if (!isMarketingPlanId(planId)) return;
     setContinuing(true);
@@ -73,14 +77,30 @@ export default function PricingPage() {
   };
 
   return (
-    <div className="min-h-screen relative" style={{ backgroundColor: '#121212' }}>
+    <MarketingLayout>
       <PageSeo
         title="Pricing"
-        description="Plans for creating posters, videos, and campaigns with SkalX AI."
+        description="Launch Creative Sprint: 12 ad creatives + 2 video ads in 7 days for ₹9,999 + GST (founding price). Or make creatives yourself from ₹3,999/month + GST."
         path="/pricing"
       />
-      <Header />
-      <main className="relative z-10 px-4 sm:px-6 pt-28 pb-16 text-white">
+      <section aria-labelledby="pricing-heading" className="mx-auto max-w-6xl px-4 pb-20 pt-10 sm:px-6 md:pb-28 md:pt-16">
+        <div className="max-w-2xl">
+          <Eyebrow>Pricing</Eyebrow>
+          <h1 id="pricing-heading" className="font-display text-[clamp(2.5rem,5vw,4rem)] font-medium leading-[1.04] tracking-[-0.02em]">
+            Done for you, at a fixed price.
+          </h1>
+          <p className="mt-5 text-lg text-ink-soft sm:text-xl">
+            The Launch Creative Sprint is our main offer. Prefer to make creatives yourself? The self-serve plans
+            are below.
+          </p>
+        </div>
+        <div className="mt-12">
+          <SprintCard variant="full" />
+        </div>
+        <p className="mt-6 text-sm text-ink-soft">All prices are + 18% GST.</p>
+      </section>
+
+      <section id="self-serve" aria-label="Self-serve plans" className="scroll-mt-16 bg-ink px-4 py-16 text-paper sm:px-6 md:py-24">
         <TryPricingExperience
           brandName=""
           selectedPlanId={selectedPlanId}
@@ -92,14 +112,16 @@ export default function PricingPage() {
           continuing={continuing}
           backLabel="← Back to home"
           hideComingSoonRows
+          headingLevel="h2"
+          title="Prefer to do it yourself?"
+          subtitle="Self-serve plans for teams who want to make creatives with SkalX."
           introCopy={
             fromAudit
               ? 'Your free audit is saved to your account. Choose a plan to create campaigns — or head home anytime.'
-              : 'Have a website? Start with a free marketing audit on the homepage — no card needed.'
+              : 'Prices are per month + 18% GST.'
           }
         />
-      </main>
-      <Footer />
-    </div>
+      </section>
+    </MarketingLayout>
   );
 }

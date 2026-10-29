@@ -64,6 +64,8 @@ const nextConfig = {
       securityHeaders,
       { source: '/images/:path*', headers: [immutable] },
       { source: '/videos/:path*', headers: [immutable] },
+      // Font files are versioned by filename (e.g. -v5); rename when replacing.
+      { source: '/fonts/:path*', headers: [immutable] },
       { source: '/_next/static/:path*', headers: [immutable] },
     ];
   },

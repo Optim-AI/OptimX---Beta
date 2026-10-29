@@ -35,6 +35,10 @@ type Props = {
   introCopy?: string;
   /** Drop comparison rows that list any not-yet-live feature (public /pricing). */
   hideComingSoonRows?: boolean;
+  /** Embedded on a page that already has an h1 (public /pricing). */
+  headingLevel?: 'h1' | 'h2';
+  title?: string;
+  subtitle?: string;
 };
 
 const DEFAULT_BACK_LABEL = '← Back to your poster';
@@ -91,7 +95,11 @@ export default function TryPricingExperience({
   backLabel = DEFAULT_BACK_LABEL,
   introCopy = DEFAULT_INTRO,
   hideComingSoonRows = false,
+  headingLevel = 'h1',
+  title,
+  subtitle = 'Choose the plan that fits your marketing workflow.',
 }: Props) {
+  const Heading = headingLevel;
   const headingId = useId();
   const comparisonRows = hideComingSoonRows
     ? PLAN_COMPARISON_ROWS.filter((row) => !Object.values(row.values).includes('coming_soon'))
@@ -107,9 +115,9 @@ export default function TryPricingExperience({
     return (
       <div className="max-w-xl mx-auto mt-10 sm:mt-16">
         <div className="rounded-2xl p-8 text-center" style={glass}>
-          <h1 id={headingId} className="text-2xl sm:text-3xl font-normal mb-3">
+          <Heading id={headingId} className="text-2xl sm:text-3xl font-normal mb-3">
             You&apos;re already on the {activePlanName || 'SkalX'} plan.
-          </h1>
+          </Heading>
           <p className="mb-8 font-light" style={{ color: colors.mutedForeground }}>
             Plan changes aren&apos;t available here. Continue into your workspace.
           </p>
@@ -146,17 +154,17 @@ export default function TryPricingExperience({
       >
         Plans
       </p>
-      <h1
+      <Heading
         id={headingId}
         className="text-3xl sm:text-4xl font-normal text-center mb-3 leading-tight"
       >
-        Ready to create more{brandName ? ` for ${brandName}` : ''}?
-      </h1>
+        {title ?? `Ready to create more${brandName ? ` for ${brandName}` : ''}?`}
+      </Heading>
       <p
         className="text-center text-lg font-extralight max-w-2xl mx-auto mb-2"
         style={{ color: colors.mutedForeground }}
       >
-        Choose the plan that fits your marketing workflow.
+        {subtitle}
       </p>
       <p
         className="text-center text-sm max-w-xl mx-auto mb-10"

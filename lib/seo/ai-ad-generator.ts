@@ -40,6 +40,11 @@ export const AI_AD_GENERATOR_FAQS = [
   {
     question: "Which platforms can I use my creatives on?",
     answer:
-      "Export campaign-ready assets and use them across the channels you already advertise on. Meta and other integrations continue to expand inside the product.",
+      "You download ready-to-use files and post or run them on Instagram, Meta or anywhere you advertise. SkalX does not post or run ads for you.",
+  },
+  {
+    question: "Can SkalX make the creatives for me?",
+    answer:
+      "Yes. The Launch Creative Sprint is done for you: 12 static ads and 2 short video ads in 7 days, for a fixed price. You can request one free ad first.",
   },
 ] as const;

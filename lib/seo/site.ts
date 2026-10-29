@@ -36,6 +36,7 @@ export const SITE_SAME_AS = [
 export const INDEXABLE_PATHS = [
   "/",
   "/free-ad",
+  "/pricing",
   "/ai-ad-generator",
   "/About",
   "/Contact",

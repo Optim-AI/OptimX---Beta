@@ -13,11 +13,10 @@ const Header: React.FC = () => {
   const pathname = router.pathname;
 
   const navItems = [
-    { name: 'About', href: '/#about', type: 'section' as const },
-    { name: 'How It Works', href: '/#how-it-works', type: 'section' as const },
-    { name: 'Product', href: '/#product', type: 'section' as const },
-    { name: 'FAQ', href: '/#faq', type: 'section' as const },
-    { name: 'Contact', href: '/Contact', type: 'route' as const },
+    { name: 'How it works', href: '/#how-it-works', type: 'section' as const },
+    { name: 'What you get', href: '/#what-you-get', type: 'section' as const },
+    { name: 'Pricing', href: '/pricing', type: 'route' as const },
+    { name: 'About', href: '/About', type: 'route' as const },
   ];
 
   const handleSectionClick = (

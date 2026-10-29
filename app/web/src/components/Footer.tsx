@@ -18,11 +18,11 @@ const Footer: React.FC = () => {
 
   const footerLinks: Record<string, LinkItem[]> = {
     Product: [
+      { name: 'Launch Creative Sprint', href: '/#what-you-get', type: 'section' },
       { name: 'AI Ad Generator', href: '/ai-ad-generator', type: 'route' },
-      { name: 'AI Poster Generator', href: '/#product', type: 'section' },
-      { name: 'AI Video Ads', href: '/#product', type: 'section' },
       { name: 'How It Works', href: '/#how-it-works', type: 'section' },
-      { name: 'Use Cases', href: '/#built-for', type: 'section' },
+      { name: 'Pricing', href: '/pricing', type: 'route' },
+      { name: 'Get a free ad', href: '/free-ad', type: 'route' },
     ],
     Company: [
       { name: 'About SkalX AI', href: '/About', type: 'route' },

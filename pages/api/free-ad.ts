@@ -3,29 +3,13 @@ import { getClientIp, hashClientIp } from '@/lib/audit/rate-limit';
 import { validateFreeAdRequest } from '@/lib/free-ad/validate';
 import { notifyFreeAdRequest } from '@/lib/free-ad/notify';
 import { SITE_SUPPORT_EMAIL } from '@/lib/seo/site';
+import { isRateLimited } from '@/lib/marketing/rate-limit';
 
 /**
  * POST /api/free-ad
  * Emails a free-ad request to the founder inbox. Stores nothing.
  * Rate limiting is best-effort and per server instance (no database by design).
  */
-const WINDOW_MS = 3600_000;
-const MAX_PER_WINDOW = 5;
-const recent = new Map<string, number[]>();
-
-function rateLimited(key: string): boolean {
-  const now = Date.now();
-  const hits = (recent.get(key) || []).filter((t) => now - t < WINDOW_MS);
-  if (hits.length >= MAX_PER_WINDOW) {
-    recent.set(key, hits);
-    return true;
-  }
-  hits.push(now);
-  recent.set(key, hits);
-  if (recent.size > 5000) recent.clear();
-  return false;
-}
-
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
@@ -44,7 +28,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(400).json({ ok: false, error: 'Please fix the highlighted fields.', errors: validated.errors });
   }
 
-  if (rateLimited(hashClientIp(getClientIp(req)))) {
+  if (isRateLimited(`free-ad:${hashClientIp(getClientIp(req))}`)) {
     res.setHeader('Retry-After', '3600');
     return res.status(429).json({
       ok: false,

@@ -17,6 +17,8 @@ const LiquidGlassAnimator: React.FC = () => {
 
     const turbulence = document.querySelector('#liquid-turbulence') as SVGElement | null;
     if (!turbulence) return;
+    // Skip the per-frame loop when nothing on the page uses the filter.
+    if (!document.querySelector('[style*="url(#liquid)"]')) return;
 
     const animate = () => {
       frameRef.current += 0.005;

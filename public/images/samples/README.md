@@ -18,14 +18,16 @@ sample at the same filename and size. PNG or JPG is fine; keep each file under ~
 | `sample-story-01.png` | 1080 × 1920 | 9:16 | Story ad, any of the brands above |
 | `sample-story-02.png` | 1080 × 1920 | 9:16 | Story ad, a different brand |
 | `sample-video-01.png` | 1080 × 1920 | 9:16 | Still frame from a 15-second video ad (poster image) |
+| `sample-wide-01.png` | 1920 × 1080 | 16:9 | Wide banner; shown on the sign-in/sign-up showcase |
 
-Phase 2 will also need (not yet referenced by any page):
+Homepage hero — one fictional product shown four ways:
 
 | File | Size (px) | Ratio | What it should show |
 | --- | --- | --- | --- |
-| `hero-before.png` | 1080 × 1350 | 4:5 | Plain product photo, before (fictional brand) |
+| `hero-before.png` | 1080 × 1350 | 4:5 | Plain product photo, before |
 | `hero-feed.png` | 1080 × 1350 | 4:5 | Same product as a finished feed ad |
 | `hero-story.png` | 1080 × 1920 | 9:16 | Same product as a finished story ad |
 | `hero-video-frame.png` | 1080 × 1920 | 9:16 | Same product as a video-ad frame |
-| `sample-video-01.mp4` (optional) | 1080 × 1920 | 9:16 | 15 s, H.264, muted, under 3 MB |
-| `../founder-aj.jpg` | 800 × 800 | 1:1 | Founder photo for the founder note / About page |
+
+Founder photo (not in this folder): `public/images/founder-aj.jpg`, 800 × 800, square.
+After adding it, set `FOUNDER.photo` to `'/images/founder-aj.jpg'` in `lib/marketing/content.ts`.

@@ -1,415 +1,78 @@
-"use client";
-
-import React, { useState } from "react";
-import Header from "../app/web/src/components/Header";
-import Footer from "../app/web/src/components/Footer";
-import { Button } from "../app/web/src/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-} from "../app/web/src/components/ui/card";
-import { Input } from "../app/web/src/components/ui/input";
-import { Textarea } from "../app/web/src/components/ui/textarea";
-import { Label } from "../app/web/src/components/ui/label";
-import { toast } from "../app/web/src/hooks/use-toast";
-import { Mail } from "lucide-react";
-// import { supabase } from "@/integrations/supabase/client";
-// react-helmet-async removed per your request
-
-// *** Import your color tokens exactly as requested (path unchanged) ***
-import colors from '@/lib/ui/colors';
+import React from "react";
+import Link from "next/link";
 import PageSeo from "@/components/seo/PageSeo";
-
-/** tiny helper to add slash-style alpha to simple hsl(...) tokens */
-const withAlpha = (token: string | undefined, alpha: number) => {
-  if (!token) return token;
-  // if already contains slash alpha, replace it
-  if (/\s*\/\s*[\d.]+\)/.test(token)) {
-    return token.replace(/\)\s*$/, ` / ${alpha})`);
-  }
-  if (token.startsWith("hsl(")) {
-    return token.replace(/\)$/, ` / ${alpha})`);
-  }
-  return token;
-};
+import MarketingLayout from "@/app/web/src/components/marketing/MarketingLayout";
+import ContactForm from "@/app/web/src/components/marketing/ContactForm";
+import { Eyebrow } from "@/app/web/src/components/marketing/ui";
+import { bookingHref } from "@/lib/marketing/content";
+import { SITE_SUPPORT_EMAIL } from "@/lib/seo/site";
 
 /**
- * Contact page for SkalX AI.
+ * Contact — messages are emailed to the support inbox via /api/contact (nothing stored).
  * SEO is applied via PageSeo (Pages Router). Do not use App Router `metadata` exports here.
  */
-const Contact = () => {
-  const [formData, setFormData] = useState({
-    name: "",
-    businessName: "",
-    phoneNumber: "",
-    message: "",
-    email: "",
-  });
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    // Basic validation
-    if (
-      !formData.name ||
-      !formData.businessName ||
-      !formData.phoneNumber ||
-      !formData.message
-    ) {
-      toast({
-        title: "Error",
-        description: "Please fill in all required fields",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsSubmitting(true);
-
-    try {
-      // If you later uncomment supabase, this call will invoke your edge function
-      // const { error } = await supabase.functions.invoke("send-contact-email", {
-      //   body: {
-      //     name: formData.name,
-      //     businessName: formData.businessName,
-      //     phoneNumber: formData.phoneNumber,
-      //     message: formData.message,
-      //     email: formData.email,
-      //     type: "contact",
-      //   },
-      // });
-      // if (error) throw error;
-
-      // Mock success behavior for now (remove when supabase is enabled)
-      toast({
-        title: "Message Sent Successfully!",
-        description:
-          "Thank you for contacting us. We'll get back to you within 24 hours.",
-      });
-
-      setFormData({
-        name: "",
-        businessName: "",
-        phoneNumber: "",
-        message: "",
-        email: "",
-      });
-    } catch (err) {
-      console.error("Contact form error:", err);
-      toast({
-        title: "Error",
-        description:
-          "Failed to send message. Please try again or contact us directly.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
-  ) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value,
-    });
-  };
-
+export default function Contact() {
   return (
-    <div
-      className="min-h-screen"
-      style={{ background: colors.background, color: colors.foreground }}
-    >
+    <MarketingLayout>
       <PageSeo
         title="Contact SkalX AI"
-        description="Contact SkalX AI for questions about AI ad creatives, poster generation, video ads, billing, or partnership. Reach the SkalX team for product support."
+        description="Questions about the Launch Creative Sprint, pricing or the self-serve plans? Write to SkalX and we'll reply within one working day."
         path="/Contact"
       />
-      <Header />
-
-      <main className="pt-20">
-        {/* Hero Section */}
-        <section
-          className="py-20"
-          style={{
-            backgroundImage: `linear-gradient(135deg, ${withAlpha(
-              colors.primary,
-              0.05
-            )} 0%, ${withAlpha(colors.accent, 0.1)} 100%)`,
-          }}
-        >
-          <div className="container mx-auto px-4 text-center">
+      <section aria-labelledby="contact-title" className="mx-auto max-w-6xl px-4 pb-20 pt-10 sm:px-6 md:pb-28 md:pt-16">
+        <div className="grid items-start gap-12 lg:grid-cols-12">
+          <div className="lg:col-span-5">
+            <Eyebrow>Contact</Eyebrow>
             <h1
-              className="text-4xl md:text-4xl font-medium mb-6"
-              style={{
-                // keep gradient-text intent as fallback
-                backgroundImage: colors.gradientPrimary ?? undefined,
-                WebkitBackgroundClip: "text" as any,
-                backgroundClip: "text" as any,
-                color: "transparent", // <- must be transparent to reveal the clipped background
-                WebkitTextFillColor: "transparent", // <- webkit fallback
-              }}
+              id="contact-title"
+              className="font-display text-[clamp(2.5rem,5vw,4rem)] font-medium leading-[1.04] tracking-[-0.02em]"
             >
-              Contact SkalX AI
+              Talk to us.
             </h1>
-
-            <p
-              className="text-xl max-w-3xl mx-auto"
-              style={{ color: colors.mutedForeground }}
-            >
-              Questions about AI ad creatives, posters, video ads, or getting started with
-              SkalX AI? Send a message and our team will help.
+            <p className="mt-5 text-lg text-ink-soft">
+              Questions about the sprint, pricing or the self-serve plans? Send a message and AJ will reply by email
+              within one working day.
+            </p>
+            <dl className="mt-10 space-y-5 border-t border-line pt-8">
+              <div>
+                <dt className="text-sm uppercase tracking-[0.14em] text-ink-mute">Email</dt>
+                <dd className="mt-1">
+                  <a href={`mailto:${SITE_SUPPORT_EMAIL}`} className="text-lg font-medium underline underline-offset-4">
+                    {SITE_SUPPORT_EMAIL}
+                  </a>
+                </dd>
+              </div>
+              <div>
+                <dt className="text-sm uppercase tracking-[0.14em] text-ink-mute">Phone</dt>
+                <dd className="mt-1">
+                  <a href="tel:+919003815101" className="text-lg font-medium underline underline-offset-4">
+                    +91 90038 15101
+                  </a>
+                </dd>
+              </div>
+              <div>
+                <dt className="text-sm uppercase tracking-[0.14em] text-ink-mute">Rather talk?</dt>
+                <dd className="mt-1">
+                  <a href={bookingHref} className="text-lg font-medium underline underline-offset-4">
+                    Book a 15-min call
+                  </a>
+                </dd>
+              </div>
+            </dl>
+            <p className="mt-10 text-ink-soft">
+              Want to see our work first?{" "}
+              <Link href="/free-ad" className="font-medium text-ink underline underline-offset-4">
+                Get one free ad for your brand
+              </Link>
+              .
             </p>
           </div>
-        </section>
-
-        {/* Contact Section */}
-        <section className="py-20">
-          <div className="container mx-auto px-4">
-            <div className="grid lg:grid-cols-2 gap-12">
-              {/* Contact Form */}
-              <Card
-                className="shadow-medium"
-                style={{
-                  background: withAlpha(colors.card, 1),
-                  border: `1px solid ${withAlpha(colors.border, 0.5)}`,
-                }}
-              >
-                <CardHeader>
-                  <CardTitle
-                    className="text-2xl"
-                    style={{ color: colors.foreground }}
-                  >
-                    Get Your Free Marketing Consultation
-                  </CardTitle>
-                  <CardDescription style={{ color: colors.mutedForeground }}>
-                    Tell us about your business needs and discover how SkalX AI&apos;s
-                    AI can revolutionize your marketing strategy. Our experts
-                    will respond within 24 hours.
-                  </CardDescription>
-                </CardHeader>
-
-                <CardContent>
-                  <form onSubmit={handleSubmit} className="space-y-6">
-                    <div className="space-y-2">
-                      <Label
-                        htmlFor="name"
-                        style={{ color: colors.foreground }}
-                      >
-                        Name *
-                      </Label>
-                      <Input
-                        id="name"
-                        name="name"
-                        type="text"
-                        placeholder="Your full name"
-                        value={formData.name}
-                        onChange={handleChange}
-                        required
-                        style={{
-                          background: colors.background,
-                          color: colors.foreground,
-                          borderColor: withAlpha(colors.input, 0.6),
-                        }}
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label
-                        htmlFor="businessName"
-                        style={{ color: colors.foreground }}
-                      >
-                        Business Name *
-                      </Label>
-                      <Input
-                        id="businessName"
-                        name="businessName"
-                        type="text"
-                        placeholder="Your business name"
-                        value={formData.businessName}
-                        onChange={handleChange}
-                        required
-                        style={{
-                          background: colors.background,
-                          color: colors.foreground,
-                          borderColor: withAlpha(colors.input, 0.6),
-                        }}
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label
-                        htmlFor="email"
-                        style={{ color: colors.foreground }}
-                      >
-                        Email Address
-                      </Label>
-                      <Input
-                        id="email"
-                        name="email"
-                        type="email"
-                        placeholder="your.email@company.com (optional for acknowledgment)"
-                        value={formData.email}
-                        onChange={handleChange}
-                        style={{
-                          background: colors.background,
-                          color: colors.foreground,
-                          borderColor: withAlpha(colors.input, 0.6),
-                        }}
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label
-                        htmlFor="phoneNumber"
-                        style={{ color: colors.foreground }}
-                      >
-                        Phone Number *
-                      </Label>
-                      <Input
-                        id="phoneNumber"
-                        name="phoneNumber"
-                        type="tel"
-                        placeholder="Your phone number"
-                        value={formData.phoneNumber}
-                        onChange={handleChange}
-                        required
-                        style={{
-                          background: colors.background,
-                          color: colors.foreground,
-                          borderColor: withAlpha(colors.input, 0.6),
-                        }}
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label
-                        htmlFor="message"
-                        style={{ color: colors.foreground }}
-                      >
-                        Message *
-                      </Label>
-                      <Textarea
-                        id="message"
-                        name="message"
-                        placeholder="Tell us about your marketing challenges, current strategies, target audience, and how we can help Optimise your campaigns..."
-                        className="min-h-[120px]"
-                        value={formData.message}
-                        onChange={handleChange}
-                        required
-                        style={{
-                          background: colors.background,
-                          color: colors.foreground,
-                          borderColor: withAlpha(colors.input, 0.6),
-                        }}
-                      />
-                    </div>
-
-                    <Button
-                      type="submit"
-                      className="w-full"
-                      size="lg"
-                      disabled={isSubmitting}
-                      style={{
-                        background: colors.primary,
-                        color: colors.primaryForeground,
-                        boxShadow: colors.shadowGlow,
-                        border: `1px solid ${withAlpha(colors.primary, 0.9)}`,
-                      }}
-                    >
-                      {isSubmitting ? "Sending..." : "Get Free Consultation"}
-                    </Button>
-                  </form>
-                </CardContent>
-              </Card>
-
-              {/* Contact Information */}
-              <div className="space-y-8">
-                <div>
-                  <h2
-                    className="text-2xl font-bold mb-6"
-                    style={{ color: colors.foreground }}
-                  >
-                  </h2>
-
-                  <div className="space-y-6">
-                    <div className="flex items-start space-x-4">
-                      <Mail
-                        className="h-6 w-6 mt-1"
-                        style={{ color: colors.primary }}
-                      />
-                      <div>
-                        <h3
-                          className="font-semibold"
-                          style={{ color: colors.foreground }}
-                        >
-                          Reachout to us
-                        </h3>
-                        <p style={{ color: colors.mutedForeground }}>
-                          info@skalxai.app
-                        </p>
-                        <p style={{ color: colors.mutedForeground }}>
-                          <a
-                            href="tel:+919003815101"
-                            style={{ color: colors.primary }}
-                            className="hover:opacity-90 transition-opacity"
-                          >
-                            +91 9003815101
-                          </a>
-                        </p>
-                        <p
-                          className="text-sm"
-                          style={{ color: colors.mutedForeground }}
-                        >
-                          Get personalized AI marketing strategies
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <Card
-                  style={{
-                    background: `linear-gradient(135deg, ${withAlpha(
-                      colors.primary,
-                      0.05
-                    )} 0%, ${withAlpha(colors.accent, 0.1)} 100%)`,
-                    border: `1px solid ${withAlpha(colors.primary, 0.2)}`,
-                  }}
-                >
-                  <CardContent className="p-6">
-                    <h3
-                      className="font-semibold mb-2"
-                      style={{ color: colors.foreground }}
-                    >
-                      What a Launch Creative Sprint includes
-                    </h3>
-                    <div
-                      className="space-y-2 text-sm"
-                      style={{ color: colors.mutedForeground }}
-                    >
-                      <p>✓ Brand + 3-competitor snapshot</p>
-                      <p>✓ 1 campaign concept with 3 creative angles</p>
-                      <p>✓ 12 static ad creatives with captions and hooks</p>
-                      <p>✓ 2 × 15-second video ads</p>
-                      <p>✓ A 2-week posting calendar</p>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-            </div>
+          <div className="rounded-2xl border border-line bg-surface p-5 sm:p-8 lg:col-span-7">
+            <h2 className="mb-6 font-display text-2xl font-medium">Send a message</h2>
+            <ContactForm />
           </div>
-        </section>
-      </main>
-
-      <Footer />
-    </div>
+        </div>
+      </section>
+    </MarketingLayout>
   );
-};
-
-export default Contact;
+}
