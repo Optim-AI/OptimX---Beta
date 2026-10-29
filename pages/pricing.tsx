@@ -18,6 +18,7 @@ import { trackAuditEvent } from '@/lib/audit/analytics';
 import MarketingLayout from '@/app/web/src/components/marketing/MarketingLayout';
 import PlanCards from '@/app/web/src/components/marketing/PlanCards';
 import { ButtonLink, Eyebrow } from '@/app/web/src/components/marketing/ui';
+import { SIGNUP_HREF } from '@/lib/marketing/content';
 
 function trackSafe(event: string, data?: Record<string, string>) {
   void import('@vercel/analytics')
@@ -50,6 +51,7 @@ export default function PricingPage() {
   const [continuing, setContinuing] = useState(false);
   const [claimed, setClaimed] = useState(false);
   const [trialDialogOpen, setTrialDialogOpen] = useState(false);
+  const [signedIn, setSignedIn] = useState(false);
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -57,6 +59,7 @@ export default function PricingPage() {
     (async () => {
       const { data } = await supabase.auth.getSession();
       if (!data.session || cancelled) return;
+      setSignedIn(true);
 
       if (fromAudit && !claimed) {
         try {
@@ -152,7 +155,20 @@ export default function PricingPage() {
             />
           )}
         </div>
-        <p className="mt-6 text-sm text-ink-soft">All prices are + 18% GST. Plans are monthly; cancel anytime.</p>
+        {!activePlanName ? (
+          <p className="mt-8 text-lg">
+            Not ready to pay?{' '}
+            {/* Signed in: /try routes to the workspace or onboarding. Guests sign up first (new accounts land in /try). */}
+            <Link
+              href={signedIn ? '/try' : SIGNUP_HREF}
+              onClick={() => trackSafe('explore_clicked', { source: 'pricing', signed_in: signedIn ? 'yes' : 'no' })}
+              className="font-medium underline underline-offset-4"
+            >
+              Explore SkalX first →
+            </Link>
+          </p>
+        ) : null}
+        <p className="mt-3 text-sm text-ink-soft">All prices are + 18% GST. Plans are monthly; cancel anytime.</p>
       </section>
 
       <FreeTrialRequestDialog open={trialDialogOpen} onOpenChange={setTrialDialogOpen} />
@@ -223,7 +239,7 @@ export default function PricingPage() {
 
           <p className="mt-10 text-ink-soft">
             Not sure yet?{' '}
-            <Link href="/free-ad" className="font-medium text-ink underline underline-offset-4">
+            <Link href="/#start" className="font-medium text-ink underline underline-offset-4">
               Get a free ad for your brand
             </Link>{' '}
             first.

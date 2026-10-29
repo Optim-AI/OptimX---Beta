@@ -5,6 +5,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { Menu, X } from 'lucide-react';
+import { LOGIN_HREF, SIGNUP_HREF, START_HREF } from '@/lib/marketing/content';
 
 const NAV_ITEMS = [
   { name: 'How it works', href: '/#how-it-works' },
@@ -75,14 +76,17 @@ export default function SiteNav() {
         </nav>
 
         <div className="flex items-center gap-2">
-          <Link
-            href="/auth/signin?next=/try"
-            className="mr-3 hidden text-sm text-ink-mute hover:text-ink md:inline"
-          >
+          <Link href={LOGIN_HREF} className="hidden px-2 text-sm text-ink-soft hover:text-ink md:inline">
             Log in
           </Link>
           <Link
-            href="/free-ad"
+            href={SIGNUP_HREF}
+            className="mr-1 hidden h-10 items-center rounded-full border border-ink/25 px-4 text-sm font-medium text-ink hover:border-ink md:inline-flex"
+          >
+            Sign up
+          </Link>
+          <Link
+            href={START_HREF}
             className="inline-flex h-10 items-center rounded-full bg-ink px-4 text-sm font-medium text-paper hover:bg-accent-deep sm:px-5"
           >
             Get a free ad
@@ -119,7 +123,12 @@ export default function SiteNav() {
             </li>
           ))}
           <li>
-            <Link href="/auth/signin?next=/try" onClick={() => setOpen(false)} className="block py-3 text-lg text-ink-soft">
+            <Link href={SIGNUP_HREF} onClick={() => setOpen(false)} className="block py-3 text-lg text-ink">
+              Sign up
+            </Link>
+          </li>
+          <li>
+            <Link href={LOGIN_HREF} onClick={() => setOpen(false)} className="block py-3 text-lg text-ink-soft">
               Log in
             </Link>
           </li>

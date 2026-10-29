@@ -2,7 +2,8 @@ import React from 'react';
 import Image from 'next/image';
 import { ArrowRight, Play } from 'lucide-react';
 import { STARTING_PRICE } from '@/lib/marketing/content';
-import { ButtonLink, Eyebrow, PhoneFrame } from './ui';
+import StartForm from './StartForm';
+import { Eyebrow, PhoneFrame } from './ui';
 
 function Caption({ children }: { children: React.ReactNode }) {
   return <figcaption className="mt-2 text-center text-xs text-ink-mute sm:text-[13px]">{children}</figcaption>;
@@ -101,11 +102,8 @@ export default function HeroSection() {
             SkalX reads what customers say about you and your competitors, turns it into a marketing plan, then
             helps you create the posts, ads and videos to match. Make as many as your plan allows.
           </p>
-          <div className="mt-8 flex flex-col gap-3 sm:flex-row md:flex-col md:items-start">
-            <ButtonLink href="/free-ad">Get a free ad</ButtonLink>
-            <ButtonLink href="#audit" variant="secondary">
-              Get a free marketing audit
-            </ButtonLink>
+          <div id="start" className="mt-8 max-w-xl scroll-mt-24">
+            <StartForm inputId="hero-brand-input" focusOnHash="start" />
           </div>
           <p className="mt-5 text-sm text-ink-mute">
             Built in Chennai <span aria-hidden>·</span> Plans from {STARTING_PRICE}/month <span aria-hidden>·</span> Cancel

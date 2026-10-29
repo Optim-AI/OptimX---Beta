@@ -119,12 +119,3 @@ export async function sendOutboundEmail(input: OutboundEmail): Promise<OutboundE
   }
   return sendViaFormSubmit(input);
 }
-
-/** Send through Resend only (no FormSubmit fallback). Fails clearly when RESEND_API_KEY is missing. */
-export async function sendViaResendOnly(input: OutboundEmail): Promise<OutboundEmailResult> {
-  const apiKey = getResendApiKey();
-  if (!apiKey) {
-    return { ok: false, provider: 'resend', error: 'RESEND_API_KEY is not set' };
-  }
-  return sendViaResend(apiKey, input);
-}

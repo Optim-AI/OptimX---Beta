@@ -35,7 +35,6 @@ export const SITE_SAME_AS = [
 /** Public marketing / legal routes that should be indexed (Pages Router paths). */
 export const INDEXABLE_PATHS = [
   "/",
-  "/free-ad",
   "/pricing",
   "/ai-ad-generator",
   "/About",

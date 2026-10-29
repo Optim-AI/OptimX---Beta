@@ -96,9 +96,9 @@ export default function About() {
           <h2 id="about-cta" className="font-display text-[clamp(2.25rem,4.6vw,3.5rem)] font-medium leading-[1.05]">
             See it before you pay.
           </h2>
-          <p className="mt-4 text-xl text-paper/80">We&apos;ll make one ad for your brand, free.</p>
-          <ButtonLink href="/free-ad" variant="onInk" className="mt-8">
-            Get one free ad for your brand
+          <p className="mt-4 text-xl text-paper/80">Paste your website and get free market research and 3 ad ideas for your brand.</p>
+          <ButtonLink href="/#start" variant="onInk" className="mt-8">
+            Get a free ad
           </ButtonLink>
         </div>
       </section>

@@ -6,6 +6,8 @@ const nextConfig = {
       { source: '/refund-cancellation', destination: '/terms-and-conditions', permanent: true },
       { source: '/cookie-policy', destination: '/cpolicy', permanent: true },
       { source: '/cookiepolicy', destination: '/cpolicy', permanent: true },
+      // The hand-made free-ad form was retired; "Get a free ad" is now the website box on the homepage.
+      { source: '/free-ad', destination: '/#start', permanent: false },
     ];
   },
   // Middleware clones request bodies (default 10MB). Video session PUTs can

@@ -1,5 +1,5 @@
 /**
- * Best-effort in-memory rate limit for public lead forms (free-ad, contact).
+ * Best-effort in-memory rate limit for public lead forms (contact).
  * Per server instance only — by design these forms store nothing in a database.
  */
 const WINDOW_MS = 3600_000;

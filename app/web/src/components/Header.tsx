@@ -118,7 +118,7 @@ const Header: React.FC = () => {
             >
               Login
             </Link>
-            <Link href="/free-ad">
+            <Link href="/#start">
               <Button variant="cta">Get a free ad</Button>
             </Link>
           </div>
@@ -220,7 +220,7 @@ const Header: React.FC = () => {
                 >
                   Login
                 </Link>
-                <Link href="/free-ad" onClick={() => setIsMenuOpen(false)}>
+                <Link href="/#start" onClick={() => setIsMenuOpen(false)}>
                   <Button variant="cta" className="justify-start w-full">
                     Get a free ad
                   </Button>

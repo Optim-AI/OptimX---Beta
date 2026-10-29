@@ -11,7 +11,7 @@ const FOOTER_LINKS: Record<string, { name: string; href: string }[]> = {
     { name: 'AI Ad Generator', href: '/ai-ad-generator' },
     { name: 'How It Works', href: '/#how-it-works' },
     { name: 'Pricing', href: '/pricing' },
-    { name: 'Get a free ad', href: '/free-ad' },
+    { name: 'Get a free ad', href: '/#start' },
   ],
   Company: [
     { name: 'About SkalX AI', href: '/About' },

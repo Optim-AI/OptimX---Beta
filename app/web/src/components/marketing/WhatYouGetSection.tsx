@@ -103,7 +103,7 @@ export default function WhatYouGetSection() {
                 <span className="ml-2 align-middle font-body text-base font-normal text-paper/70">+ GST / month</span>
               </p>
               <p className="mt-3 text-paper/70">Research, strategy and creation in one place. Cancel anytime.</p>
-              <ButtonLink href="/free-ad" variant="onInk" className="mt-7 w-full">
+              <ButtonLink href="/#start" variant="onInk" className="mt-7 w-full">
                 Get a free ad first
               </ButtonLink>
               <Link href="/pricing" className="mt-4 block text-center text-sm text-accent-on-ink underline underline-offset-4">

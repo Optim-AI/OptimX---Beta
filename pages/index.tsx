@@ -17,7 +17,6 @@ import SampleWorkSection from "@/app/web/src/components/marketing/SampleWorkSect
 import ComparisonSection from "@/app/web/src/components/marketing/ComparisonSection";
 import PricingTeaser from "@/app/web/src/components/marketing/PricingTeaser";
 import FounderNote from "@/app/web/src/components/marketing/FounderNote";
-import AuditBand from "@/app/web/src/components/marketing/AuditBand";
 import FaqSection, { faqJsonLd } from "@/app/web/src/components/marketing/FaqSection";
 import FinalCtaSection from "@/app/web/src/components/marketing/FinalCtaSection";
 
@@ -56,13 +55,12 @@ const Home: React.FC = () => {
       <ComparisonSection />
       <PricingTeaser />
       <FounderNote />
-      <AuditBand />
       <FaqSection />
       <FinalCtaSection />
       <noscript>
         <p style={{ padding: "1rem", textAlign: "center" }}>
           {SITE_NAME} takes D2C brands from market research to ready-to-post creatives, on a monthly
-          plan. Request one free ad at {SITE_ORIGIN}/free-ad.
+          plan. Paste your website at {SITE_ORIGIN} for free market research and 3 ad ideas.
         </p>
       </noscript>
     </MarketingLayout>

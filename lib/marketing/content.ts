@@ -92,7 +92,7 @@ export const COMPARISON = {
 export const FAQS = [
   {
     q: 'Will AI ads look generic?',
-    a: 'Every creative starts from your real product photos, colours and tone, plus what your customers actually say. Get one free ad first and judge for yourself.',
+    a: 'Every creative starts from your real product photos, colours and tone, plus what your customers actually say. Paste your website for free research and 3 ad ideas, and judge for yourself.',
   },
   {
     q: 'Where does the research come from?',
@@ -121,6 +121,12 @@ export const FOUNDER = {
   // TODO: add /public/images/founder-aj.jpg (800×800) and set this to '/images/founder-aj.jpg'.
   photo: '',
 } as const;
+
+/** Primary CTA: the website box at the top of the homepage (research → ideas → sign-up → pricing). */
+export const START_HREF = '/#start';
+/** New accounts land in /try (onboarding + explore); existing accounts go to their workspace. */
+export const SIGNUP_HREF = '/auth/signup';
+export const LOGIN_HREF = '/auth/signin?next=/try';
 
 // TODO: a booking link (e.g. Cal.com / Calendly). Until then "Book a 15-min call" opens an email.
 export const BOOKING_URL = '';

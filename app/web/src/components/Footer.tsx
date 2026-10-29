@@ -22,7 +22,7 @@ const Footer: React.FC = () => {
       { name: 'AI Ad Generator', href: '/ai-ad-generator', type: 'route' },
       { name: 'How It Works', href: '/#how-it-works', type: 'section' },
       { name: 'Pricing', href: '/pricing', type: 'route' },
-      { name: 'Get a free ad', href: '/free-ad', type: 'route' },
+      { name: 'Get a free ad', href: '/#start', type: 'route' },
     ],
     Company: [
       { name: 'About SkalX AI', href: '/About', type: 'route' },
@@ -85,7 +85,7 @@ const Footer: React.FC = () => {
             <p className="text-sm leading-relaxed mb-4" style={{ color: colors.mutedForeground }}>
               Market research to ready-to-post creatives.
             </p>
-            <Link href="/free-ad" className="text-sm font-medium" style={{ color: colors.primary }}>
+            <Link href="/#start" className="text-sm font-medium" style={{ color: colors.primary }}>
               Get one free ad →
             </Link>
           </div>

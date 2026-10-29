@@ -403,7 +403,7 @@ const AiAdGeneratorLanding: React.FC = () => {
           >
             SkalX reads what customers say about you and your competitors, turns it into a plan,
             then helps you create the ads and videos to match.{" "}
-            <Link href="/free-ad" style={{ color: colors.primary }}>
+            <Link href="/#start" style={{ color: colors.primary }}>
               Get a free ad first
             </Link>
             .
