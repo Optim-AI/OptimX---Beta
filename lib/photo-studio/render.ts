@@ -56,6 +56,10 @@ export type FidelityChecker = (original: Buffer, generated: Buffer) => Promise<F
 const FINAL_FRAME =
   "This is the finished photograph as published: no lighting equipment, softboxes, light stands, umbrellas, reflectors, tripods or studio gear anywhere in frame.";
 
+/** How a top product photographer shoots it — applied to every AI-made photo. */
+const PRO_PHOTO =
+  "Shot like a top commercial product photographer: full-frame high-resolution mirrorless camera, 90mm macro lens for product detail (85mm for people), sharp focus on the product with crisp label and edge detail, controlled key light with soft fill and a subtle rim light to separate it from the background, accurate true-to-life colour, clean professional colour grade, magazine-quality.";
+
 const NO_PRODUCT_IN_SET =
   FINAL_FRAME +
   " IMPORTANT: the set is EMPTY — no product, packaging, bottle, jar, box or container anywhere; the centre spot is left clear for a product that will be added later. No text, letters, logos or watermarks. No people.";
@@ -114,6 +118,7 @@ function aroundPrompt(input: RenderInput, float: boolean, retry: boolean): strin
       ? "The product floats in mid-air with nothing under it; the elements around it are frozen at the same moment."
       : "Build the surface it stands on right under its base so it rests on it firmly, with a natural contact shadow and the reflection that surface would show.",
     "Light the set from the same direction and colour temperature as the light on the product. Props may sit beside or behind the product but never in front of it.",
+    PRO_PHOTO,
     FINAL_FRAME,
     "No added text, letters, logos or watermarks. No people.",
     take(input, SECOND_TAKE_SCENE),
@@ -180,7 +185,7 @@ async function renderScene(input: RenderInput, cutout: Buffer): Promise<Buffer> 
   const around = await renderAround(input, cutout);
   if (around) return around;
   const direction = shotDirection(input.shotId, input.profile, input.settings);
-  const set = await generate(input, `Photorealistic professional product photography set. ${direction} ${NO_PRODUCT_IN_SET} ${take(input, SECOND_TAKE_SCENE)}`, false);
+  const set = await generate(input, `Photorealistic professional product photography set. ${direction} ${PRO_PHOTO} ${NO_PRODUCT_IN_SET} ${take(input, SECOND_TAKE_SCENE)}`, false);
   const meta = await sharp(cutout).metadata();
   const float = input.shotId === "levitation";
   const place = scenePlacement(input.aspect, meta.width || 1, meta.height || 1, float ? "float" : "surface", input.variation ?? 0);
@@ -274,6 +279,7 @@ function guidedPrompt(input: RenderInput, extra = ""): string {
     `Create a photorealistic professional product photograph. ${direction}`,
     `The product is the one in the attached PRODUCT photo (${p.productType || p.name}): reproduce it exactly — same shape, proportions, label artwork, logo, printed text and colours — at a realistic real-world size (${p.sizeClass}).`,
     "Commercial photography quality: sharp focus on the product, accurate colour, natural skin and hands, believable materials and shadows.",
+    PRO_PHOTO,
     "No added text, graphics, borders or watermarks.",
     FINAL_FRAME,
     take(input, SECOND_TAKE_GUIDED),

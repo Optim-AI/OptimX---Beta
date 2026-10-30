@@ -1,14 +1,14 @@
 // pages/content-studio.tsx
 // Ad Studio: Turn your website into high-converting ads
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/router";
 import Link from "next/link";
 import BrandKitCard from "@/app/web/src/components/creative-studio/BrandKitCard";
 import Sidebar from "@/app/web/src/components/Sidebar";
 import colors from "@/lib/ui/colors";
 import { authFetch, safeResponseJson } from "@/lib/utils";
-import { friendlyError } from "@/lib/api-errors";
+import { friendlyError, readJson, responseError } from "@/lib/api-errors";
 import { showError, showAlert } from "@/app/web/src/components/ui/alert-modal-api";
 import {
   type BrandSnapshot,
@@ -308,6 +308,7 @@ export default function ContentStudioPage() {
                           session.campaignStrategy = v.campaignStrategy || null;
                           session.generatedPosters = Array.isArray(v.generatedPosters) ? v.generatedPosters : [];
                           session.campaign = v.campaign || null;
+                          session.carousel = v.campaignStrategy?.carousel ?? null;
                           session.loadingAngles = false;
                           session.currentVersionId = latestId;
                           session.versionHistory = vhData.versions.map((vh: any) => ({
@@ -516,6 +517,7 @@ export default function ContentStudioPage() {
                     campaignStrategy: v.campaignStrategy || null,
                     generatedPosters: Array.isArray(v.generatedPosters) ? v.generatedPosters : [],
                     campaign: v.campaign || null,
+                    carousel: v.campaignStrategy?.carousel ?? null,
                     loadingAngles: false,
                     versionHistory,
                     currentVersionId: latestId,
@@ -647,6 +649,38 @@ export default function ContentStudioPage() {
       return null;
     }
   };
+  // Save each product's creatives as they change (posters, carousel) so a refresh keeps
+  // them. The carousel rides along in campaign_strategy; no extra column needed.
+  const savedCreatives = useRef<Record<string, string>>({});
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      for (const s of sessions) {
+        if (s.loadingAngles || s.isRegenerating) continue;
+        const key = JSON.stringify([s.currentVersionId ?? null, s.generatedPosters, s.carousel?.campaign?.id ?? null]);
+        if (savedCreatives.current[s.id] === key) continue;
+        const campaignStrategy = s.campaignStrategy ? { ...s.campaignStrategy, carousel: s.carousel ?? null } : null;
+        if (s.currentVersionId) {
+          savedCreatives.current[s.id] = key;
+          void authFetch(`/api/content-studio/versions?id=${s.currentVersionId}`, {
+            method: "PATCH",
+            body: JSON.stringify({ generatedPosters: s.generatedPosters, campaignStrategy }),
+          })
+            .then((r) => { if (!r.ok) delete savedCreatives.current[s.id]; })
+            .catch(() => { delete savedCreatives.current[s.id]; });
+        } else if (s.generatedPosters.length > 0 || s.carousel) {
+          // The first save didn't happen (e.g. it failed): create the version now.
+          savedCreatives.current[s.id] = key;
+          void saveVersionToDb({ ...s, campaignStrategy: campaignStrategy as AdGenerationSession["campaignStrategy"] }).then((id) => {
+            if (id) updateSession(s.id, () => ({ currentVersionId: id }));
+            else delete savedCreatives.current[s.id];
+          });
+        }
+      }
+    }, 800);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessions]);
+
 
   const handleRestoreVersion = async (versionId: string) => {
     if (!activeSession) return;
@@ -671,6 +705,7 @@ export default function ContentStudioPage() {
                 campaignStrategy: v.campaignStrategy ? { ...v.campaignStrategy } : null,
                 generatedPosters: Array.isArray(v.generatedPosters) ? [...v.generatedPosters] : [],
                 campaign: v.campaign ? { ...v.campaign } : null,
+                carousel: v.campaignStrategy?.carousel ?? null,
                 currentVersionId: versionId,
               }
             : s
@@ -1035,6 +1070,31 @@ export default function ContentStudioPage() {
     } catch (err: any) {
       showError(friendlyError(err, "Failed to regenerate poster"));
     }
+  };
+
+  /** Change only the boxed part of a poster (throws a readable message for the dialog). */
+  const handleAreaEdit = async (
+    posterIndex: number,
+    box: { x: number; y: number; w: number; h: number },
+    instruction: string
+  ) => {
+    const session = activeSession;
+    const posterUrl = session?.generatedPosters[posterIndex];
+    if (!session || !posterUrl) throw new Error("That poster isn't available any more.");
+    const res = await authFetch("/api/content-studio/area-edit", {
+      method: "POST",
+      body: JSON.stringify({ image: posterUrl, box, instruction }),
+    });
+    const data = await readJson<{ ok?: boolean; image?: string; error?: string }>(res);
+    if (res.status === 402) {
+      setInsufficientCreditsType("image");
+      throw new Error(data.error || "You need 1 image credit for this edit.");
+    }
+    if (!res.ok || !data.ok || !data.image) throw new Error(responseError(res, data, "The edit didn't come out. Try again."));
+    updateSession(session.id, (s) => ({
+      generatedPosters: s.generatedPosters.map((url, i) => (i === posterIndex ? data.image! : url)),
+    }));
+    void fetchSubscription({ force: true });
   };
 
   const handleStartOver = () => {
@@ -2139,6 +2199,7 @@ export default function ContentStudioPage() {
               editPrompt
             )
           }
+          onAreaEdit={(box, instruction) => handleAreaEdit(editingPosterIndex, box, instruction)}
         />
       )}
 

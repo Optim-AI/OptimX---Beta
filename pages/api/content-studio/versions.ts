@@ -69,6 +69,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
   }
 
+  // Keep the current version's creatives up to date as they're generated or edited.
+  if (req.method === "PATCH") {
+    const { id } = req.query;
+    if (typeof id !== "string") {
+      return res.status(400).json({ ok: false, error: "id query parameter required" });
+    }
+    const { generatedPosters, campaignStrategy, campaign } = req.body ?? {};
+    if (generatedPosters !== undefined && !Array.isArray(generatedPosters)) {
+      return res.status(400).json({ ok: false, error: "generatedPosters must be a list" });
+    }
+    try {
+      const updated = await ContentStudioVersionDAO.updateCreatives(id, userId, { generatedPosters, campaignStrategy, campaign });
+      return updated ? res.status(200).json({ ok: true }) : res.status(404).json({ ok: false, error: "Version not found" });
+    } catch (err: any) {
+      console.error("Failed to update version:", err);
+      return res.status(500).json({ ok: false, error: "Failed to save your changes" });
+    }
+  }
+
   if (req.method === "DELETE") {
     const { id } = req.query;
     if (typeof id !== "string") {

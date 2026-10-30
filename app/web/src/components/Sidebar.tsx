@@ -56,7 +56,7 @@ const NAV_SECTIONS: NavSection[] = [
     label: 'Create',
     items: [
       { href: '/brand-kit', label: 'Brand Kit', Icon: Palette },
-      { href: '/photo-studio', label: 'Photo Studio', Icon: Camera, betaBadge: true },
+      { href: '/photo-studio', label: 'Photoshoot Studio', Icon: Camera, betaBadge: true },
       { href: '/brand-studio', label: 'Brand Studio', Icon: Orbit },
       { href: '/content-studio', label: 'Ad Studio', Icon: ImageIcon, betaBadge: true },
       { href: '/create-campaign', label: 'Create Campaign', Icon: PlusCircle, featureKey: 'create_campaigns' },
@@ -311,7 +311,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   return (
     <aside
-      className={`flex h-screen shrink-0 flex-col transition-[width] duration-200 ease-out ${
+      className={`sticky top-0 flex h-screen shrink-0 flex-col self-start transition-[width] duration-200 ease-out ${
         collapsed ? 'w-[72px]' : 'w-[260px]'
       }`}
       style={{
@@ -329,7 +329,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               <img src="/images/SkalX_Logo.png" alt="SkalX" className="h-5 w-auto object-contain" />
             </button>
           ) : (
-            <Link href="/dashboard" className="rounded-md" aria-label="SkalX">
+            <Link href="/workspace" className="rounded-md" aria-label="SkalX home">
               <img src="/images/SkalX_Logo.png" alt="SkalX" className="h-5 w-auto object-contain" />
             </Link>
           ))}

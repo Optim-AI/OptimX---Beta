@@ -22,6 +22,7 @@ Return JSON:
   "viewAngle": "front|three_quarter|top_down|side|unknown",
   "plainBackground": true,
   "obstructed": false,
+  "kind": "packaged_food|beverage|cafe_food|beauty|fashion|other  (packaged_food = pickles, spices, snacks, sweets, packed staples; cafe_food = a prepared dish, meal, drink in a cup or plate from a café/restaurant)",
   "notes": "anything a photographer should know (reflective, transparent, label details to protect)"
 }
 "obstructed" is true when anything other than the product is touching or in front of it — a hand or fingers holding it, another object overlapping it.`;
@@ -46,6 +47,8 @@ function normalize(raw: any): ProductProfile {
     viewAngle: angle,
     plainBackground: raw?.plainBackground !== false,
     obstructed: raw?.obstructed === true,
+    kind: (["packaged_food", "beverage", "cafe_food", "beauty", "fashion", "other"] as const).find((k) => k === raw?.kind) ??
+      (raw?.isFood === true ? "packaged_food" : raw?.isWearable === true ? "fashion" : /beauty|skin|hair|cosmetic|personal care/i.test(String(raw?.category || "")) ? "beauty" : "other"),
     notes: s(raw?.notes, 300),
   };
 }

@@ -104,6 +104,25 @@ export class ContentStudioVersionDAO {
     }
   }
 
+  /** Update a version's creatives in place (posters and the carousel/strategy that go with them). */
+  static async updateCreatives(
+    id: string,
+    userId: string,
+    data: { generatedPosters?: unknown; campaignStrategy?: unknown; campaign?: unknown }
+  ): Promise<boolean> {
+    const set: Partial<typeof contentStudioVersions.$inferInsert> = {};
+    if (data.generatedPosters !== undefined) set.generatedPosters = data.generatedPosters as never;
+    if (data.campaignStrategy !== undefined) set.campaignStrategy = data.campaignStrategy as never;
+    if (data.campaign !== undefined) set.campaign = data.campaign as never;
+    if (!Object.keys(set).length) return true;
+    const rows = await db
+      .update(contentStudioVersions)
+      .set(set)
+      .where(and(eq(contentStudioVersions.id, id), eq(contentStudioVersions.userId, userId)))
+      .returning({ id: contentStudioVersions.id });
+    return rows.length > 0;
+  }
+
   static async delete(id: string, userId: string): Promise<boolean> {
     try {
       await db

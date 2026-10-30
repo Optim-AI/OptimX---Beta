@@ -6,6 +6,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { randomUUID } from "crypto";
 import sharp from "sharp";
+import { assertPublicHost } from "@/lib/audit/url-safety";
 import { getUserIdFromRequest } from "@/auth/request";
 import { getUserBrand } from "@/lib/brand-kit/server";
 import { getProductCutout } from "@/lib/creative-studio/product-cutouts";
@@ -26,6 +27,17 @@ export const config = {
 
 const MAX_BYTES = 10 * 1024 * 1024;
 
+async function fetchImage(url: string): Promise<Buffer | null> {
+  let u: URL;
+  try { u = new URL(url); } catch { return null; }
+  if (u.protocol !== "https:" && u.protocol !== "http:") return null;
+  await assertPublicHost(u.hostname);
+  const res = await fetch(u, { redirect: "error", signal: AbortSignal.timeout(20_000), headers: { "User-Agent": "Mozilla/5.0 SkalX Photo Studio", Accept: "image/*" } });
+  if (!res.ok || !(res.headers.get("content-type") || "").startsWith("image/")) return null;
+  const buf = Buffer.from(await res.arrayBuffer());
+  return buf.length > 0 && buf.length <= MAX_BYTES ? buf : null;
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
@@ -35,9 +47,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!userId) return res.status(401).json({ ok: false, error: "Authentication required" });
 
   const image = typeof req.body?.image === "string" ? req.body.image : "";
+  const imageUrl = typeof req.body?.imageUrl === "string" ? req.body.imageUrl.trim() : "";
+  let raw: Buffer;
   const m = /^data:(image\/(?:png|jpe?g|webp));base64,(.+)$/i.exec(image);
-  if (!m) return res.status(400).json({ ok: false, error: "Upload a PNG, JPG or WebP product photo." });
-  const raw = Buffer.from(m[2], "base64");
+  if (m) {
+    raw = Buffer.from(m[2], "base64");
+  } else if (imageUrl) {
+    // A pasted link or a catalog product photo: public addresses only, images only, size-capped.
+    const fetched = await fetchImage(imageUrl).catch(() => null);
+    if (!fetched) return res.status(400).json({ ok: false, error: "We couldn't load an image from that link. Try another link or upload the photo." });
+    raw = fetched;
+  } else {
+    return res.status(400).json({ ok: false, error: "Upload a PNG, JPG or WebP product photo." });
+  }
   if (raw.length > MAX_BYTES) return res.status(400).json({ ok: false, error: "That photo is over 10 MB." });
 
   try {

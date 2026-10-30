@@ -6,7 +6,9 @@ export type PhotoAspect = "1:1" | "4:5" | "9:16";
  *  composited and relit; guided = AI renders the product (held/used) from the photo. */
 export type ShotMethod = "exact" | "scene" | "guided";
 
-export type ShotGroup = "catalogue" | "studio" | "lifestyle" | "people";
+export type ProductKind = "packaged_food" | "beverage" | "cafe_food" | "beauty" | "fashion" | "other";
+
+export type ShotGroup = "catalogue" | "studio" | "lifestyle" | "people" | "creative";
 
 export type LightingMood = "studio_soft" | "natural_daylight" | "golden_hour" | "dramatic";
 
@@ -43,6 +45,8 @@ export type ProductProfile = {
   viewAngle: "front" | "three_quarter" | "top_down" | "side" | "unknown";
   /** Photo has a plain, uniform background (cut-out friendly) */
   plainBackground: boolean;
+  /** What kind of product — decides which category shots are offered */
+  kind?: ProductKind;
   /** A hand or another object touches/overlaps the product in the photo */
   obstructed?: boolean;
   notes: string;
@@ -58,6 +62,8 @@ export type ShotDefinition = {
   method: ShotMethod;
   defaultAspect: PhotoAspect;
   usesModel?: boolean;
+  /** Only offered for these product kinds (category shots) */
+  kinds?: ProductKind[];
 };
 
 export type ShotResult = {

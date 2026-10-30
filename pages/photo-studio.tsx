@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { JSX } from "react";
 import Head from "next/head";
 import { useRouter } from "next/router";
-import { ArrowLeft, Camera, Check, Download, ImagePlus, RefreshCw, Trash2, Upload } from "lucide-react";
+import { Activity, ArrowLeft, CupSoda, Package, Shirt, Soup, UtensilsCrossed, Camera, Check, Cylinder, Download, Flower2, Gem, Hand, House, ImagePlus, Images, LayoutGrid, Lock, Palette, RefreshCw, ShoppingBag, Sparkles, Trash2, Upload, User, Wand2 } from "lucide-react";
 import { ArcSpinner, ShimmerGrid, ShimmerTile, StepProgress } from "@/app/web/src/components/ui/loaders";
 import { toast } from "sonner";
 import Sidebar from "../app/web/src/components/Sidebar";
@@ -15,10 +15,10 @@ import { showConfirm } from "@/app/web/src/components/ui/alert-modal-api";
 import type {
   LightingMood,
   PhotoAspect,
+  ProductKind,
   ProductProfile,
   ShootSettings,
   ShotDefinition,
-  ShotGroup,
   ShotMethod,
   ShotResult,
 } from "@/lib/photo-studio/types";
@@ -33,21 +33,30 @@ type Shoot = {
   catalog: ShotDefinition[];
   brandColors: string[];
   exactAvailable: boolean;
+  /** The shot list recommended for this product (for "Recommended" quick pick) */
+  recommended?: string[];
 };
 
 type ShotStatus = "idle" | "queued" | "shooting" | "done" | "failed";
 
-const GROUPS: Array<{ id: ShotGroup; label: string; hint: string }> = [
-  { id: "catalogue", label: "Catalogue", hint: "Marketplace and product-page images" },
-  { id: "studio", label: "Studio", hint: "Styled sets for product pages and ads" },
-  { id: "lifestyle", label: "Lifestyle", hint: "The product in its world" },
-  { id: "people", label: "People", hint: "Hands and models — scale and emotion" },
-];
-
 const METHOD_LABEL: Record<ShotMethod, string> = {
-  exact: "Exact product",
-  scene: "Exact product · AI set",
-  guided: "AI-rendered · fidelity checked",
+  exact: "Your real product photo",
+  scene: "Your real product in an AI set",
+  guided: "AI-rendered, checked against your photo",
+};
+
+const SHOT_ICON: Record<string, typeof Camera> = {
+  marketplace_white: ShoppingBag,
+  color_sweep: Palette,
+  acrylic_reflection: Gem,
+  styled_still_life: Flower2,
+  pedestal: Cylinder,
+  levitation: Sparkles,
+  lifestyle_context: House,
+  flat_lay: LayoutGrid,
+  in_hand: Hand,
+  on_model: User,
+  in_use: Activity,
 };
 
 const LIGHTS: Array<{ id: LightingMood; label: string }> = [
@@ -57,11 +66,31 @@ const LIGHTS: Array<{ id: LightingMood; label: string }> = [
   { id: "dramatic", label: "Dramatic" },
 ];
 
-const ASPECTS: Array<{ id: PhotoAspect; label: string }> = [
-  { id: "1:1", label: "1:1 Marketplace" },
-  { id: "4:5", label: "4:5 Feed" },
-  { id: "9:16", label: "9:16 Story" },
+const ASPECTS: Array<{ id: PhotoAspect; label: string; hint: string; w: number; h: number }> = [
+  { id: "1:1", label: "Square", hint: "Marketplace", w: 14, h: 14 },
+  { id: "4:5", label: "Portrait", hint: "Feed", w: 12, h: 15 },
+  { id: "9:16", label: "Tall", hint: "Story", w: 9, h: 16 },
 ];
+
+const KIND_LABEL: Record<ProductKind, string> = {
+  packaged_food: "Packaged food & spices",
+  beverage: "Beverages",
+  cafe_food: "Café & restaurant food",
+  beauty: "Beauty & personal care",
+  fashion: "Fashion & accessories",
+  other: "Other products",
+};
+/** Kinds with their own example set for the key general shots. */
+const KIND_ICON: Record<ProductKind, typeof Camera> = {
+  packaged_food: Soup,
+  beverage: CupSoda,
+  cafe_food: UtensilsCrossed,
+  beauty: Sparkles,
+  fashion: Shirt,
+  other: Package,
+};
+const STYLES = ["Casual", "Formal", "Traditional Indian", "Sporty"];
+const KIND_EXAMPLE_SHOTS = new Set(["marketplace_white", "lifestyle_context", "in_hand"]);
 
 const card = { background: colors.card, border: `1px solid ${colors.border}` } as const;
 
@@ -106,6 +135,8 @@ export default function PhotoStudioPage(): JSX.Element {
   const [results, setResults] = useState<ShotResult[]>([]);
   const [running, setRunning] = useState(false);
   const [viewer, setViewer] = useState<number | null>(null);
+  const [tab, setTab] = useState<"plan" | "photos">("plan");
+  const [kindOverride, setKindOverride] = useState<ProductKind | null>(null);
   const [recent, setRecent] = useState<Array<{ id: string; name: string; cover: string | null; sourceUrl: string | null; photos: number }>>([]);
   const [recentLoading, setRecentLoading] = useState(true);
   const [dragging, setDragging] = useState(false);
@@ -127,6 +158,8 @@ export default function PhotoStudioPage(): JSX.Element {
     setPreview(null);
     setResults([]);
     setStatus({});
+    setTab("plan");
+    setKindOverride(null);
     void router.replace("/photo-studio", undefined, { shallow: true });
     loadRecent();
   }, [running, router, loadRecent]);
@@ -185,11 +218,13 @@ export default function PhotoStudioPage(): JSX.Element {
         catalog: meta?.catalog || [],
         brandColors: meta?.brandColors || [],
         exactAvailable: j.shoot.prepared ? Boolean(j.shoot.cutoutUrl) : Boolean(meta?.exactAvailable),
+        recommended: j.shoot.shots || [],
       });
       setSettings(j.shoot.settings);
       setPreview(j.shoot.masterUrl || j.shoot.sourceUrl);
       setSelected(Object.fromEntries((j.shoot.shots || []).map((s: string) => [s, 1])));
       setResults(j.shoot.results || []);
+      setTab((j.shoot.results || []).length ? "photos" : "plan");
     })();
   }, [router.query.id, shoot?.sessionId]);
 
@@ -202,15 +237,23 @@ export default function PhotoStudioPage(): JSX.Element {
     } catch (e) {
       return toast.error(friendlyError(e, "We couldn't read that photo. Try another one."));
     }
-    setPreview(dataUrl);
+    await begin({ image: dataUrl }, dataUrl);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router]);
+
+  /** Start a shoot from an uploaded photo, a pasted link or a catalog product. */
+  const begin = async (body: { image?: string; imageUrl?: string }, previewSrc: string) => {
+    setPreview(previewSrc);
     setReading(true);
     setResults([]);
     setStatus({});
     try {
-      const res = await authFetch("/api/photo-studio/start", { method: "POST", body: JSON.stringify({ image: dataUrl }) });
+      const res = await authFetch("/api/photo-studio/start", { method: "POST", body: JSON.stringify(body) });
       const j = await readJson<any>(res);
       if (!res.ok || !j.ok) throw new Error(responseError(res, j, "We couldn't read that photo. Try another one."));
       setShoot(j);
+      setTab("plan");
+      setKindOverride(null);
       if (j.masterUrl) setPreview(j.masterUrl);
       setSettings(j.settings);
       setSelected(Object.fromEntries((j.recommended as string[]).map((s) => [s, 1])));
@@ -221,7 +264,20 @@ export default function PhotoStudioPage(): JSX.Element {
     } finally {
       setReading(false);
     }
-  }, [router]);
+  };
+
+  // Products already found on the brand's website (Ad Studio scan) — pick one to shoot.
+  const [catalog, setCatalog] = useState<Array<{ name: string; image: string }>>([]);
+  const [linkUrl, setLinkUrl] = useState("");
+  useEffect(() => {
+    authFetch("/api/content-studio/scans")
+      .then((r) => r.json())
+      .then((j) => {
+        const products = (j?.scans?.[0]?.products || []) as Array<{ product_name?: string; product_images?: string[] }>;
+        setCatalog(products.filter((x) => x.product_images?.[0]).slice(0, 12).map((x) => ({ name: x.product_name || "Product", image: x.product_images![0] })));
+      })
+      .catch(() => null);
+  }, []);
 
   const selectedIds = useMemo(() => Object.keys(selected).filter((k) => selected[k] > 0), [selected]);
   const totalPhotos = selectedIds.reduce((n, id) => n + selected[id], 0);
@@ -256,6 +312,7 @@ export default function PhotoStudioPage(): JSX.Element {
 
   const runShoot = useCallback(async (ids: string[]) => {
     if (!ids.length) return;
+    setTab("photos");
     setRunning(true);
     setStatus((m) => ({ ...m, ...Object.fromEntries(ids.map((id) => [id, "queued" as ShotStatus])) }));
     const queue = [...ids];
@@ -295,7 +352,7 @@ export default function PhotoStudioPage(): JSX.Element {
   if (!shoot && typeof router.query.id === "string" && !reading) {
     return (
       <div className="h-screen flex overflow-hidden app-page" style={{ background: colors.background }}>
-        <Head><title>Photo Studio | SkalX AI</title></Head>
+        <Head><title>Photoshoot Studio | SkalX AI</title></Head>
         <Sidebar />
         <main className="flex min-w-0 flex-1 items-center justify-center">
           <div className="flex items-center gap-2 text-sm" style={{ color: colors.mutedForeground }}>
@@ -310,11 +367,11 @@ export default function PhotoStudioPage(): JSX.Element {
   if (!shoot) {
     return (
       <div className="h-screen flex overflow-hidden app-page" style={{ background: colors.background }}>
-        <Head><title>Photo Studio | SkalX AI</title></Head>
+        <Head><title>Photoshoot Studio | SkalX AI</title></Head>
         <Sidebar />
         <main className="min-w-0 flex-1 overflow-y-auto">
           <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
-            <h1 className="text-2xl font-semibold" style={{ color: colors.foreground }}>Photo Studio</h1>
+            <h1 className="text-2xl font-semibold" style={{ color: colors.foreground }}>Photoshoot Studio</h1>
             <p className="mt-1 max-w-2xl text-sm" style={{ color: colors.mutedForeground }}>
               Upload one product photo and get a full product shoot — marketplace packshots, studio sets, lifestyle scenes,
               in-hand and model shots — planned like a photographer's shot list.
@@ -345,7 +402,7 @@ export default function PhotoStudioPage(): JSX.Element {
               ) : (
                 <>
                   <ImagePlus className="h-10 w-10" style={{ color: colors.mutedForeground }} />
-                  <p className="mt-3 text-sm font-medium" style={{ color: colors.foreground }}>Drop a product photo here</p>
+                  <p className="mt-3 text-sm font-medium" style={{ color: colors.foreground }}>Drop a product photo here, or choose another way below</p>
                   <p className="mt-1 text-xs" style={{ color: colors.mutedForeground }}>
                     PNG, JPG or WebP up to 10 MB. A clear, front-facing photo on a plain background gives the most accurate results.
                   </p>
@@ -355,8 +412,40 @@ export default function PhotoStudioPage(): JSX.Element {
                     className="mt-5 inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium"
                     style={{ background: colors.primary, color: colors.primaryForeground }}
                   >
-                    <Upload className="h-4 w-4" /> Choose photo
+                    <Upload className="h-4 w-4" /> Upload from your device
                   </button>
+
+                  {/* Or: paste a link */}
+                  <div className="mt-8 w-full max-w-md text-left">
+                    <p className="mb-1.5 text-xs font-medium" style={{ color: colors.mutedForeground }}>Or paste an image link</p>
+                    <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); const u = linkUrl.trim(); if (u) void begin({ imageUrl: u }, u); }}>
+                      <label className="sr-only" htmlFor="ps-link">Image link</label>
+                      <input id="ps-link" value={linkUrl} onChange={(e) => setLinkUrl(e.target.value)} placeholder="https://yourstore.com/product.jpg"
+                        className="min-w-0 flex-1 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-sky-400"
+                        style={{ background: colors.secondary, color: colors.foreground, border: `1px solid ${colors.border}` }} />
+                      <button type="submit" disabled={!linkUrl.trim()} className="rounded-lg px-3 py-2 text-sm font-medium disabled:opacity-50"
+                        style={{ border: `1px solid ${colors.border}`, color: colors.foreground }}>Use link</button>
+                    </form>
+                  </div>
+
+                  {/* Or: pick from the products found on their website */}
+                  {catalog.length > 0 && (
+                    <div className="mt-6 w-full text-left">
+                      <p className="mb-2 text-xs font-medium" style={{ color: colors.mutedForeground }}>Or pick from your catalog</p>
+                      <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+                        {catalog.map((c) => (
+                          <button key={c.image} type="button" onClick={() => void begin({ imageUrl: c.image }, c.image)} title={c.name}
+                            className="group overflow-hidden rounded-xl text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
+                            style={{ background: colors.card, border: `1px solid ${colors.border}` }}>
+                            <span className="block aspect-square overflow-hidden bg-white">
+                              <img src={c.image} alt="" loading="lazy" className="h-full w-full object-contain transition-transform group-hover:scale-105" />
+                            </span>
+                            <span className="block truncate px-2 py-1.5 text-[11px]" style={{ color: colors.foreground }}>{c.name}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   <input
                     ref={fileRef}
                     type="file"
@@ -422,246 +511,395 @@ export default function PhotoStudioPage(): JSX.Element {
   // ───────────────────────── plan + shoot screen ─────────────────────────
   const s = settings!;
   const p = shoot.profile;
+  const kind: ProductKind = kindOverride || p.kind || "other";
+  const visibleShots = shoot.catalog.filter((x) => !x.kinds || x.kinds.includes(kind));
+  const exampleSrc = (id: string) => {
+    const def = shoot.catalog.find((x) => x.id === id);
+    if (!def?.kinds && KIND_EXAMPLE_SHOTS.has(id) && ["packaged_food", "beverage", "cafe_food"].includes(kind)) return `/images/photo-studio/examples/${kind}/${id}.webp`;
+    return `/images/photo-studio/examples/${id}.webp`;
+  };
+  const recommendFor = (k: ProductKind): string[] =>
+    k === "packaged_food" ? ["marketplace_white", "food_ingredients", "food_served", "food_scoop", "food_kitchen", "theme_festive"]
+    : k === "beverage" ? ["marketplace_white", "bev_ice_cold", "bev_pour", "bev_fruit_burst", "bev_cafe_table", "in_hand"]
+    : k === "cafe_food" ? ["cafe_delivery", "cafe_hero", "cafe_spread", "cafe_steam", "cafe_bite"]
+    : k === (p.kind || "other") ? shoot.recommended || [] : ["marketplace_white", "color_sweep", "styled_still_life", "lifestyle_context", "in_hand"];
+  const methodOf = (shot: ShotDefinition): ShotMethod => (shot.method !== "guided" && !shoot.exactAvailable ? "guided" : shot.method);
+  const shotsWithPhotos = shoot.catalog.filter((x) => results.some((r) => r.shotId === x.id) || status[x.id] === "shooting" || status[x.id] === "queued");
+  const focusRing = "focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:ring-offset-2 focus-visible:ring-offset-black";
+  const segment = (on: boolean): React.CSSProperties =>
+    on ? { background: colors.card, color: colors.foreground, boxShadow: "0 1px 2px rgba(0,0,0,0.35)" } : { color: colors.mutedForeground };
+
   return (
     <div className="h-screen flex overflow-hidden app-page" style={{ background: colors.background }}>
-      <Head><title>Photo Studio | SkalX AI</title></Head>
+      <Head><title>{`${p.name} · Photoshoot Studio | SkalX AI`}</title></Head>
       <Sidebar />
-      <main className="min-w-0 flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
-          <button type="button" onClick={() => void goHome()} className="mb-3 inline-flex items-center gap-1.5 text-sm" style={{ color: colors.mutedForeground }}>
-            <ArrowLeft className="h-4 w-4" /> All shoots
-          </button>
-          <header className="flex flex-wrap items-end justify-between gap-3">
-            <div>
-              <h1 className="text-2xl font-semibold" style={{ color: colors.foreground }}>Photo Studio</h1>
-              <p className="mt-1 text-sm" style={{ color: colors.mutedForeground }}>Plan the shot list, then shoot. Free while Photo Studio is in beta.</p>
-            </div>
-            <button
-              type="button"
-              onClick={() => void goHome()}
-              className="rounded-lg px-3 py-2 text-sm"
-              style={{ border: `1px solid ${colors.border}`, color: colors.foreground }}
-            >
-              New product
+      <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        {/* Top bar: where you are, what you're shooting, Plan / Photos */}
+        <header className="flex-shrink-0 border-b" style={{ borderColor: colors.border, background: colors.card }}>
+          <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
+            <button type="button" onClick={() => void goHome()} className={`inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm ${focusRing}`} style={{ color: colors.mutedForeground }}>
+              <ArrowLeft className="h-4 w-4" /> All shoots
             </button>
-          </header>
+            <span aria-hidden className="h-5 w-px" style={{ background: colors.border }} />
+            <div className="flex min-w-0 flex-1 items-center gap-2.5">
+              <span className="h-9 w-9 shrink-0 overflow-hidden rounded-lg" style={{ background: "#fff" }}>
+                <img src={preview || shoot.sourceUrl} alt="" className="h-full w-full object-contain" />
+              </span>
+              <div className="min-w-0">
+                <h1 className="truncate text-sm font-semibold" style={{ color: colors.foreground }}>{p.name}</h1>
+                <p className="truncate text-xs" style={{ color: colors.mutedForeground }}>Photoshoot Studio · free during beta</p>
+              </div>
+            </div>
+            <div role="tablist" aria-label="Shoot view" className="inline-flex rounded-lg p-1" style={{ background: colors.secondary }}>
+              {([
+                ["plan", "Plan shots", null],
+                ["photos", "Photos", results.length],
+              ] as const).map(([id, label, n]) => (
+                <button key={id} role="tab" aria-selected={tab === id} type="button" onClick={() => setTab(id)}
+                  className={`rounded-md px-3.5 py-1.5 text-sm transition-colors ${focusRing}`} style={segment(tab === id)}>
+                  {label}{n ? <span className="ml-1.5 text-xs opacity-70">{n}</span> : null}
+                </button>
+              ))}
+            </div>
+          </div>
+        </header>
 
-          {!shoot.exactAvailable && (
-            <p className="mt-4 rounded-lg px-3 py-2 text-xs" style={{ background: "hsl(38 92% 50% / 0.12)", color: "hsl(38 92% 70%)" }}>
-              We couldn't isolate the product cleanly from this photo, so catalogue and studio shots are AI-rendered with a fidelity check. For exact shots, upload a photo of the product on its own.
-            </p>
-          )}
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
+            {!shoot.exactAvailable && (
+              <p role="note" className="mb-5 rounded-lg px-3.5 py-2.5 text-sm" style={{ background: "hsl(38 92% 50% / 0.12)", color: "hsl(38 92% 72%)" }}>
+                We couldn&apos;t isolate the product from this photo, so every shot is AI-rendered and checked against it. For exact shots, upload a photo of the product on its own.
+              </p>
+            )}
 
-          <div className="mt-6 grid gap-6 lg:grid-cols-[320px_1fr]">
-            {/* Product + settings */}
-            <aside className="space-y-4">
-              <section className="rounded-xl p-4" style={card}>
-                <div className="aspect-square overflow-hidden rounded-lg" style={{ background: colors.secondary }}>
-                  <img src={preview || shoot.sourceUrl} alt={p.name} className="h-full w-full object-contain" />
-                </div>
-                {shoot.masterUrl && (
-                  <p className="mt-2 text-[11px]" style={{ color: colors.mutedForeground }}>Studio packshot of your product. Every shot is built from this.</p>
-                )}
-                <p className="mt-3 text-sm font-semibold" style={{ color: colors.foreground }}>{p.name}</p>
-                <p className="text-xs" style={{ color: colors.mutedForeground }}>{p.productType}</p>
-                <dl className="mt-3 space-y-1 text-xs" style={{ color: colors.mutedForeground }}>
-                  {p.finish && <div><dt className="inline" style={{ color: colors.foreground }}>Finish: </dt><dd className="inline">{p.finish}</dd></div>}
-                  {p.storyProps.length > 0 && <div><dt className="inline" style={{ color: colors.foreground }}>Props: </dt><dd className="inline">{p.storyProps.join(", ")}</dd></div>}
-                  {p.usageContexts.length > 0 && <div><dt className="inline" style={{ color: colors.foreground }}>Used in: </dt><dd className="inline">{p.usageContexts.join(", ")}</dd></div>}
-                </dl>
-              </section>
-
-              <section className="space-y-4 rounded-xl p-4" style={card}>
-                <div>
-                  <p className="mb-2 text-xs font-medium" style={{ color: colors.mutedForeground }}>Format</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {ASPECTS.map((a) => (
-                      <button key={a.id} type="button" onClick={() => setSettings({ ...s, aspect: a.id })}
-                        className="rounded-md px-2.5 py-1.5 text-xs"
-                        style={s.aspect === a.id ? { background: colors.primary, color: colors.primaryForeground } : { background: colors.secondary, color: colors.foreground }}>
-                        {a.label}
-                      </button>
-                    ))}
-                  </div>
-                  <p className="mt-1.5 text-[11px]" style={{ color: colors.mutedForeground }}>The marketplace packshot is always square.</p>
-                </div>
-                <div>
-                  <p className="mb-2 text-xs font-medium" style={{ color: colors.mutedForeground }}>Lighting</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {LIGHTS.map((l) => (
-                      <button key={l.id} type="button" onClick={() => setSettings({ ...s, lighting: l.id })}
-                        className="rounded-md px-2.5 py-1.5 text-xs"
-                        style={s.lighting === l.id ? { background: colors.primary, color: colors.primaryForeground } : { background: colors.secondary, color: colors.foreground }}>
-                        {l.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <p className="mb-2 text-xs font-medium" style={{ color: colors.mutedForeground }}>Backdrop colour</p>
-                  <div className="flex flex-wrap items-center gap-2">
-                    {[...new Set([...shoot.brandColors, "#EDE7DF", "#FFFFFF", "#1C1C1C"])].map((c) => (
-                      <button key={c} type="button" aria-label={`Backdrop ${c}`} onClick={() => setSettings({ ...s, backdrop: c })}
-                        className="h-7 w-7 rounded-full"
-                        style={{ background: c, outline: s.backdrop.toLowerCase() === c.toLowerCase() ? `2px solid ${colors.primary}` : `1px solid ${colors.border}`, outlineOffset: 2 }} />
-                    ))}
-                    <label className="relative h-7 w-7 cursor-pointer overflow-hidden rounded-full" style={{ border: `1px dashed ${colors.border}` }} aria-label="Custom backdrop colour">
-                      <input type="color" value={s.backdrop} onChange={(e) => setSettings({ ...s, backdrop: e.target.value })} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
-                      <span className="flex h-full w-full items-center justify-center text-xs" style={{ color: colors.mutedForeground }}>+</span>
-                    </label>
-                  </div>
-                </div>
-                {usesModel && (
-                  <div>
-                    <p className="mb-2 text-xs font-medium" style={{ color: colors.mutedForeground }}>Model</p>
-                    <div className="grid grid-cols-2 gap-2">
-                      <select value={s.model?.gender || "any"} onChange={(e) => setSettings({ ...s, model: { ...s.model, gender: e.target.value as any } })}
-                        className="rounded-md px-2 py-1.5 text-xs" style={{ background: colors.secondary, color: colors.foreground, border: `1px solid ${colors.border}` }}>
-                        <option value="any">Any gender</option><option value="woman">Woman</option><option value="man">Man</option>
-                      </select>
-                      <select value={s.model?.age || "any"} onChange={(e) => setSettings({ ...s, model: { ...s.model, age: e.target.value as any } })}
-                        className="rounded-md px-2 py-1.5 text-xs" style={{ background: colors.secondary, color: colors.foreground, border: `1px solid ${colors.border}` }}>
-                        <option value="any">Any age</option><option value="18-25">18–25</option><option value="25-40">25–40</option><option value="40+">40+</option>
-                      </select>
+            {tab === "plan" ? (
+              <div className="grid gap-6 lg:grid-cols-[260px_minmax(0,1fr)]">
+                {/* Left rail: what you're shooting, what you picked, how it should look */}
+                <aside className="space-y-4 lg:sticky lg:top-0 lg:self-start" aria-label="Your shoot">
+                  <section className="rounded-2xl p-4" style={card}>
+                    <h2 className="text-xs font-semibold uppercase tracking-wider" style={{ color: colors.mutedForeground }}>1 · Your product</h2>
+                    <div className="mt-3 flex items-center gap-3">
+                      <span className="h-20 w-20 shrink-0 overflow-hidden rounded-xl" style={{ background: "#fff" }}>
+                        <img src={preview || shoot.sourceUrl} alt={`${p.name}, studio packshot`} className="h-full w-full object-contain" />
+                      </span>
+                      <p className="text-xs leading-snug" style={{ color: colors.mutedForeground }}>
+                        {shoot.masterUrl ? "Clean studio packshot — every shot is built from it." : p.productType}
+                      </p>
                     </div>
-                    <input value={s.model?.look || ""} onChange={(e) => setSettings({ ...s, model: { ...s.model, look: e.target.value } })}
-                      placeholder="Look (optional) — e.g. South Asian, casual"
-                      className="mt-2 w-full rounded-md px-2 py-1.5 text-xs outline-none" style={{ background: colors.secondary, color: colors.foreground, border: `1px solid ${colors.border}` }} />
-                  </div>
-                )}
-              </section>
-            </aside>
+                  </section>
 
-            {/* Shot list + results */}
-            <div className="space-y-5">
-              {GROUPS.map((g) => {
-                const shots = shoot.catalog.filter((x) => x.group === g.id);
-                if (!shots.length) return null;
-                return (
-                  <section key={g.id}>
-                    <div className="mb-2 flex items-baseline gap-2">
-                      <h2 className="text-sm font-semibold" style={{ color: colors.foreground }}>{g.label}</h2>
-                      <span className="text-xs" style={{ color: colors.mutedForeground }}>{g.hint}</span>
+                  <section className="rounded-2xl p-4" style={{ ...card, borderColor: selectedIds.length ? colors.primary : colors.border }}>
+                    <h2 className="text-xs font-semibold uppercase tracking-wider" style={{ color: colors.mutedForeground }}>2 · Your shots</h2>
+                    {selectedIds.length ? (
+                      <>
+                        <div className="mt-3 grid grid-cols-3 gap-1.5">
+                          {selectedIds.slice(0, 8).map((id) => (
+                            <img key={id} src={exampleSrc(id)} alt="" className="aspect-square w-full rounded-md object-cover" />
+                          ))}
+                          {selectedIds.length > 8 && (
+                            <span className="flex aspect-square items-center justify-center rounded-md text-xs font-medium" style={{ background: colors.secondary, color: colors.foreground }}>
+                              +{selectedIds.length - 8}
+                            </span>
+                          )}
+                        </div>
+                        <p className="mt-2.5 text-xs" style={{ color: colors.foreground }}>
+                          {selectedIds.length} shot{selectedIds.length === 1 ? "" : "s"} · {totalPhotos} photo{totalPhotos === 1 ? "" : "s"}
+                        </p>
+                      </>
+                    ) : (
+                      <p className="mt-2 text-xs" style={{ color: colors.mutedForeground }}>Pick the shots you want from the examples.</p>
+                    )}
+                  </section>
+
+                  <section className="space-y-4 rounded-2xl p-4" style={card} aria-label="Look">
+                    <h2 className="text-xs font-semibold uppercase tracking-wider" style={{ color: colors.mutedForeground }}>3 · Look</h2>
+                    <fieldset>
+                      <legend className="mb-1.5 text-xs font-medium" style={{ color: colors.mutedForeground }}>Format</legend>
+                      <div role="radiogroup" aria-label="Format" className="grid grid-cols-3 gap-1.5">
+                        {ASPECTS.map((a) => {
+                          const on = s.aspect === a.id;
+                          return (
+                            <button key={a.id} role="radio" aria-checked={on} type="button" onClick={() => setSettings({ ...s, aspect: a.id })} title={`${a.label} — ${a.hint}`}
+                              className={`flex flex-col items-center gap-1 rounded-lg px-1 py-2 ${focusRing}`}
+                              style={{ background: on ? "hsl(213 100% 55% / 0.12)" : colors.secondary, border: `1px solid ${on ? colors.primary : "transparent"}` }}>
+                              <span aria-hidden className="rounded-[3px]" style={{ width: a.w, height: a.h, border: `1.5px solid ${on ? colors.primary : colors.mutedForeground}` }} />
+                              <span className="text-[11px]" style={{ color: colors.foreground }}>{a.hint}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </fieldset>
+                    <fieldset>
+                      <legend className="mb-1.5 text-xs font-medium" style={{ color: colors.mutedForeground }}>Lighting</legend>
+                      <div role="radiogroup" aria-label="Lighting" className="grid grid-cols-2 gap-1.5">
+                        {LIGHTS.map((l) => {
+                          const on = s.lighting === l.id;
+                          return (
+                            <button key={l.id} role="radio" aria-checked={on} type="button" onClick={() => setSettings({ ...s, lighting: l.id })}
+                              className={`rounded-lg px-2 py-1.5 text-xs ${focusRing}`}
+                              style={{ background: on ? "hsl(213 100% 55% / 0.12)" : colors.secondary, border: `1px solid ${on ? colors.primary : "transparent"}`, color: colors.foreground }}>
+                              {l.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </fieldset>
+                    <fieldset>
+                      <legend className="mb-1.5 text-xs font-medium" style={{ color: colors.mutedForeground }}>Backdrop</legend>
+                      <div role="radiogroup" aria-label="Backdrop colour" className="flex flex-wrap items-center gap-2">
+                        {[...new Set([...shoot.brandColors, "#EDE7DF", "#FFFFFF", "#1C1C1C"])].map((c) => {
+                          const on = s.backdrop.toLowerCase() === c.toLowerCase();
+                          return (
+                            <button key={c} role="radio" aria-checked={on} type="button" aria-label={`Backdrop ${c}`} title={c} onClick={() => setSettings({ ...s, backdrop: c })}
+                              className={`h-7 w-7 rounded-full ${focusRing}`}
+                              style={{ background: c, outline: on ? `2px solid ${colors.primary}` : `1px solid ${colors.border}`, outlineOffset: 2 }} />
+                          );
+                        })}
+                        <label className="relative flex h-7 w-7 cursor-pointer items-center justify-center overflow-hidden rounded-full text-sm" style={{ border: `1px dashed ${colors.border}`, color: colors.mutedForeground }} title="Pick any colour">
+                          <span aria-hidden>+</span>
+                          <input type="color" aria-label="Pick a custom backdrop colour" value={s.backdrop} onChange={(e) => setSettings({ ...s, backdrop: e.target.value })} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
+                        </label>
+                      </div>
+                      <p className="mt-1.5 text-[11px]" style={{ color: colors.mutedForeground }}>Creative sets bring their own light and colours.</p>
+                    </fieldset>
+                    {usesModel && (
+                      <fieldset>
+                        <legend className="mb-1.5 text-xs font-medium" style={{ color: colors.mutedForeground }}>Model — for the people shots you picked</legend>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          <label className="sr-only" htmlFor="ps-gender">Gender</label>
+                          <select id="ps-gender" value={s.model?.gender || "any"} onChange={(e) => setSettings({ ...s, model: { ...s.model, gender: e.target.value as any } })}
+                            className={`rounded-lg px-2 py-1.5 text-xs ${focusRing}`} style={{ background: colors.secondary, color: colors.foreground, border: `1px solid ${colors.border}` }}>
+                            <option value="any">Any gender</option><option value="woman">Woman</option><option value="man">Man</option>
+                          </select>
+                          <label className="sr-only" htmlFor="ps-age">Age</label>
+                          <select id="ps-age" value={s.model?.age || "any"} onChange={(e) => setSettings({ ...s, model: { ...s.model, age: e.target.value as any } })}
+                            className={`rounded-lg px-2 py-1.5 text-xs ${focusRing}`} style={{ background: colors.secondary, color: colors.foreground, border: `1px solid ${colors.border}` }}>
+                            <option value="any">Any age</option><option value="18-25">18–25</option><option value="25-40">25–40</option><option value="40+">40+</option>
+                          </select>
+                        </div>
+                        {(() => {
+                          // Look is free text ("Indian", "South Asian, 30s") plus an optional style.
+                          const parts = (s.model?.look || "").split(", ");
+                          const sty = STYLES.includes(parts[parts.length - 1]) ? parts.pop()! : "";
+                          const look = parts.join(", ");
+                          const save = (l: string, st: string) => setSettings({ ...s, model: { ...s.model, look: [l.trim(), st].filter(Boolean).join(", ") } });
+                          return (
+                            <>
+                              <label className="sr-only" htmlFor="ps-look">Look</label>
+                              <input id="ps-look" value={look} onChange={(e) => save(e.target.value, sty)} placeholder="Look, e.g. Indian, South Asian"
+                                className={`mt-1.5 w-full rounded-lg px-2.5 py-1.5 text-xs ${focusRing}`} style={{ background: colors.secondary, color: colors.foreground, border: `1px solid ${colors.border}` }} />
+                              <label className="sr-only" htmlFor="ps-style">Style</label>
+                              <select id="ps-style" value={sty} onChange={(e) => save(look, e.target.value)}
+                                className={`mt-1.5 w-full rounded-lg px-2 py-1.5 text-xs ${focusRing}`} style={{ background: colors.secondary, color: colors.foreground, border: `1px solid ${colors.border}` }}>
+                                <option value="">Any style</option>
+                                {STYLES.map((x) => <option key={x} value={x}>{x}</option>)}
+                              </select>
+                            </>
+                          );
+                        })()}
+                      </fieldset>
+                    )}
+                  </section>
+                </aside>
+
+                {/* Example tiles */}
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-end justify-between gap-3">
+                    <div>
+                      <h2 className="text-lg font-semibold" style={{ color: colors.foreground }}>Pick your shots</h2>
+                      <p className="mt-0.5 text-xs" style={{ color: colors.mutedForeground }}>Examples use a sample product — yours goes in its place.</p>
                     </div>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      {shots.map((shot) => {
-                        const on = (selected[shot.id] || 0) > 0;
-                        const st = status[shot.id] || "idle";
-                        const photos = results.map((r, i) => ({ r, i })).filter((x) => x.r.shotId === shot.id);
+                    <div className="flex gap-1.5" aria-label="Quick select">
+                      {([
+                        ["Recommended", () => setSelected(Object.fromEntries((shoot.recommended || []).map((id) => [id, 1])))],
+                        ["All", () => setSelected(Object.fromEntries(visibleShots.map((x) => [x.id, selected[x.id] || 1])))],
+                        ["Clear", () => setSelected({})],
+                      ] as const).map(([label, fn]) => (
+                        <button key={label} type="button" onClick={fn} className={`rounded-full px-3 py-1.5 text-xs ${focusRing}`} style={{ border: `1px solid ${colors.border}`, color: colors.foreground }}>
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Step: what are you shooting? (detected from the photo — change it if it's wrong) */}
+                  <section className="mt-5" aria-labelledby="kind-title">
+                    <h3 id="kind-title" className="mb-2.5 text-sm font-semibold" style={{ color: colors.foreground }}>What are you shooting?</h3>
+                    <div role="radiogroup" aria-labelledby="kind-title" className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
+                      {(Object.keys(KIND_LABEL) as ProductKind[]).map((k) => {
+                        const on = kind === k;
+                        const KIcon = KIND_ICON[k];
                         return (
-                          <div key={shot.id} className="rounded-xl p-3.5" style={{ ...card, borderColor: on ? colors.primary : colors.border }}>
-                            <div className="flex items-start gap-3">
-                              <button type="button" aria-pressed={on} aria-label={`${on ? "Remove" : "Add"} ${shot.label}`}
-                                onClick={() => setSelected((m) => ({ ...m, [shot.id]: on ? 0 : 1 }))}
-                                className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded"
-                                style={{ background: on ? colors.primary : "transparent", border: `1px solid ${on ? colors.primary : colors.border}` }}>
-                                {on && <Check className="h-3.5 w-3.5 text-white" />}
-                              </button>
-                              <div className="min-w-0 flex-1">
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <p className="text-sm font-medium" style={{ color: colors.foreground }}>{shot.label}</p>
-                                  <span className="rounded px-1.5 py-0.5 text-[10px]" style={{ background: colors.muted, color: colors.mutedForeground }}>
-                                    {METHOD_LABEL[shot.method !== "guided" && !shoot.exactAvailable ? "guided" : shot.method]}
-                                  </span>
-                                </div>
-                                <p className="mt-0.5 text-xs" style={{ color: colors.mutedForeground }}>{shot.description}</p>
-                                <p className="mt-1 text-[11px]" style={{ color: colors.mutedForeground }}>For: {shot.purpose}</p>
-                                <div className="mt-2 flex items-center justify-between gap-2">
-                                  {on && shot.id === "marketplace_white" ? (
-                                    <span className="text-[11px]" style={{ color: colors.mutedForeground }}>1 photo (marketplace standard)</span>
-                                  ) : on ? (
-                                    <div className="flex items-center gap-1 text-[11px]" style={{ color: colors.mutedForeground }}>
-                                      Variations
-                                      {[1, 2].map((n) => (
-                                        <button key={n} type="button" onClick={() => setSelected((m) => ({ ...m, [shot.id]: n }))}
-                                          className="h-6 w-6 rounded text-xs"
-                                          style={selected[shot.id] === n ? { background: colors.primary, color: colors.primaryForeground } : { background: colors.secondary, color: colors.foreground }}>
-                                          {n}
-                                        </button>
-                                      ))}
-                                    </div>
-                                  ) : <span />}
-                                  {st === "shooting" || st === "queued" ? (
-                                    <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: colors.primary }}>
-                                      <ArcSpinner className="h-3 w-3 animate-spin" /> {st === "queued" ? "Queued" : "Shooting…"}
-                                    </span>
-                                  ) : photos.length > 0 || st === "failed" ? (
-                                    <button type="button" disabled={running} onClick={() => void runShoot([shot.id])}
-                                      className="inline-flex items-center gap-1 text-[11px] disabled:opacity-50" style={{ color: colors.primary }}>
-                                      <RefreshCw className="h-3 w-3" /> {st === "failed" ? "Try again" : "Reshoot"}
-                                    </button>
-                                  ) : null}
-                                </div>
-                              </div>
-                            </div>
-                            {(photos.length > 0 || st === "shooting") && (
-                              <div className="mt-3 grid grid-cols-3 gap-2">
-                                {photos.map(({ r, i }) => (
-                                  <button key={r.url} type="button" onClick={() => setViewer(i)} className="aspect-[4/5] overflow-hidden rounded-md" style={{ background: colors.secondary }}>
-                                    <img src={r.url} alt={shot.label} className="h-full w-full object-cover" />
-                                  </button>
-                                ))}
-                                {/* Where the new photos will land while they're being shot */}
-                                {st === "shooting" &&
-                                  Array.from({ length: shot.id === "marketplace_white" ? 1 : selected[shot.id] || 1 }, (_, k) => (
-                                    <ShimmerTile key={`pending-${k}`} className="aspect-[4/5] rounded-md" />
-                                  ))}
-                              </div>
-                            )}
-                          </div>
+                          <button key={k} role="radio" aria-checked={on} type="button"
+                            onClick={() => { setKindOverride(k); setSelected(Object.fromEntries(recommendFor(k).map((id) => [id, 1]))); }}
+                            className={`flex flex-col items-center gap-1.5 rounded-xl px-2 py-3 text-center ${focusRing}`}
+                            style={{ background: on ? "hsl(213 100% 55% / 0.12)" : colors.card, border: `1px solid ${on ? colors.primary : colors.border}` }}>
+                            <KIcon className="h-5 w-5" style={{ color: on ? colors.primary : colors.mutedForeground }} aria-hidden />
+                            <span className="text-xs font-medium leading-tight" style={{ color: colors.foreground }}>{KIND_LABEL[k]}</span>
+                          </button>
                         );
                       })}
                     </div>
                   </section>
-                );
-              })}
 
-              <div className="sticky bottom-0 flex flex-wrap items-center justify-between gap-3 rounded-xl p-4" style={{ ...card, background: colors.card }}>
-                <p className="text-sm" style={{ color: colors.foreground }}>
-                  {selectedIds.length} shot{selectedIds.length === 1 ? "" : "s"} · {totalPhotos} photo{totalPhotos === 1 ? "" : "s"} ·{" "}
-                  <span style={{ color: colors.mutedForeground }}>Free during beta</span>
-                </p>
-                <div className="flex gap-2">
-                  {results.length > 0 && (
-                    <button type="button" onClick={() => setViewer(0)} className="rounded-lg px-3 py-2 text-sm"
-                      style={{ border: `1px solid ${colors.border}`, color: colors.foreground }}>
-                      View all {results.length}
-                    </button>
-                  )}
-                  {shotIdsShot.size > 0 && (
-                    <button
-                      type="button"
-                      disabled={running || !selectedIds.length}
-                      onClick={() => void runShoot(selectedIds)}
-                      title="Shoot every selected shot again with the current format, lighting, backdrop and model"
-                      className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm disabled:opacity-50"
-                      style={remaining.length ? { border: `1px solid ${colors.border}`, color: colors.foreground } : { background: colors.primary, color: colors.primaryForeground }}
-                    >
-                      <RefreshCw className="h-4 w-4" /> Reshoot all {selectedIds.length}
-                    </button>
-                  )}
-                  {(remaining.length > 0 || shotIdsShot.size === 0) && (
-                    <button
-                      type="button"
-                      disabled={running || !remaining.length}
-                      onClick={() => void runShoot(remaining)}
-                      className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50"
-                      style={{ background: colors.primary, color: colors.primaryForeground }}
-                    >
-                      {running ? <ArcSpinner className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
-                      {running ? "Shooting…" : shotIdsShot.size ? `Shoot remaining ${remaining.length}` : "Start shoot"}
-                    </button>
-                  )}
-                  {running && !remaining.length && shotIdsShot.size > 0 && (
-                    <span className="inline-flex items-center gap-2 text-sm" style={{ color: colors.primary }}>
-                      <ArcSpinner className="h-4 w-4 animate-spin" /> Shooting…
-                    </span>
-                  )}
+                  {([
+                    { title: `Made for ${KIND_LABEL[kind].toLowerCase()}`, hint: "The shots that sell in your category", groups: ["catalogue", "studio", "lifestyle", "people"], kindOnly: true },
+                    { title: "Product shots", hint: "Marketplace, product page and studio", groups: ["catalogue", "studio"] },
+                    { title: "Lifestyle & people", hint: "In its world, in hand, in use", groups: ["lifestyle", "people"] },
+                    { title: "Creative sets", hint: "Themed scenes for ads and social", groups: ["creative"] },
+                  ] as const).map((sec) => {
+                    const shots = visibleShots.filter((x) => (sec.groups as readonly string[]).includes(x.group) && ("kindOnly" in sec ? !!x.kinds : !x.kinds));
+                    if (!shots.length) return null;
+                    return (
+                      <section key={sec.title} className="mt-7" aria-labelledby={`sec-${sec.title}`}>
+                        <h3 id={`sec-${sec.title}`} className="mb-3 text-sm font-semibold" style={{ color: colors.foreground }}>
+                          {sec.title} <span className="font-normal" style={{ color: colors.mutedForeground }}>· {sec.hint}</span>
+                        </h3>
+                        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+                          {shots.map((shot) => {
+                            const n = selected[shot.id] || 0;
+                            const on = n > 0;
+                            const method = methodOf(shot);
+                            const MethodIcon = method === "guided" ? Wand2 : Lock;
+                            const single = shot.id === "marketplace_white";
+                            const dim = selectedIds.length > 0 && !on;
+                            return (
+                              <div key={shot.id} className="group relative overflow-hidden rounded-2xl transition-all"
+                                style={{ boxShadow: on ? `0 0 0 2px ${colors.primary}` : `0 0 0 1px ${colors.border}`, opacity: dim ? 0.55 : 1 }}>
+                                <button type="button" aria-pressed={on} onClick={() => setSelected((m) => ({ ...m, [shot.id]: on ? 0 : 1 }))}
+                                  title={`${shot.purpose}. ${METHOD_LABEL[method]}.`}
+                                  className={`block w-full ${focusRing}`}>
+                                  <span className="relative block aspect-square overflow-hidden" style={{ background: colors.secondary }}>
+                                    <img src={exampleSrc(shot.id)} alt={`Example: ${shot.label}`} loading="lazy"
+                                      className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.04]" />
+                                    <span className="absolute inset-x-2 bottom-2 flex items-center justify-center gap-1.5 rounded-xl px-2 py-1.5 text-sm font-medium backdrop-blur"
+                                      style={on ? { background: colors.primary, color: colors.primaryForeground } : { background: "rgba(0,0,0,0.58)", color: "#fff" }}>
+                                      <MethodIcon className="h-3.5 w-3.5 shrink-0 opacity-80" aria-label={METHOD_LABEL[method]} />
+                                      <span className="truncate">{shot.label}</span>
+                                    </span>
+                                    {on && (
+                                      <span aria-hidden className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full" style={{ background: colors.primary, color: "#fff" }}>
+                                        <Check className="h-4 w-4" />
+                                      </span>
+                                    )}
+                                  </span>
+                                </button>
+                                {on && !single && (
+                                  <button type="button" onClick={() => setSelected((m) => ({ ...m, [shot.id]: n === 2 ? 1 : 2 }))}
+                                    aria-label={`${shot.label}: ${n} photo${n > 1 ? "s" : ""}. Click for ${n === 2 ? 1 : 2}.`}
+                                    title={n === 2 ? "Two different takes to pick from — click for one" : "Click for two different takes"}
+                                    className={`absolute left-2 top-2 rounded-full px-2.5 py-1 text-xs font-medium backdrop-blur ${focusRing}`}
+                                    style={{ background: "rgba(0,0,0,0.62)", color: "#fff" }}>
+                                    {n} photo{n > 1 ? "s" : ""} ▾
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </section>
+                    );
+                  })}
                 </div>
               </div>
-            </div>
+            ) : (
+              /* Photos: one row per shot, newest work visible at a glance */
+              <div aria-live="polite">
+                {shotsWithPhotos.length === 0 ? (
+                  <div className="flex flex-col items-center rounded-2xl px-6 py-16 text-center" style={{ border: `1px dashed ${colors.border}` }}>
+                    <Images className="h-8 w-8" style={{ color: colors.mutedForeground }} aria-hidden />
+                    <p className="mt-3 text-sm font-medium" style={{ color: colors.foreground }}>No photos yet</p>
+                    <p className="mt-1 text-xs" style={{ color: colors.mutedForeground }}>Pick your shots, then start the shoot.</p>
+                    <button type="button" onClick={() => setTab("plan")} className={`mt-4 rounded-lg px-4 py-2 text-sm ${focusRing}`} style={{ border: `1px solid ${colors.border}`, color: colors.foreground }}>
+                      Plan shots
+                    </button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-5 sm:grid-cols-3 lg:grid-cols-4">
+                    {shotsWithPhotos.flatMap((shot) => {
+                      const st = status[shot.id] || "idle";
+                      const photos = results.map((r, i) => ({ r, i })).filter((x) => x.r.shotId === shot.id);
+                      const Icon = SHOT_ICON[shot.id] || Camera;
+                      const busy = st === "shooting" || st === "queued";
+                      const pending = busy ? (shot.id === "marketplace_white" ? 1 : selected[shot.id] || 1) : 0;
+                      const caption = (k: number, total: number, withAction: boolean) => (
+                        <div className="mt-2 flex items-center justify-between gap-2">
+                          <span className="inline-flex min-w-0 items-center gap-1.5 text-xs" style={{ color: colors.foreground }}>
+                            <Icon className="h-3.5 w-3.5 shrink-0" style={{ color: colors.mutedForeground }} aria-hidden />
+                            <span className="truncate">{shot.label}{total > 1 ? ` ${k + 1}` : ""}</span>
+                          </span>
+                          {withAction && (busy ? (
+                            <span className="text-[11px]" style={{ color: colors.primary }}>{st === "queued" ? "Queued" : "Shooting…"}</span>
+                          ) : (
+                            <button type="button" disabled={running} onClick={() => void runShoot([shot.id])} title={`Reshoot ${shot.label}`} aria-label={`Reshoot ${shot.label}`}
+                              className={`rounded-md p-1 disabled:opacity-40 ${focusRing}`} style={{ color: colors.mutedForeground }}>
+                              <RefreshCw className="h-3.5 w-3.5" />
+                            </button>
+                          ))}
+                        </div>
+                      );
+                      return [
+                        ...photos.map(({ r, i }, k) => (
+                          <figure key={r.url} className="min-w-0">
+                            <button type="button" onClick={() => setViewer(i)} aria-label={`Open ${shot.label} photo`}
+                              className={`group block aspect-[4/5] w-full overflow-hidden rounded-xl ${focusRing}`} style={{ background: colors.secondary }}>
+                              <img src={r.url} alt="" loading="lazy" className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]" />
+                            </button>
+                            <figcaption>{caption(k, photos.length + pending, k === 0)}</figcaption>
+                          </figure>
+                        )),
+                        ...Array.from({ length: pending }, (_, k) => (
+                          <figure key={`${shot.id}-pending-${k}`} className="min-w-0">
+                            <ShimmerTile className="aspect-[4/5]" />
+                            <figcaption>{caption(photos.length + k, photos.length + pending, photos.length === 0 && k === 0)}</figcaption>
+                          </figure>
+                        )),
+                      ];
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
+
+        {/* Action bar */}
+        <footer className="flex-shrink-0 border-t" style={{ borderColor: colors.border, background: colors.card }}>
+          <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
+            <p className="text-sm" style={{ color: colors.foreground }} aria-live="polite">
+              <strong>{selectedIds.length}</strong> shot{selectedIds.length === 1 ? "" : "s"} · <strong>{totalPhotos}</strong> photo{totalPhotos === 1 ? "" : "s"}
+              <span className="ml-2 text-xs" style={{ color: colors.mutedForeground }}>Free during beta</span>
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {results.length > 0 && (
+                <button type="button" onClick={() => setViewer(0)} className={`rounded-lg px-3 py-2 text-sm ${focusRing}`} style={{ border: `1px solid ${colors.border}`, color: colors.foreground }}>
+                  View all {results.length}
+                </button>
+              )}
+              {shotIdsShot.size > 0 && (
+                <button type="button" disabled={running || !selectedIds.length} onClick={() => void runShoot(selectedIds)}
+                  title="Shoot every selected shot again with the current look"
+                  className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm disabled:opacity-50 ${focusRing}`}
+                  style={remaining.length ? { border: `1px solid ${colors.border}`, color: colors.foreground } : { background: colors.primary, color: colors.primaryForeground }}>
+                  <RefreshCw className="h-4 w-4" /> Reshoot all
+                </button>
+              )}
+              {(remaining.length > 0 || shotIdsShot.size === 0) && (
+                <button type="button" disabled={running || !remaining.length} onClick={() => void runShoot(remaining)}
+                  className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50 ${focusRing}`}
+                  style={{ background: colors.primary, color: colors.primaryForeground }}>
+                  {running ? <ArcSpinner className="h-4 w-4" /> : <Camera className="h-4 w-4" />}
+                  {running ? "Shooting…" : shotIdsShot.size ? `Shoot ${remaining.length} more` : `Start shoot`}
+                </button>
+              )}
+              {running && !remaining.length && shotIdsShot.size > 0 && (
+                <span className="inline-flex items-center gap-2 px-2 text-sm" style={{ color: colors.primary }}>
+                  <ArcSpinner className="h-4 w-4" /> Shooting…
+                </span>
+              )}
+            </div>
+          </div>
+        </footer>
       </main>
 
       {viewer !== null && viewerItems[viewer] && (

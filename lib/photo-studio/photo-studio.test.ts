@@ -16,7 +16,11 @@ async function main() {
   // Profile normalisation + recommendations
   const food = normalizeProductProfile({ name: "Peri Peri Anchovies", isFood: true, storyProps: ["chillies", "anchovies"], finish: "glossy plastic", sizeClass: "handheld" });
   const recs = recommendShots(food);
-  assert.ok(recs.includes("marketplace_white") && recs.includes("in_hand") && recs.includes("levitation") && recs.includes("acrylic_reflection"));
+  assert.equal(food.kind, "packaged_food", "food is detected as packaged food");
+  assert.ok(recs.includes("marketplace_white") && recs.includes("food_served") && recs.includes("food_ingredients"), "food gets food shots");
+  const drink = normalizeProductProfile({ name: "Mango juice", kind: "beverage" });
+  assert.ok(recommendShots(drink).includes("bev_pour"));
+  assert.ok(shotDirection("food_served", food, { aspect: "4:5", lighting: "studio_soft", backdrop: "#fff" }).includes("steel"), "Indian styling for food");
   const sofa = normalizeProductProfile({ name: "Sofa", sizeClass: "large" });
   assert.ok(!recommendShots(sofa).includes("in_hand"), "no in-hand shot for large products");
   assert.equal(normalizeProductProfile({ sizeClass: "huge", viewAngle: "weird" }).sizeClass, "handheld");

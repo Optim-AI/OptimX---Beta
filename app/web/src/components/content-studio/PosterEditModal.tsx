@@ -1,8 +1,8 @@
 // PosterEditModal.tsx
 // Natural-language poster iteration (Phase 8) with legacy fallback
 
-import React, { useEffect, useState } from "react";
-import { Check, X } from "lucide-react";
+import React, { useEffect, useRef, useState } from "react";
+import { Check, MousePointerSquareDashed, X } from "lucide-react";
 import { ArcSpinner } from "@/app/web/src/components/ui/loaders";
 import { Button } from "@/app/web/src/components/ui/button";
 
@@ -25,10 +25,23 @@ type PosterEditModalProps = {
   onPlanChange?: (editPrompt: string) => Promise<PosterIterationPlanPreview>;
   /** Phase 8 — execute planned iteration (1 credit on success) */
   onExecuteChange?: (iterationId: string) => Promise<void>;
+  /** Area edit: change only the boxed part of the poster (box in 0–1 fractions) */
+  onAreaEdit?: (box: { x: number; y: number; w: number; h: number }, instruction: string) => Promise<void>;
   /** Optional version label e.g. "Version 2" */
   versionLabel?: string | null;
   parentVersionLabel?: string | null;
 };
+
+/** One tap for the common area edits; "…" ones put the cursor in the box to finish. */
+const AREA_ACTIONS = [
+  "Remove this",
+  "Replace it with …",
+  "Change the text to \"…\"",
+  "Change its colour to …",
+  "Make it bigger",
+];
+
+type Box = { x: number; y: number; w: number; h: number };
 
 const SUGGESTIONS = [
   "Make the product larger",
@@ -75,6 +88,7 @@ export default function PosterEditModal({
   onRegenerate,
   onPlanChange,
   onExecuteChange,
+  onAreaEdit,
   versionLabel,
   parentVersionLabel,
 }: PosterEditModalProps) {
@@ -86,6 +100,47 @@ export default function PosterEditModal({
   );
   const [plan, setPlan] = useState<PosterIterationPlanPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [box, setBox] = useState<Box | null>(null);
+  const drag = useRef<{ x: number; y: number } | null>(null);
+  const promptRef = useRef<HTMLTextAreaElement>(null);
+  const canSelect = !!onAreaEdit && step === "compose" && !isWorking;
+
+  const pointAt = (e: React.PointerEvent<HTMLDivElement>) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    return { x: Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), y: Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)) };
+  };
+  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!canSelect) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    drag.current = pointAt(e);
+    setBox({ ...drag.current, w: 0, h: 0 });
+  };
+  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!drag.current) return;
+    const p = pointAt(e);
+    const a = drag.current;
+    setBox({ x: Math.min(a.x, p.x), y: Math.min(a.y, p.y), w: Math.abs(p.x - a.x), h: Math.abs(p.y - a.y) });
+  };
+  const onPointerUp = () => {
+    if (!drag.current) return;
+    drag.current = null;
+    setBox((b) => {
+      if (!b || b.w < 0.02 || b.h < 0.02) return null; // a click, not a selection
+      requestAnimationFrame(() => promptRef.current?.focus());
+      return b;
+    });
+  };
+  const applyAction = (a: string) => {
+    setEditPrompt(a);
+    // Put the cursor where the person finishes the sentence ("…").
+    requestAnimationFrame(() => {
+      const el = promptRef.current;
+      if (!el) return;
+      el.focus();
+      const at = a.indexOf("…");
+      if (at >= 0) el.setSelectionRange(at, at + 1);
+    });
+  };
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -99,6 +154,25 @@ export default function PosterEditModal({
     const trimmed = editPrompt.trim();
     if (!trimmed) return;
     setError(null);
+
+    if (box && onAreaEdit) {
+      if (trimmed.includes("…")) {
+        setError("Finish the instruction — replace the … with what you want.");
+        return;
+      }
+      setIsWorking(true);
+      setStep("generating");
+      try {
+        await onAreaEdit(box, trimmed);
+        onClose();
+      } catch (e: any) {
+        setError(e?.message || "The edit didn't come out. Try again.");
+        setStep("compose");
+      } finally {
+        setIsWorking(false);
+      }
+      return;
+    }
 
     if (!engineMode) {
       if (!onRegenerate) return;
@@ -160,13 +234,43 @@ export default function PosterEditModal({
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex min-h-0 flex-1 items-center justify-center bg-black/40 p-4 md:p-6">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={imageUrl}
-            alt={`Poster ${posterIndex + 1}`}
-            className="max-h-[70vh] w-full object-contain rounded-lg"
-          />
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 bg-black/40 p-4 md:p-6">
+          {onAreaEdit && step === "compose" && (
+            <p className="inline-flex items-center gap-1.5 text-xs text-white/55">
+              <MousePointerSquareDashed className="h-3.5 w-3.5" />
+              {box ? "Drag again to reselect" : "Drag over the part you want to change — or describe a change for the whole poster"}
+            </p>
+          )}
+          <div
+            className="relative inline-block select-none touch-none"
+            style={{ cursor: canSelect ? "crosshair" : "default" }}
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            onPointerCancel={onPointerUp}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={imageUrl}
+              alt={`Poster ${posterIndex + 1}`}
+              draggable={false}
+              className="block max-h-[66vh] w-auto max-w-full rounded-lg object-contain"
+            />
+            {box && box.w > 0 && box.h > 0 && (
+              <div
+                aria-hidden
+                className="pointer-events-none absolute rounded-md"
+                style={{
+                  left: `${box.x * 100}%`,
+                  top: `${box.y * 100}%`,
+                  width: `${box.w * 100}%`,
+                  height: `${box.h * 100}%`,
+                  border: "2px dashed #60a5fa",
+                  boxShadow: "0 0 0 9999px rgba(0,0,0,0.45)",
+                }}
+              />
+            )}
+          </div>
         </div>
 
         <div className="flex w-full flex-col border-t border-white/10 md:w-[340px] md:border-l md:border-t-0 lg:w-[380px]">
@@ -197,14 +301,23 @@ export default function PosterEditModal({
           <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-4">
             {step === "compose" && (
               <>
+                {box && (
+                  <div className="flex items-center justify-between rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-2">
+                    <span className="text-xs text-blue-100">Only the selected area will change</span>
+                    <button type="button" onClick={() => setBox(null)} className="text-xs text-white/60 underline-offset-2 hover:text-white hover:underline">
+                      Clear selection
+                    </button>
+                  </div>
+                )}
                 <div>
                   <label className="mb-2 block text-sm font-medium text-white/80">
-                    What would you like to change?
+                    {box ? "What should change in the selected area?" : "What would you like to change?"}
                   </label>
                   <textarea
+                    ref={promptRef}
                     value={editPrompt}
                     onChange={(e) => setEditPrompt(e.target.value)}
-                    placeholder="Make the product larger…"
+                    placeholder={box ? "Remove this, or change the text to…" : "Make the product larger…"}
                     rows={5}
                     disabled={isWorking}
                     className="w-full resize-none rounded-xl border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-white outline-none placeholder:text-white/30 focus:border-blue-500/50"
@@ -214,15 +327,15 @@ export default function PosterEditModal({
 
                 <div>
                   <p className="mb-2 text-[11px] uppercase tracking-wider text-white/40">
-                    Suggestions
+                    {box ? "Quick actions" : "Suggestions"}
                   </p>
                   <div className="flex flex-wrap gap-1.5">
-                    {SUGGESTIONS.map((s) => (
+                    {(box ? AREA_ACTIONS : SUGGESTIONS).map((s) => (
                       <button
                         key={s}
                         type="button"
                         disabled={isWorking}
-                        onClick={() => setEditPrompt(s)}
+                        onClick={() => (box ? applyAction(s) : setEditPrompt(s))}
                         className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] text-white/65 transition hover:border-blue-500/40 hover:bg-blue-500/10 hover:text-white disabled:opacity-40"
                       >
                         {s}
@@ -267,9 +380,9 @@ export default function PosterEditModal({
             {step === "generating" && (
               <div className="flex flex-1 flex-col items-center justify-center gap-3 py-8 text-center">
                 <ArcSpinner className="h-6 w-6 animate-spin text-blue-400" />
-                <p className="text-sm text-white/80">Creating your update…</p>
+                <p className="text-sm text-white/80">{box ? "Editing the selected area…" : "Creating your update…"}</p>
                 <p className="text-xs text-white/40">
-                  Checking the final creative after generation
+                  {box ? "About 15 seconds. The rest of the poster stays exactly as it is." : "Checking the final creative after generation"}
                 </p>
               </div>
             )}
@@ -295,6 +408,8 @@ export default function PosterEditModal({
                       <ArcSpinner className="h-4 w-4 animate-spin" />
                       Understanding change…
                     </>
+                  ) : box && onAreaEdit ? (
+                    "Edit selected area →"
                   ) : engineMode ? (
                     "Review change →"
                   ) : (
@@ -302,9 +417,11 @@ export default function PosterEditModal({
                   )}
                 </Button>
                 <p className="mt-2 text-center text-[11px] text-white/35">
-                  {engineMode
-                    ? "Review is free · Generation uses 1 image credit"
-                    : "Uses the existing poster as the base"}
+                  {box && onAreaEdit
+                    ? "Only the selected area changes · 1 image credit"
+                    : engineMode
+                      ? "Review is free · Generation uses 1 image credit"
+                      : "Uses the existing poster as the base"}
                 </p>
               </>
             )}
