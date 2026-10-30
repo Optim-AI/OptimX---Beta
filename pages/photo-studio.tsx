@@ -374,7 +374,7 @@ export default function PhotoStudioPage(): JSX.Element {
             <h1 className="text-2xl font-semibold" style={{ color: colors.foreground }}>Photoshoot Studio</h1>
             <p className="mt-1 max-w-2xl text-sm" style={{ color: colors.mutedForeground }}>
               Upload one product photo and get a full product shoot — marketplace packshots, studio sets, lifestyle scenes,
-              in-hand and model shots — planned like a photographer's shot list.
+              in-hand and model shots — planned like a photographer&apos;s shot list.
             </p>
 
             <div

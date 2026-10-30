@@ -34,7 +34,11 @@ export default function About() {
               <FounderPhoto className="md:aspect-auto md:h-full md:w-full" />
             </div>
             <div className="min-w-0">
-              <p className="text-balance font-display text-[clamp(1.5rem,2.8vw,2.1rem)] font-medium leading-[1.3] tracking-[-0.015em]">{FOUNDER.note}</p>
+              <div className="space-y-4 text-balance font-display text-[clamp(1.5rem,2.8vw,2.1rem)] font-medium leading-[1.3] tracking-[-0.015em]">
+                {FOUNDER.note.map((paragraph) => (
+                  <p key={paragraph}>{paragraph}</p>
+                ))}
+              </div>
               <FounderSignature />
               <div className="mt-2">
                 <FounderContacts />

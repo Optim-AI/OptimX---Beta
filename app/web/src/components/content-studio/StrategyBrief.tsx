@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import Link from 'next/link';
 import { ChevronDown, ExternalLink } from 'lucide-react';
 import { ArcSpinner, StepProgress } from '@/app/web/src/components/ui/loaders';
 import colors from '@/lib/ui/colors';
@@ -52,9 +53,9 @@ export function StrategyBriefPanel({ brief }: { brief: StrategyBrief }) {
             {brief.alignedWithBrandResearch && (
               <>
                 {' · '}
-                <a href="/brand-research" className="underline" style={{ color: colors.primary }}>
+                <Link href="/brand-research" className="underline" style={{ color: colors.primary }}>
                   consistent with your Brand Research
-                </a>
+                </Link>
               </>
             )}
           </p>

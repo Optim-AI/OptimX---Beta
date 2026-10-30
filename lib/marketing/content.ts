@@ -114,10 +114,13 @@ export const FAQS = [
 export const FOUNDER = {
   name: 'Sudharsan AJ',
   shortName: 'AJ',
-  note: "Hi, I'm AJ. I'm a product designer from Chennai, and I built SkalX because good creative shouldn't need an agency budget. We're early, and we're taking on our first founding brands now — you'll work with me directly.",
+  note: [
+    "Hi, I'm AJ. A product designer from Chennai, building SkalX to make quality marketing accessible to growing brands.",
+    "We're welcoming our first founding brands. You'll work directly with me, and we'll grow together.",
+  ],
   email: SITE_SUPPORT_EMAIL,
-  // TODO: AJ's LinkedIn profile URL. The link renders once this is set.
-  linkedinUrl: '',
+  
+  linkedinUrl: 'https://www.linkedin.com/in/designeraj/',
   // 800×800 WebP in /public/images.
   photo: '/images/founder-aj-2.webp',
 } as const;

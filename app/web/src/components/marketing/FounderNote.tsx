@@ -75,8 +75,10 @@ export default function FounderNote() {
               <span aria-hidden className="h-px w-6 bg-ink/25" />
               A note from the founder
             </h2>
-            <blockquote className="relative mt-5 text-balance font-display text-[clamp(1.45rem,2.6vw,2.05rem)] font-medium leading-[1.3] tracking-[-0.015em]">
-              <p>{FOUNDER.note}</p>
+            <blockquote className="relative mt-5 space-y-4 text-balance font-display text-[clamp(1.45rem,2.6vw,2.05rem)] font-medium leading-[1.3] tracking-[-0.015em]">
+              {FOUNDER.note.map((paragraph) => (
+                <p key={paragraph}>{paragraph}</p>
+              ))}
             </blockquote>
             <FounderSignature />
             <div className="mt-2">
