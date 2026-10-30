@@ -27,12 +27,12 @@ type Props = {
 
 const BUTTON = 'mt-auto inline-flex min-h-11 w-full items-center justify-center rounded-full px-5 text-[15px] font-medium transition-colors disabled:opacity-60';
 
-function Features({ items }: { items: readonly string[] }) {
+function Features({ items, onInk = false }: { items: readonly string[]; onInk?: boolean }) {
   return (
-    <ul className="mb-6 mt-5 space-y-2 text-[15px] text-ink-soft">
+    <ul className={`mb-6 mt-5 space-y-2 text-[15px] ${onInk ? 'text-paper/80' : 'text-ink-soft'}`}>
       {items.map((cap) => (
         <li key={cap} className="flex gap-2">
-          <Check aria-hidden className="mt-1 h-4 w-4 shrink-0 text-accent" />
+          <Check aria-hidden className={`mt-1 h-4 w-4 shrink-0 ${onInk ? 'text-accent-on-ink' : 'text-accent'}`} />
           {cap}
         </li>
       ))}
@@ -53,10 +53,10 @@ export default function PlanCards({
 
   return (
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      <article className="flex flex-col rounded-2xl border border-line bg-surface p-6">
-        <Heading className="font-display text-2xl font-medium">{FREE_TRIAL_CARD.name}</Heading>
+      <article className="sx-lift flex flex-col rounded-[20px] border border-line bg-surface p-6 hover:border-ink/30">
+        <Heading className="font-display text-2xl font-semibold tracking-[-0.02em]">{FREE_TRIAL_CARD.name}</Heading>
         <p className="mt-1 text-sm text-ink-mute">{FREE_TRIAL_CARD.description}</p>
-        <p className="mt-4 font-display text-4xl font-medium">{FREE_TRIAL_CARD.priceLabel}</p>
+        <p className="mt-4 font-display text-4xl font-semibold tracking-[-0.03em]">{FREE_TRIAL_CARD.priceLabel}</p>
         <p className="mt-1 text-sm text-ink-mute">{FREE_TRIAL_CARD.supporting}</p>
         <Features items={FREE_TRIAL_CARD.features} />
         {interactive && onRequestTrial ? (
@@ -84,41 +84,43 @@ export default function PlanCards({
         return (
           <article
             key={plan.id}
-            className={`relative flex flex-col rounded-2xl border p-6 ${
-              featured ? 'border-ink bg-surface shadow-[0_24px_50px_-34px_rgba(23,20,15,0.6)]' : 'border-line bg-surface'
-            } ${selected ? 'ring-2 ring-accent' : ''}`}
+            className={`sx-lift relative flex flex-col rounded-[20px] border p-6 ${
+              featured
+                ? 'bg-ink sx-glow border-ink text-paper shadow-[0_40px_70px_-40px_rgba(23,20,15,0.85)] xl:-my-3 xl:py-9'
+                : 'border-line bg-surface hover:border-ink/30'
+            } ${selected ? 'ring-2 ring-accent ring-offset-2 ring-offset-paper' : ''}`}
           >
             {featured ? (
-              <span className="absolute -top-3 left-6 rounded-full bg-ink px-3 py-1 text-xs font-medium text-paper">
+              <span className="absolute -top-3 left-6 rounded-full bg-accent px-3 py-1 text-xs font-medium text-white shadow-[0_8px_18px_-8px_rgba(29,78,216,0.9)]">
                 Recommended
               </span>
             ) : null}
-            <Heading className="font-display text-2xl font-medium">{plan.name}</Heading>
+            <Heading className="font-display text-2xl font-semibold tracking-[-0.02em]">{plan.name}</Heading>
             <p className="mt-4">
-              <span className="font-display text-4xl font-medium">{formatInr(plan.priceInr)}</span>
-              <span className="block text-sm text-ink-mute">+ GST / month</span>
+              <span className="font-display text-4xl font-semibold tracking-[-0.03em]">{formatInr(plan.priceInr)}</span>
+              <span className={`block text-sm ${featured ? 'text-paper/70' : 'text-ink-mute'}`}>+ GST / month</span>
             </p>
-            <p className="mt-1 text-sm text-ink-mute">{formatInr(totals.totalInr)} incl. 18% GST</p>
+            <p className={`mt-1 text-sm ${featured ? 'text-paper/70' : 'text-ink-mute'}`}>{formatInr(totals.totalInr)} incl. 18% GST</p>
             <p className="mt-4 text-[15px]">
               <strong>{plan.imageCredits.toLocaleString('en-IN')}</strong> Image Credits
               <br />
               <strong>{plan.videoCredits.toLocaleString('en-IN')}</strong> Video Credits
             </p>
-            <Features items={features} />
+            <Features items={features} onInk={featured} />
             {interactive && onChoosePlan ? (
               <button
                 type="button"
                 disabled={continuing}
                 aria-label={`Select ${plan.name} plan`}
                 onClick={() => onChoosePlan(plan.id)}
-                className={`${BUTTON} ${featured ? 'bg-accent text-white hover:bg-accent-deep' : 'bg-ink text-paper hover:bg-accent-deep'}`}
+                className={`${BUTTON} ${featured ? 'bg-paper text-ink hover:bg-white' : 'bg-ink text-paper hover:bg-accent-deep'}`}
               >
                 {continuing && selected ? 'Continuing…' : `Choose ${plan.name}`}
               </button>
             ) : (
               <Link
                 href="/pricing"
-                className={`${BUTTON} ${featured ? 'bg-accent text-white hover:bg-accent-deep' : 'bg-ink text-paper hover:bg-accent-deep'}`}
+                className={`${BUTTON} ${featured ? 'bg-paper text-ink hover:bg-white' : 'bg-ink text-paper hover:bg-accent-deep'}`}
               >
                 Choose {plan.name}
               </Link>

@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import { ArrowRight } from 'lucide-react';
 import { useRouter } from 'next/router';
 import { authFetch } from '@/lib/utils';
 import { trackAuditEvent } from '@/lib/audit/analytics';
@@ -92,7 +93,13 @@ export default function StartForm({ inputId, onInk = false, focusOnHash }: Props
         <label htmlFor={inputId} className={`mb-2 block text-sm font-medium ${onInk ? 'text-paper' : ''}`}>
           Your website
         </label>
-        <div className="flex flex-col gap-3 sm:flex-row">
+        <div
+          className={`flex flex-col gap-3 sm:flex-row sm:gap-0 sm:rounded-full sm:border sm:p-1.5 sm:transition-[border-color,box-shadow] ${
+            onInk
+              ? 'sm:border-paper/25 sm:bg-paper/[0.06] sm:focus-within:border-paper/60'
+              : `sm:bg-surface sm:shadow-[0_18px_40px_-28px_rgba(23,20,15,0.45)] sm:focus-within:border-accent ${error ? 'sm:border-danger' : 'sm:border-ink/20'}`
+          }`}
+        >
           <input
             ref={inputRef}
             id={inputId}
@@ -110,18 +117,19 @@ export default function StartForm({ inputId, onInk = false, focusOnHash }: Props
             aria-invalid={Boolean(error)}
             aria-describedby={error ? errorId : undefined}
             disabled={submitting}
-            className={`min-h-12 w-full flex-1 rounded-full border bg-surface px-5 text-base text-ink placeholder:text-ink-mute ${
-              error ? 'border-danger' : 'border-ink/25'
-            }`}
+            className={`min-h-12 w-full flex-1 rounded-full border bg-surface px-5 text-base text-ink placeholder:text-ink-mute sm:min-h-11 sm:border-transparent sm:focus-visible:!outline-offset-[-2px] ${
+              onInk ? 'sm:bg-transparent sm:text-paper sm:placeholder:text-paper/60' : 'sm:bg-transparent'
+            } ${error ? 'border-danger' : 'border-ink/25'}`}
           />
           <button
             type="submit"
             disabled={submitting}
-            className={`min-h-12 shrink-0 rounded-full px-6 font-medium disabled:opacity-60 ${
+            className={`group inline-flex min-h-12 shrink-0 items-center justify-center gap-2 rounded-full px-6 font-medium transition-[background-color,transform] active:scale-[0.98] disabled:opacity-60 sm:min-h-11 ${
               onInk ? 'bg-paper text-ink hover:bg-white' : 'bg-accent text-white hover:bg-accent-deep'
             }`}
           >
             {submitting ? 'Starting…' : 'Get a free ad'}
+            {submitting ? null : <ArrowRight aria-hidden className="sx-btn-arrow h-4 w-4" />}
           </button>
         </div>
         {error ? (
@@ -136,7 +144,7 @@ export default function StartForm({ inputId, onInk = false, focusOnHash }: Props
       <p className="mt-3">
         <Link
           href={SIGNUP_HREF}
-          className={`text-[15px] font-medium underline underline-offset-4 ${onInk ? 'text-paper' : 'text-ink'}`}
+          className={`sx-link text-[15px] font-medium ${onInk ? 'text-paper' : 'text-ink'}`}
         >
           or sign up and explore →
         </Link>

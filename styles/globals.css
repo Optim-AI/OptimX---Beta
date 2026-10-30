@@ -258,6 +258,213 @@
 .sx-page details > summary { list-style: none; }
 .sx-page details > summary::-webkit-details-marker { display: none; }
 
+/* ── Marketing: "studio proof sheet" visual system ───────────────────── */
+
+/* Hairline layout grid, faded at the edges. Decorative. */
+.sx-grid-bg {
+  background-image:
+    linear-gradient(to right, rgba(23, 20, 15, 0.055) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(23, 20, 15, 0.055) 1px, transparent 1px);
+  background-size: 72px 72px;
+  -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 35%, #000 30%, transparent 75%);
+  mask-image: radial-gradient(ellipse 70% 60% at 50% 35%, #000 30%, transparent 75%);
+}
+.sx-grid-bg-ink {
+  background-image:
+    linear-gradient(to right, rgba(246, 241, 232, 0.07) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(246, 241, 232, 0.07) 1px, transparent 1px);
+  background-size: 72px 72px;
+  -webkit-mask-image: radial-gradient(ellipse 80% 70% at 50% 40%, #000 20%, transparent 80%);
+  mask-image: radial-gradient(ellipse 80% 70% at 50% 40%, #000 20%, transparent 80%);
+}
+
+/* Crop marks on the four corners of a framed element. */
+.sx-crop { position: relative; }
+.sx-crop::before,
+.sx-crop::after {
+  content: "";
+  position: absolute;
+  inset: -10px;
+  pointer-events: none;
+  --m: rgba(23, 20, 15, 0.45);
+  background:
+    linear-gradient(var(--m), var(--m)) top left / 14px 1px,
+    linear-gradient(var(--m), var(--m)) top left / 1px 14px,
+    linear-gradient(var(--m), var(--m)) top right / 14px 1px,
+    linear-gradient(var(--m), var(--m)) top right / 1px 14px;
+  background-repeat: no-repeat;
+}
+.sx-crop::after {
+  background:
+    linear-gradient(var(--m), var(--m)) bottom left / 14px 1px,
+    linear-gradient(var(--m), var(--m)) bottom left / 1px 14px,
+    linear-gradient(var(--m), var(--m)) bottom right / 14px 1px,
+    linear-gradient(var(--m), var(--m)) bottom right / 1px 14px;
+  background-repeat: no-repeat;
+}
+.sx-crop-ink::before,
+.sx-crop-ink::after { --m: rgba(246, 241, 232, 0.4); }
+
+/* Stacked sheets: a section slides over the previous one with a rounded top edge. */
+.sx-sheet {
+  position: relative;
+  margin-top: -28px;
+  border-radius: 28px 28px 0 0;
+  box-shadow: 0 -1px 0 rgba(23, 20, 15, 0.06), 0 -24px 48px -36px rgba(23, 20, 15, 0.35);
+}
+@media (min-width: 768px) {
+  .sx-sheet { margin-top: -40px; border-radius: 40px 40px 0 0; }
+}
+
+/* Soft blue glow for ink bands. */
+.sx-glow {
+  background-image:
+    radial-gradient(40rem 22rem at 80% 0%, rgba(29, 78, 216, 0.38), transparent 70%),
+    radial-gradient(30rem 20rem at 0% 100%, rgba(157, 184, 255, 0.14), transparent 70%);
+}
+
+/* Outlined display numerals. */
+.sx-outline-num {
+  color: transparent;
+  -webkit-text-stroke: 1.25px rgba(23, 20, 15, 0.35);
+  transition: color 0.6s var(--ease-out-expo), -webkit-text-stroke-color 0.6s var(--ease-out-expo);
+}
+[data-shown="true"] .sx-outline-num,
+.group:hover .sx-outline-num {
+  color: var(--color-accent);
+  -webkit-text-stroke-color: var(--color-accent);
+}
+
+/* Animated underline for text links. */
+.sx-link {
+  background-image: linear-gradient(currentColor, currentColor);
+  background-size: 100% 1px;
+  background-position: 0 100%;
+  background-repeat: no-repeat;
+  padding-bottom: 2px;
+  transition: background-size 0.35s var(--ease-out-expo);
+}
+.sx-link:hover { background-size: 0% 1px; background-position: 100% 100%; }
+.sx-link-grow { background-size: 0% 1px; }
+.sx-link-grow:hover,
+.sx-link-grow[aria-current="page"] { background-size: 100% 1px; background-position: 0 100%; }
+
+/* Button arrow nudge. */
+.sx-btn-arrow { transition: transform 0.3s var(--ease-out-expo); }
+a:hover > .sx-btn-arrow,
+button:hover > .sx-btn-arrow { transform: translateX(3px); }
+
+/* Lift on hover (cards). */
+.sx-lift {
+  transition: transform 0.45s var(--ease-out-expo), box-shadow 0.45s var(--ease-out-expo), border-color 0.3s ease;
+}
+@media (hover: hover) {
+  .sx-lift:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 28px 50px -34px rgba(23, 20, 15, 0.55);
+  }
+}
+
+.sx-reveal.sx-lift {
+  transition: opacity 0.7s var(--ease-out-expo), transform 0.7s var(--ease-out-expo),
+    box-shadow 0.45s var(--ease-out-expo), border-color 0.3s ease;
+}
+
+/* Reveal variants. */
+@media (prefers-reduced-motion: no-preference) {
+  .sx-reveal[data-variant="mask"][data-shown="false"] {
+    opacity: 1;
+    transform: none;
+    clip-path: inset(0 0 100% 0);
+  }
+  .sx-reveal[data-variant="mask"] { transition: clip-path 1s var(--ease-out-expo); clip-path: inset(0 0 0 0); }
+  .sx-reveal[data-variant="scale"][data-shown="false"] { opacity: 0; transform: scale(0.96) translateY(14px); }
+}
+
+/* Hero headline: lines rise in, then the accent stroke draws. */
+@keyframes sx-line-rise {
+  from { transform: translateY(105%); }
+  to { transform: none; }
+}
+@keyframes sx-draw { to { stroke-dashoffset: 0; } }
+@keyframes sx-fade-in { from { opacity: 0; } to { opacity: 1; } }
+.sx-line { display: block; overflow: hidden; padding-bottom: 0.08em; margin-bottom: -0.08em; }
+.sx-line > span { display: inline-block; }
+.sx-stroke path { stroke-dasharray: 1; stroke-dashoffset: 0; }
+@media (prefers-reduced-motion: no-preference) {
+  .sx-line > span { animation: sx-line-rise 1s var(--ease-out-expo) both; }
+  .sx-line:nth-child(2) > span { animation-delay: 0.12s; }
+  .sx-stroke path { stroke-dashoffset: 1; animation: sx-draw 0.9s var(--ease-out-expo) 0.75s forwards; }
+  .sx-fade-in { animation: sx-fade-in 0.9s ease 0.35s both; }
+}
+
+/* Pointer-driven tilt (vars set by JS; static without it). */
+.sx-tilt {
+  transform: perspective(1200px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg));
+  transition: transform 0.6s var(--ease-out-expo);
+  transform-style: preserve-3d;
+}
+.sx-depth { transform: translateZ(var(--z, 0px)); }
+
+/* Scroll progress rail (How it works) and page progress bar. */
+.sx-rail-fill {
+  transform-origin: top;
+  transform: scaleY(var(--p, 0));
+}
+.sx-progress {
+  transform-origin: left;
+  transform: scaleX(var(--p, 0));
+}
+
+/* Steps light up when active. */
+/* Upcoming steps recede to the muted ink (still AA), not to low opacity. */
+.sx-step h3 { transition: color 0.5s ease; }
+.sx-step[data-active="false"] h3 { color: var(--color-ink-mute); }
+.sx-step-dot { transition: background-color 0.4s ease, box-shadow 0.4s ease, transform 0.4s var(--ease-out-expo); }
+.sx-step[data-active="true"] .sx-step-dot {
+  background-color: var(--color-accent);
+  box-shadow: 0 0 0 6px var(--color-accent-wash);
+  transform: scale(1.1);
+}
+
+/* Gallery wall: cards sit at slight angles, straighten on hover/focus. */
+.sx-tilt-card { transition: transform 0.5s var(--ease-out-expo); }
+@media (prefers-reduced-motion: no-preference) and (hover: hover) {
+  .sx-tilt-card { transform: rotate(var(--r, 0deg)); }
+  .sx-tilt-card:hover { transform: rotate(0deg) translateY(-8px) scale(1.02); }
+}
+
+/* Horizontal strip with faded edges. */
+.sx-fade-x {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 24px, #000 calc(100% - 48px), transparent);
+  mask-image: linear-gradient(to right, transparent, #000 24px, #000 calc(100% - 48px), transparent);
+}
+
+/* Gentle pulse for live dots in mockups. */
+@keyframes sx-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+@keyframes sx-grow-y { from { transform: scaleY(0.2); } to { transform: none; } }
+@media (prefers-reduced-motion: no-preference) {
+  .sx-pulse { animation: sx-pulse 2.4s ease-in-out infinite; }
+  [data-shown="true"] .sx-grow-y { animation: sx-grow-y 0.9s var(--ease-out-expo) both; transform-origin: bottom; }
+}
+
+/* FAQ: smooth open on supporting browsers. */
+.sx-page details.sx-faq::details-content {
+  block-size: 0;
+  overflow: hidden;
+  transition: block-size 0.4s var(--ease-out-expo), content-visibility 0.4s allow-discrete;
+}
+.sx-page details.sx-faq[open]::details-content { block-size: auto; }
+@supports (interpolate-size: allow-keywords) {
+  .sx-page { interpolate-size: allow-keywords; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sx-tilt { transform: none !important; }
+  .sx-lift, .sx-link, .sx-btn-arrow, .sx-tilt-card { transition: none; }
+  .sx-page details.sx-faq::details-content { transition: none; }
+}
+
 /* ── Loaders (app/web/src/components/ui/loaders.tsx) ─────────────────── */
 @keyframes sx-arc-spin { to { transform: rotate(360deg); } }
 @keyframes sx-dot-wave {
