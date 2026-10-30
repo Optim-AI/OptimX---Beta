@@ -89,25 +89,24 @@ export default function HeroSection() {
     <section aria-labelledby="hero-title" className="overflow-hidden">
       <div className="mx-auto grid max-w-6xl gap-x-12 gap-y-10 px-4 pb-16 pt-10 sm:px-6 md:grid-cols-12 md:pb-24 md:pt-16">
         <div className="md:col-span-11 lg:col-span-10">
-          <Eyebrow>For D2C food, beverage and personal-care brands</Eyebrow>
+          <Eyebrow>For D2C, marketing teams, solo founders</Eyebrow>
           <h1
             id="hero-title"
             className="font-display text-[clamp(2.5rem,6vw,4.5rem)] font-medium leading-[1.02] tracking-[-0.02em]"
           >
-            From market research to ready-to-post creatives. In minutes, not weeks.
+            Your Marketing. All Figured Out.
           </h1>
         </div>
         <div className="md:col-span-5">
           <p className="max-w-xl text-lg text-ink-soft sm:text-xl">
-            SkalX reads what customers say about you and your competitors, turns it into a marketing plan, then
-            helps you create the posts, ads and videos to match. Make as many as your plan allows.
+            SkalX handles it all, from research and strategy to ready-to-use content, so you can focus on growing
+            your business.
           </p>
           <div id="start" className="mt-8 max-w-xl scroll-mt-24">
             <StartForm inputId="hero-brand-input" focusOnHash="start" />
           </div>
           <p className="mt-5 text-sm text-ink-mute">
-            Built in Chennai <span aria-hidden>·</span> Plans from {STARTING_PRICE}/month <span aria-hidden>·</span> Cancel
-            anytime
+            Plans from {STARTING_PRICE}/month <span aria-hidden>·</span> Cancel anytime
           </p>
         </div>
         <div className="md:col-span-7 md:pt-2">
