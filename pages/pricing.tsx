@@ -171,7 +171,7 @@ export default function PricingPage() {
       <FreeTrialRequestDialog
         open={trialDialogOpen}
         onOpenChange={setTrialDialogOpen}
-        exploreHref={signedIn ? '/try' : SIGNUP_HREF}
+        exploreHref={signedIn ? WORKSPACE_PATH : SIGNUP_HREF}
       />
 
       <section aria-labelledby="compare-heading" className="sx-sheet bg-paper-deep">

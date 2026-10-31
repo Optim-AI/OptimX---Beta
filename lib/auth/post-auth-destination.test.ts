@@ -103,6 +103,23 @@ await run('7. trialing subscription → workspace', () => {
   assert.equal(d.destination, 'workspace');
 });
 
+await run('7b. pricing_seen + operator-granted credits → workspace', () => {
+  const d = decidePostAuthDestination(
+    base({
+      onboarding: { status: 'pricing_seen' },
+      hasProductCredits: true,
+    })
+  );
+  assert.equal(d.destination, 'workspace');
+});
+
+await run('7c. explore/complete onboarding without payment → workspace', () => {
+  const d = decidePostAuthDestination(
+    base({ onboarding: { status: 'complete' } })
+  );
+  assert.equal(d.destination, 'workspace');
+});
+
 await run('8. cancelled but paid period remains → workspace', () => {
   const d = decidePostAuthDestination(
     base({

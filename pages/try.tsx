@@ -227,8 +227,24 @@ export default function TryPage() {
       setSelectedPlanId(onboarding.selectedPlanId);
     }
 
+    // Trial "Explore SkalX" (and ?explore=1): leave onboarding and enter the product.
+    // Status complete so the next login does not resume /try pricing.
     if (exploring) {
-      setScreen('brand');
+      try {
+        await persistOnboarding({
+          status: 'complete',
+          brandName: snapshot?.name || onboarding?.brandName,
+          websiteUrl: onboarding?.websiteUrl,
+          demo: onboarding?.demo,
+          selectedPlanId:
+            onboarding?.selectedPlanId && isMarketingPlanId(onboarding.selectedPlanId)
+              ? onboarding.selectedPlanId
+              : null,
+        });
+      } catch {
+        /* still enter the product */
+      }
+      router.replace(WORKSPACE_PATH);
       return;
     }
 
@@ -988,7 +1004,7 @@ export default function TryPage() {
             onBack={() => setScreen('demo_result')}
             continuing={checkoutContinuing}
             showBack={router.query.from !== 'audit'}
-            exploreHref={router.query.from === 'audit' ? '/try?explore=1' : undefined}
+            exploreHref={WORKSPACE_PATH}
             introCopy={
               router.query.from === 'audit'
                 ? 'Your free audit is saved. Choose a plan to create this, or request a trial and keep exploring.'

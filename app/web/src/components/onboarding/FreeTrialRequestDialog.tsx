@@ -11,14 +11,23 @@ import {
 } from '@/app/web/src/components/ui/dialog';
 import colors from '@/lib/ui/colors';
 import { FREE_TRIAL_CARD } from '@/lib/trial/validate';
+import { authFetch } from '@/lib/utils';
+import {
+  buildTryOnboardingPatch,
+  parseTryOnboarding,
+  WORKSPACE_PATH,
+} from '@/lib/onboarding/try-onboarding';
 
-/** Product exploration path — no credits or plan are granted by a trial request. */
-const EXPLORE_PATH = '/try';
+/**
+ * After a trial request, signed-in users enter the product.
+ * Marking onboarding complete prevents the next login from restarting /try.
+ */
+const EXPLORE_PATH = WORKSPACE_PATH;
 
 type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Where "Explore SkalX" goes after the form. Guests go to signup; signed-in people go to /try. */
+  /** Where "Explore SkalX" goes after the form. Guests go to signup; signed-in people go to the workspace. */
   exploreHref?: string;
 };
 
@@ -71,9 +80,31 @@ export default function FreeTrialRequestDialog({ open, onOpenChange, exploreHref
     onOpenChange(next);
   };
 
+  const markOnboardingComplete = async () => {
+    try {
+      const prefRes = await authFetch('/api/user/preferences');
+      const prefData = await prefRes.json().catch(() => null);
+      if (!prefRes.ok || !prefData?.ok) return;
+      const existing = parseTryOnboarding(prefData.preferences) || { status: 'pricing_seen' as const };
+      const onboarding = buildTryOnboardingPatch({
+        ...existing,
+        status: 'complete',
+      });
+      await authFetch('/api/user/preferences', {
+        method: 'PUT',
+        body: JSON.stringify({ preferences: { onboarding } }),
+      });
+    } catch {
+      /* still enter the product; next login may need credits or a retry */
+    }
+  };
+
   const exploreProduct = () => {
     handleOpenChange(false);
-    void router.push(exploreHref);
+    void (async () => {
+      await markOnboardingComplete();
+      void router.push(exploreHref);
+    })();
   };
 
   const onSubmit = async (e: React.FormEvent) => {
