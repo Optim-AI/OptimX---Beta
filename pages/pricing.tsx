@@ -14,7 +14,7 @@ import {
 import { BUY_CREDITS_PRICING } from '@/lib/billing/pricing';
 import { PLAN_COMPARISON_ROWS, type ComparisonCell } from '@/lib/onboarding/plan-comparison';
 import { WORKSPACE_PATH } from '@/lib/onboarding/try-onboarding';
-import { trackAuditEvent } from '@/lib/audit/analytics';
+import { auditPricingPath } from '@/lib/audit/analytics';
 import MarketingLayout from '@/app/web/src/components/marketing/MarketingLayout';
 import PlanCards from '@/app/web/src/components/marketing/PlanCards';
 import { ButtonLink, Eyebrow } from '@/app/web/src/components/marketing/ui';
@@ -40,9 +40,8 @@ function Cell({ value }: { value: ComparisonCell }) {
 /**
  * Public pricing: monthly self-serve plans (light cards).
  * Session/claim/subscription checks and checkout hand-off are unchanged from the previous page.
- * After a free audit: auth → /pricing?from=audit.
- * New accounts choose a plan (checkout → product) or request a trial and explore.
- * Existing subscribers go to the product. Nothing here grants access.
+ * Public marketing plans. A free audit does not stay here — `?from=audit` continues
+ * into the onboarding pricing step. Nothing here grants access.
  */
 export default function PricingPage() {
   const router = useRouter();
@@ -50,30 +49,21 @@ export default function PricingPage() {
   const [selectedPlanId, setSelectedPlanId] = useState<MarketingPlanId | null>(null);
   const [activePlanName, setActivePlanName] = useState<string | null>(null);
   const [continuing, setContinuing] = useState(false);
-  const [claimed, setClaimed] = useState(false);
   const [trialDialogOpen, setTrialDialogOpen] = useState(false);
   const [signedIn, setSignedIn] = useState(false);
 
   useEffect(() => {
-    if (!router.isReady) return;
+    if (!router.isReady || !fromAudit) return;
+    void router.replace(auditPricingPath());
+  }, [router, router.isReady, fromAudit]);
+
+  useEffect(() => {
+    if (!router.isReady || fromAudit) return;
     let cancelled = false;
     (async () => {
       const { data } = await supabase.auth.getSession();
       if (!data.session || cancelled) return;
       setSignedIn(true);
-
-      if (fromAudit && !claimed) {
-        try {
-          const claimRes = await authFetch('/api/onboarding/claim', { method: 'POST' });
-          const claimBody = await claimRes.json().catch(() => null);
-          if (!cancelled && claimBody?.claimed) {
-            trackAuditEvent('audit_claimed', { via: 'pricing' });
-            setClaimed(true);
-          }
-        } catch {
-          /* guest cookie may already be cleared */
-        }
-      }
 
       try {
         const res = await authFetch('/api/billing/subscriptions/current');
@@ -89,7 +79,7 @@ export default function PricingPage() {
     return () => {
       cancelled = true;
     };
-  }, [router.isReady, fromAudit, claimed]);
+  }, [router.isReady, fromAudit]);
 
   useEffect(() => {
     trackSafe('pricing_viewed', { brand: 'unknown' });
@@ -114,6 +104,8 @@ export default function PricingPage() {
     continueToCheckout(planId);
   };
 
+  if (fromAudit) return null;
+
   return (
     <MarketingLayout>
       <PageSeo
@@ -130,9 +122,7 @@ export default function PricingPage() {
               Simple monthly plans.
             </h1>
             <p className="mt-5 text-lg text-ink-soft sm:text-xl">
-              {fromAudit
-                ? 'Your free audit is saved to this account. Choose a plan to start creating, or request a trial and explore the product.'
-                : 'Research, strategy and content in one place. Pick the credits you need; top up or cancel anytime.'}
+              Research, strategy and content in one place. Pick the credits you need; top up or cancel anytime.
             </p>
           </div>
 

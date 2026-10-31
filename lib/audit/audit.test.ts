@@ -592,7 +592,10 @@ async function main() {
     assert.equal(auditReturnPath('//evil.com/audit/x'), null);
     assert.equal(auditReturnPath('https://evil.com/audit/' + row.id), null);
     assert.equal(auditReturnPath('/audit/not-a-uuid'), null);
+    assert.equal(auditPricingPath(), '/try?from=audit');
+    assert.equal(auditReturnPath('/pricing?from=audit'), '/try?from=audit');
     assert.equal(resolvePostAuthPath('/try', pricingPath), pricingPath);
+    assert.equal(resolvePostAuthPath('/try', '/pricing?from=audit'), '/try?from=audit');
     assert.equal(resolvePostAuthPath('/try', auditPath), auditPath);
     assert.equal(resolvePostAuthPath('/try', '/subscribe?plan=skalx_growth'), '/subscribe?plan=skalx_growth');
     assert.equal(checkoutReturnPath('/subscribe?plan=skalx_pro'), '/subscribe?plan=skalx_pro');
@@ -677,8 +680,11 @@ async function main() {
     assert.ok(start.includes('audit_storage_unavailable'), 'maps storage outage to a clear message');
     assert.ok(start.includes('if (submitting) return'), 'guards against duplicate submits while in flight');
     const pricing = readFileSync(join(process.cwd(), 'pages/pricing.tsx'), 'utf8');
+    const tryPage = readFileSync(join(process.cwd(), 'pages/try.tsx'), 'utf8');
     assert.ok(pricing.includes("from === 'audit'"));
-    assert.ok(pricing.includes('/api/onboarding/claim'));
+    assert.ok(pricing.includes('auditPricingPath()'));
+    assert.ok(tryPage.includes("/api/onboarding/claim"));
+    assert.ok(tryPage.includes("router.query.from === 'audit'"));
     assert.ok(!pricing.includes("router.push('/')"));
     assert.ok(pricing.includes('setTrialDialogOpen(true)'));
     assert.ok(pricing.includes('/subscribe?plan='));

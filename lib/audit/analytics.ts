@@ -48,25 +48,33 @@ export function isAuditNextPath(path: string | null | undefined): path is string
   return typeof path === 'string' && /^\/audit\/[0-9a-f-]{36}(?:[/?#].*)?$/i.test(path);
 }
 
-/** Post-audit funnel: pricing after signup (`/pricing?from=audit`). */
+/**
+ * Onboarding pricing step after a free audit (`/try?from=audit`).
+ * The public marketing page `/pricing` is not part of this funnel.
+ */
 export function isAuditPricingNextPath(path: string | null | undefined): path is string {
-  if (typeof path !== 'string' || !path.startsWith('/pricing')) return false;
-  const q = path.includes('?') ? path.slice(path.indexOf('?') + 1) : '';
+  if (typeof path !== 'string') return false;
+  const qIndex = path.indexOf('?');
+  const pathname = qIndex === -1 ? path : path.slice(0, qIndex);
+  if (pathname !== '/try' && pathname !== '/pricing') return false;
+  const q = qIndex === -1 ? '' : path.slice(qIndex + 1);
   return new URLSearchParams(q).get('from') === 'audit';
 }
 
 /** Where to send someone after auth when they came from a free audit. */
 export function auditPricingPath(): string {
-  return '/pricing?from=audit';
+  return '/try?from=audit';
 }
 
 /**
- * Free-audit continuation paths honored over the account-state decision:
- * pricing (preferred) or a legacy /audit/:id return. Grants no paid access.
+ * Free-audit continuation paths honored for new accounts:
+ * the onboarding pricing step, or a legacy /audit/:id return.
+ * Older `/pricing?from=audit` links are folded into the onboarding step.
+ * Grants no paid access.
  */
 export function auditReturnPath(next: unknown): string | null {
   const safe = getSafeNextPath(next, '');
-  if (isAuditPricingNextPath(safe)) return safe;
+  if (isAuditPricingNextPath(safe)) return auditPricingPath();
   if (isAuditNextPath(safe)) return safe;
   return null;
 }

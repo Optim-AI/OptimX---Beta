@@ -19,7 +19,7 @@ type Props = {
 
 /**
  * "Get a free ad": paste a website → POST /api/audit → /audit/:id
- * (research + 3 ideas → pick one → sign-up → /pricing?from=audit).
+ * (research + 3 ideas → pick one → sign-up → onboarding pricing).
  * Request/response handling is the same as the former hero audit form.
  */
 export default function StartForm({ inputId, onInk = false, focusOnHash }: Props) {

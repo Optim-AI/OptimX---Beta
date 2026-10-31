@@ -25,6 +25,7 @@ import {
   type TryOnboardingStatus,
 } from '@/lib/onboarding/try-onboarding';
 import { fetchPostAuthDestination } from '@/lib/auth/client-post-auth';
+import { trackAuditEvent } from '@/lib/audit/analytics';
 import type { PostAuthTryStep } from '@/lib/auth/post-auth-decision';
 import { productFromImageUrl } from '@/lib/onboarding/product-scene-guidance';
 import {
@@ -142,7 +143,8 @@ export default function TryPage() {
     const user = data?.user ?? null;
 
     if (!user) {
-      router.replace('/auth/signin?next=/try');
+      const next = router.asPath.split('#')[0] || '/try';
+      router.replace(`/auth/signin?next=${encodeURIComponent(next)}`);
       return;
     }
 
@@ -154,7 +156,11 @@ export default function TryPage() {
       return;
     }
 
-    if (decision.destination === 'workspace') {
+    const fromAudit = router.query.from === 'audit';
+    const exploring = router.query.explore === '1';
+    // A paid account goes to the product. A free audit stays in this onboarding UI
+    // even if the audit already saved a brand name.
+    if (decision.destination === 'workspace' && !fromAudit && !exploring) {
       router.replace(WORKSPACE_PATH);
       return;
     }
@@ -176,6 +182,10 @@ export default function TryPage() {
     }
     setHasActiveSubscription(hasActiveSubscriptionLocal);
     setActivePlanName(activePlanNameLocal);
+    if (hasActiveSubscriptionLocal && (decision.destination === 'workspace' || fromAudit)) {
+      router.replace(WORKSPACE_PATH);
+      return;
+    }
 
     let snapshot: BrandSnapshot | null = null;
     try {
@@ -217,8 +227,40 @@ export default function TryPage() {
       setSelectedPlanId(onboarding.selectedPlanId);
     }
 
+    if (exploring) {
+      setScreen('brand');
+      return;
+    }
+
+    // Free audit already produced the research. Stay in this onboarding UI and open its pricing step.
+    if (fromAudit) {
+      try {
+        const claimRes = await authFetch('/api/onboarding/claim', { method: 'POST' });
+        const claimBody = await claimRes.json().catch(() => null);
+        if (claimBody?.claimed) trackAuditEvent('audit_claimed', { via: 'try' });
+      } catch {
+        /* guest cookie may already be cleared */
+      }
+      try {
+        await persistOnboarding({
+          status: 'pricing_seen',
+          brandName: snapshot?.name || onboarding?.brandName,
+          websiteUrl: onboarding?.websiteUrl,
+          demo: onboarding?.demo,
+          selectedPlanId:
+            onboarding?.selectedPlanId && isMarketingPlanId(onboarding.selectedPlanId)
+              ? onboarding.selectedPlanId
+              : null,
+        });
+      } catch {
+        /* still show pricing */
+      }
+      setScreen('pricing');
+      return;
+    }
+
     applyTryStep(decision.step ?? onboarding?.status ?? 'brand', onboarding);
-  }, [router, applyTryStep]);
+  }, [router, applyTryStep, persistOnboarding]);
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -710,7 +752,8 @@ export default function TryPage() {
         <Link href="/">
           <img src="/images/SkalX_Logo.png" alt="SkalX AI" className="h-5 w-auto" />
         </Link>
-        {(screen === 'reveal' ||
+        {router.query.from !== 'audit' &&
+          (screen === 'reveal' ||
           screen === 'demo' ||
           screen === 'demo_generating' ||
           screen === 'demo_result' ||
@@ -944,6 +987,13 @@ export default function TryPage() {
             onContinue={continueToCheckoutHandoff}
             onBack={() => setScreen('demo_result')}
             continuing={checkoutContinuing}
+            showBack={router.query.from !== 'audit'}
+            exploreHref={router.query.from === 'audit' ? '/try?explore=1' : undefined}
+            introCopy={
+              router.query.from === 'audit'
+                ? 'Your free audit is saved. Choose a plan to create this, or request a trial and keep exploring.'
+                : undefined
+            }
           />
         )}
       </main>

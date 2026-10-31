@@ -33,6 +33,10 @@ type Props = {
   continuing?: boolean;
   backLabel?: string;
   introCopy?: string;
+  /** Hide the step-back control when this screen was opened from a free audit. */
+  showBack?: boolean;
+  /** Where the trial form sends someone who wants to keep exploring. */
+  exploreHref?: string;
 };
 
 const DEFAULT_BACK_LABEL = '← Back to your poster';
@@ -88,6 +92,8 @@ export default function TryPricingExperience({
   continuing = false,
   backLabel = DEFAULT_BACK_LABEL,
   introCopy = DEFAULT_INTRO,
+  showBack = true,
+  exploreHref,
 }: Props) {
   const headingId = useId();
   const [openRow, setOpenRow] = useState<string | null>(PLAN_COMPARISON_ROWS[0]?.id ?? null);
@@ -118,16 +124,18 @@ export default function TryPricingExperience({
             Go to SkalX →
           </Link>
         </div>
-        <div className="text-center mt-6">
-          <button
-            type="button"
-            onClick={onBack}
-            className="text-sm"
-            style={{ color: colors.mutedForeground, background: 'none', border: 'none' }}
-          >
-            {backLabel}
-          </button>
-        </div>
+        {showBack ? (
+          <div className="text-center mt-6">
+            <button
+              type="button"
+              onClick={onBack}
+              className="text-sm"
+              style={{ color: colors.mutedForeground, background: 'none', border: 'none' }}
+            >
+              {backLabel}
+            </button>
+          </div>
+        ) : null}
       </div>
     );
   }
@@ -313,7 +321,11 @@ export default function TryPricingExperience({
         })}
       </div>
 
-      <FreeTrialRequestDialog open={trialDialogOpen} onOpenChange={setTrialDialogOpen} />
+      <FreeTrialRequestDialog
+        open={trialDialogOpen}
+        onOpenChange={setTrialDialogOpen}
+        exploreHref={exploreHref}
+      />
 
       {/* Comparison — desktop table */}
       <section className="mb-14" aria-labelledby="compare-heading">
@@ -445,16 +457,18 @@ export default function TryPricingExperience({
         </p>
       </div>
 
-      <div className="text-center mb-6">
-        <button
-          type="button"
-          onClick={onBack}
-          className="text-sm"
-          style={{ color: colors.mutedForeground, background: 'none', border: 'none' }}
-        >
-          {backLabel}
-        </button>
-      </div>
+      {showBack ? (
+        <div className="text-center mb-6">
+          <button
+            type="button"
+            onClick={onBack}
+            className="text-sm"
+            style={{ color: colors.mutedForeground, background: 'none', border: 'none' }}
+          >
+            {backLabel}
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }
