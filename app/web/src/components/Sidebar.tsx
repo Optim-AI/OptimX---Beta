@@ -4,7 +4,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import {
-  LayoutGrid,
   Orbit,
   Image as ImageIcon,
   ChartColumn,
@@ -44,13 +43,14 @@ type NavSection = {
 };
 
 const NAV_SECTIONS: NavSection[] = [
-  {
-    id: 'overview',
-    label: 'Overview',
-    items: [
-      { href: '/dashboard', label: 'Dashboard', Icon: LayoutGrid, featureKey: 'dashboard' },
-    ],
-  },
+  // Dashboard is hidden until the overview screen is ready to ship.
+  // {
+  //   id: 'overview',
+  //   label: 'Overview',
+  //   items: [
+  //     { href: '/dashboard', label: 'Dashboard', Icon: LayoutGrid, featureKey: 'dashboard' },
+  //   ],
+  // },
   {
     id: 'create',
     label: 'Create',
