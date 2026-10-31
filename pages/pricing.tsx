@@ -40,8 +40,9 @@ function Cell({ value }: { value: ComparisonCell }) {
 /**
  * Public pricing: monthly self-serve plans (light cards).
  * Session/claim/subscription checks and checkout hand-off are unchanged from the previous page.
- * After a free audit: auth → /pricing?from=audit → home (or checkout).
- * Selection hands off to /subscribe; nothing here grants access.
+ * After a free audit: auth → /pricing?from=audit.
+ * New accounts choose a plan (checkout → product) or request a trial and explore.
+ * Existing subscribers go to the product. Nothing here grants access.
  */
 export default function PricingPage() {
   const router = useRouter();
@@ -130,7 +131,7 @@ export default function PricingPage() {
             </h1>
             <p className="mt-5 text-lg text-ink-soft sm:text-xl">
               {fromAudit
-                ? 'Your free audit is saved to your account. Choose a plan to create campaigns — or head home anytime.'
+                ? 'Your free audit is saved to this account. Choose a plan to start creating, or request a trial and explore the product.'
                 : 'Research, strategy and content in one place. Pick the credits you need; top up or cancel anytime.'}
             </p>
           </div>
@@ -158,23 +159,30 @@ export default function PricingPage() {
             )}
           </div>
           {!activePlanName ? (
-            <p className="mt-8 text-lg">
+            <div className="mt-8 text-lg">
               Not ready to pay?{' '}
-              {/* Signed in: /try routes to the workspace or onboarding. Guests sign up first (new accounts land in /try). */}
-              <Link
-                href={signedIn ? '/try' : SIGNUP_HREF}
-                onClick={() => trackSafe('explore_clicked', { source: 'pricing', signed_in: signedIn ? 'yes' : 'no' })}
+              <button
+                type="button"
+                onClick={() => {
+                  trackSafe('explore_clicked', { source: 'pricing', signed_in: signedIn ? 'yes' : 'no' });
+                  trackSafe('trial_request_opened', { source: 'pricing_explore' });
+                  setTrialDialogOpen(true);
+                }}
                 className="sx-link font-medium"
               >
                 Explore SkalX first →
-              </Link>
-            </p>
+              </button>
+            </div>
           ) : null}
           <p className="mt-3 text-sm text-ink-soft">All prices are + 18% GST. Plans are monthly; cancel anytime.</p>
         </div>
       </section>
 
-      <FreeTrialRequestDialog open={trialDialogOpen} onOpenChange={setTrialDialogOpen} />
+      <FreeTrialRequestDialog
+        open={trialDialogOpen}
+        onOpenChange={setTrialDialogOpen}
+        exploreHref={signedIn ? '/try' : SIGNUP_HREF}
+      />
 
       <section aria-labelledby="compare-heading" className="sx-sheet bg-paper-deep">
         <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6 md:py-28">

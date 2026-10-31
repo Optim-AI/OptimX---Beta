@@ -16,6 +16,7 @@ import {
   resolvePostAuthPath,
 } from "@/lib/auth/client-post-auth";
 import { trackAuditEvent } from "@/lib/audit/analytics";
+import { authNextFrom, clearAuthContinuation, rememberAuthContinuation } from "@/lib/auth/auth-continuation";
 import AuthShell from "@/components/auth/AuthShell";
 import { authErrorMessage, classifyAuthError } from "@/lib/auth/auth-errors";
 
@@ -61,7 +62,9 @@ export default function SignUpPage(): React.ReactElement {
       setError(decision.error);
       return;
     }
-    router.replace(resolvePostAuthPath(decision.path, router.query.next));
+    const next = authNextFrom(router.query.next);
+    clearAuthContinuation();
+    router.replace(resolvePostAuthPath(decision.path, next));
   }
 
   useEffect(() => {
@@ -96,7 +99,8 @@ export default function SignUpPage(): React.ReactElement {
     try {
       if (redirectWwwToCanonicalForOAuth()) return;
 
-      const redirectTo = getOAuthCallbackUrl(getSafeNextPath(router.query.next, "/try"));
+      const nextPath = rememberAuthContinuation(router.query.next, "/try");
+      const redirectTo = getOAuthCallbackUrl(nextPath);
       const { data, error: oauthError } = await supabase.auth.signInWithOAuth({
         provider,
         options: { redirectTo },
@@ -143,7 +147,8 @@ export default function SignUpPage(): React.ReactElement {
 
     setLoading(true);
     try {
-      const auditNext = auditReturnPath(router.query.next);
+      const nextPath = rememberAuthContinuation(router.query.next, "/try");
+      const auditNext = auditReturnPath(nextPath);
       const { data, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
@@ -151,7 +156,7 @@ export default function SignUpPage(): React.ReactElement {
           data: {
             business_name: businessName.trim(),
           },
-          ...(auditNext ? { emailRedirectTo: getOAuthCallbackUrl(auditNext) } : {}),
+          emailRedirectTo: getOAuthCallbackUrl(nextPath),
         },
       });
 

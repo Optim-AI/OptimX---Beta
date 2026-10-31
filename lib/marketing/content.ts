@@ -127,8 +127,8 @@ export const FOUNDER = {
 
 /** Primary CTA: the website box at the top of the homepage (research → ideas → sign-up → pricing). */
 export const START_HREF = '/#start';
-/** New accounts land in /try (onboarding + explore); existing accounts go to their workspace. */
-export const SIGNUP_HREF = '/auth/signup';
+/** New accounts continue into /try; existing accounts still go to their workspace. */
+export const SIGNUP_HREF = '/auth/signup?next=/try';
 export const LOGIN_HREF = '/auth/signin?next=/try';
 
 // TODO: a booking link (e.g. Cal.com / Calendly). Until then "Book a 15-min call" opens an email.

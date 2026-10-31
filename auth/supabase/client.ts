@@ -1,39 +1,46 @@
 // auth/supabase/client.ts
 // Browser / shared anon Supabase client for Auth and Storage ONLY.
 // For service-role operations, import from '@/auth/supabase/admin' (server-only).
+//
+// Lazy init: env is read on first use so `next build` page-data collection does
+// not crash when NEXT_PUBLIC_* vars are missing from the build machine.
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
+let _client: SupabaseClient | null = null;
 
-const isValidUrl = (url: string) =>
-  url && (url.startsWith("http://") || url.startsWith("https://"));
+function getSupabase(): SupabaseClient {
+  if (_client) return _client;
 
-if (!isValidUrl(SUPABASE_URL || "")) {
-  throw new Error(
-    "Invalid supabaseUrl: Add NEXT_PUBLIC_SUPABASE_URL to .env.local (e.g. https://your-project.supabase.co or http://localhost:54321 for local dev)"
-  );
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+  const anonKey =
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
+  const isValidUrl = (value: string) =>
+    Boolean(value) && (value.startsWith("http://") || value.startsWith("https://"));
+
+  if (!isValidUrl(url || "")) {
+    throw new Error(
+      "Invalid supabaseUrl: Add NEXT_PUBLIC_SUPABASE_URL to .env.local (e.g. https://your-project.supabase.co or http://localhost:54321 for local dev)"
+    );
+  }
+  if (!anonKey) {
+    throw new Error(
+      "Missing SUPABASE_ANON_KEY: Add NEXT_PUBLIC_SUPABASE_ANON_KEY to .env.local"
+    );
+  }
+
+  const isBrowser = typeof window !== "undefined";
+  _client = createClient(String(url), String(anonKey), {
+    auth: {
+      persistSession: isBrowser,
+      autoRefreshToken: isBrowser,
+      detectSessionInUrl: isBrowser,
+    },
+  });
+  return _client;
 }
-if (!SUPABASE_ANON_KEY) {
-  throw new Error(
-    "Missing SUPABASE_ANON_KEY: Add NEXT_PUBLIC_SUPABASE_ANON_KEY to .env.local"
-  );
-}
 
-// Browser / client safe Supabase instance (use this in React components)
-export const supabase: SupabaseClient =
-  (typeof window !== "undefined")
-    ? createClient(String(SUPABASE_URL), String(SUPABASE_ANON_KEY), {
-        auth: {
-          persistSession: true,
-          autoRefreshToken: true,
-          detectSessionInUrl: true,
-        },
-      })
-    : createClient(String(SUPABASE_URL), String(SUPABASE_ANON_KEY), {
-        auth: {
-          persistSession: false,
-          autoRefreshToken: false,
-          detectSessionInUrl: false,
-        },
-      });
+export const supabase: SupabaseClient = new Proxy({} as SupabaseClient, {
+  get(_, prop) {
+    return (getSupabase() as unknown as Record<string | symbol, unknown>)[prop];
+  },
+});

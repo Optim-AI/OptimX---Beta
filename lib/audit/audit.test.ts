@@ -25,6 +25,7 @@ import { decideAuditRateLimit } from './rate-limit';
 import {
   auditPricingPath,
   auditReturnPath,
+  checkoutReturnPath,
   isAuditNextPath,
   isAuditPricingNextPath,
   resolvePostAuthPath,
@@ -593,7 +594,13 @@ async function main() {
     assert.equal(auditReturnPath('/audit/not-a-uuid'), null);
     assert.equal(resolvePostAuthPath('/try', pricingPath), pricingPath);
     assert.equal(resolvePostAuthPath('/try', auditPath), auditPath);
+    assert.equal(resolvePostAuthPath('/try', '/subscribe?plan=skalx_growth'), '/subscribe?plan=skalx_growth');
+    assert.equal(checkoutReturnPath('/subscribe?plan=skalx_pro'), '/subscribe?plan=skalx_pro');
+    assert.equal(checkoutReturnPath('/subscribe?plan=../evil'), null);
     assert.equal(resolvePostAuthPath('/content-studio', '/billing'), '/content-studio');
+    // Existing accounts enter the product. The new-user funnel does not pull them back to the site.
+    assert.equal(resolvePostAuthPath('/workspace', pricingPath), '/workspace');
+    assert.equal(resolvePostAuthPath('/workspace', '/subscribe?plan=skalx_growth'), '/workspace');
   });
   await run('OAuth callback and signup wire the audit return path', () => {
     const root = process.cwd();
@@ -601,9 +608,10 @@ async function main() {
     const signup = readFileSync(join(root, 'pages/auth/signup.tsx'), 'utf8');
     const signin = readFileSync(join(root, 'pages/auth/signin.tsx'), 'utf8');
     const auditPage = readFileSync(join(root, 'pages/audit/[id].tsx'), 'utf8');
-    assert.ok(callback.indexOf('if (auditNext)') < callback.indexOf("decision.destination === 'workspace'"));
-    assert.ok(signup.includes('emailRedirectTo: getOAuthCallbackUrl(auditNext)'));
-    assert.ok(signin.includes('resolvePostAuthPath(decision.path, router.query.next)'));
+    assert.ok(callback.includes('resolvePostAuthPath(decision.path, next)'));
+    assert.ok(callback.includes('clearAuthContinuation()'));
+    assert.ok(signup.includes('emailRedirectTo: getOAuthCallbackUrl(nextPath)'));
+    assert.ok(signin.includes('resolvePostAuthPath(decision.path, next)'));
     assert.ok(auditPage.includes('auditPricingPath()'));
     assert.ok(auditPage.includes('/auth/signup?next='));
   });
@@ -663,18 +671,16 @@ async function main() {
   });
 
   // ---------- pricing navigation ----------
-  await run('hero: audit CTA posts to /api/audit; "Explore plans" goes straight to /pricing', () => {
-    const hero = readFileSync(join(process.cwd(), 'app/web/src/components/Hero.tsx'), 'utf8');
-    assert.ok(hero.includes('Your AI Marketing team, from research to results.'));
-    assert.ok(hero.includes('Get my free audit'));
-    assert.ok(/<Link href="\/pricing"[^>]*>\s*Don&apos;t have a website\? Explore plans/.test(hero));
-    assert.ok(hero.includes('"/api/audit"'));
-    assert.ok(hero.includes('audit_storage_unavailable'), 'maps storage outage to a clear message');
-    assert.ok(hero.includes('if (submitting) return'), 'guards against duplicate submits while in flight');
+  await run('start form posts to /api/audit; pricing continues into plans or explore', () => {
+    const start = readFileSync(join(process.cwd(), 'app/web/src/components/marketing/StartForm.tsx'), 'utf8');
+    assert.ok(start.includes("'/api/audit'"));
+    assert.ok(start.includes('audit_storage_unavailable'), 'maps storage outage to a clear message');
+    assert.ok(start.includes('if (submitting) return'), 'guards against duplicate submits while in flight');
     const pricing = readFileSync(join(process.cwd(), 'pages/pricing.tsx'), 'utf8');
     assert.ok(pricing.includes("from === 'audit'"));
     assert.ok(pricing.includes('/api/onboarding/claim'));
-    assert.ok(pricing.includes("router.push('/')"));
+    assert.ok(!pricing.includes("router.push('/')"));
+    assert.ok(pricing.includes('setTrialDialogOpen(true)'));
     assert.ok(pricing.includes('/subscribe?plan='));
   });
 

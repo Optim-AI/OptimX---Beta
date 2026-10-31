@@ -8,6 +8,7 @@ import Router, { useRouter } from "next/router";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import AlertModal from "@/app/web/src/components/ui/AlertModal";
+import AuthReturnResume from "@/components/auth/AuthReturnResume";
 import { useSubscription } from "@/app/web/src/hooks/use-subscription";
 import { shouldNoIndexPath, SITE_ORIGIN } from "@/lib/seo/site";
 
@@ -110,6 +111,7 @@ export default function MyApp({ Component, pageProps }: AppProps) {
       {loading && <IconMorphLoader label="Loading page" />}
 
       {/* App content */}
+      <AuthReturnResume />
       <main style={{ fontFamily }}>
         <Component {...pageProps} />
       </main>

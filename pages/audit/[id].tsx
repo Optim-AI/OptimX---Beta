@@ -165,7 +165,7 @@ export default function AuditPage() {
     }
   };
 
-  /** Save idea choice, then auth (if needed) → pricing → home. No studio session yet. */
+  /** Save idea choice, then auth (if needed) → pricing. Checkout or explore continues into the product. */
   const continueToPlans = useCallback(
     async (indexOverride?: number) => {
       const index = indexOverride ?? selected;
@@ -520,8 +520,8 @@ export default function AuditPage() {
               </button>
               <p className="muted small">
                 {authed
-                  ? 'Your audit is saved. Next: pick a plan, then head home when you are ready.'
-                  : 'Free account → plans → home. No card required to create the account.'}
+                  ? 'Your audit is saved. Next: choose a plan to create this, or explore SkalX first.'
+                  : 'Create a free account, then choose a plan or explore SkalX. No card required.'}
               </p>
               {actionError && <p className="warn" role="alert">{actionError}</p>}
             </section>

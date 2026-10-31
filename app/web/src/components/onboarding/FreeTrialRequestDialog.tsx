@@ -18,6 +18,8 @@ const EXPLORE_PATH = '/try';
 type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Where "Explore SkalX" goes after the form. Guests go to signup; signed-in people go to /try. */
+  exploreHref?: string;
 };
 
 const empty = {
@@ -48,7 +50,7 @@ const fieldFocus: React.CSSProperties = {
 /**
  * Request-only free trial form. Submission never starts checkout or grants access.
  */
-export default function FreeTrialRequestDialog({ open, onOpenChange }: Props) {
+export default function FreeTrialRequestDialog({ open, onOpenChange, exploreHref = EXPLORE_PATH }: Props) {
   const router = useRouter();
   const [form, setForm] = useState(empty);
   const [submitting, setSubmitting] = useState(false);
@@ -71,7 +73,7 @@ export default function FreeTrialRequestDialog({ open, onOpenChange }: Props) {
 
   const exploreProduct = () => {
     handleOpenChange(false);
-    void router.push(EXPLORE_PATH);
+    void router.push(exploreHref);
   };
 
   const onSubmit = async (e: React.FormEvent) => {

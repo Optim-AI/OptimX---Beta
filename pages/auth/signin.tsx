@@ -11,6 +11,7 @@ import {
   redirectWwwToCanonicalForOAuth,
 } from "@/lib/routing/safe-next";
 import { fetchPostAuthDestination, resolvePostAuthPath } from "@/lib/auth/client-post-auth";
+import { authNextFrom, clearAuthContinuation, rememberAuthContinuation } from "@/lib/auth/auth-continuation";
 import AuthShell from "@/components/auth/AuthShell";
 import { authErrorMessage, classifyAuthError } from "@/lib/auth/auth-errors";
 
@@ -34,7 +35,9 @@ export default function SignInPage(): React.ReactElement {
       setError(decision.error);
       return;
     }
-    router.replace(resolvePostAuthPath(decision.path, router.query.next));
+    const next = authNextFrom(router.query.next);
+    clearAuthContinuation();
+    router.replace(resolvePostAuthPath(decision.path, next));
   }
 
   useEffect(() => {
@@ -119,7 +122,8 @@ export default function SignInPage(): React.ReactElement {
     try {
       if (redirectWwwToCanonicalForOAuth()) return;
 
-      const redirectTo = getOAuthCallbackUrl(getSafeNextPath(router.query.next, "/try"));
+      const nextPath = rememberAuthContinuation(router.query.next, "/try");
+      const redirectTo = getOAuthCallbackUrl(nextPath);
       const { data, error: oauthError } = await supabase.auth.signInWithOAuth({
         provider,
         options: { redirectTo },

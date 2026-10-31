@@ -16,6 +16,7 @@ import {
 } from '@/lib/billing/marketing-plans';
 import { useSubscription } from '@/app/web/src/hooks/use-subscription';
 import { consumeAuditAttribution, trackAuditEvent } from '@/lib/audit/analytics';
+import { rememberAuthContinuation } from '@/lib/auth/auth-continuation';
 import {
   buildTryOnboardingPatch,
   parseTryOnboarding,
@@ -193,6 +194,7 @@ export default function SubscribePage() {
           /* ignore */
         }
         const next = `/subscribe?plan=${encodeURIComponent(planForNext)}`;
+        rememberAuthContinuation(next);
         router.replace(`/auth/signin?next=${encodeURIComponent(next)}`);
         return;
       }

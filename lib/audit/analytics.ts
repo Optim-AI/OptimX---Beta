@@ -82,11 +82,20 @@ export function appReturnPath(next: unknown): string | null {
   return APP_RETURN_PREFIXES.some((p) => safe === p || safe.startsWith(`${p}/`) || safe.startsWith(`${p}?`)) ? safe : null;
 }
 
+/** Checkout handoff a new account can resume after sign-in. Does not grant access. */
+export function checkoutReturnPath(next: unknown): string | null {
+  const safe = getSafeNextPath(next, '');
+  return /^\/subscribe\?plan=(skalx_starter|skalx_growth|skalx_pro)$/.test(safe) ? safe : null;
+}
+
+/**
+ * Where to go after auth.
+ * Existing accounts (workspace) enter the product.
+ * New accounts continue the funnel: audit pricing, checkout, or /try.
+ */
 export function resolvePostAuthPath(decisionPath: string, next: unknown): string {
-  const audit = auditReturnPath(next);
-  if (audit) return audit;
-  // Back to the page their session ended on — only for people the app would let in
-  // anyway (onboarding/pricing still comes first for everyone else).
-  if (decisionPath === POST_AUTH_WORKSPACE_PATH) return appReturnPath(next) ?? decisionPath;
-  return decisionPath;
+  if (decisionPath === POST_AUTH_WORKSPACE_PATH) {
+    return appReturnPath(next) ?? decisionPath;
+  }
+  return auditReturnPath(next) ?? checkoutReturnPath(next) ?? decisionPath;
 }
