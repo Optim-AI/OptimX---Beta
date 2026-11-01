@@ -4,7 +4,8 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { supabase } from '@/auth/supabase/client';
-import colors from '@/lib/ui/colors';
+import { ArrowRight, Eye, EyeOff } from 'lucide-react';
+import { AuthCard, AuthMessage } from '@/components/auth/AuthShell';
 
 export default function ResetPasswordPage(): React.ReactElement {
   const router = useRouter();
@@ -15,43 +16,7 @@ export default function ResetPasswordPage(): React.ReactElement {
   const [info, setInfo] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sessionExists, setSessionExists] = useState<boolean | null>(null);
-
-  function withAlpha(tokenInput: string | undefined | null, alpha: number) {
-    const token = String(tokenInput ?? '').trim();
-    if (!token) return token;
-
-    const hslMatch = token.match(/hsl\(\s*([\d.]+)\s+([\d.]+)%\s+([\d.]+)%\s*\)/i);
-    if (hslMatch) {
-      const [, h, s, l] = hslMatch;
-      return `hsla(${h}, ${s}%, ${l}%, ${alpha})`;
-    }
-
-    if (/hsla\(/i.test(token)) return token;
-
-    const rgbMatch = token.match(/rgb\(\s*([0-9]{1,3})[,\s]+([0-9]{1,3})[,\s]+([0-9]{1,3})\s*\)/i);
-    if (rgbMatch) {
-      const [, r, g, b] = rgbMatch;
-      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-    }
-
-    if (/rgba\(/i.test(token)) return token;
-
-    const hex = token.replace(/^#/, '');
-    if (/^[0-9a-f]{3}$/i.test(hex)) {
-      const r = parseInt(hex[0] + hex[0], 16);
-      const g = parseInt(hex[1] + hex[1], 16);
-      const b = parseInt(hex[2] + hex[2], 16);
-      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-    }
-    if (/^[0-9a-f]{6}$/i.test(hex)) {
-      const r = parseInt(hex.slice(0, 2), 16);
-      const g = parseInt(hex.slice(2, 4), 16);
-      const b = parseInt(hex.slice(4, 6), 16);
-      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-    }
-
-    return token;
-  }
+  const [showPw, setShowPw] = useState(false);
 
   // Parse token values from either the fragment (#...) or query (?...) and return strings or nulls
   function extractTokensFromUrl(): { access_token: string | null; refresh_token: string | null } {
@@ -189,105 +154,101 @@ export default function ResetPasswordPage(): React.ReactElement {
   };
 
   return (
-    <>
-      <style jsx global>{`
-        :root { --optim-blue: hsl(213 100% 55%); --border: hsl(0 0% 22%); --link-color: hsl(213 100% 65%); --muted: hsl(0 0% 60%); }
-        *{box-sizing:border-box}
-        html,body,#__next{height:100%;margin:0}
-        body{font-family:Poppins,Inter,system-ui;-webkit-font-smoothing:antialiased}
-        .page-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;background-color:#121212}
-        .animation-float{ animation: float 8s ease-in-out infinite; transform-origin:center; }
-        @keyframes float {
-          0% { transform: translateY(0) translateX(0) scale(1); opacity: .9; }
-          50% { transform: translateY(-18px) translateX(6px) scale(1.02); opacity: .95; }
-          100% { transform: translateY(0) translateX(0) scale(1); opacity: .9; }
-        }
-
-        .auth-card{
-          z-index:3;
-          width:480px;
-          border-radius:20px;
-          backdrop-filter:blur(20px);
-          -webkit-backdrop-filter:blur(20px);
-          padding:24px;
-          box-shadow:0 1px 2px hsl(0 0% 0% / 0.04), 0 4px 12px hsl(0 0% 0% / 0.04), 0 12px 40px hsl(0 0% 0% / 0.06);
-          border:1px solid rgba(255, 255, 255, 0.08);
-          display:flex;
-          flex-direction:column;
-          align-items:center;
-          position:relative;
-          overflow:hidden;
-        }
-
-        .brand-badge{width:64px;height:64px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg, hsl(213 100% 55%) 0%, hsl(213 100% 65%) 100%);box-shadow:0 0 24px hsl(213 100% 55% / 0.2)}
-        .brand-title{margin-top:8px;font-weight:700;font-size:32px;line-height:40px;color:hsl(0 0% 95%);text-align:center}
-        .brand-sub{margin-top:4px;color:hsl(0 0% 60%);font-weight:500;font-size:13px;text-align:center;margin-bottom:12px}
-
-        .form{margin-top:12px;width:100%;display:flex;flex-direction:column;gap:10px}
-        label{font-size:12px;font-weight:500;color:hsl(0 0% 95%);margin-bottom:6px;display:block}
-        .input{height:44px;border-radius:10px;border:1px solid var(--border);padding:10px 12px;font-size:15px;background:hsl(0 0% 15%);color:hsl(0 0% 95%);width:100%;display:block}
-        .input::placeholder{color:hsl(0 0% 50%)}
-        .pw-wrap{position:relative;width:100%}
-        .pw-toggle{position:absolute;right:12px;top:10px;height:28px;width:36px;border:none;background:transparent;cursor:pointer}
-        .cta{margin-top:6px;height:44px;border-radius:12px;background:linear-gradient(135deg, hsl(213 100% 55%) 0%, hsl(213 100% 65%) 100%);color:white;display:flex;align-items:center;justify-content:center;font-weight:800;border:none;font-size:15px;width:100%;box-shadow:0 0 24px hsl(213 100% 55% / 0.2)}
-        .msg{margin-top:8px;font-size:13px;text-align:center}
-        .policy{font-size:12px;text-align:center;color:var(--muted);margin-top:10px}
-        .policy a{color:var(--link-color);text-decoration:underline;font-weight:600}
-
-        @media (max-width:820px){
-          .auth-card{width:calc(100% - 40px);padding:16px;border-radius:14px}
-          .brand-title{font-size:26px}
-        }
-      `}</style>
-
-      <div className="page-wrap" role="region" aria-label="Reset password page" style={{ backgroundColor: colors.background }}>
-        <main className="auth-card" role="main" aria-labelledby="reset-title"
-          style={{
-            background: `linear-gradient(135deg, ${withAlpha(colors.card, 0.85)} 0%, ${withAlpha(colors.card, 0.92)} 100%)`,
-            border: "1px solid rgba(97, 97, 97, 1)",
-          }}
-        >
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-            <div className="brand-badge" aria-hidden style={{ background: 'transparent', boxShadow: 'none' }}>
-              <img src="/images/Oli_AI_Logo.svg" alt="SkalX AI" style={{ width: 56, height: 56, objectFit: 'contain' }} />
-            </div>
-
-            <h1 id="reset-title" className="brand-title">Set a new password</h1>
-            <div className="brand-sub">{sessionExists === null ? 'Verifying link...' : sessionExists ? 'Enter your new password' : 'Invalid or unsupported link'}</div>
-          </div>
-
-          <form className="form" onSubmit={handleChangePassword} aria-labelledby="reset-title">
-            <div>
-              <label htmlFor="newpassword">New password</label>
-              <div className="pw-wrap">
-                <input id="newpassword" className="input" type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="New password" autoComplete="new-password" />
-              </div>
-            </div>
-
-            <div>
-              <label htmlFor="repassword">Re-enter new password</label>
-              <div className="pw-wrap">
-                <input id="repassword" className="input" type="password" value={rePassword} onChange={(e) => setRePassword(e.target.value)} placeholder="Re-enter new password" autoComplete="new-password" />
-              </div>
-            </div>
-
-            {error && <div className="msg" style={{ color: '#d9534f' }}>{error}</div>}
-            {info && <div className="msg" style={{ color: '#2f855a' }}>{info}</div>}
-
-            <div className="policy" style={{ marginTop: 8 }}>
-              Password will only update after you arrived here via the secure email verification link.
-            </div>
-
-            <button className="cta" type="submit" disabled={loading || sessionExists === false}>
-              {loading ? 'Updating...' : 'Update password'}
+    <AuthCard
+      title="Set a new password"
+      titleId="reset-title"
+      lead={sessionExists === null ? 'Verifying link...' : sessionExists ? 'Enter your new password' : 'Invalid or unsupported link'}
+      footer={
+        <>
+          {sessionExists === false ? (
+            <>
+              <Link
+                href="/auth/forgot-password"
+                className="font-medium text-paper underline decoration-paper/30 underline-offset-4 hover:decoration-paper"
+              >
+                Request a new reset link
+              </Link>
+              {' · '}
+            </>
+          ) : null}
+          <Link
+            href="/auth/signin"
+            onClick={(e) => {
+              e.preventDefault();
+              router.push('/auth/signin');
+            }}
+            className="font-medium text-paper underline decoration-paper/30 underline-offset-4 hover:decoration-paper"
+          >
+            Back to sign in
+          </Link>
+        </>
+      }
+    >
+      <form onSubmit={handleChangePassword} aria-labelledby="reset-title" noValidate className="flex flex-col gap-4">
+        <div>
+          <label className="auth-label" htmlFor="newpassword">
+            New password
+          </label>
+          <div className="auth-field">
+            <input
+              id="newpassword"
+              className="auth-input"
+              type={showPw ? 'text' : 'password'}
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              autoComplete="new-password"
+              aria-describedby="newpassword-hint"
+              style={{ paddingRight: 48 }}
+            />
+            <button
+              type="button"
+              className="auth-eye"
+              onClick={() => setShowPw((v) => !v)}
+              aria-label={showPw ? 'Hide passwords' : 'Show passwords'}
+            >
+              {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
             </button>
-          </form>
-
-          <div style={{ marginTop: 12, fontSize: 13, color: colors.mutedForeground }}>
-            <Link href="/auth/signin" onClick={(e) => { e.preventDefault(); router.push('/auth/signin'); }} style={{ color: colors.primary, textDecoration: 'none', fontWeight: 700 }}>Back to sign in</Link>
           </div>
-        </main>
-      </div>
-    </>
+          <p id="newpassword-hint" className="auth-hint" data-ok={newPassword.length >= 6 ? 'true' : 'false'}>
+            At least 6 characters
+          </p>
+        </div>
+
+        <div>
+          <label className="auth-label" htmlFor="repassword">
+            Re-enter new password
+          </label>
+          <input
+            id="repassword"
+            className="auth-input"
+            type={showPw ? 'text' : 'password'}
+            value={rePassword}
+            onChange={(e) => setRePassword(e.target.value)}
+            autoComplete="new-password"
+          />
+          {rePassword ? (
+            <p className="auth-hint" data-ok={rePassword === newPassword ? 'true' : 'false'} aria-live="polite">
+              {rePassword === newPassword ? 'Passwords match' : 'Passwords do not match yet'}
+            </p>
+          ) : null}
+        </div>
+
+        {error && <AuthMessage kind="error">{error}</AuthMessage>}
+        {info && <AuthMessage kind="info">{info}</AuthMessage>}
+
+        <p className="text-[13px] leading-relaxed text-paper/55">
+          Password will only update after you arrived here via the secure email verification link.
+        </p>
+
+        <button
+          type="submit"
+          disabled={loading || sessionExists === false}
+          className="ob-btn group mt-1 h-12 w-full rounded-full text-[15px] font-semibold disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {loading ? 'Updating...' : 'Update password'}
+          {loading ? null : <ArrowRight size={16} aria-hidden className="transition-transform group-hover:translate-x-0.5" />}
+        </button>
+      </form>
+    </AuthCard>
   );
 }

@@ -1,14 +1,8 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
-import colors from '@/lib/ui/colors';
+import React, { useRef } from 'react';
 import type { OnboardingDemoCreative } from '@/lib/onboarding/try-onboarding';
-
-const glass = {
-  background: 'hsl(0 0% 12% / 0.75)',
-  border: '1px solid rgba(255,255,255,0.08)',
-  boxShadow: '0 24px 64px rgba(0,0,0,0.45)',
-} as const;
+import { Enter } from './ob-ui';
 
 type Props = {
   brandName: string;
@@ -16,92 +10,83 @@ type Props = {
   onContinue: () => void;
 };
 
+/** Creative card that tilts toward the pointer (mouse only). */
+function TiltCard({ children, delay }: { children: React.ReactNode; delay: number }) {
+  const ref = useRef<HTMLElement>(null);
+  const onMove = (e: React.PointerEvent<HTMLElement>) => {
+    const el = ref.current;
+    if (!el || e.pointerType !== 'mouse' || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const r = el.getBoundingClientRect();
+    const x = (e.clientX - r.left) / r.width - 0.5;
+    const y = (e.clientY - r.top) / r.height - 0.5;
+    el.style.transform = `perspective(900px) rotateY(${x * 6}deg) rotateX(${-y * 6}deg) translateY(-4px)`;
+  };
+  const onLeave = () => {
+    if (ref.current) ref.current.style.transform = '';
+  };
+  return (
+    <article
+      ref={ref}
+      onPointerMove={onMove}
+      onPointerLeave={onLeave}
+      className="ob-glass ob-develop overflow-hidden rounded-3xl transition-transform duration-300 ease-out"
+      style={{ '--d': `${delay}ms` } as React.CSSProperties}
+    >
+      {children}
+    </article>
+  );
+}
+
 export default function DemoCreativeGallery({
   brandName,
   creatives,
   onContinue,
 }: Props) {
-  const [visibleCount, setVisibleCount] = useState(0);
-
-  useEffect(() => {
-    setVisibleCount(0);
-    if (creatives.length === 0) return;
-    let i = 0;
-    const id = window.setInterval(() => {
-      i += 1;
-      setVisibleCount(i);
-      if (i >= creatives.length) window.clearInterval(id);
-    }, 220);
-    return () => window.clearInterval(id);
-  }, [creatives]);
-
   const countLabel =
     creatives.length === 1
       ? 'One creative direction'
       : `${creatives.length} creative directions`;
 
   return (
-    <div className="max-w-4xl mx-auto mt-8 sm:mt-12">
-      <h1 className="text-3xl sm:text-4xl font-normal mb-2 text-center">
-        Made for {brandName}.
-      </h1>
-      <p
-        className="text-center mb-8 sm:mb-10 font-light"
-        style={{ color: colors.mutedForeground }}
-      >
-        {countLabel}, built from your brand.
-      </p>
+    <div className="mx-auto mt-8 max-w-4xl sm:mt-12">
+      <div className="relative">
+        <Enter>
+          <h1 className="mb-2 text-center font-display text-3xl font-semibold tracking-[-0.025em] sm:text-[2.6rem]">
+            Made for <span className="ob-gradient-text">{brandName}.</span>
+          </h1>
+        </Enter>
+        <Enter delay={100}>
+          <p className="mb-8 text-center text-paper/65 sm:mb-10">{countLabel}, built from your brand.</p>
+        </Enter>
+      </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5 mb-10">
+      <div className="mb-12 grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6">
         {creatives.map((c, index) => (
-          <article
-            key={`${c.direction}-${c.generationId || index}`}
-            className="rounded-2xl overflow-hidden transition-all duration-500"
-            style={{
-              ...glass,
-              opacity: index < visibleCount ? 1 : 0,
-              transform: index < visibleCount ? 'translateY(0)' : 'translateY(16px)',
-            }}
-          >
+          <TiltCard key={`${c.direction}-${c.generationId || index}`} delay={250 + index * 220}>
             <div className="relative w-full" style={{ aspectRatio: '4 / 5' }}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={c.imageUrl}
                 alt={`${c.directionLabel} creative for ${brandName}`}
-                className="absolute inset-0 w-full h-full object-cover"
+                className="absolute inset-0 h-full w-full object-cover"
               />
+              <span aria-hidden className="absolute left-3 top-3 rounded-full bg-black/55 px-2.5 py-1 text-[11px] font-medium tabular-nums text-paper/85 backdrop-blur">
+                {String(index + 1).padStart(2, '0')}
+              </span>
             </div>
-            <div className="p-4">
-              <div
-                className="text-xs uppercase tracking-[0.14em] mb-1"
-                style={{ color: colors.primary }}
-              >
-                {c.directionLabel}
-              </div>
-              {c.shortDescription && (
-                <p className="text-sm" style={{ color: colors.mutedForeground }}>
-                  {c.shortDescription}
-                </p>
-              )}
+            <div className="p-5">
+              <div className="mb-1 text-xs uppercase tracking-[0.14em] text-accent-on-ink">{c.directionLabel}</div>
+              {c.shortDescription && <p className="text-sm text-paper/65">{c.shortDescription}</p>}
             </div>
-          </article>
+          </TiltCard>
         ))}
       </div>
 
-      <div className="flex justify-center">
-        <button
-          type="button"
-          onClick={onContinue}
-          className="h-12 px-8 rounded-xl font-medium"
-          style={{
-            background: colors.gradientPrimary,
-            color: colors.primaryForeground,
-            border: 'none',
-          }}
-        >
+      <Enter delay={300 + creatives.length * 220} className="flex justify-center">
+        <button type="button" onClick={onContinue} className="ob-btn h-12 rounded-full px-8 font-medium">
           See what else SkalX can do →
         </button>
-      </div>
+      </Enter>
     </div>
   );
 }

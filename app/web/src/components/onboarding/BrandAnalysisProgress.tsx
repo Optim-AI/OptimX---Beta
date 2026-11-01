@@ -1,17 +1,10 @@
 'use client';
 
 import React from 'react';
-import { Check } from 'lucide-react';
-import { ArcSpinner } from '@/app/web/src/components/ui/loaders';
-import colors from '@/lib/ui/colors';
+import ElapsedHint from './ElapsedHint';
+import { Enter, OrbitVisual, StatusList } from './ob-ui';
 
 export type AnalysisPhase = 'idle' | 'started' | 'processing' | 'complete' | 'error';
-
-const glass = {
-  background: 'hsl(0 0% 12% / 0.75)',
-  border: '1px solid rgba(255,255,255,0.08)',
-  boxShadow: '0 24px 64px rgba(0,0,0,0.45)',
-} as const;
 
 type Props = {
   brandName: string;
@@ -19,7 +12,8 @@ type Props = {
 };
 
 /**
- * Brand analysis progress — single progress card, no duplicate top spinner.
+ * Brand analysis progress — an orbit scan around the brand monogram whose nodes light up
+ * per phase, above the step list.
  */
 export default function BrandAnalysisProgress({ brandName, analysisPhase }: Props) {
   const displayName = brandName.trim() || 'your brand';
@@ -32,64 +26,31 @@ export default function BrandAnalysisProgress({ brandName, analysisPhase }: Prop
   const current = order[analysisPhase];
 
   return (
-    <div className="max-w-md mx-auto mt-16 sm:mt-24 text-center">
-      <img
-        src="/images/SkalX_Logo.png"
-        alt=""
-        className="h-4 w-auto mx-auto mb-8 opacity-70"
-        aria-hidden
-      />
-      <h1 className="text-2xl sm:text-3xl font-normal mb-3">
-        Getting to know {displayName}
-      </h1>
-      <p className="mb-8 text-sm sm:text-base font-light" style={{ color: colors.mutedForeground }}>
-        We&apos;re studying your brand so the first creative feels like yours.
-      </p>
-      <ul className="space-y-4 text-left rounded-2xl p-6" style={glass}>
-        {steps.map((step) => {
-          const stepOrder = order[step.key];
-          const done = current > stepOrder || analysisPhase === 'complete';
-          const active = analysisPhase === step.key;
-          return (
-            <li key={step.key} className="flex items-center gap-3">
-              <span
-                className="w-6 h-6 rounded-full flex items-center justify-center shrink-0"
-                style={{
-                  background: done
-                    ? 'hsl(142 76% 36%)'
-                    : active
-                      ? 'hsl(213 100% 55% / 0.25)'
-                      : 'rgba(255,255,255,0.08)',
-                }}
-              >
-                {done ? (
-                  <Check className="h-3.5 w-3.5 text-white" />
-                ) : active ? (
-                  <ArcSpinner
-                    className="h-3.5 w-3.5 animate-spin"
-                    style={{ color: colors.primary }}
-                  />
-                ) : (
-                  <span
-                    className="w-2 h-2 rounded-full"
-                    style={{ background: 'rgba(255,255,255,0.25)' }}
-                  />
-                )}
-              </span>
-              <span
-                style={{
-                  color: done || active ? colors.foreground : colors.mutedForeground,
-                }}
-              >
-                {step.label}
-              </span>
-            </li>
-          );
-        })}
-      </ul>
-      <p className="mt-6 text-sm" style={{ color: colors.mutedForeground }} aria-live="polite">
-        This usually takes a moment. We&apos;ll only move forward when your brand profile is ready.
-      </p>
+    <div className="mx-auto mt-8 max-w-md text-center sm:mt-14">
+      <Enter>
+        <OrbitVisual label={displayName === 'your brand' ? 'S' : displayName} lit={current} />
+      </Enter>
+      <Enter delay={120}>
+        <h1 className="mb-3 mt-8 font-display text-2xl font-semibold tracking-[-0.02em] sm:text-3xl">
+          Getting to know <span className="ob-gradient-text">{displayName}</span>
+        </h1>
+      </Enter>
+      <Enter delay={200}>
+        <p className="mb-8 text-sm text-paper/65 sm:text-base">
+          We&apos;re studying your brand so the first creative feels like yours.
+        </p>
+      </Enter>
+      <Enter delay={280}>
+        <StatusList
+          items={steps.map((step) => ({
+            key: step.key,
+            label: step.label,
+            done: current > order[step.key] || analysisPhase === 'complete',
+            active: analysisPhase === step.key,
+          }))}
+        />
+        <ElapsedHint typical="under a minute" />
+      </Enter>
     </div>
   );
 }

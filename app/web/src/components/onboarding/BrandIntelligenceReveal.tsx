@@ -1,8 +1,7 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { Check } from 'lucide-react';
-import colors from '@/lib/ui/colors';
 import {
   buildBrandInsightCards,
   type BrandInsightCard,
@@ -17,11 +16,13 @@ import {
   ResearchPending,
 } from '@/app/web/src/components/research/BrandResearchReport';
 
-const glass = {
-  background: 'hsl(0 0% 12% / 0.75)',
-  border: '1px solid rgba(255,255,255,0.08)',
-  boxShadow: '0 24px 64px rgba(0,0,0,0.45)',
-} as const;
+import { DrawnCheck, Enter } from './ob-ui';
+
+const FLOW_STEPS = [
+  { n: '01', title: 'Your brand', body: 'Logo, product, visual language' },
+  { n: '02', title: 'Creative direction', body: 'Themes, composition, messaging' },
+  { n: '03', title: 'Your campaign creatives', body: 'Personalized variations for your brand' },
+];
 
 type Props = {
   brand: BrandSnapshot | null;
@@ -49,93 +50,76 @@ export default function BrandIntelligenceReveal({
   researchPending,
 }: Props) {
   const cards = buildBrandInsightCards(brand, brandName);
-  const [visibleCount, setVisibleCount] = useState(0);
-
-  useEffect(() => {
-    setVisibleCount(0);
-    if (cards.length === 0) return;
-    let i = 0;
-    const id = window.setInterval(() => {
-      i += 1;
-      setVisibleCount(i);
-      if (i >= cards.length) window.clearInterval(id);
-    }, 140);
-    return () => window.clearInterval(id);
-  }, [cards.length, brand?.name]);
 
   const needsProductPick = products.length > 0;
   const canContinue = !needsProductPick || Boolean(selectedProduct);
 
   return (
-    <div className="max-w-3xl mx-auto mt-10 sm:mt-16">
-      <h1 className="text-3xl sm:text-4xl font-normal mb-3">
-        Here&apos;s what we picked up.
-      </h1>
-      <p className="mb-10 font-light" style={{ color: colors.mutedForeground }}>
-        From your website and what the market says about it. Pick a product — we&apos;ll shape creatives around it.
-      </p>
+    <div className="mx-auto mt-10 max-w-3xl sm:mt-16">
+      <Enter>
+        <h1 className="mb-3 font-display text-3xl font-semibold leading-[1.1] tracking-[-0.025em] sm:text-[2.6rem]">
+          Here&apos;s what we <span className="ob-gradient-text">picked up.</span>
+        </h1>
+      </Enter>
+      <Enter delay={90}>
+        <p className="mb-10 text-paper/65">
+          From your website and what the market says about it. Pick a product — we&apos;ll shape creatives around it.
+        </p>
+      </Enter>
 
       {cards.length === 0 ? (
-        <div className="rounded-2xl p-6 sm:p-8 mb-8" style={glass}>
-          <p style={{ color: colors.mutedForeground }}>
-            Brand saved as{' '}
-            <strong style={{ color: colors.foreground }}>{brandName || 'your brand'}</strong>.
+        <Enter delay={160} className="ob-glass mb-8 rounded-3xl p-6 sm:p-8">
+          <p className="text-paper/65">
+            Brand saved as <strong className="text-paper">{brandName || 'your brand'}</strong>.
             You can refine details later in Brand Studio.
           </p>
-        </div>
+        </Enter>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-10">
+        <div className="mb-10 grid grid-cols-1 gap-3 sm:grid-cols-2">
           {cards.map((card: BrandInsightCard, index) => (
             <div
               key={card.id}
-              className="rounded-2xl p-5 transition-all duration-500"
-              style={{
-                ...glass,
-                opacity: index < visibleCount ? 1 : 0,
-                transform: index < visibleCount ? 'translateY(0)' : 'translateY(12px)',
-                gridColumn:
-                  card.id === 'creative' && cards.length % 2 === 1
-                    ? '1 / -1'
-                    : undefined,
-              }}
+              className={`ob-enter ob-glass ob-card group relative overflow-hidden rounded-3xl p-5 ${
+                card.id === 'creative' && cards.length % 2 === 1 ? 'sm:col-span-2' : ''
+              }`}
+              style={{ '--d': `${160 + index * 110}ms` } as React.CSSProperties}
             >
-              <div
-                className="text-xs uppercase tracking-[0.15em] mb-2"
-                style={{ color: colors.mutedForeground }}
-              >
+              <div className="mb-2 flex items-center gap-2 text-xs uppercase tracking-[0.15em] text-paper/60">
+                <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-accent-on-ink" />
                 {card.label}
               </div>
-              <div className="text-lg leading-snug" style={{ color: colors.foreground }}>
-                {card.value}
-              </div>
+              <div className="relative text-lg leading-snug text-paper">{card.value}</div>
             </div>
           ))}
         </div>
       )}
 
       {research ? (
-        <div className="mb-10">
+        <Enter delay={240} className="mb-10">
           <BrandResearchHighlights research={research} />
-        </div>
+        </Enter>
       ) : researchPending ? (
-        <div className="mb-10">
+        <Enter delay={240} className="mb-10">
           <ResearchPending label="Researching your competitors and customers" />
-        </div>
+        </Enter>
       ) : null}
 
       {(catalogLoading || products.length > 0) && (
-        <div className="mb-10">
-          <h2 className="text-xl font-normal mb-2">Choose a product</h2>
-          <p className="text-sm mb-5" style={{ color: colors.mutedForeground }}>
+        <Enter delay={280} className="mb-10">
+          <h2 className="mb-2 font-display text-xl font-semibold tracking-[-0.015em]">Choose a product</h2>
+          <p className="mb-5 text-sm text-paper/65">
             We&apos;ll use this product as the hero of your creatives — packaging, category, and
             visual world.
           </p>
           {catalogLoading && products.length === 0 ? (
-            <p className="text-sm" style={{ color: colors.mutedForeground }}>
-              Finding products on your site…
-            </p>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              <p className="col-span-full text-sm text-paper/65">Finding products on your site…</p>
+              {[0, 1, 2].map((i) => (
+                <div key={i} aria-hidden className="ob-shimmer aspect-square rounded-3xl border border-paper/[0.06] bg-paper/[0.03]" />
+              ))}
+            </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               {products.map((product, index) => {
                 const thumb = product.product_images?.[0];
                 const selected =
@@ -146,51 +130,27 @@ export default function BrandIntelligenceReveal({
                     key={`${product.product_name}-${index}`}
                     type="button"
                     onClick={() => onSelectProduct(product)}
-                    className="text-left rounded-2xl overflow-hidden transition-transform hover:-translate-y-0.5"
-                    style={{
-                      ...glass,
-                      outline: selected
-                        ? `2px solid ${colors.primary}`
-                        : '2px solid transparent',
-                    }}
+                    className={`ob-glass ob-card group overflow-hidden rounded-3xl text-left ${selected ? 'ob-selected' : ''}`}
                   >
-                    <div
-                      className="relative w-full bg-black/30"
-                      style={{ aspectRatio: '1 / 1' }}
-                    >
+                    <div className="relative w-full bg-black/30" style={{ aspectRatio: '1 / 1' }}>
                       {thumb ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
                           src={thumb}
                           alt={product.product_name}
-                          className="absolute inset-0 w-full h-full object-contain p-2"
+                          className="absolute inset-0 h-full w-full object-contain p-3 transition-transform duration-500 group-hover:scale-105"
                         />
                       ) : (
-                        <div
-                          className="absolute inset-0 flex items-center justify-center text-xs"
-                          style={{ color: colors.mutedForeground }}
-                        >
+                        <div className="absolute inset-0 flex items-center justify-center text-xs text-paper/60">
                           No image
                         </div>
                       )}
-                      {selected && (
-                        <span
-                          className="absolute top-2 right-2 w-6 h-6 rounded-full flex items-center justify-center"
-                          style={{ background: colors.primary }}
-                        >
-                          <Check className="h-3.5 w-3.5 text-white" />
-                        </span>
-                      )}
+                      {selected && <DrawnCheck className="absolute right-2.5 top-2.5" />}
                     </div>
                     <div className="p-3">
-                      <div className="text-sm font-medium line-clamp-2">
-                        {product.product_name}
-                      </div>
+                      <div className="line-clamp-2 text-sm font-medium">{product.product_name}</div>
                       {(product.category || product.short_benefit) && (
-                        <div
-                          className="text-xs mt-1 line-clamp-2"
-                          style={{ color: colors.mutedForeground }}
-                        >
+                        <div className="mt-1 line-clamp-2 text-xs text-paper/60">
                           {product.category || product.short_benefit}
                         </div>
                       )}
@@ -200,66 +160,42 @@ export default function BrandIntelligenceReveal({
               })}
             </div>
           )}
-        </div>
+        </Enter>
       )}
 
-      <div className="mb-10">
-        <p className="text-base mb-5" style={{ color: colors.foreground }}>
-          Now we&apos;ll turn this into creative.
-        </p>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {[
-            {
-              n: '01',
-              title: 'Your brand',
-              body: 'Logo, product, visual language',
-            },
-            {
-              n: '02',
-              title: 'Creative direction',
-              body: 'Themes, composition, messaging',
-            },
-            {
-              n: '03',
-              title: 'Your campaign creatives',
-              body: 'Personalized variations for your brand',
-            },
-          ].map((step) => (
-            <div key={step.n} className="rounded-xl p-4" style={glass}>
-              <div
-                className="text-xs font-medium mb-2"
-                style={{ color: colors.primary }}
-              >
+      <Enter delay={320} className="mb-10">
+        <p className="mb-5 text-base text-paper">Now we&apos;ll turn this into creative.</p>
+        <ol className="relative grid grid-cols-1 gap-4 sm:grid-cols-3">
+          
+          {FLOW_STEPS.map((step) => (
+            <li key={step.n} className="ob-glass relative rounded-2xl p-4">
+              <div className="mb-3 flex items-center gap-3 font-display text-sm font-semibold tabular-nums text-accent-on-ink">
                 {step.n}
+                <span aria-hidden className="h-px flex-1 bg-paper/15" />
               </div>
-              <div className="text-sm font-medium mb-1">{step.title}</div>
-              <div className="text-xs" style={{ color: colors.mutedForeground }}>
-                {step.body}
-              </div>
-            </div>
+              <div className="mb-1 text-sm font-medium">{step.title}</div>
+              <div className="text-xs text-paper/60">{step.body}</div>
+            </li>
           ))}
-        </div>
-      </div>
+        </ol>
+      </Enter>
 
       {continueError && (
-        <p className="mb-4 text-sm" role="alert" style={{ color: 'hsl(0 84% 60%)' }}>
+        <p className="mb-4 rounded-xl bg-red-500/10 px-3 py-2 text-sm text-[hsl(0_84%_72%)]" role="alert">
           {continueError}
         </p>
       )}
 
-      <button
-        type="button"
-        onClick={onContinue}
-        disabled={!canContinue}
-        className="w-full sm:w-auto min-w-[200px] h-12 px-8 rounded-xl font-medium disabled:opacity-50"
-        style={{
-          background: colors.gradientPrimary,
-          color: colors.primaryForeground,
-          border: 'none',
-        }}
-      >
-        Continue
-      </button>
+      <Enter delay={380}>
+        <button
+          type="button"
+          onClick={onContinue}
+          disabled={!canContinue}
+          className="ob-btn h-12 w-full min-w-[200px] rounded-full px-8 font-medium disabled:opacity-50 sm:w-auto"
+        >
+          Continue
+        </button>
+      </Enter>
     </div>
   );
 }

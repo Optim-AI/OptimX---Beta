@@ -21,6 +21,7 @@ import {
 import { WORKSPACE_PATH } from '@/lib/onboarding/try-onboarding';
 import { FREE_TRIAL_CARD } from '@/lib/trial/validate';
 import FreeTrialRequestDialog from './FreeTrialRequestDialog';
+import { Enter, Kicker } from './ob-ui';
 
 type Props = {
   brandName: string;
@@ -56,7 +57,7 @@ function trackSafe(event: string, data?: Record<string, string>) {
 
 function renderCell(value: ComparisonCell) {
   if (value === true) {
-    return <Check className="h-4 w-4 mx-auto" style={{ color: colors.primary }} aria-label="Included" />;
+    return <Check className="h-4 w-4 mx-auto" style={{ color: 'var(--color-accent-on-ink)' }} aria-label="Included" />;
   }
   if (value === false) {
     return <Minus className="h-4 w-4 mx-auto opacity-40" aria-label="Not included" />;
@@ -70,12 +71,6 @@ function renderCell(value: ComparisonCell) {
   }
   return <span className="text-sm font-medium">{value}</span>;
 }
-
-const glass = {
-  background: 'hsl(0 0% 12% / 0.75)',
-  border: '1px solid rgba(255,255,255,0.08)',
-  boxShadow: '0 24px 64px rgba(0,0,0,0.35)',
-} as const;
 
 /**
  * In-flow pricing for /try after personalized demo.
@@ -106,8 +101,8 @@ export default function TryPricingExperience({
   if (hasActiveSubscription) {
     return (
       <div className="max-w-xl mx-auto mt-10 sm:mt-16">
-        <div className="rounded-2xl p-8 text-center" style={glass}>
-          <h1 id={headingId} className="text-2xl sm:text-3xl font-normal mb-3">
+        <div className="ob-enter ob-glass rounded-3xl p-8 text-center">
+          <h1 id={headingId} className="mb-3 font-display text-2xl font-semibold tracking-[-0.02em] sm:text-3xl">
             You&apos;re already on the {activePlanName || 'SkalX'} plan.
           </h1>
           <p className="mb-8 font-light" style={{ color: colors.mutedForeground }}>
@@ -115,11 +110,7 @@ export default function TryPricingExperience({
           </p>
           <Link
             href={WORKSPACE_PATH}
-            className="inline-flex items-center justify-center h-12 px-8 rounded-xl font-medium"
-            style={{
-              background: colors.gradientPrimary,
-              color: colors.primaryForeground,
-            }}
+            className="ob-btn inline-flex items-center justify-center h-12 px-8 rounded-full font-medium"
           >
             Go to SkalX →
           </Link>
@@ -129,8 +120,7 @@ export default function TryPricingExperience({
             <button
               type="button"
               onClick={onBack}
-              className="text-sm"
-              style={{ color: colors.mutedForeground, background: 'none', border: 'none' }}
+              className="rounded-full px-3 py-2 text-sm text-paper/65 transition-colors hover:bg-paper/[0.06] hover:text-paper"
             >
               {backLabel}
             </button>
@@ -142,30 +132,24 @@ export default function TryPricingExperience({
 
   return (
     <div className="max-w-6xl mx-auto mt-6 sm:mt-10 pb-10">
-      <p
-        className="text-xs uppercase tracking-[0.2em] mb-3 text-center"
-        style={{ color: colors.mutedForeground }}
-      >
-        Plans
-      </p>
-      <h1
-        id={headingId}
-        className="text-3xl sm:text-4xl font-normal text-center mb-3 leading-tight"
-      >
-        Ready to create more{brandName ? ` for ${brandName}` : ''}?
-      </h1>
-      <p
-        className="text-center text-lg font-extralight max-w-2xl mx-auto mb-2"
-        style={{ color: colors.mutedForeground }}
-      >
-        Choose the plan that fits your marketing workflow.
-      </p>
-      <p
-        className="text-center text-sm max-w-xl mx-auto mb-10"
-        style={{ color: colors.mutedForeground }}
-      >
-        {introCopy}
-      </p>
+      <Enter className="text-center">
+        <Kicker>Plans</Kicker>
+      </Enter>
+      <Enter delay={80}>
+        <h1
+          id={headingId}
+          className="mx-auto mb-3 max-w-3xl text-balance text-center font-display text-3xl font-semibold leading-[1.08] tracking-[-0.025em] sm:text-[2.75rem]"
+        >
+          Ready to create more{brandName ? ' for ' : ''}
+          {brandName ? <span className="ob-gradient-text">{brandName}</span> : null}?
+        </h1>
+      </Enter>
+      <Enter delay={150}>
+        <p className="mx-auto mb-2 max-w-2xl text-center text-lg text-paper/70">
+          Choose the plan that fits your marketing workflow.
+        </p>
+        <p className="mx-auto mb-12 max-w-xl text-center text-sm text-paper/60">{introCopy}</p>
+      </Enter>
 
       <div
         className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5 mb-14"
@@ -173,15 +157,15 @@ export default function TryPricingExperience({
         aria-labelledby={headingId}
       >
         <div
-          className="rounded-2xl p-6 flex flex-col transition-all duration-300"
-          style={glass}
+          className="ob-enter ob-glass ob-card rounded-3xl p-6 flex flex-col"
+          style={{ '--d': '220ms' } as React.CSSProperties}
         >
-          <h2 className="text-2xl font-semibold mb-1">{FREE_TRIAL_CARD.name}</h2>
+          <h2 className="mb-1 font-display text-2xl font-semibold tracking-[-0.02em]">{FREE_TRIAL_CARD.name}</h2>
           <p className="text-sm mb-3" style={{ color: colors.mutedForeground }}>
             {FREE_TRIAL_CARD.description}
           </p>
           <div className="mb-1">
-            <span className="text-3xl font-bold tracking-tight">{FREE_TRIAL_CARD.priceLabel}</span>
+            <span className="font-display text-3xl font-bold tracking-[-0.03em]">{FREE_TRIAL_CARD.priceLabel}</span>
           </div>
           <p className="text-xs mb-5" style={{ color: colors.mutedForeground }}>
             {FREE_TRIAL_CARD.supporting}
@@ -196,7 +180,7 @@ export default function TryPricingExperience({
               >
                 <Check
                   className="h-4 w-4 mt-0.5 flex-shrink-0"
-                  style={{ color: colors.primary }}
+                  style={{ color: 'var(--color-accent-on-ink)' }}
                 />
                 {cap}
               </li>
@@ -211,12 +195,7 @@ export default function TryPricingExperience({
               trackSafe('trial_request_opened', { source: 'pricing' });
               setTrialDialogOpen(true);
             }}
-            className="w-full h-11 rounded-xl text-sm font-medium transition-opacity disabled:opacity-60"
-            style={{
-              background: colors.gradientPrimary,
-              color: colors.primaryForeground,
-              border: 'none',
-            }}
+            className="w-full h-11 rounded-full text-sm font-medium transition-colors disabled:opacity-60 border border-paper/20 text-paper hover:border-paper/40 hover:bg-paper/[0.06]"
           >
             {FREE_TRIAL_CARD.cta}
           </button>
@@ -225,26 +204,30 @@ export default function TryPricingExperience({
           </p>
         </div>
 
-        {MARKETING_SUBSCRIPTION_PLANS.map((plan) => {
+        {MARKETING_SUBSCRIPTION_PLANS.map((plan, planIndex) => {
           const isSelected = selectedPlanId === plan.id;
           const totals = subscriptionTotalsInr(plan.priceInr);
           return (
             <div
               key={plan.id}
-              className="rounded-2xl p-6 flex flex-col transition-all duration-300"
-              style={{
-                ...glass,
-                border: isSelected
-                  ? '1px solid hsl(213 100% 55% / 0.55)'
-                  : glass.border,
-                boxShadow: isSelected
-                  ? '0 0 0 1px hsl(213 100% 55% / 0.25), 0 24px 64px rgba(0,0,0,0.45)'
-                  : glass.boxShadow,
-              }}
+              className={`ob-enter ob-glass ob-card relative overflow-hidden rounded-3xl p-6 flex flex-col ${
+                isSelected ? 'ob-selected' : ''
+              }`}
+              style={{ '--d': `${300 + planIndex * 90}ms` } as React.CSSProperties}
             >
-              <h2 className="text-2xl font-semibold mb-3">{plan.name}</h2>
+              <div className="relative flex items-center justify-between gap-2 mb-3">
+                <h2 className="font-display text-2xl font-semibold tracking-[-0.02em]">{plan.name}</h2>
+                {isSelected && (
+                  <span
+                    className="text-[10px] uppercase tracking-wider px-2 py-1 rounded-md shrink-0"
+                    style={{ color: 'var(--color-accent-on-ink)', background: 'rgba(157, 184, 255, 0.12)' }}
+                  >
+                    Your pick
+                  </span>
+                )}
+              </div>
               <div className="mb-1">
-                <span className="text-3xl font-bold tracking-tight">
+                <span className="font-display text-3xl font-bold tracking-[-0.03em]">
                   {formatPricePlusGst(plan.priceInr)}
                 </span>
                 <span className="text-sm ml-1" style={{ color: colors.mutedForeground }}>
@@ -273,7 +256,7 @@ export default function TryPricingExperience({
                   >
                     <Check
                       className="h-4 w-4 mt-0.5 flex-shrink-0"
-                      style={{ color: colors.primary }}
+                      style={{ color: 'var(--color-accent-on-ink)' }}
                     />
                     {cap}
                   </li>
@@ -285,7 +268,7 @@ export default function TryPricingExperience({
                   >
                     <Check
                       className="h-4 w-4 mt-0.5 flex-shrink-0"
-                      style={{ color: colors.primary }}
+                      style={{ color: 'var(--color-accent-on-ink)' }}
                     />
                     Priority generation
                   </li>
@@ -305,12 +288,7 @@ export default function TryPricingExperience({
                   trackSafe('checkout_intent', { plan: plan.id });
                   onContinue(plan.id);
                 }}
-                className="w-full h-11 rounded-xl text-sm font-medium transition-opacity disabled:opacity-60"
-                style={{
-                  background: colors.gradientPrimary,
-                  color: colors.primaryForeground,
-                  border: 'none',
-                }}
+                className="ob-btn w-full h-11 rounded-full text-sm font-medium disabled:opacity-60"
               >
                 {continuing && selectedPlanId === plan.id
                   ? 'Continuing…'
@@ -321,6 +299,10 @@ export default function TryPricingExperience({
         })}
       </div>
 
+      <p className="text-center text-xs -mt-8 mb-14" style={{ color: colors.mutedForeground }}>
+        Secure checkout by Razorpay · Billed monthly incl. 18% GST · Cancel anytime
+      </p>
+
       <FreeTrialRequestDialog
         open={trialDialogOpen}
         onOpenChange={setTrialDialogOpen}
@@ -329,11 +311,11 @@ export default function TryPricingExperience({
 
       {/* Comparison — desktop table */}
       <section className="mb-14" aria-labelledby="compare-heading">
-        <h2 id="compare-heading" className="text-2xl font-normal mb-6 text-center">
+        <h2 id="compare-heading" className="mb-6 text-center font-display text-2xl font-semibold tracking-[-0.02em]">
           Compare plans
         </h2>
 
-        <div className="hidden md:block overflow-x-auto rounded-2xl" style={glass}>
+        <div className="ob-glass hidden md:block overflow-x-auto rounded-3xl">
           <table className="w-full text-left border-collapse min-w-[640px]">
             <thead>
               <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
@@ -346,7 +328,7 @@ export default function TryPricingExperience({
                     className="p-4 text-sm font-medium text-center"
                     scope="col"
                     style={{
-                      color: selectedPlanId === p.id ? colors.primary : colors.foreground,
+                      color: selectedPlanId === p.id ? 'var(--color-accent-on-ink)' : colors.foreground,
                     }}
                   >
                     {p.name}
@@ -358,6 +340,7 @@ export default function TryPricingExperience({
               {PLAN_COMPARISON_ROWS.map((row) => (
                 <tr
                   key={row.id}
+                  className="transition-colors hover:bg-paper/[0.03]"
                   style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
                 >
                   <th className="p-4 text-sm font-normal text-left" scope="row">
@@ -384,7 +367,7 @@ export default function TryPricingExperience({
           {PLAN_COMPARISON_ROWS.map((row) => {
             const open = openRow === row.id;
             return (
-              <div key={row.id} className="rounded-xl overflow-hidden" style={glass}>
+              <div key={row.id} className="ob-glass rounded-2xl overflow-hidden">
                 <button
                   type="button"
                   className="w-full flex items-center justify-between p-4 text-left"
@@ -401,7 +384,7 @@ export default function TryPricingExperience({
                   />
                 </button>
                 {open && (
-                  <div className="px-4 pb-4 space-y-3">
+                  <div className="ob-enter px-4 pb-4 space-y-3">
                     {row.hint && (
                       <p className="text-xs" style={{ color: colors.mutedForeground }}>
                         {row.hint}
@@ -422,8 +405,8 @@ export default function TryPricingExperience({
       </section>
 
       {/* Credit explanation */}
-      <div className="rounded-2xl p-6 mb-10 max-w-3xl mx-auto" style={glass}>
-        <h3 className="text-lg font-medium mb-3">How credits work</h3>
+      <div className="ob-glass rounded-3xl p-6 mb-10 max-w-3xl mx-auto">
+        <h3 className="mb-3 font-display text-lg font-semibold">How credits work</h3>
         <p className="text-sm mb-2" style={{ color: colors.mutedForeground }}>
           <strong style={{ color: colors.foreground }}>Image Credits</strong> — One successful
           image generation uses one Image Credit.
@@ -436,8 +419,8 @@ export default function TryPricingExperience({
       </div>
 
       {/* PAYG info */}
-      <div className="rounded-2xl p-6 mb-10 max-w-3xl mx-auto" style={glass}>
-        <h3 className="text-lg font-medium mb-2">Need more credits later?</h3>
+      <div className="ob-glass rounded-3xl p-6 mb-10 max-w-3xl mx-auto">
+        <h3 className="mb-2 font-display text-lg font-semibold">Need more credits later?</h3>
         <p className="text-sm mb-3" style={{ color: colors.mutedForeground }}>
           After you subscribe, you can buy additional credits anytime (pay-as-you-go):
         </p>
@@ -462,8 +445,7 @@ export default function TryPricingExperience({
           <button
             type="button"
             onClick={onBack}
-            className="text-sm"
-            style={{ color: colors.mutedForeground, background: 'none', border: 'none' }}
+            className="rounded-full px-3 py-2 text-sm text-paper/65 transition-colors hover:bg-paper/[0.06] hover:text-paper"
           >
             {backLabel}
           </button>

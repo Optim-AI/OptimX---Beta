@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/router";
-import { Eye, EyeOff } from "lucide-react";
+import { Check, Eye, EyeOff } from "lucide-react";
 import { supabase } from "@/auth/supabase/client";
 import {
   getOAuthCallbackUrl,
@@ -190,6 +190,7 @@ export default function SignUpPage(): React.ReactElement {
 
   return (
     <AuthShell
+      variant="signup"
       accountSwitch={
         <p className="auth-switch">
           Already have an account? <Link href={`/auth/signin${nextSuffix}`}>Log in</Link>
@@ -216,7 +217,7 @@ export default function SignUpPage(): React.ReactElement {
       }
     >
       <div>
-        <label className="sr-only" htmlFor="business-name">
+        <label className="auth-label" htmlFor="business-name">
           Business name
         </label>
         <input
@@ -224,13 +225,13 @@ export default function SignUpPage(): React.ReactElement {
           className="auth-input"
           value={businessName}
           onChange={(e) => setBusinessName(e.target.value)}
-          placeholder="Business name"
+          placeholder="e.g. Chai Point Snacks"
           autoComplete="organization"
         />
       </div>
 
       <div>
-        <label className="sr-only" htmlFor="email">
+        <label className="auth-label" htmlFor="email">
           Email address
         </label>
         <input
@@ -239,33 +240,40 @@ export default function SignUpPage(): React.ReactElement {
           type="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          placeholder="Email address"
+          placeholder="you@yourbrand.com"
           autoComplete="email"
         />
       </div>
 
-      <div className="auth-field">
-        <label className="sr-only" htmlFor="password">
+      <div>
+        <label className="auth-label" htmlFor="password">
           Create a password
         </label>
-        <input
-          id="password"
-          className="auth-input"
-          type={showPw ? "text" : "password"}
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="Create a password"
-          autoComplete="new-password"
-          style={{ paddingRight: 44 }}
-        />
-        <button
-          type="button"
-          className="auth-eye"
-          onClick={() => setShowPw((s) => !s)}
-          aria-label={showPw ? "Hide password" : "Show password"}
-        >
-          {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
-        </button>
+        <div className="auth-field">
+          <input
+            id="password"
+            className="auth-input"
+            type={showPw ? "text" : "password"}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            autoComplete="new-password"
+            aria-describedby="password-hint"
+            style={{ paddingRight: 48 }}
+          />
+          <button
+            type="button"
+            className="auth-eye"
+            onClick={() => setShowPw((s) => !s)}
+            aria-label={showPw ? "Hide password" : "Show password"}
+          >
+            {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
+          </button>
+        </div>
+        {/* Live hint for the same 6-character rule the submit check enforces. */}
+        <p id="password-hint" className="auth-hint" data-ok={password.length >= 6 ? "true" : "false"}>
+          {password.length >= 6 ? <Check size={13} aria-hidden /> : null}
+          At least 6 characters
+        </p>
       </div>
     </AuthShell>
   );

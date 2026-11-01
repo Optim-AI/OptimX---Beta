@@ -83,10 +83,7 @@ const AIUseDisclosure: React.FC = () => {
           </div> */}
 
           <Link href="/" className="flex items-center space-x-1" style={{ color: colors.foreground }}>
-                      <img src="/images/Oli_AI_Logo.svg" alt="SkalX AI Logo" className="h-10 w-auto" />
-<span className="text-xl font-bold" style={{ lineHeight: 1 }}>
-                      <span style={{ color: colors.foreground }}>SkalX AI</span>
-                    </span>
+                      <img src="/images/SkalX_Logo.png" alt="SkalX AI" className="h-7 w-auto" />
                     </Link>
         </header>
 

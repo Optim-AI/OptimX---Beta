@@ -58,19 +58,8 @@ export default function NotFound() {
 
       <div className="relative z-10 max-w-4xl w-full">
         <div className="flex items-center gap-3 mb-6">
-          <div
-            className="w-12 h-12 rounded-md flex items-center justify-center glass-card overflow-hidden"
-            style={{ background: colors.card, border: `1px solid ${colors.border}`, boxShadow: colors.shadowStrong }}
-          >
-            <img src="/images/SkalX_Logo.png" alt="SkalX AI Logo" className="h-full w-full object-contain p-1" />
-          </div>
-
-          <div>
-            <div className="text-2xl font-bold leading-tight flex items-baseline gap-1">
-              <span style={{ color: colors.foreground }}>SkalX AI</span>
-            </div>
-            <div className="text-sm" style={{ color: colors.mutedForeground }}>Page not found</div>
-          </div>
+          <img src="/images/SkalX_Logo.png" alt="SkalX AI" className="h-8 w-auto" />
+          <div className="text-sm" style={{ color: colors.mutedForeground }}>Page not found</div>
         </div>
 
         <div className="p-10 rounded-3xl glass-card border text-center" style={{ borderColor: withAlpha(colors.border, 0.6), background: colors.card }}>

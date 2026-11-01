@@ -3,6 +3,8 @@ const nextConfig = {
   async redirects() {
     return [
       { source: '/signin', destination: '/auth/signin', permanent: true },
+      // Password-reset emails link to /reset-password (see pages/auth/forgot-password.tsx); the page lives under /auth.
+      { source: '/reset-password', destination: '/auth/reset-password', permanent: false },
       { source: '/refund-cancellation', destination: '/terms-and-conditions', permanent: true },
       { source: '/cookie-policy', destination: '/cpolicy', permanent: true },
       { source: '/cookiepolicy', destination: '/cpolicy', permanent: true },

@@ -26,7 +26,8 @@ export default function HowItWorksSection() {
       const mid = window.innerHeight * 0.55;
       const p = Math.min(1, Math.max(0, (mid - r.top) / r.height));
       list.style.setProperty('--p', p.toFixed(3));
-      const items = Array.from(list.children) as HTMLElement[];
+      // Only the step <li>s — the list also holds the two decorative rail <span>s.
+      const items = Array.from(list.querySelectorAll<HTMLElement>(':scope > li'));
       let idx = -1;
       items.forEach((el, i) => {
         if (el.getBoundingClientRect().top < mid) idx = i;

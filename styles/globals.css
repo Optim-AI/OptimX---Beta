@@ -223,6 +223,20 @@
   }
 }
 
+/* Hero demo (HeroDemo.tsx): scene entrances, progress fill, caret, slow video zoom. */
+@keyframes hx-in { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@keyframes hx-fill { from { width: 0; } to { width: 100%; } }
+@keyframes hx-blink { 50% { opacity: 0; } }
+@keyframes hx-zoom { from { transform: scale(1); } to { transform: scale(1.12); } }
+@keyframes hx-pick { 0% { transform: scale(1); } 50% { transform: scale(1.02); } 100% { transform: scale(1); } }
+.hx-fill { width: 0; animation: hx-fill var(--dur, 3600ms) linear forwards; }
+@media (prefers-reduced-motion: no-preference) {
+  .hx-in { animation: hx-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) backwards; animation-delay: var(--d, 0ms); }
+  .hx-caret { animation: hx-blink 1s steps(1) infinite; }
+  .hx-zoom { animation: hx-zoom 3.6s ease-in-out infinite alternate; }
+  .hx-pick { animation: hx-pick 0.5s ease 0.9s; }
+}
+
 /* Hero: product photo → finished formats */
 @keyframes sx-rise {
   from { opacity: 0; transform: translateY(16px) scale(0.98); }
@@ -564,4 +578,208 @@ button:hover > .sx-btn-arrow { transform: translateX(3px); }
 @media (prefers-reduced-motion: reduce) {
   .sx-morph::before { animation: none; }
   .sx-morph-icon { transition: opacity 0.3s ease; transform: none; filter: none; }
+}
+
+/* ── Onboarding (/try) + free audit: the website's design system, in its ink (dark) mode ─── */
+/* Same tokens as the marketing site's ink bands: warm ink, paper text, one accent, hairlines,
+   Montserrat/Poppins, pill buttons. No glows or gradients. Motion is calm and gated on
+   prefers-reduced-motion. */
+
+.ob-root {
+  /* Neutral charcoal instead of the website's warm ink, so the dark reads black/grey, not brown.
+     Overriding the tokens here re-themes every bg-ink / text-paper utility inside the flow. */
+  --color-ink: #111111;
+  --color-paper: #f4f4f3;
+  --color-paper-deep: #e4e4e2;
+  --ob-bg: var(--color-ink);
+  --ob-surface: #1a1a1a;
+  --ob-surface-2: #222222;
+  --ob-line: rgba(255, 255, 255, 0.09);
+  --ob-line-strong: rgba(255, 255, 255, 0.2);
+  --ob-text: var(--color-paper);
+  --ob-accent: var(--color-accent-on-ink);
+  font-family: var(--font-body);
+  background-color: var(--ob-bg);
+  color: var(--ob-text);
+}
+
+/* Backdrop: the site's hairline grid, faded at the edges. Static. */
+.ob-stage { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+.ob-stage .ob-blob { display: none; }
+.ob-dots {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(to right, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 72px 72px;
+  -webkit-mask-image: radial-gradient(ellipse 75% 60% at 50% 20%, #000 15%, transparent 75%);
+  mask-image: radial-gradient(ellipse 75% 60% at 50% 20%, #000 15%, transparent 75%);
+}
+
+/* Surfaces: flat cards with a hairline border. */
+.ob-glass {
+  background: var(--ob-surface);
+  border: 1px solid var(--ob-line);
+}
+
+/* Entrances (stagger with --d). */
+@keyframes ob-enter {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .ob-enter { animation: ob-enter 0.7s cubic-bezier(0.16, 1, 0.3, 1) backwards; animation-delay: var(--d, 0ms); }
+}
+
+/* Emphasis in headings: plain ink-mode text (the site doesn't colour headline words). */
+.ob-gradient-text { color: inherit; }
+
+/* Inputs. */
+.ob-input {
+  background: var(--ob-bg);
+  border: 1px solid var(--ob-line-strong);
+  color: var(--ob-text);
+  transition: border-color 0.2s ease;
+}
+.ob-input::placeholder { color: rgba(255, 255, 255, 0.45); }
+.ob-input:hover { border-color: rgba(255, 255, 255, 0.4); }
+.ob-input:focus,
+.ob-input:focus-visible {
+  outline: 2px solid var(--ob-accent);
+  outline-offset: 2px;
+  border-color: rgba(255, 255, 255, 0.5);
+}
+
+/* Primary button: the site's on-ink button (paper pill, ink text). */
+.ob-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  border: 0;
+  transition: background-color 0.2s ease, transform 0.2s ease, opacity 0.2s ease;
+}
+.ob-btn:not(:disabled):hover { background: #fff; }
+@media (prefers-reduced-motion: no-preference) {
+  .ob-btn:not(:disabled):active { transform: scale(0.98); }
+}
+.ob-root :focus-visible { outline: 2px solid var(--ob-accent); outline-offset: 3px; }
+
+/* Interactive cards: lift a little and firm up the border. */
+.ob-card { transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.25s ease; }
+@media (hover: hover) {
+  .ob-card:not(:disabled):hover { border-color: rgba(255, 255, 255, 0.24); }
+}
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .ob-card:not(:disabled):hover { transform: translateY(-3px); }
+}
+.ob-ring-border { position: relative; }
+
+/* Selected state: a crisp accent border. */
+.ob-selected {
+  border-color: var(--ob-accent) !important;
+  box-shadow: 0 0 0 1px var(--ob-accent);
+}
+
+/* Progress fills. */
+.ob-track-fill { transition: width 0.8s cubic-bezier(0.16, 1, 0.3, 1); }
+
+/* Live indicator: a small dot with a soft pulse ring. */
+@keyframes ob-ping { 0% { transform: scale(1); opacity: 0.5; } 100% { transform: scale(2.4); opacity: 0; } }
+@media (prefers-reduced-motion: no-preference) {
+  .ob-ping::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 9999px;
+    background: var(--ob-accent);
+    animation: ob-ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
+  }
+}
+
+/* Ticks draw in. */
+@keyframes ob-draw { to { stroke-dashoffset: 0; } }
+@keyframes ob-pop { 0% { transform: scale(0.6); } 100% { transform: scale(1); } }
+.ob-check path { stroke-dasharray: 24; stroke-dashoffset: 0; }
+@media (prefers-reduced-motion: no-preference) {
+  .ob-check { animation: ob-pop 0.35s cubic-bezier(0.16, 1, 0.3, 1) both; }
+  .ob-check path { stroke-dashoffset: 24; animation: ob-draw 0.4s ease 0.1s forwards; }
+}
+
+/* Placeholder shimmer. */
+@keyframes ob-shimmer-x { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+.ob-shimmer { position: relative; overflow: hidden; }
+@media (prefers-reduced-motion: no-preference) {
+  .ob-shimmer::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.06), transparent);
+    animation: ob-shimmer-x 1.8s ease-in-out infinite;
+  }
+}
+
+/* Indeterminate bar under the live step: a short accent segment that glides across. */
+.ob-indeterminate { position: relative; }
+.ob-indeterminate::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 35%;
+  border-radius: inherit;
+  background: var(--ob-accent);
+}
+@keyframes ob-glide { from { transform: translateX(-100%); } to { transform: translateX(290%); } }
+@media (prefers-reduced-motion: no-preference) {
+  .ob-indeterminate::after { animation: ob-glide 1.6s cubic-bezier(0.65, 0, 0.35, 1) infinite; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ob-indeterminate::after { width: 100%; opacity: 0.4; }
+}
+
+/* Brand scan: hairline rings around the brand monogram; one slow rotating arc. */
+@keyframes ob-rotate { to { transform: rotate(360deg); } }
+.ob-orbit-node { transition: background-color 0.5s ease, border-color 0.5s ease; }
+.ob-orbit-node[data-on="true"] { background: var(--ob-accent); border-color: var(--ob-accent); }
+.ob-sweep {
+  border: 1px solid transparent;
+  border-top-color: var(--ob-accent);
+  border-radius: 9999px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .ob-spin-slow { animation: ob-rotate 24s linear infinite; }
+  .ob-spin-rev { animation: ob-rotate 32s linear infinite reverse; }
+  .ob-sweep { animation: ob-rotate 2.4s linear infinite; }
+}
+
+/* Creatives fade in as they arrive. */
+@keyframes ob-develop {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .ob-develop { animation: ob-develop 0.8s cubic-bezier(0.16, 1, 0.3, 1) backwards; animation-delay: var(--d, 0ms); }
+}
+
+/* Gently floating placeholder stack (generating screen). */
+@keyframes ob-float { 0%, 100% { transform: translateY(0) rotate(var(--r, 0deg)); } 50% { transform: translateY(-6px) rotate(var(--r, 0deg)); } }
+.ob-float { transform: rotate(var(--r, 0deg)); }
+@media (prefers-reduced-motion: no-preference) {
+  .ob-float { animation: ob-float 5s ease-in-out infinite; animation-delay: var(--d, 0ms); }
+}
+
+/* Demo choice: fanned cards spread on hover. */
+.ob-fan-card {
+  transform: translateX(calc(-50% + var(--x))) rotate(var(--r));
+  transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .group:hover .ob-fan-card { transform: translateX(calc(-50% + var(--x) * 1.5)) rotate(calc(var(--r) * 1.5)) translateY(-4px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ob-track-fill, .ob-card, .ob-btn, .ob-fan-card { transition: none; }
 }

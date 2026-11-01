@@ -15,6 +15,8 @@ import { authNextFrom, clearAuthContinuation, rememberAuthContinuation } from "@
 import AuthShell from "@/components/auth/AuthShell";
 import { authErrorMessage, classifyAuthError } from "@/lib/auth/auth-errors";
 
+const LAST_EMAIL_KEY = "skalx_last_signin_email";
+
 export default function SignInPage(): React.ReactElement {
   const router = useRouter();
 
@@ -23,6 +25,22 @@ export default function SignInPage(): React.ReactElement {
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<React.ReactNode | null>(null);
+  /** Email last used to log in on this device; lets returning users skip retyping it. */
+  const [rememberedEmail, setRememberedEmail] = useState<string | null>(null);
+  const passwordRef = React.useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(LAST_EMAIL_KEY);
+      if (saved) {
+        setRememberedEmail(saved);
+        setEmail((current) => current || saved);
+        window.setTimeout(() => passwordRef.current?.focus(), 0);
+      }
+    } catch {
+      /* storage unavailable */
+    }
+  }, []);
 
   const nextSuffix =
     typeof router.query.next === "string"
@@ -108,6 +126,11 @@ export default function SignInPage(): React.ReactElement {
           setError(authErrorMessage(signError));
         }
       } else if ((data as { user?: unknown } | null)?.user) {
+        try {
+          window.localStorage.setItem(LAST_EMAIL_KEY, email);
+        } catch {
+          /* storage unavailable */
+        }
         await routeAfterAuth();
       }
     } catch (e: unknown) {
@@ -155,51 +178,78 @@ export default function SignInPage(): React.ReactElement {
       loading={loading}
       error={error}
       info={null}
-      secondary={
-        <div className="auth-helpers">
-          <Link href="/auth/forgot-password" className="quiet">
-            Forgot password?
-          </Link>
-        </div>
-      }
     >
-      <div>
-        <label className="sr-only" htmlFor="email">
-          Email address
-        </label>
-        <input
-          id="email"
-          className="auth-input"
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="Email address"
-          autoComplete="email"
-        />
-      </div>
+      {rememberedEmail && email === rememberedEmail ? (
+        /* Returning on this device: show who they're logging in as instead of an empty field. */
+        <div className="flex items-center justify-between gap-3 rounded-2xl border border-paper/15 bg-paper/[0.04] px-4 py-3">
+          <div className="min-w-0">
+            <p className="text-xs text-paper/55">Logging in as</p>
+            <p className="truncate text-[15px] font-medium text-paper">{rememberedEmail}</p>
+          </div>
+          <button
+            type="button"
+            className="shrink-0 rounded-full px-3 py-1.5 text-sm text-paper/70 underline decoration-paper/30 underline-offset-4 hover:text-paper"
+            onClick={() => {
+              setEmail("");
+              setRememberedEmail(null);
+              try {
+                window.localStorage.removeItem(LAST_EMAIL_KEY);
+              } catch {
+                /* storage unavailable */
+              }
+            }}
+          >
+            Not you?
+          </button>
+        </div>
+      ) : (
+        <div>
+          <label className="auth-label" htmlFor="email">
+            Email address
+          </label>
+          <input
+            id="email"
+            className="auth-input"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@yourbrand.com"
+            autoComplete="email"
+          />
+        </div>
+      )}
 
-      <div className="auth-field">
-        <label className="sr-only" htmlFor="password">
-          Password
-        </label>
-        <input
-          id="password"
-          className="auth-input"
-          type={showPw ? "text" : "password"}
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="Password"
-          autoComplete="current-password"
-          style={{ paddingRight: 44 }}
-        />
-        <button
-          type="button"
-          className="auth-eye"
-          onClick={() => setShowPw((s) => !s)}
-          aria-label={showPw ? "Hide password" : "Show password"}
-        >
-          {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
-        </button>
+      <div>
+        <div className="flex items-baseline justify-between gap-3">
+          <label className="auth-label" htmlFor="password">
+            Password
+          </label>
+          <span className="auth-helpers">
+            <Link href="/auth/forgot-password" className="quiet">
+              Forgot password?
+            </Link>
+          </span>
+        </div>
+        <div className="auth-field">
+          <input
+            id="password"
+            ref={passwordRef}
+            className="auth-input"
+            type={showPw ? "text" : "password"}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            autoComplete="current-password"
+            style={{ paddingRight: 48 }}
+          />
+          <button
+            type="button"
+            className="auth-eye"
+            onClick={() => setShowPw((s) => !s)}
+            aria-label={showPw ? "Hide password" : "Show password"}
+          >
+            {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
+          </button>
+        </div>
       </div>
     </AuthShell>
   );

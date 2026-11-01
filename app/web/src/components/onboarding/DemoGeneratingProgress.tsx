@@ -1,16 +1,9 @@
 'use client';
 
 import React from 'react';
-import { Check } from 'lucide-react';
-import { ArcSpinner } from '@/app/web/src/components/ui/loaders';
-import colors from '@/lib/ui/colors';
+import ElapsedHint from './ElapsedHint';
+import { DevelopingStack, Enter, StatusList } from './ob-ui';
 import type { OnboardingDemoProgressStage } from '@/lib/onboarding/try-onboarding';
-
-const glass = {
-  background: 'hsl(0 0% 12% / 0.75)',
-  border: '1px solid rgba(255,255,255,0.08)',
-  boxShadow: '0 24px 64px rgba(0,0,0,0.45)',
-} as const;
 
 const STEPS: {
   key: OnboardingDemoProgressStage;
@@ -37,65 +30,44 @@ type Props = {
   creativeCount?: number;
 };
 
+/** "Darkroom": a fan of creatives that develop as the set comes together, above the step list. */
 export default function DemoGeneratingProgress({
   progressStage,
   creativeCount = 0,
 }: Props) {
   const stage = progressStage || 'planning';
   const current = STAGE_ORDER[stage] || 1;
+  // Cards look finished as real creatives arrive; otherwise one per completed late stage.
+  const ready = Math.min(4, Math.max(creativeCount, current - 2));
 
   return (
-    <div className="max-w-md mx-auto mt-16 sm:mt-24 text-center">
-      <h1 className="text-2xl sm:text-3xl font-normal mb-3">
-        Creating your creative direction
-      </h1>
-      <p className="mb-8 text-sm" style={{ color: colors.mutedForeground }} aria-live="polite">
-        {creativeCount > 0
-          ? `${creativeCount} creative${creativeCount === 1 ? '' : 's'} ready so far…`
-          : 'Building a small set of personalized concepts from your brand.'}
-      </p>
-      <ul className="space-y-4 text-left rounded-2xl p-6" style={glass}>
-        {STEPS.map((step) => {
-          const stepOrder = STAGE_ORDER[step.key];
-          const done = current > stepOrder || stage === 'complete';
-          const active = stage === step.key;
-          return (
-            <li key={step.key} className="flex items-center gap-3">
-              <span
-                className="w-6 h-6 rounded-full flex items-center justify-center shrink-0"
-                style={{
-                  background: done
-                    ? 'hsl(142 76% 36%)'
-                    : active
-                      ? 'hsl(213 100% 55% / 0.25)'
-                      : 'rgba(255,255,255,0.08)',
-                }}
-              >
-                {done ? (
-                  <Check className="h-3.5 w-3.5 text-white" />
-                ) : active ? (
-                  <ArcSpinner
-                    className="h-3.5 w-3.5 animate-spin"
-                    style={{ color: colors.primary }}
-                  />
-                ) : (
-                  <span
-                    className="w-2 h-2 rounded-full"
-                    style={{ background: 'rgba(255,255,255,0.25)' }}
-                  />
-                )}
-              </span>
-              <span
-                style={{
-                  color: done || active ? colors.foreground : colors.mutedForeground,
-                }}
-              >
-                {step.label}
-              </span>
-            </li>
-          );
-        })}
-      </ul>
+    <div className="mx-auto mt-8 max-w-md text-center sm:mt-14">
+      <Enter>
+        <DevelopingStack ready={ready} />
+      </Enter>
+      <Enter delay={120}>
+        <h1 className="mb-3 mt-8 font-display text-2xl font-semibold tracking-[-0.02em] sm:text-3xl">
+          Creating your creative direction
+        </h1>
+      </Enter>
+      <Enter delay={200}>
+        <p className="mb-8 text-sm text-paper/65" aria-live="polite">
+          {creativeCount > 0
+            ? `${creativeCount} creative${creativeCount === 1 ? '' : 's'} ready so far…`
+            : 'Building a small set of personalized concepts from your brand.'}
+        </p>
+      </Enter>
+      <Enter delay={280}>
+        <StatusList
+          items={STEPS.map((step) => ({
+            key: step.key,
+            label: step.label,
+            done: current > STAGE_ORDER[step.key] || stage === 'complete',
+            active: stage === step.key,
+          }))}
+        />
+        <ElapsedHint typical="1–2 minutes" slowAfterSec={120} />
+      </Enter>
     </div>
   );
 }

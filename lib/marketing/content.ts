@@ -131,6 +131,12 @@ export const START_HREF = '/#start';
 export const SIGNUP_HREF = '/auth/signup?next=/try';
 export const LOGIN_HREF = '/auth/signin?next=/try';
 
+/**
+ * Optional real product walkthrough for the homepage hero (e.g. '/videos/skalx-demo.mp4' in /public).
+ * Empty = the coded demo in HeroDemo plays instead.
+ */
+export const HERO_DEMO_VIDEO = '';
+
 // TODO: a booking link (e.g. Cal.com / Calendly). Until then "Book a 15-min call" opens an email.
 export const BOOKING_URL = '';
 export const bookingHref = BOOKING_URL || `mailto:${SITE_SUPPORT_EMAIL}?subject=${encodeURIComponent('Book a 15-min call — SkalX')}`;
