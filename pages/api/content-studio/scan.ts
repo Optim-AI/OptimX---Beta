@@ -221,14 +221,18 @@ const CATEGORY_PATH_PATTERNS = [
 const PRODUCT_PATH_PATTERNS = [
   /\/product\//i,
   /\/products\//i,
+  // Laravel / custom stores (e.g. salzandhalz.com/product-detail/6)
+  /\/product-detail\//i,
+  /\/product-details?\//i,
   /\/p\//i,
   /\/item\//i,
   /\/dp\//i,
   /\/gp\/product\//i,
   /product-/i,
   /-p-\d+/i,
-  // Hyphenated slugs: /british-rose-shower-gel, /tea-tree-facial-wash (Body Shop, many Shopify stores)
-  /\/[a-z0-9]+(-[a-z0-9]+)+(\/|$)/i,
+  // Hyphenated slugs: /british-rose-shower-gel (Body Shop / many Shopify stores).
+  // Require 2+ hyphens or a longer tail so /about-us and /bulk-enquiry are not products.
+  /\/[a-z0-9]+(?:-[a-z0-9]+){2,}(\/|$)/i,
 ];
 
 /** Product-related CSS class substrings for link discovery */
@@ -243,8 +247,10 @@ const PRODUCT_CLASS_PATTERNS = [
 
 const NON_PRODUCT_PATH_SEGMENTS = new Set([
   "cart", "checkout", "account", "login", "register", "search", "wishlist",
-  "contact", "about", "faq", "help", "terms", "privacy", "blog", "news",
-  "learn", "articles", "article", "magazine", "journal", "resources",
+  "contact", "about", "about-us", "faq", "faqs", "help", "terms", "privacy",
+  "blog", "blogs", "news", "learn", "articles", "article", "magazine", "journal",
+  "resources", "enquiry", "bulk-enquiry", "refund", "shipping-policy",
+  "privacy-policy", "terms-and-conditions", "testimonials",
 ]);
 
 /** Path patterns that indicate non-product content (blog, learn, editorial) */
@@ -632,6 +638,82 @@ async function crawlWithPlaywright(
   return { productUrls, categoryUrls, homepageHtml };
 }
 
+/**
+ * Pull products from listing cards (homepage / shop grids).
+ * Custom Laravel stores often put the real photo + name on the card and use a
+ * generic <title> on /product-detail/:id, so crawling detail pages alone fails.
+ */
+function extractProductsFromListingCards(html: string, pageUrl: string): RawScannedProduct[] {
+  const dom = new JSDOM(html, { url: pageUrl });
+  const doc = dom.window.document;
+  const out: RawScannedProduct[] = [];
+  const seen = new Set<string>();
+
+  const cards = doc.querySelectorAll(
+    ".product-card, .product-item, .product-tile, [class*='product-card' i], [data-product-id], [data-id][data-name][data-image]"
+  );
+
+  for (const card of Array.from(cards)) {
+    const name =
+      card.querySelector(".product-name, [class*='product-name' i], h3, h2")?.textContent?.trim() ||
+      card.getAttribute("data-name")?.trim() ||
+      card.querySelector("img[alt]")?.getAttribute("alt")?.trim() ||
+      "";
+    if (!name || name.length < 2) continue;
+
+    const linkEl =
+      (card.querySelector("a[href*='product']") as HTMLAnchorElement | null) ||
+      (card.querySelector("a[href]") as HTMLAnchorElement | null);
+    const href = linkEl?.getAttribute("href") || pageUrl;
+    let productUrl = pageUrl;
+    try {
+      productUrl = normalizeProductUrl(normalizeUrl(toAbsolute(pageUrl, href)));
+    } catch {
+      /* keep pageUrl */
+    }
+
+    const images: string[] = [];
+    const dataImage = card.getAttribute("data-image") || card.querySelector("[data-image]")?.getAttribute("data-image");
+    if (dataImage && !dataImage.startsWith("data:")) {
+      images.push(toAbsolute(pageUrl, dataImage));
+    }
+    for (const img of Array.from(card.querySelectorAll("img[src], img[data-src]"))) {
+      const src = img.getAttribute("src") || img.getAttribute("data-src") || "";
+      if (!src || src.startsWith("data:") || /\.(svg)(\?|$)/i.test(src)) continue;
+      if (/logo|icon|avatar|banner|placeholder|sprite|favicon|1_\d+\.svg/i.test(src)) continue;
+      const full = toAbsolute(pageUrl, src);
+      if (!images.includes(full)) images.push(full);
+    }
+    // Prefer catalogue photos under /storage/products or /products/
+    images.sort((a, b) => {
+      const score = (u: string) =>
+        /\/storage\/products\//i.test(u) || /\/products?\//i.test(u) || /product-image/i.test(u) ? 0 : 1;
+      return score(a) - score(b);
+    });
+
+    if (!images.length) continue;
+
+    const priceText =
+      card.querySelector(".product-price, [class*='price' i], [data-price]")?.textContent?.replace(/\s+/g, " ").trim() ||
+      card.getAttribute("data-price") ||
+      null;
+
+    const key = `${name.toLowerCase()}|${images[0]}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    out.push({
+      product_name: name,
+      price: priceText,
+      description: "",
+      images: images.slice(0, 6),
+      url: productUrl,
+    });
+  }
+
+  return out;
+}
+
 function extractProductFromHtml(html: string, url: string): {
   product_name: string;
   price: string | null;
@@ -645,9 +727,22 @@ function extractProductFromHtml(html: string, url: string): {
 
   const title =
     doc.querySelector('meta[property="og:title"]')?.getAttribute("content") ||
-    doc.querySelector("title")?.textContent ||
     doc.querySelector("h1")?.textContent ||
+    doc.querySelector(".product-name, [class*='product-name' i]")?.textContent ||
+    doc.querySelector("title")?.textContent ||
     "";
+
+  // Many custom stores reuse the homepage <title> on product pages.
+  const pageTitle = doc.querySelector("title")?.textContent?.trim() || "";
+  const namedFromDom =
+    doc.querySelector(".product-detail-info h1, .product-detail-info h2, .product-name, [class*='product-name' i]")?.textContent?.trim() ||
+    doc.querySelector("img.product-image[alt], .product-img img[alt]")?.getAttribute("alt")?.trim() ||
+    "";
+  const productName =
+    (namedFromDom && namedFromDom.length >= 2 ? namedFromDom : null) ||
+    (title && !/^\s*salz&halz\s*\|\s*home\s*$/i.test(title) ? title.trim() : null) ||
+    (pageTitle && !/home/i.test(pageTitle) ? pageTitle : null) ||
+    "Product";
 
   const desc =
     doc.querySelector('meta[property="og:description"]')?.getAttribute("content") ||
@@ -659,13 +754,27 @@ function extractProductFromHtml(html: string, url: string): {
   const images: string[] = [];
   if (ogImage) images.push(toAbsolute(url, ogImage));
 
-  for (const img of doc.querySelectorAll("img[src]")) {
+  for (const el of doc.querySelectorAll("[data-image]")) {
+    const src = el.getAttribute("data-image");
+    if (src && !src.startsWith("data:") && !/logo|icon|avatar|banner|placeholder|sprite/i.test(src)) {
+      const full = toAbsolute(url, src);
+      if (!images.includes(full)) images.push(full);
+    }
+  }
+
+  for (const img of doc.querySelectorAll("img[src], img[data-src]")) {
     const src = img.getAttribute("src") || img.getAttribute("data-src");
     if (src && !src.startsWith("data:") && !/logo|icon|avatar|banner|placeholder|sprite/i.test(src)) {
       const full = toAbsolute(url, src);
       if (!images.includes(full)) images.push(full);
     }
   }
+
+  images.sort((a, b) => {
+    const score = (u: string) =>
+      /\/storage\/products\//i.test(u) || /\/products?\//i.test(u) ? 0 : 1;
+    return score(a) - score(b);
+  });
 
   let price = "";
   const priceSelectors = [
@@ -705,7 +814,7 @@ function extractProductFromHtml(html: string, url: string): {
   }
 
   return {
-    product_name: title.trim() || "Product",
+    product_name: productName,
     price: price || null,
     description: desc.trim() || "",
     images: images.slice(0, 10),
@@ -926,7 +1035,29 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     // Platform API detection: fetch homepage first to detect Shopify
     homepageHtml = await fetchPageHtml(url).catch(() => "");
-    if (isShopifyStore(homepageHtml)) {
+
+    // Custom Laravel / non-Shopify grids (e.g. /product-detail/:id + .product-card)
+    // often expose name + photo on the listing — prefer that before a full crawl.
+    if (homepageHtml) {
+      rawProducts = extractProductsFromListingCards(homepageHtml, url);
+      if (rawProducts.length < 3) {
+        try {
+          const shopHtml = await fetchPageHtml(`${baseOrigin}/shop`);
+          const shopCards = extractProductsFromListingCards(shopHtml, `${baseOrigin}/shop`);
+          const seen = new Set(rawProducts.map((p) => p.url));
+          for (const p of shopCards) {
+            if (!seen.has(p.url)) {
+              rawProducts.push(p);
+              seen.add(p.url);
+            }
+          }
+        } catch {
+          /* shop page optional */
+        }
+      }
+    }
+
+    if (isShopifyStore(homepageHtml) && rawProducts.length === 0) {
       const shopifyResult = await tryShopifyProductsJson(baseOrigin);
       if (shopifyResult.success && shopifyResult.products.length > 0) {
         rawProducts = shopifyResult.products;
@@ -940,7 +1071,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     }
 
-    // Fall back to full crawl if Shopify API didn't return products
+    // Fall back to full crawl if listing cards / platform APIs didn't return products
     if (rawProducts.length === 0) {
       try {
         const result = await crawlWithPlaywright(url, baseOrigin);

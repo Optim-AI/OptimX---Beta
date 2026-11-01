@@ -335,6 +335,12 @@ export default async function handler(
 
     const imageCandidates = [...new Set(data.allImages as string[])]
       .filter((u) => /^https?:\/\//.test(u) && !/\.(svg|gif)(\?|$)/i.test(u) && !/logo|icon|sprite|payment|badge|avatar/i.test(u))
+      .sort((a, b) => {
+        // Prefer real catalogue photos (Laravel /storage/products, Shopify CDN, etc.)
+        const score = (u: string) =>
+          /\/storage\/products\//i.test(u) || /cdn\.shopify\.com/i.test(u) || /\/products?\//i.test(u) ? 0 : 1;
+        return score(a) - score(b);
+      })
       .slice(0, 40);
 
     const profile = await profileBrand(site, imageCandidates);
