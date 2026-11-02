@@ -15,6 +15,8 @@ import {
   type GeneratedVideo,
   type CommercialProductionStatus,
   type GeneratedVideoQcSummary,
+  type FixPlanPreview,
+  type FixTimelineData,
   BrandOnboarding,
   SessionNameModal,
   formatTimestamp,
@@ -95,6 +97,50 @@ const VERCEL_SAFE_BODY_BYTES = 4 * 1024 * 1024;
 /** Target per data-URL after compress (base64 expands ~33%, so ~750KB binary ≈ 1MB string). */
 const TARGET_DATA_URL_CHARS = 900_000;
 const MAX_PERSISTED_IMAGE_DATA_URL_CHARS = 350_000;
+
+/** After a dropped connection, how often and how long to ask the server for the finished video. */
+const RECOVERY_POLL_MS = 20_000;
+const RECOVERY_MAX_MS = 15 * 60_000;
+
+/** A version label no video in this session uses — reusing one replays that video instead. */
+function unusedGenerationVersion(videos: GeneratedVideo[], preferred?: string): string {
+  const used = new Set(videos.map((v) => v.generationVersion).filter(Boolean));
+  if (preferred && !used.has(preferred)) return preferred;
+  let n = videos.length + 1;
+  while (used.has(`v${n}`)) n++;
+  return `v${n}`;
+}
+
+/**
+ * POST a generation. If the connection drops or a gateway times out, the server may still
+ * finish (and bill) the video — keep asking for that same version's result, which is free.
+ */
+async function postGenerateWithRecovery(
+  url: string,
+  body: string,
+  recoverBody: string
+): Promise<Response> {
+  let first: Response | null = null;
+  try {
+    first = await authFetch(url, { method: 'POST', body });
+    if (![502, 503, 504].includes(first.status)) return first;
+  } catch {
+    // Connection dropped — the server may still be generating.
+  }
+  const deadline = Date.now() + RECOVERY_MAX_MS;
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, RECOVERY_POLL_MS));
+    try {
+      const res = await authFetch(url, { method: 'POST', body: recoverBody });
+      if (res.status === 202) continue;
+      return res.ok ? res : first ?? res;
+    } catch {
+      // Still offline — keep trying until the deadline.
+    }
+  }
+  if (first) return first;
+  throw new Error('Lost connection to the server. Reopen this session in a few minutes to see your video.');
+}
 
 async function compressDataUrlForVideoApi(
   dataUrl: string,
@@ -448,6 +494,12 @@ export default function VideoSessionPage() {
 
   // Track previous session ID for saving on switch
   const prevSessionIdRef = React.useRef<string | null>(null);
+  /**
+   * The session whose data is currently in state. Autosave only writes when it
+   * matches the session being shown, so a slow load (or switching sessions) can
+   * never save an empty or foreign brief over the customer's work.
+   */
+  const loadedSessionIdRef = React.useRef<string | null>(null);
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -459,6 +511,7 @@ export default function VideoSessionPage() {
     }
 
     async function loadSession() {
+      loadedSessionIdRef.current = null;
       setIsLoading(true);
       setError(null);
 
@@ -489,6 +542,7 @@ export default function VideoSessionPage() {
           }
           setIsLoading(false);
           prevSessionIdRef.current = typeof sessionId === 'string' ? sessionId : null;
+          loadedSessionIdRef.current = typeof sessionId === 'string' ? sessionId : null;
           return;
         }
 
@@ -571,6 +625,7 @@ export default function VideoSessionPage() {
         }
 
         prevSessionIdRef.current = typeof sessionId === 'string' ? sessionId : null;
+        loadedSessionIdRef.current = typeof sessionId === 'string' ? sessionId : null;
       } catch (err: any) {
         console.error('Error loading session:', err);
         setError(err.message || 'Failed to load session');
@@ -673,6 +728,8 @@ export default function VideoSessionPage() {
 
   const saveSession = useCallback(async () => {
     if (!sessionId || sessionId === 'new' || !brand) return;
+    // Never save before this session's own data has loaded.
+    if (loadedSessionIdRef.current !== sessionId) return;
 
     setIsSaving(true);
 
@@ -1422,10 +1479,10 @@ export default function VideoSessionPage() {
         throw new Error('Internal error: generation mode must be native_continuous');
       }
 
-      const generationVersion =
-        options?.generationVersion ||
-        pendingRegeneration?.nextVersion ||
-        `v${generatedVideos.length + 1}`;
+      const generationVersion = unusedGenerationVersion(
+        generatedVideos,
+        options?.generationVersion || pendingRegeneration?.nextVersion
+      );
 
       const requestBody = {
         campaign: brief,
@@ -1456,10 +1513,11 @@ export default function VideoSessionPage() {
       const videoEndpoint = '/api/commercial/generate';
       setProductionStatus(options?.forceRegenerate ? 'regenerating' : 'generating');
 
-      const response = await authFetch(videoEndpoint, {
-        method: 'POST',
-        body: bodyString,
-      });
+      const response = await postGenerateWithRecovery(
+        videoEndpoint,
+        bodyString,
+        JSON.stringify({ ...requestBody, availableAssets: undefined, recoverOnly: true })
+      );
 
       if (!response.ok) {
         let errMsg = `Server error (${response.status})`;
@@ -1481,6 +1539,8 @@ export default function VideoSessionPage() {
         ok: boolean;
         error?: string;
         generationMode?: string;
+        replayed?: boolean;
+        referenceId?: string;
         creditsCharged?: number;
         creditUsage?: {
           fromSubscription: number;
@@ -1593,6 +1653,7 @@ export default function VideoSessionPage() {
             }
           : undefined,
         creativePlan: fc.creativePlan,
+        sourceKey: result.referenceId,
       };
       setGeneratedVideos((prev) => [...prev, newVideo]);
       setSelectedVideoId(videoId);
@@ -1608,7 +1669,9 @@ export default function VideoSessionPage() {
         /* non-fatal */
       }
 
-      if (result.creditUsage) {
+      if (result.replayed) {
+        showSuccess('This is the video from your earlier request. No credits were used.', 'Video recovered');
+      } else if (result.creditUsage) {
         const summary = formatPostGenerationCreditSummary(result.creditUsage);
         const remaining =
           result.creditUsage.fromAddon > 0 && refreshed
@@ -1631,6 +1694,108 @@ export default function VideoSessionPage() {
     } finally {
       setIsGeneratingVideo(false);
     }
+  }
+
+  // ============== Fix a part ==============
+
+  /** Which video a fix starts from: its server id, or (older videos) its place in this session. */
+  function fixSourceRef(video: GeneratedVideo) {
+    return { sourceKey: video.sourceKey, sessionId: session?.id, videoId: video.id };
+  }
+
+  async function postFix<T>(path: string, body: Record<string, unknown>, fallbackError: string): Promise<T> {
+    const response = await authFetch(path, { method: 'POST', body: JSON.stringify(body) });
+    const data = await safeResponseJson<{ ok?: boolean; error?: string } & T>(response);
+    if (!response.ok || !data?.ok) throw new Error(data?.error || fallbackError);
+    return data as T;
+  }
+
+  /** Thumbnails and scene cuts for the Edit screen. Free. */
+  function handleLoadFixTimeline(video: GeneratedVideo): Promise<FixTimelineData> {
+    return postFix<FixTimelineData>(
+      '/api/commercial/fix/timeline',
+      fixSourceRef(video),
+      'We couldn\'t open this video for editing.'
+    );
+  }
+
+  /** Before/after picture and price for the picked part. Never charges. */
+  function handlePlanFix(
+    video: GeneratedVideo,
+    selection: { start: number; end: number },
+    request: string
+  ): Promise<FixPlanPreview> {
+    return postFix<FixPlanPreview>(
+      '/api/commercial/fix/plan',
+      {
+        ...fixSourceRef(video),
+        selectedStart: selection.start,
+        selectedEnd: selection.end,
+        request,
+        productName: adBuilderData.product?.product_name,
+      },
+      'We couldn\'t prepare that change. Please try again.'
+    );
+  }
+
+  /** Run a confirmed fix; the fixed video becomes a new version. */
+  async function handleApplyFix(video: GeneratedVideo, preview: FixPlanPreview): Promise<void> {
+    const body = {
+      ...fixSourceRef(video),
+      fixId: crypto.randomUUID(),
+      selectedStart: preview.window.selectedStart,
+      selectedEnd: preview.window.selectedEnd,
+      motionPrompt: preview.instructions.motionPrompt,
+      userSummary: preview.instructions.userSummary,
+      fixedFrame: preview.afterFrame,
+    };
+    const response = await postGenerateWithRecovery(
+      '/api/commercial/fix/apply',
+      JSON.stringify(body),
+      JSON.stringify({ ...body, recoverOnly: true })
+    );
+    const data = await safeResponseJson<{
+      ok?: boolean;
+      error?: string;
+      referenceId?: string;
+      free?: boolean;
+      creditsCharged?: number;
+      finalCommercial?: {
+        videoUrl: string;
+        generationVersion?: string;
+        duration?: number;
+        aspectRatio?: string;
+        fix?: { startSeconds: number; endSeconds: number; summary?: string };
+      };
+    }>(response);
+    await loadCredits().catch(() => undefined);
+    const fc = data?.finalCommercial;
+    if (!response.ok || !data?.ok || !fc?.videoUrl) {
+      throw new Error(data?.error || 'The fix didn\'t work this time. Nothing was charged.');
+    }
+
+    const fixedVideo: GeneratedVideo = {
+      ...video,
+      id: `video_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`,
+      url: fc.videoUrl,
+      timestamp: Date.now(),
+      generationVersion: fc.generationVersion,
+      sourceKey: data.referenceId,
+      fix: {
+        startSeconds: fc.fix?.startSeconds ?? preview.window.startSeconds,
+        endSeconds: fc.fix?.endSeconds ?? preview.window.endSeconds,
+        summary: fc.fix?.summary || preview.instructions.userSummary,
+        fixedFromId: video.id,
+      },
+    };
+    setGeneratedVideos((prev) => [...prev, fixedVideo]);
+    setSelectedVideoId(fixedVideo.id);
+    showSuccess(
+      data.free || !data.creditsCharged
+        ? 'Your video is fixed. This fix was free.'
+        : `Your video is fixed. ${data.creditsCharged} Video Credits used.`,
+      'Video fixed'
+    );
   }
 
   async function handleConfirmRegenerate() {
@@ -1963,6 +2128,9 @@ export default function VideoSessionPage() {
             onSaveDraft={saveSession}
             onDownload={handleDownloadVideo}
             onUpdateAspectRatio={updateAspectRatio}
+            onLoadFixTimeline={handleLoadFixTimeline}
+            onPlanFix={handlePlanFix}
+            onApplyFix={handleApplyFix}
           />
         </StudioErrorBoundary>
         {showBrandOnboarding && !brand && (

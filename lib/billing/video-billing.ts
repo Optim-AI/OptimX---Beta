@@ -139,3 +139,38 @@ export async function finalizeVideoReservation(params: {
     }
   }
 }
+
+/**
+ * Reserve credits for a paid "Fix a part" edit (beyond the free allowance).
+ * Same reserve → consume / release lifecycle as a generation.
+ */
+export async function assertAndReserveFixCredits(params: {
+  userId: string;
+  credits: number;
+  referenceId: string;
+}): Promise<{ reservationId: string }> {
+  await CreditsDAO.releaseStaleVideoReservations(params.userId, STALE_VIDEO_RESERVATION_MINUTES);
+  const balance = await CreditsDAO.getFullBalance(params.userId);
+  const available = balance?.videoCredits.total ?? 0;
+  if (available < params.credits) {
+    throw new VideoBillingError(
+      'INSUFFICIENT_CREDITS',
+      `You need ${params.credits} Video Credits for this fix.`,
+      { requiredCredits: params.credits, availableCredits: available }
+    );
+  }
+  const reserved = await CreditsDAO.reserveVideoCredits({
+    userId: params.userId,
+    amount: params.credits,
+    purpose: 'video_fix',
+    referenceId: params.referenceId,
+    metadata: { requiredCredits: params.credits },
+  });
+  if (!reserved.success || !reserved.reservationId) {
+    throw new VideoBillingError('RESERVE_FAILED', reserved.error || 'Failed to reserve credits for the fix', {
+      requiredCredits: params.credits,
+      availableCredits: available,
+    });
+  }
+  return { reservationId: reserved.reservationId };
+}

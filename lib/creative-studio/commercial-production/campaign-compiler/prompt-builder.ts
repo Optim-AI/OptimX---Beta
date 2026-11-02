@@ -39,6 +39,18 @@ const SPEECH_ACTION_PATTERNS: Array<[RegExp, string]> = [
   [/\b(?:lip[- ]?sync(?:ed|ing)?)\b/gi, "silent"],
 ];
 
+/** Planner phrases that make the video model draw text (it acts out what it reads). */
+const ON_SCREEN_TEXT_PATTERNS: Array<[RegExp, string]> = [
+  [/\b(?:end[- ]?card|title card|text overlay|on[- ]screen text|super(?:imposed)? text|lower[- ]third(?: text)?|captions?|subtitles?|kinetic (?:type|typography))\b/gi, "clean product shot"],
+  [/\b(?:tagline|slogan|headline|price tag|offer text|cta text|call[- ]to[- ]action text)\b(?:\s+(?:appears|reads|shows|animates)(?:\s+in)?)?/gi, "the product"],
+  [/["“][^"”]{2,60}["”]\s*(?:appears|is shown|is displayed|flashes)/gi, "the product is shown"],
+];
+
+/** Remove instructions that would make the video model render words; real text is added in post. */
+export function stripOnScreenText(text: string): string {
+  return ON_SCREEN_TEXT_PATTERNS.reduce((acc, [re, replacement]) => acc.replace(re, replacement), text);
+}
+
 /**
  * External-language voiceover is added in post, so any on-camera speech will never
  * match it. Rewrite speech actions in planner text into silent reactions.
@@ -73,7 +85,7 @@ export function buildCampaignPrompt(input: {
 }): { campaignPrompt: string; negativePrompt: string } {
   const { blueprint, shotPlan } = input;
   const silent = Boolean(input.suppressSpokenVoiceover);
-  const speechSafe = (text: string) => (silent ? stripOnCameraSpeech(text) : text);
+  const speechSafe = (text: string) => stripOnScreenText(silent ? stripOnCameraSpeech(text) : text);
   const concept = blueprint.selectedConcept;
   const vt = blueprint.visualTreatment;
   const product = blueprint.productStrategy;
@@ -143,7 +155,7 @@ export function buildCampaignPrompt(input: {
 
   const endingShot = [...shotPlan.shots].sort((a, b) => b.sequence - a.sequence)[0];
   const ending = silent
-    ? `Final ${duration >= 30 ? 4 : 3} seconds: a clean product hero shot of the real packaging, no faces in frame, held steady for the narrator's closing line. Do not invent on-screen typography or hallucinated logos.`
+    ? `Final ${duration >= 30 ? 4 : 3} seconds: a clean product hero shot of the real packaging, no faces in frame, held steady and calm while the voiceover finishes.`
     : endingShot?.role === "end_card" || endingShot?.role === "cta"
       ? `End with a controlled brand/product resolve. Prefer a clean product hero or brand lock; do not invent complex on-screen typography or hallucinated logos.`
       : `Conclude on the product/brand resolve established by the final beat.`;
@@ -168,6 +180,7 @@ export function buildCampaignPrompt(input: {
       : `Create ONE continuous ${duration}-second commercial advertisement as a single unbroken take of narrative time (not separate clips to stitch).`,
     `Aspect ratio ${blueprint.aspectRatio}.`,
     `VISUAL STYLE (CRITICAL): ${creativeStyleToPromptBlock(playbook, duration)}`,
+    `NO WRITTEN WORDS (CRITICAL): the video contains no captions, titles, subtitles, slogans, prices or letters in any language. The only writing visible is what is printed on the real product label.`,
     `AD TYPE (CRITICAL): ${adTypeToPromptBlock(getAdTypePlaybook(input.adType), {
       productNames: input.productNames || [],
       occasion: input.occasion,
@@ -213,7 +226,7 @@ export function buildCampaignPrompt(input: {
     audioDirective,
     ending,
     input.endCard
-      ? `In the final 3 seconds, frame the product in the upper half of the picture and keep the lower third simple and uncluttered — a brand end card is added there in post.`
+      ? `In the final 3 seconds, frame the product in the upper half of the picture; the lower third is plain, empty background surface with nothing in it.`
       : undefined,
     artifactAvoid.length
       ? `Artifact mitigation: ${artifactAvoid.join("; ")}.`

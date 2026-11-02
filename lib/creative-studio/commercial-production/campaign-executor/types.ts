@@ -99,7 +99,20 @@ export interface FinalCommercial {
   commercialQC?: import("../commercial-qc/types").CommercialQCReport;
   /** Phase 9: frontend-safe creative plan (from Commercial Director blueprint). */
   creativePlan?: import("../studio-mapper").CreativePlanSummary;
+  /**
+   * The finished picture and sound before post overlays (end card). "Fix a part" edits this,
+   * then redraws the overlays, so a fix never bakes over or duplicates the end card.
+   */
+  masterVideoUrl?: string;
+  /** Overlay settings to redraw after a fix. */
+  finishing?: { endCard?: StoredEndCard };
   createdAt: string;
+}
+
+/** End card content as stored with a commercial; the logo is re-fetched from its URL. */
+export interface StoredEndCard {
+  content: Omit<import("../finishing/end-card").EndCardContent, "logo">;
+  logoUrl?: string;
 }
 
 export interface GenerateCampaignVideoInput {

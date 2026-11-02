@@ -11,6 +11,7 @@ import { generateGeminiTtsVoiceover } from "./gemini-tts";
 import { resolveVoiceoverScriptForTts } from "./generate-voiceover-script";
 import { downloadVideoToBuffer, muxVoiceoverOntoVideo, probeMediaBuffer } from "./mux-voiceover";
 import { MAX_FORCED_TEMPO, planVoiceoverFit } from "./voiceover-fit";
+import { detectVoicesInVideo } from "./detect-voices";
 import {
   usesGeminiTts,
   normalizeVoiceoverLanguage,
@@ -229,6 +230,15 @@ export async function attachGeminiVoiceoverIfNeeded(
     throw wrapPhase("DOWNLOAD_VIDEO", err);
   }
 
+  // The video model sometimes talks despite "no voices" (once naming another brand).
+  // Keep its soundtrack as a music bed only when it is verified voice-free.
+  const voiceCheck = await detectVoicesInVideo(videoBuffer);
+  log("tts.bed_check", {
+    campaignId: brief.campaignId,
+    keepBed: !voiceCheck.hasVoices,
+    detail: voiceCheck.detail,
+  });
+
   let muxed: Buffer;
   try {
     muxed = await muxVoiceoverOntoVideo({
@@ -236,6 +246,7 @@ export async function attachGeminiVoiceoverIfNeeded(
       audioBuffer: tts.audioBuffer,
       audioExtension: "wav",
       voiceoverTempo: tempo,
+      keepBackgroundAudio: !voiceCheck.hasVoices,
     });
   } catch (err) {
     throw wrapPhase("FFMPEG_MUX", err);

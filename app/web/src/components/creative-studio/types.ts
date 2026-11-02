@@ -433,6 +433,44 @@ export type GeneratedVideo = {
   qcDecision?: CommercialQcDecision;
   qcSummary?: GeneratedVideoQcSummary;
   creativePlan?: CreativePlanSummary;
+  /** Server id of this finished video; needed for "Fix a part". */
+  sourceKey?: string;
+  /** Set on a fixed version: what changed and which version it was fixed from. */
+  fix?: {
+    startSeconds: number;
+    endSeconds: number;
+    summary?: string;
+    fixedFromId?: string;
+  };
+};
+
+/** Thumbnails and shot cuts for the Edit screen's timeline. */
+export type FixTimelineData = {
+  durationSeconds: number;
+  /** Seconds where the video cuts to a new scene. */
+  cuts: number[];
+  thumbnails: Array<{ atSeconds: number; dataUrl: string }>;
+  freeFixesLeft: number;
+};
+
+/** A previewed fix: before/after picture and price, shown before anything runs or is charged. */
+export type FixPlanPreview = {
+  window: {
+    selectedStart: number;
+    selectedEnd: number;
+    /** The whole scene that will be redone, so the change blends in. */
+    startSeconds: number;
+    endSeconds: number;
+    endsMidShot: boolean;
+  };
+  instructions: { frameEditInstruction: string; motionPrompt: string; userSummary: string };
+  /** First frame of the redone part, before and after the change (image data URLs). */
+  beforeFrame: string;
+  afterFrame: string;
+  seconds: number;
+  price: { free: true; credits: 0 } | { free: false; credits: number; reason: 'free_fixes_used' | 'too_long' };
+  priceLabel: string;
+  freeFixesLeft: number;
 };
 
 export type CommercialProductionStatus =

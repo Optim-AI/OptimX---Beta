@@ -10,18 +10,19 @@ import {
   Film,
   ImagePlus,
   Pause,
-  Pencil,
   Play,
   Plus,
   RefreshCw,
   Save,
   Smartphone,
   Sparkles,
+  Scissors,
   Upload,
   X,
 } from 'lucide-react';
 import { InsufficientCreditsAlert } from '@/app/web/src/components/billing';
 import { VIDEO_CREDITS_PER_SECOND } from '@/lib/billing/video-credits';
+import { FREE_FIXES_PER_VIDEO } from '@/lib/creative-studio/commercial-production/fix/fix-pricing';
 import { showError } from '@/app/web/src/components/ui/alert-modal-api';
 import { authFetch, safeResponseJson } from '@/lib/utils';
 import {
@@ -30,8 +31,11 @@ import {
   type CatalogProduct,
   type CommercialProductionStatus,
   type EndCardConfig,
+  type FixPlanPreview,
+  type FixTimelineData,
   type GeneratedVideo,
 } from './types';
+import FixEditor, { formatClock } from './FixEditor';
 import {
   HOOK_TYPES,
   HOOK_LABELS,
@@ -176,6 +180,14 @@ type VideoStudioWorkspaceProps = {
   onSaveDraft: () => void;
   onDownload: (video: GeneratedVideo) => void;
   onUpdateAspectRatio: (ratio: '9:16' | '16:9') => void;
+  /** "Edit a part": load the timeline, preview a fix (free), then apply a confirmed fix. */
+  onLoadFixTimeline?: (video: GeneratedVideo) => Promise<FixTimelineData>;
+  onPlanFix?: (
+    video: GeneratedVideo,
+    selection: { start: number; end: number },
+    request: string
+  ) => Promise<FixPlanPreview>;
+  onApplyFix?: (video: GeneratedVideo, preview: FixPlanPreview) => Promise<void>;
 };
 
 export default function VideoStudioWorkspace({
@@ -215,6 +227,9 @@ export default function VideoStudioWorkspace({
   onSaveDraft,
   onDownload,
   onUpdateAspectRatio,
+  onLoadFixTimeline,
+  onPlanFix,
+  onApplyFix,
 }: VideoStudioWorkspaceProps) {
   const router = useRouter();
   const adSetup = adBuilderData?.adSetup ?? {
@@ -250,6 +265,7 @@ export default function VideoStudioWorkspace({
   const [showCreativePlan, setShowCreativePlan] = useState(false);
   // Finished ad: show the result view; the editor rail opens only on "Change & remake".
   const [showEditor, setShowEditor] = useState(false);
+  const [showFix, setShowFix] = useState(false);
   const [showRegenConfirm, setShowRegenConfirm] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -1298,6 +1314,10 @@ export default function VideoStudioWorkspace({
   const languageLabel =
     VOICEOVER_LANGUAGE_LABELS[(voiceover.language || 'english') as VoiceoverLanguage] ?? 'English';
   const versionIndex = Math.max(0, generatedVideos.findIndex((v) => v.id === selectedVideo?.id));
+  const canFix = Boolean(selectedVideo?.url && onLoadFixTimeline && onPlanFix && onApplyFix);
+  const fixedFromVideo = selectedVideo?.fix?.fixedFromId
+    ? generatedVideos.find((v) => v.id === selectedVideo.fix?.fixedFromId) ?? null
+    : null;
 
   const resultPanel = selectedVideo ? (
     <div className="space-y-6">
@@ -1322,6 +1342,23 @@ export default function VideoStudioWorkspace({
           {languageLabel}
           {generatedVideos.length > 1 ? ` · Version ${versionIndex + 1}` : ''}
         </p>
+        {selectedVideo.fix && (
+          <p className="text-[13px] mt-2 flex flex-wrap items-center gap-x-2" style={{ color: '#C8C8D2' }}>
+            <span>
+              Fixed {formatClock(selectedVideo.fix.startSeconds)}–{formatClock(selectedVideo.fix.endSeconds)}
+            </span>
+            {fixedFromVideo && (
+              <button
+                type="button"
+                onClick={() => onSelectVideo(fixedFromVideo.id)}
+                className="underline underline-offset-2"
+                style={{ color: '#C4B5FD' }}
+              >
+                Compare with before
+              </button>
+            )}
+          </p>
+        )}
         {(suggestsRetry || needsReview) && (
           <p
             className="text-[13px] mt-3 leading-relaxed rounded-xl px-3.5 py-3"
@@ -1373,27 +1410,31 @@ export default function VideoStudioWorkspace({
           Not quite right?
         </p>
         <div className="space-y-2">
+          {canFix && (
+            <button
+              type="button"
+              onClick={() => {
+                videoRef.current?.pause();
+                setShowFix(true);
+              }}
+              className="w-full flex items-center gap-3 text-left px-3.5 py-3 rounded-xl hover:brightness-110"
+              style={{ background: PURPLE_SOFT, border: `1px solid ${PURPLE_BORDER}` }}
+            >
+              <Scissors size={16} style={{ color: '#C4B5FD' }} className="flex-shrink-0" />
+              <span className="min-w-0">
+                <span className="block text-[14px] font-medium" style={{ color: '#F4F4F7' }}>
+                  Edit a part
+                </span>
+                <span className="block text-[12px]" style={{ color: MUTED }}>
+                  Pick the seconds on a timeline and say what to change. First {FREE_FIXES_PER_VIDEO} edits are free
+                </span>
+              </span>
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setShowEditor(true)}
             className="w-full flex items-center gap-3 text-left px-3.5 py-3 rounded-xl hover:brightness-110"
-            style={{ background: SURFACE, border: `1px solid ${LINE}` }}
-          >
-            <Pencil size={16} style={{ color: '#C4B5FD' }} className="flex-shrink-0" />
-            <span className="min-w-0">
-              <span className="block text-[14px] font-medium" style={{ color: '#F4F4F7' }}>
-                Change and remake
-              </span>
-              <span className="block text-[12px]" style={{ color: MUTED }}>
-                Edit the idea, style, language or offer
-              </span>
-            </span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowRegenConfirm(true)}
-            disabled={hasInsufficientCredits}
-            className="w-full flex items-center gap-3 text-left px-3.5 py-3 rounded-xl hover:brightness-110 disabled:opacity-45 disabled:cursor-not-allowed"
             style={
               suggestsRetry
                 ? { background: PURPLE_SOFT, border: `1px solid ${PURPLE_BORDER}` }
@@ -1406,7 +1447,7 @@ export default function VideoStudioWorkspace({
                 Make a new version
               </span>
               <span className="block text-[12px]" style={{ color: MUTED }}>
-                Same settings, fresh take · {durationSeconds * VIDEO_CREDITS_PER_SECOND} credits
+                Change the idea, style, language or offer · {durationSeconds * VIDEO_CREDITS_PER_SECOND} credits
               </span>
             </span>
           </button>
@@ -2112,6 +2153,23 @@ export default function VideoStudioWorkspace({
             </div>
           </div>
         </div>
+      ) : isResultView && selectedVideo && showFix && canFix ? (
+        <FixEditor
+          key={selectedVideo.id}
+          player={player}
+          currentTime={currentTime}
+          voiceLanguage={voiceover.language}
+          loadTimeline={() => onLoadFixTimeline!(selectedVideo)}
+          onSeek={seekVideo}
+          onPlay={() => videoRef.current?.play().catch(() => undefined)}
+          onPause={() => videoRef.current?.pause()}
+          onPlan={(selection, request) => onPlanFix!(selectedVideo, selection, request)}
+          onApply={async (preview) => {
+            await onApplyFix!(selectedVideo, preview);
+            setShowFix(false);
+          }}
+          onClose={() => setShowFix(false)}
+        />
       ) : isResultView && selectedVideo ? (
         <div className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden">
           <div className="flex-1 min-w-0 min-h-[480px] lg:min-h-0 p-4 md:p-6 flex flex-col">

@@ -273,8 +273,11 @@ async function main() {
     assert.ok(ugc.includes("Style: UGC"));
     for (const p of [showcase, ugc]) assert.ok(p.includes("no glowing light rays"));
     const withCard = buildCampaignPrompt({ ...input, endCard: true }).campaignPrompt;
-    assert.ok(withCard.includes("lower third simple"));
-    assert.ok(!showcase.includes("lower third simple"));
+    assert.ok(withCard.includes("lower third is plain, empty background"));
+    assert.ok(!showcase.includes("lower third is plain"));
+    // Words like "end card" make the video model draw (garbled) text.
+    assert.ok(!/end card|closing line/i.test(withCard));
+    for (const p of [showcase, ugc, withCard]) assert.ok(p.includes("NO WRITTEN WORDS"));
   });
 
   await test("Studio creative format and end card reach the brief", () => {
@@ -319,6 +322,18 @@ async function main() {
     );
     assert.ok(final.videoUrl);
     assert.equal(final.productionMode, "native_continuous");
+  });
+
+  await test("planner text that asks for on-screen words is removed from the video prompt", () => {
+    const input = make15sCompileInput();
+    const blueprint = {
+      ...input.blueprint,
+      visualBeats: input.blueprint.visualBeats.map((b, i) =>
+        i === input.blueprint.visualBeats.length - 1 ? { ...b, purpose: "End card with tagline appears over the jar" } : b
+      ),
+    };
+    const { campaignPrompt } = buildCampaignPrompt({ blueprint, shotPlan: input.shotPlan, suppressSpokenVoiceover: true });
+    assert.ok(!/end card|tagline/i.test(campaignPrompt), "end card / tagline wording stripped");
   });
 
   await test("QC: correct duration passes; wrong duration fails", () => {

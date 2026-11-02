@@ -35,6 +35,7 @@ export interface MediaProbe {
   hasAudio: boolean;
   width?: number;
   height?: number;
+  fps?: number;
 }
 
 /** Parse duration + audio presence from `ffmpeg -i` stderr. */
@@ -49,6 +50,10 @@ export function parseFfmpegProbe(stderr: string): MediaProbe {
     hasAudio: /Stream #\d+:\d+.*Audio:/.test(stderr),
     width: size ? Number(size[1]) : undefined,
     height: size ? Number(size[2]) : undefined,
+    fps: (() => {
+      const f = stderr.match(/Stream #\d+:\d+.*Video:.*?(\d+(?:\.\d+)?) fps/);
+      return f ? Number(f[1]) : undefined;
+    })(),
   };
 }
 

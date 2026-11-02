@@ -6,6 +6,8 @@
  * B: an in_progress lock left by a dead request (older than the stale window) is reclaimed.
  * C: a video reservation held by a dead request is released before the next reserve;
  *    a fresh reservation is left alone.
+ * D: a completed generation is never reclaimed (it was billed) and keeps its stored video.
+ * E: free fixes are counted per original video; failed and paid fixes never use the allowance.
  */
 
 import 'dotenv/config';
@@ -67,8 +69,8 @@ async function main() {
     {
       const first = await GenerationLocksDAO.tryClaim({ lockKey, userId });
       assert(first.claimed, 'A: first claim succeeds');
-      const second = await GenerationLocksDAO.tryClaim({ lockKey, userId, force: true });
-      assert(!second.claimed && second.reason === 'in_progress', 'A: fresh lock blocks even with force');
+      const second = await GenerationLocksDAO.tryClaim({ lockKey, userId });
+      assert(!second.claimed && second.reason === 'in_progress', 'A: fresh lock blocks a second claim');
       console.log('PASS A: fresh in_progress lock blocks a second claim');
     }
 
@@ -122,6 +124,47 @@ async function main() {
       ).rows[0]?.status;
       assert(liveStatus === 'reserved', 'C: live reservation still reserved');
       console.log('PASS C: stale video reservation released, fresh one kept');
+    }
+
+    // --- D: completed lock is never re-run or re-billed ---
+    {
+      const doneKey = `${lockKey}:done`;
+      const claim = await GenerationLocksDAO.tryClaim({ lockKey: doneKey, userId });
+      assert(claim.claimed, 'D: first claim succeeds');
+      await GenerationLocksDAO.markCompleted(doneKey, {
+        generationVersion: 'v1',
+        finalCommercial: { videoUrl: 'https://example.test/v1.mp4' },
+      });
+      const repeat = await GenerationLocksDAO.tryClaim({ lockKey: doneKey, userId });
+      assert(!repeat.claimed && repeat.reason === 'completed', 'D: completed lock is not reclaimed');
+      const stored = repeat.lock.resultSummary as { finalCommercial?: { videoUrl?: string } } | null;
+      assert(
+        stored?.finalCommercial?.videoUrl === 'https://example.test/v1.mp4',
+        'D: completed lock keeps the finished video for a free replay'
+      );
+      console.log('PASS D: completed generation is never re-billed');
+    }
+
+    // --- E: free-fix allowance counts only completed free fixes of this video ---
+    {
+      const root = `${lockKey}:root`;
+      const prefix = GenerationLocksDAO.fixKeyPrefix(root);
+      const finish = async (id: string, free: boolean, ok = true) => {
+        await GenerationLocksDAO.tryClaim({ lockKey: `${prefix}${id}`, userId });
+        if (ok) await GenerationLocksDAO.markCompleted(`${prefix}${id}`, { free, finalCommercial: { videoUrl: 'x' } });
+        else await GenerationLocksDAO.markFailed(`${prefix}${id}`, { error: 'edit failed' });
+      };
+      await finish('free-1', true);
+      await finish('failed-1', true, false);
+      await finish('paid-1', false);
+      await finish('free-2', true);
+      await GenerationLocksDAO.tryClaim({ lockKey: `fix:${lockKey}:elsewhere:free-x`, userId });
+      await GenerationLocksDAO.markCompleted(`fix:${lockKey}:elsewhere:free-x`, { free: true });
+      assert((await GenerationLocksDAO.countFreeFixes(userId, root)) === 2, 'E: only completed free fixes count');
+      assert(!(await GenerationLocksDAO.hasActiveFix(userId, root)), 'E: no fix running');
+      await GenerationLocksDAO.tryClaim({ lockKey: `${prefix}running`, userId });
+      assert(await GenerationLocksDAO.hasActiveFix(userId, root), 'E: running fix detected');
+      console.log('PASS E: free fixes counted per video; failed and paid fixes excluded');
     }
 
     console.log('\n=== All video generation recovery tests passed ===');

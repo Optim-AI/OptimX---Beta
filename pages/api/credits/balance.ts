@@ -3,6 +3,7 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { getUserIdFromRequest } from '@/auth/request';
 import { CreditsDAO } from '@/database/models/Credits.dao';
 import { SubscriptionsDAO } from '@/database/models/Subscriptions.dao';
+import { STALE_VIDEO_RESERVATION_MINUTES } from '@/lib/billing/video-billing';
 
 /**
  * GET /api/credits/balance
@@ -18,6 +19,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     if (!userId) {
       return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    // Give back credits still held by video requests that died mid-generation.
+    try {
+      await CreditsDAO.releaseStaleVideoReservations(userId, STALE_VIDEO_RESERVATION_MINUTES);
+    } catch (releaseErr) {
+      console.error('Stale video reservation release failed:', releaseErr);
     }
 
     const balance = await CreditsDAO.getFullBalance(userId);

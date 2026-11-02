@@ -5,7 +5,7 @@
 
 import { uploadVideoBuffer } from "@/lib/creative-studio/video-delivery";
 import type { CampaignBrief } from "../campaign/types";
-import type { FinalCommercial } from "../campaign-executor/types";
+import type { FinalCommercial, StoredEndCard } from "../campaign-executor/types";
 import { downloadVideoToBuffer } from "../audio/mux-voiceover";
 import { loadImageInline } from "../product-understanding/analyze-product";
 import { applyEndCard, type EndCardContent } from "./end-card";
@@ -28,6 +28,24 @@ export function endCardContentFromBrief(brief: CampaignBrief): Omit<EndCardConte
   };
 }
 
+/** Draw a stored end card onto a video and store the result. Returns the new URL. */
+export async function applyStoredEndCard(videoBuffer: Buffer, card: StoredEndCard): Promise<{
+  videoUrl: string;
+  drawn: string[];
+  skipped: string[];
+  bytes: number;
+}> {
+  let logo: Buffer | undefined;
+  if (card.logoUrl) {
+    const inline = await loadImageInline({ url: card.logoUrl } as Parameters<typeof loadImageInline>[0]).catch(
+      () => null
+    );
+    if (inline) logo = Buffer.from(inline.data, "base64");
+  }
+  const { video, drawn, skipped } = await applyEndCard({ videoBuffer, content: { ...card.content, logo } });
+  return { videoUrl: await uploadVideoBuffer(video), drawn, skipped, bytes: video.length };
+}
+
 export async function attachEndCardIfNeeded(
   brief: CampaignBrief,
   final: FinalCommercial,
@@ -37,15 +55,14 @@ export async function attachEndCardIfNeeded(
   if (!content) return null;
   const log = options.log ?? ((event, payload) => console.log(`[end-card] ${event}`, payload));
 
-  let logo: Buffer | undefined;
-  if (brief.brand.logo) {
-    const inline = await loadImageInline(brief.brand.logo).catch(() => null);
-    if (inline) logo = Buffer.from(inline.data, "base64");
-  }
-
+  const card: StoredEndCard = { content, logoUrl: brief.brand.logo?.url || undefined };
   const videoBuffer = await downloadVideoToBuffer(final.videoUrl);
-  const { video, drawn, skipped } = await applyEndCard({ videoBuffer, content: { ...content, logo } });
-  const videoUrl = await uploadVideoBuffer(video);
-  log("end_card.applied", { campaignId: brief.campaignId, drawn, skipped, bytes: video.length });
-  return { ...final, videoUrl };
+  const { videoUrl, drawn, skipped, bytes } = await applyStoredEndCard(videoBuffer, card);
+  log("end_card.applied", { campaignId: brief.campaignId, drawn, skipped, bytes });
+  return {
+    ...final,
+    videoUrl,
+    masterVideoUrl: final.videoUrl,
+    finishing: { ...final.finishing, endCard: card },
+  };
 }

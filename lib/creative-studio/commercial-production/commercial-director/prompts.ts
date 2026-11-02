@@ -50,6 +50,9 @@ Then select ONE and build the full blueprint around it.
 
 Product does NOT need to appear in every beat — only when it serves the story.
 
+Never plan on-screen text, titles, captions, taglines or end cards in beats or shots: the video model draws them
+as garbled letters. The offer, CTA and end card are added in post; beats show only images and action.
+
 The VISUAL STYLE in the brief is the user's choice. Every explored direction must be
 executable in that style — vary the idea, not the style.
 
@@ -233,7 +236,7 @@ JSON SCHEMA (return exactly this shape):
     "lensLanguage": "specific",
     "texture": "specific",
     "productionDesign": "specific",
-    "typographyDirection": "on-screen text policy for this campaign",
+    "typographyDirection": "always: no on-screen text in the generated video (offers, CTA and end card are added in post)",
     "motionLanguage": "specific",
     "pacing": "specific rhythm description"
   },
