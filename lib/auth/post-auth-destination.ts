@@ -6,8 +6,8 @@
  */
 
 import { db } from '@/database/client';
-import { brandKits, payments, profiles, subscriptions, userCredits } from '@/database/schema';
-import { and, eq, gt, inArray, or } from 'drizzle-orm';
+import { brandKits, payments, profiles, subscriptionCycles, subscriptions, userCredits } from '@/database/schema';
+import { and, eq, exists, gt, inArray, or } from 'drizzle-orm';
 import { parseTryOnboarding } from '@/lib/onboarding/try-onboarding';
 import {
   decidePostAuthDestination,
@@ -65,7 +65,16 @@ async function loadPostAuthState(userId: string): Promise<PostAuthState> {
             inArray(subscriptions.status, ['active', 'trialing', 'pending']),
             and(
               inArray(subscriptions.status, ['cancelled', 'past_due']),
-              gt(subscriptions.currentPeriodEnd, nowIso)
+              gt(subscriptions.currentPeriodEnd, nowIso),
+              // Only a subscription that was actually paid (provisioned at least once) keeps
+              // access until period end. Abandoned checkouts are `cancelled` too, with a
+              // future period end from create time — they must not unlock the app.
+              exists(
+                db
+                  .select({ id: subscriptionCycles.id })
+                  .from(subscriptionCycles)
+                  .where(eq(subscriptionCycles.subscriptionId, subscriptions.id))
+              )
             )
           )
         )

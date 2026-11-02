@@ -1,7 +1,7 @@
 // database/models/Payments.dao.ts
 import { db } from '../client';
 import { payments, webhookEvents, creditPacks } from '@/database/schema';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, inArray } from 'drizzle-orm';
 // `and` used by captureIfCreated
 
 // Type inference from Drizzle schema
@@ -117,8 +117,10 @@ export class PaymentsDAO {
   }
 
   /**
-   * Atomically transition payment from `created` → `captured`.
-   * Returns null if the payment was already captured/failed (caller must not grant credits again).
+   * Atomically transition payment from `created` (or `failed`) → `captured`.
+   * `failed` is not terminal for a Razorpay order: a declined attempt can be followed by a
+   * successful retry on the same order, which must still grant credits exactly once.
+   * Returns null if the payment was already captured (caller must not grant credits again).
    */
   static async captureIfCreated(
     id: string,
@@ -133,7 +135,7 @@ export class PaymentsDAO {
         ...(razorpaySignature ? { razorpaySignature } : {}),
         updatedAt: new Date().toISOString(),
       })
-      .where(and(eq(payments.id, id), eq(payments.status, 'created')))
+      .where(and(eq(payments.id, id), inArray(payments.status, ['created', 'failed'])))
       .returning();
     return updated || null;
   }

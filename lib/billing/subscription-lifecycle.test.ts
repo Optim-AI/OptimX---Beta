@@ -42,6 +42,7 @@ async function main() {
 
   const userId = randomUUID();
   const email = `lifecycle-${userId.slice(0, 8)}@test.local`;
+  let seededPlanIds: string[] = [];
 
   try {
     await client.query(
@@ -60,6 +61,19 @@ async function main() {
          updated_at = now()`,
       [userId]
     );
+
+    // Legacy catalog rows (inactive) that steps 1–3 rely on. Local DBs reset from the
+    // current catalog may not have them; seed and remove only the ones we add.
+    seededPlanIds = (
+      await client.query(
+        `INSERT INTO plans (id, name, slug, description, billing_cycle, price_inr, image_credits, video_credits, display_order, is_active)
+         VALUES ('free_trial', 'Free Trial', 'free-trial', 'legacy', 'trial', 0, 5, 6, 0, false),
+                ('starter_monthly', 'Starter', 'starter-monthly', 'legacy', 'monthly', 1499, 20, 30, 3, false),
+                ('growth_pro_monthly', 'Growth Pro', 'growth-pro-monthly', 'legacy', 'monthly', 2199, 30, 50, 7, false)
+         ON CONFLICT (id) DO NOTHING
+         RETURNING id`
+      )
+    ).rows.map((r: { id: string }) => r.id);
 
     // --- 1: reject trial ---
     {
@@ -393,6 +407,9 @@ async function main() {
       await client.query(`DELETE FROM subscriptions WHERE user_id = $1`, [userId]);
       await client.query(`DELETE FROM user_credits WHERE id = $1`, [userId]);
       await client.query(`DELETE FROM auth.users WHERE id = $1`, [userId]);
+      if (seededPlanIds.length) {
+        await client.query(`DELETE FROM plans WHERE id = ANY($1)`, [seededPlanIds]);
+      }
     } catch (e) {
       console.warn('cleanup warning', e);
     }

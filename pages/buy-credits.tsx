@@ -118,7 +118,7 @@ export default function BuyCreditsPage() {
   async function checkAuth() {
     const { data } = await supabase.auth.getUser();
     if (!data?.user) {
-      router.replace('/auth/signin');
+      router.replace(`/auth/signin?next=${encodeURIComponent('/buy-credits')}`);
       return;
     }
     if (data.user.email) {
@@ -250,7 +250,24 @@ export default function BuyCreditsPage() {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   }
 
+  function waitForRazorpay(timeoutMs = 10000): Promise<any> {
+    return new Promise((resolve, reject) => {
+      const started = Date.now();
+      const tick = () => {
+        // @ts-ignore — injected by checkout.js
+        if (window.Razorpay) return resolve(window.Razorpay);
+        if (Date.now() - started > timeoutMs) {
+          reject(new Error('Secure checkout failed to load. Please refresh and try again.'));
+          return;
+        }
+        window.setTimeout(tick, 50);
+      };
+      tick();
+    });
+  }
+
   async function handlePurchase() {
+    if (purchasing) return;
     if (!isValidEmail(billingEmail)) {
       setError('Please enter a valid billing email address');
       return;
@@ -278,6 +295,8 @@ export default function BuyCreditsPage() {
         return;
       }
 
+      const RazorpayCtor = await waitForRazorpay();
+
       const options = {
         key: orderData.key,
         amount: orderData.amount,
@@ -286,18 +305,24 @@ export default function BuyCreditsPage() {
         name: 'SkalX AI',
         description: `${quantity} ${creditType === 'image' ? 'Image Credits' : 'Video Credits'} (incl. GST)`,
         handler: async function (response: any) {
-          const verifyResponse = await authFetch('/api/billing/payments/verify', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              razorpayOrderId: response.razorpay_order_id,
-              razorpayPaymentId: response.razorpay_payment_id,
-              razorpaySignature: response.razorpay_signature,
-            }),
-          });
-          const verifyData = await verifyResponse.json();
+          let verifyData: any = null;
+          try {
+            const verifyResponse = await authFetch('/api/billing/payments/verify', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                razorpayOrderId: response.razorpay_order_id,
+                razorpayPaymentId: response.razorpay_payment_id,
+                razorpaySignature: response.razorpay_signature,
+              }),
+            });
+            verifyData = await verifyResponse.json().catch(() => null);
+          } catch {
+            verifyData = null;
+          }
 
-          if (verifyData.success) {
+          if (verifyData?.success) {
+            setError(null);
             await fetchBalance();
             const voucherBonus = orderData.voucherCredits || 0;
             setPurchaseInfo({
@@ -311,7 +336,10 @@ export default function BuyCreditsPage() {
               setSelectedVoucherId(null);
             }
           } else {
-            setError('Payment verification failed');
+            await fetchBalance();
+            setError(
+              'We could not confirm this payment yet. If you were charged, your credits will be added automatically within a few minutes — please do not pay again.'
+            );
           }
           setPurchasing(false);
         },
@@ -326,8 +354,13 @@ export default function BuyCreditsPage() {
         },
       };
 
-      // @ts-ignore
-      const rzp = new window.Razorpay(options);
+      const rzp = new RazorpayCtor(options);
+      rzp.on('payment.failed', (resp: any) => {
+        const reason = resp?.error?.description;
+        setError(
+          `Payment failed${reason ? `: ${reason}` : ''}. No money was taken — you can retry in the checkout window.`
+        );
+      });
       rzp.open();
     } catch (err: any) {
       setError(err.message || 'Something went wrong');
