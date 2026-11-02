@@ -34,6 +34,29 @@ export interface CampaignProductInput {
   category?: string;
   images: StoredAssetRef[];
   offer?: string;
+  /**
+   * Physical handling facts read from the product photo (container, closure,
+   * how it opens). Filled server-side by product understanding.
+   */
+  handling?: string;
+}
+
+export interface CampaignApprovedConcept {
+  title: string;
+  /** The idea in plain words. */
+  idea: string;
+  /** Story moments in order. */
+  beats: string[];
+}
+
+export interface CampaignEndCardInput {
+  enabled: boolean;
+  /** e.g. "Buy 2, get 1 free" */
+  offer?: string;
+  /** Defaults to the voiceover CTA. */
+  cta?: string;
+  /** Phone, WhatsApp number or website. */
+  contact?: string;
 }
 
 /**
@@ -84,4 +107,21 @@ export interface CampaignBrief {
   selectedConcept?: AdConcept;
   /** Voiceover language + CTA routing for Seedance vs Gemini TTS. */
   voiceover?: CampaignVoiceoverInput;
+  /** Brand end card burned on in post (offer, CTA, contact, logo). Off when omitted. */
+  endCard?: CampaignEndCardInput;
+  /** What the ad sells (product, combo, brand, shop, festival…). Default: product. */
+  adType?: import("./ad-type").AdTypeId;
+  /** Other products in a multi-product / combo ad (primary stays in `product`). */
+  additionalProducts?: CampaignProductInput[];
+  /** Festival or occasion for festival ads (e.g. "Diwali"). */
+  occasion?: string;
+  /** Location / services for shop or service ads. */
+  shopDetails?: string;
+  /**
+   * Concept the user picked from the idea cards. The director must build on it
+   * instead of choosing its own direction.
+   */
+  approvedConcept?: CampaignApprovedConcept;
+  /** User-chosen visual style (Studio "Creative format"). Default: commercial. */
+  creativeStyle?: import("./creative-style").CreativeStyleId;
 }

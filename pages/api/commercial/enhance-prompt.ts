@@ -16,7 +16,7 @@ export const config = {
   maxDuration: 60,
 };
 
-const MODEL = "gemini-2.5-flash";
+const MODEL = "gemini-3.8-flash";
 
 const SYSTEM_INSTRUCTION = `You are an expert commercial creative writer and advertising creative director.
 
@@ -40,7 +40,8 @@ Avoid generic AI prompt filler and unnecessary technical jargon.
 
 Keep the final prompt concise and natural, generally around 60–120 words depending on the complexity of the user's idea.
 
-The result should read like a strong creative direction for a premium commercial video.
+Users are often not technical and write the way they talk — read for what they mean, and keep their idea and its tone (homely, funny, festive, simple) instead of turning everything into a glossy premium ad.
+If a visual style is given in the context, write for that style.
 
 Return ONLY the enhanced prompt.`;
 
@@ -122,6 +123,9 @@ function buildUserMessage(input: {
       bits.push(`Platform: ${ctx.platform.trim()}`);
     }
     if (typeof ctx.duration === "number") bits.push(`Duration: ${ctx.duration}s`);
+    if (typeof ctx.creativeFormat === "string" && ctx.creativeFormat.trim()) {
+      bits.push(`Visual style: ${ctx.creativeFormat.trim()}`);
+    }
     if (bits.length) {
       lines.push("", "Campaign context:", ...bits);
     }

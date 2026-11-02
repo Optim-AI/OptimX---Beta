@@ -135,6 +135,18 @@ export interface CampaignExecutorOptions {
   pollIntervalMs?: number;
   maxWaitMs?: number;
   maxRetries?: number;
+  /**
+   * Epoch ms by which provider polling must stop (leaves time for download, storage and QC
+   * before the serverless function is killed). Caps maxWaitMs.
+   */
+  deadlineAt?: number;
+  /**
+   * Reads packaging facts from the product photo. Default: live Gemini vision
+   * (skipped without an API key). Pass null to disable.
+   */
+  productAnalyzer?: import("../product-understanding/analyze-product").ProductAnalyzer | null;
+  /** Override the end-card finishing step (tests). Default: ffmpeg overlay + storage upload. */
+  endCardAttacher?: typeof import("../finishing/attach-end-card").attachEndCardIfNeeded;
   log?: (event: string, payload: Record<string, unknown>) => void;
   /** Phase 8: inject visual analyzer (tests use mocks; omit for deterministic-only). */
   visualAnalyzer?: import("../commercial-qc/types").CommercialVisualAnalyzer;

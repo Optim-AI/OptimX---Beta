@@ -11,6 +11,17 @@ import {
 import type { StoredAssetRef } from "./assets";
 import type { AvailableCampaignAssets } from "./reference-engine/types";
 import { normalizeVoiceoverLanguage } from "./audio/voiceover-languages";
+import { normalizeCreativeStyle } from "./campaign/creative-style";
+import { getAdTypePlaybook, normalizeAdType } from "./campaign/ad-type";
+
+/** Most extra products sent to the video model (Seedance takes 8 references total). */
+export const MAX_ADDITIONAL_PRODUCTS = 3;
+
+export interface StudioFormExtraProduct {
+  name: string;
+  /** http(s) or data: URL of the product photo. */
+  image?: string;
+}
 
 /** Minimal UI shape — avoids importing React UI modules into the production lib. */
 export interface StudioFormProduct {
@@ -75,6 +86,13 @@ export interface StudioFormInput {
   selectedConcept?: CampaignBrief["selectedConcept"];
   /** Extra stills that are NOT the canonical product (optional). */
   creativeReferenceUrls?: string[];
+  endCard?: { enabled: boolean; offer?: string; contact?: string };
+  /** Ad type id (product, multi_product, combo_offer, brand, shop_service, festival, launch). */
+  adType?: string;
+  extraProducts?: StudioFormExtraProduct[];
+  occasion?: string;
+  shopDetails?: string;
+  approvedConcept?: CampaignBrief["approvedConcept"];
 }
 
 export interface StudioNativeRequestInvariant {
@@ -172,11 +190,27 @@ export function assertNativeDurationInvariant(
 /**
  * Map Commercial Studio form state → CampaignBrief for POST /api/commercial/generate.
  */
+function mapExtraProducts(
+  extras: StudioFormExtraProduct[] | undefined
+): CampaignBrief["additionalProducts"] {
+  const mapped = (extras || [])
+    .filter((p) => p.name?.trim())
+    .slice(0, MAX_ADDITIONAL_PRODUCTS)
+    .map((p, i) => {
+      const image = p.image ? urlToAsset(p.image, `product-extra-${i + 1}`, "product_image") : null;
+      return { name: p.name.trim(), images: image ? [image] : [] };
+    });
+  return mapped.length ? mapped : undefined;
+}
+
 export function mapStudioFormToCampaignBrief(input: StudioFormInput): CampaignBrief {
   if (!input.campaignId?.trim()) {
     throw new Error("campaignId is required");
   }
-  if (!input.product?.product_name?.trim()) {
+  const adType = normalizeAdType(input.adType);
+  // Brand films, shop/service and festival greetings can run without a product.
+  const productOptional = getAdTypePlaybook(adType).productPhotoOptional;
+  if (!input.product?.product_name?.trim() && !productOptional) {
     throw new Error("Product name is required");
   }
   if (!isCampaignDurationSeconds(input.adSetup.duration)) {
@@ -214,6 +248,12 @@ export function mapStudioFormToCampaignBrief(input: StudioFormInput): CampaignBr
     input.product.brand_name?.trim() ||
     "Brand";
 
+  const productName =
+    input.product?.product_name?.trim() ||
+    input.brand?.name?.trim() ||
+    input.product?.brand_name?.trim() ||
+    "Brand";
+
   const brief: CampaignBrief = {
     campaignId: input.campaignId,
     userId: input.userId,
@@ -229,7 +269,7 @@ export function mapStudioFormToCampaignBrief(input: StudioFormInput): CampaignBr
       visualPreferences: input.brand?.description,
     },
     product: {
-      name: input.product.product_name.trim(),
+      name: productName,
       description: input.userDescription?.trim() || undefined,
       category: input.product.category,
       images: productImages,
@@ -256,6 +296,19 @@ export function mapStudioFormToCampaignBrief(input: StudioFormInput): CampaignBr
         : undefined,
     creativeStrategy: input.creativeStrategy,
     selectedConcept: input.selectedConcept,
+    creativeStyle: normalizeCreativeStyle(input.adSetup.creativeFormat),
+    adType,
+    additionalProducts: mapExtraProducts(input.extraProducts),
+    occasion: input.occasion?.trim() || undefined,
+    shopDetails: input.shopDetails?.trim() || undefined,
+    approvedConcept: input.approvedConcept,
+    endCard: input.endCard?.enabled
+      ? {
+          enabled: true,
+          offer: input.endCard.offer?.trim() || undefined,
+          contact: input.endCard.contact?.trim() || undefined,
+        }
+      : undefined,
     voiceover: {
       enabled: input.voiceover?.enabled !== false,
       language: normalizeVoiceoverLanguage(input.voiceover?.language),

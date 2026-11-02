@@ -3,9 +3,15 @@
 
 import { db } from '../client';
 import { generationJobLocks } from '@/database/schema';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 
 export type GenerationJobLock = typeof generationJobLocks.$inferSelect;
+
+/**
+ * An in_progress lock older than this belongs to a request that can no longer be running
+ * (commercial generate is capped at 800s), e.g. the function was killed mid-run.
+ */
+export const STALE_GENERATION_LOCK_MINUTES = 15;
 
 export class GenerationLocksDAO {
   static async getByKey(lockKey: string): Promise<GenerationJobLock | null> {
@@ -21,6 +27,7 @@ export class GenerationLocksDAO {
    * Claim an exclusive in-progress lock for a logical generation request.
    * - force=true: allow reclaim after completed/failed (QC regenerate / retry)
    * - force=false: reject if in_progress or completed
+   * - in_progress older than STALE_GENERATION_LOCK_MINUTES is reclaimed (dead request)
    */
   static async tryClaim(params: {
     lockKey: string;
@@ -38,6 +45,29 @@ export class GenerationLocksDAO {
         return { claimed: false, reason: 'owned_by_other', lock: existing };
       }
       if (existing.status === 'in_progress') {
+        const [reclaimed] = await db
+          .update(generationJobLocks)
+          .set({
+            status: 'in_progress',
+            reservationId: null,
+            resultSummary: { reclaimedStaleLock: true, previous: existing.resultSummary ?? null },
+            updatedAt: new Date().toISOString(),
+          })
+          .where(
+            and(
+              eq(generationJobLocks.lockKey, lockKey),
+              eq(generationJobLocks.status, 'in_progress'),
+              sql`${generationJobLocks.updatedAt} < now() - make_interval(mins => ${STALE_GENERATION_LOCK_MINUTES})`
+            )
+          )
+          .returning();
+        if (reclaimed) {
+          console.warn('[GenerationLocksDAO] reclaimed stale in_progress lock', {
+            lockKey,
+            staleReservationId: existing.reservationId,
+          });
+          return { claimed: true, lock: reclaimed };
+        }
         return { claimed: false, reason: 'in_progress', lock: existing };
       }
       if (existing.status === 'completed' && !force) {

@@ -47,6 +47,19 @@ export const config = {
   maxDuration: 800,
 };
 
+const FUNCTION_MAX_DURATION_MS = 800_000;
+/** Stop provider polling this long before the function limit — time for download, storage, TTS and QC. */
+const POST_GENERATION_RESERVE_MS = 150_000;
+
+function errorSummary(error: unknown): Record<string, unknown> {
+  const details = (error as { details?: Record<string, unknown> })?.details;
+  return {
+    error: error instanceof Error ? error.message : String(error),
+    // Kept so an accepted-but-unfinished provider job can be recovered by hand.
+    providerJobId: typeof details?.providerJobId === "string" ? details.providerJobId : undefined,
+  };
+}
+
 function isMissingLockTableError(error: unknown): boolean {
   const msg = error instanceof Error ? error.message : String(error);
   const code = (error as { code?: string })?.code;
@@ -62,6 +75,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ ok: false, error: "Method not allowed" });
   }
 
+  const startedAt = Date.now();
   const userId = await getUserIdFromRequest(req);
   if (!userId) {
     return res.status(401).json({
@@ -179,11 +193,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           forceRegenerate,
           generationMode,
           availableAssets: body.availableAssets,
-          skipDownload: Boolean(body.skipDownload),
-          skipStorage: Boolean(body.skipStorage),
-          concurrency: typeof body.concurrency === "number" ? body.concurrency : undefined,
+          // Server-pinned: customer videos are always downloaded and stored.
+          skipDownload: false,
+          skipStorage: false,
           userId,
           runCommercialQc: body.runCommercialQc !== false,
+        }, {
+          deadlineAt: startedAt + FUNCTION_MAX_DURATION_MS - POST_GENERATION_RESERVE_MS,
         });
 
         await finalizeVideoReservation({
@@ -227,9 +243,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         reservationId = null;
         if (lockClaimed && lockKey) {
           try {
-            await GenerationLocksDAO.markFailed(lockKey, {
-              error: genError instanceof Error ? genError.message : String(genError),
-            });
+            await GenerationLocksDAO.markFailed(lockKey, errorSummary(genError));
           } catch (markErr) {
             if (!isMissingLockTableError(markErr)) {
               console.error("[api/commercial/generate] lock markFailed", markErr);
@@ -247,9 +261,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         generationVersion,
         forceRegenerate,
         availableAssets: body.availableAssets,
-        skipDownload: Boolean(body.skipDownload),
-        skipStorage: Boolean(body.skipStorage),
-        concurrency: typeof body.concurrency === "number" ? body.concurrency : undefined,
+        skipDownload: false,
+        skipStorage: false,
         userId,
       });
 
@@ -293,9 +306,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       reservationId = null;
       if (lockClaimed && lockKey) {
         try {
-          await GenerationLocksDAO.markFailed(lockKey, {
-            error: genError instanceof Error ? genError.message : String(genError),
-          });
+          await GenerationLocksDAO.markFailed(lockKey, errorSummary(genError));
         } catch (markErr) {
           if (!isMissingLockTableError(markErr)) {
             console.error("[api/commercial/generate] lock markFailed", markErr);
@@ -314,9 +325,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
     if (lockClaimed && lockKey) {
       try {
-        await GenerationLocksDAO.markFailed(lockKey, {
-          error: error instanceof Error ? error.message : String(error),
-        });
+        await GenerationLocksDAO.markFailed(lockKey, errorSummary(error));
       } catch (markErr) {
         if (!isMissingLockTableError(markErr)) {
           console.error("[api/commercial/generate] lock markFailed", markErr);

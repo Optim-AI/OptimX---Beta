@@ -66,13 +66,20 @@ export function compileCampaignGeneration(
     availableAssets: input.availableAssets,
     approvedKeyframesByShotId: input.approvedKeyframesByShotId,
     maxReferenceImages: maxRefs,
-    requireProductWhenNeeded: true,
+    requireProductWhenNeeded: input.requireProductReference !== false,
   });
 
   const { campaignPrompt, negativePrompt } = buildCampaignPrompt({
     blueprint,
     shotPlan,
     suppressSpokenVoiceover: Boolean(input.suppressSpokenVoiceover),
+    productHandling: input.productHandling,
+    creativeStyle: input.creativeStyle,
+    endCard: input.endCard,
+    adType: input.adType,
+    productNames: input.productNames,
+    occasion: input.occasion,
+    shopDetails: input.shopDetails,
   });
 
   const concept = blueprint.selectedConcept;

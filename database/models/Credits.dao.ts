@@ -489,6 +489,34 @@ export class CreditsDAO {
   /**
    * Release a reservation and return credits to the wallet.
    */
+  /**
+   * Release this user's video reservations still 'reserved' after maxAgeMinutes.
+   * A reservation that old belongs to a request that died before consume/release
+   * (the generate function is capped well below this). Returns the count released.
+   */
+  static async releaseStaleVideoReservations(
+    userId: string,
+    maxAgeMinutes: number
+  ): Promise<number> {
+    const stale = await db
+      .select({ id: creditReservations.id })
+      .from(creditReservations)
+      .where(
+        and(
+          eq(creditReservations.userId, userId),
+          eq(creditReservations.creditType, 'video'),
+          eq(creditReservations.status, 'reserved'),
+          sql`${creditReservations.createdAt} < now() - make_interval(mins => ${maxAgeMinutes})`
+        )
+      );
+    let released = 0;
+    for (const row of stale) {
+      const result = await this.releaseReservation(row.id, userId);
+      if (result.success) released++;
+    }
+    return released;
+  }
+
   static async releaseReservation(
     reservationId: string,
     userId: string

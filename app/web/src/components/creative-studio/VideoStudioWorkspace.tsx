@@ -3,6 +3,7 @@ import CreativeViewer from './CreativeViewer';
 import { useRouter } from 'next/router';
 import {
   ArrowLeft,
+  BookOpen,
   ChevronDown,
   Download,
   Film,
@@ -20,11 +21,12 @@ import { authFetch, safeResponseJson } from '@/lib/utils';
 import {
   type AdBuilderData,
   type BrandSnapshot,
+  type CatalogProduct,
   type CommercialProductionStatus,
+  type EndCardConfig,
   type GeneratedVideo,
 } from './types';
 import {
-  CREATIVE_FORMATS,
   HOOK_TYPES,
   CAMPAIGN_GOALS,
   VIDEO_DURATIONS,
@@ -36,6 +38,9 @@ import {
   usesGeminiTts,
   type VoiceoverLanguage,
 } from '@/lib/creative-studio/commercial-production/audio/voiceover-languages';
+import { getAdTypePlaybook, normalizeAdType } from '@/lib/creative-studio/commercial-production/campaign/ad-type';
+import type { ConceptCard } from '@/lib/creative-studio/commercial-production/concepts/generate-concepts';
+import { GuidedAdSetup, IdeaCards, VoiceInputButton } from './GuidedAdSetup';
 
 const PURPLE = '#A855F7';
 const PURPLE_SOFT = 'rgba(168, 85, 247, 0.16)';
@@ -46,15 +51,6 @@ const SURFACE = '#16161C';
 const SURFACE_2 = '#1A1A22';
 const LINE = 'rgba(255,255,255,0.08)';
 const MUTED = '#8B8B98';
-
-const FORMAT_DESCRIPTIONS: Record<string, string> = {
-  UGC: 'Real person filmed on phone. Casual, believable, native to Reels/Shorts.',
-  Commercial: 'Paid ad feel. High production value, product as hero, punchy pacing.',
-  Lifestyle: 'Product in real-world use. Relatable scenarios, natural lighting.',
-  'Product Showcase': 'Detail-driven product focus. Close-ups, texture, benefits.',
-  'Motion Graphics': 'Design-forward animated composition and graphic flow.',
-  Cinematic: 'Film-style polish. Emotion and message lead; cinematography supports.',
-};
 
 const HOOK_DESCRIPTIONS: Record<string, string> = {
   Auto: 'AI picks the strongest hook for your product and campaign goal.',
@@ -116,12 +112,23 @@ function commercialTitle(data: AdBuilderData, sessionName?: string): string {
   return `${parts.join(' | ')} — ${duration}s ${format}`;
 }
 
+export type CatalogControls = {
+  /** null until the user opens the catalog. */
+  products: CatalogProduct[] | null;
+  isScanning: boolean;
+  hasWebsite: boolean;
+  onBrowse: () => void;
+  onSelect: (product: CatalogProduct) => void;
+};
+
 type VideoStudioWorkspaceProps = {
   sessionName?: string;
   isSaving: boolean;
   brand: BrandSnapshot | null;
   adBuilderData: AdBuilderData;
   onAdBuilderChange: (data: AdBuilderData) => void;
+  /** Three storyboarded ideas for the current brief (free, before generation). */
+  onRequestConcepts: () => Promise<ConceptCard[]>;
   generatedVideos: GeneratedVideo[];
   selectedVideoId: string | null;
   onSelectVideo: (id: string) => void;
@@ -129,6 +136,8 @@ type VideoStudioWorkspaceProps = {
   onProductUrlChange: (url: string) => void;
   onProductUrlSubmit: (e: React.FormEvent) => void;
   isScrapingProduct: boolean;
+  /** Products scanned from the brand website. */
+  catalog: CatalogControls;
   isFetchingLogo: boolean;
   selectedImageIndex: number | null;
   onSelectImage: (index: number, img: string) => void;
@@ -163,6 +172,7 @@ export default function VideoStudioWorkspace({
   brand,
   adBuilderData,
   onAdBuilderChange,
+  onRequestConcepts,
   generatedVideos,
   selectedVideoId,
   onSelectVideo,
@@ -170,6 +180,7 @@ export default function VideoStudioWorkspace({
   onProductUrlChange,
   onProductUrlSubmit,
   isScrapingProduct,
+  catalog,
   isFetchingLogo,
   selectedImageIndex,
   onSelectImage,
@@ -271,6 +282,7 @@ export default function VideoStudioWorkspace({
             campaignGoal: adSetup.campaignGoal,
             platform: adSetup.platform,
             duration: adSetup.duration,
+            creativeFormat: adSetup.creativeFormat,
           },
         }),
       });
@@ -304,7 +316,10 @@ export default function VideoStudioWorkspace({
     });
     setPromptBeforeEnhance(null);
   }
-  const canGenerate = Boolean(product) && !isBusy && !hasInsufficientCredits;
+  // Brand films, shop/service and festival greetings can run without a product.
+  const productOptional = getAdTypePlaybook(normalizeAdType(adBuilderData.adType)).productPhotoOptional;
+  const hasSubject = Boolean(product) || productOptional;
+  const canGenerate = hasSubject && !isBusy && !hasInsufficientCredits;
   const generateLabel = hasVideo ? 'Regenerate' : 'Generate';
   const durationSeconds = adSetup.duration ?? 15;
   const aspectRatio = adSetup.aspect_ratio || '9:16';
@@ -413,34 +428,15 @@ export default function VideoStudioWorkspace({
           <p className="text-[13px] leading-relaxed" style={{ color: MUTED }}>
             Upload or import the actual product image so packaging and branding stay accurate.
           </p>
-          <form onSubmit={onProductUrlSubmit} className="space-y-2">
-            <input
-              type="url"
-              value={productUrl}
-              onChange={(e) => onProductUrlChange(e.target.value)}
-              placeholder="Paste a product URL"
-              className="w-full px-3.5 py-3 rounded-xl text-[14px] outline-none"
-              style={{ background: SURFACE, border: `1px solid ${LINE}`, color: '#F4F4F7' }}
-              disabled={isScrapingProduct}
-            />
-            <button
-              type="submit"
-              disabled={!productUrl.trim() || isScrapingProduct}
-              className="w-full py-2.5 rounded-xl text-[13px] font-medium disabled:opacity-50"
-              style={{ background: SURFACE_2, color: '#F4F4F7', border: `1px solid ${LINE}` }}
-            >
-              {isScrapingProduct ? 'Fetching product…' : 'Import product'}
-            </button>
-          </form>
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            className="w-full py-2.5 rounded-xl text-[13px] inline-flex items-center justify-center gap-1.5"
-            style={{ color: MUTED, border: `1px dashed ${LINE}` }}
-          >
-            <Upload size={14} />
-            Or upload product images
-          </button>
+          <ProductSourcePicker
+            stacked
+            catalog={catalog}
+            productUrl={productUrl}
+            onProductUrlChange={onProductUrlChange}
+            onProductUrlSubmit={onProductUrlSubmit}
+            isScrapingProduct={isScrapingProduct}
+            onUpload={() => fileInputRef.current?.click()}
+          />
         </section>
       ) : (
         <section>
@@ -554,7 +550,11 @@ export default function VideoStudioWorkspace({
       </section>
 
       <section>
-        <SectionLabel>Creative direction</SectionLabel>
+        <GuidedAdSetup data={adBuilderData} onChange={onAdBuilderChange} compact />
+      </section>
+
+      <section>
+        <SectionLabel>In your own words</SectionLabel>
         <p className="text-[13px] leading-relaxed mb-3" style={{ color: MUTED }}>
           Optional notes for the director. Strategy, concept, and cinematography are drafted automatically.
         </p>
@@ -570,6 +570,15 @@ export default function VideoStudioWorkspace({
           style={{ background: SURFACE, border: `1px solid ${LINE}`, color: '#EDEDF2' }}
         />
         <div className="mt-2 flex items-center justify-end gap-3">
+          <VoiceInputButton
+            language={voiceover.language}
+            onText={(text) =>
+              onAdBuilderChange({
+                ...adBuilderData,
+                userDescription: [adBuilderData.userDescription?.trim(), text].filter(Boolean).join(' '),
+              })
+            }
+          />
           {promptBeforeEnhance != null && !isEnhancingPrompt && (
             <button
               type="button"
@@ -602,6 +611,17 @@ export default function VideoStudioWorkspace({
         </button>
       </section>
 
+      <section>
+        <SectionLabel>Ideas</SectionLabel>
+        <IdeaCards
+          data={adBuilderData}
+          onChange={onAdBuilderChange}
+          onRequestConcepts={onRequestConcepts}
+          disabled={isBusy || !hasSubject}
+          compact
+        />
+      </section>
+
       {showAdvanced && (
         <section className="space-y-4">
           <FieldLabel>Campaign goal</FieldLabel>
@@ -619,23 +639,6 @@ export default function VideoStudioWorkspace({
             }
           />
 
-          <FieldLabel>Creative format</FieldLabel>
-          <p className="text-[12px] -mt-2" style={{ color: MUTED }}>
-            {FORMAT_DESCRIPTIONS[adSetup.creativeFormat]}
-          </p>
-          <ChipGrid
-            items={[...CREATIVE_FORMATS]}
-            value={adSetup.creativeFormat}
-            onChange={(format) =>
-              onAdBuilderChange({
-                ...adBuilderData,
-                adSetup: {
-                  ...adSetup,
-                  creativeFormat: format as AdBuilderData['adSetup']['creativeFormat'],
-                },
-              })
-            }
-          />
 
           <FieldLabel>Hook type</FieldLabel>
           <p className="text-[12px] -mt-2" style={{ color: MUTED }}>
@@ -900,6 +903,14 @@ export default function VideoStudioWorkspace({
         )}
       </section>
 
+      <section>
+        <SectionLabel>End card</SectionLabel>
+        <EndCardFields
+          value={adBuilderData.endCard}
+          onChange={(endCard) => onAdBuilderChange({ ...adBuilderData, endCard })}
+        />
+      </section>
+
       {(selectedConcept || adBuilderData.adAngle) && (
         <button
           type="button"
@@ -1084,185 +1095,116 @@ export default function VideoStudioWorkspace({
                 </div>
               </header>
 
-              <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 xl:gap-6 flex-1 min-h-0">
-                {/* Product column — visual weight */}
+              <div className="flex flex-col gap-5 flex-1 min-h-0">
+                {/* 1. Product — first, so everything below is about it */}
                 <section
-                  className="xl:col-span-5 flex flex-col rounded-2xl overflow-hidden min-h-[420px]"
+                  className="rounded-2xl p-5 md:p-6 space-y-4"
                   style={{
                     background: 'linear-gradient(165deg, #16161F 0%, #101018 55%, #0C0C12 100%)',
                     border: `1px solid ${LINE}`,
                   }}
                 >
-                  <div
-                    className="relative flex-1 min-h-[220px] flex items-center justify-center p-6"
-                    style={{
-                      background:
-                        'radial-gradient(ellipse at 50% 40%, rgba(168,85,247,0.12), transparent 65%)',
-                    }}
-                  >
-                    {product?.hero_image ? (
-                      <div className="relative w-full max-w-[280px]">
-                        <div
-                          className="absolute -inset-6 rounded-full blur-3xl opacity-40"
-                          style={{ background: PURPLE }}
-                        />
+                  <div>
+                    <p className="text-[16px] font-medium" style={{ color: '#F4F4F7' }}>
+                      Your product
+                    </p>
+                    <p className="text-[13px] mt-1 leading-relaxed" style={{ color: MUTED }}>
+                      Use a real photo so the ad keeps its true packaging and branding.
+                    </p>
+                  </div>
+
+                  {product ? (
+                    <div className="flex flex-col sm:flex-row gap-4">
+                      {product.hero_image && (
                         <img
                           src={product.hero_image}
                           alt=""
-                          className="relative w-full aspect-square object-cover rounded-2xl"
-                          style={{ border: `1px solid ${LINE}`, boxShadow: '0 24px 60px rgba(0,0,0,0.45)' }}
+                          className="w-full sm:w-[140px] aspect-square object-cover rounded-xl flex-shrink-0"
+                          style={{ border: `1px solid ${LINE}` }}
                         />
-                      </div>
-                    ) : (
-                      <form
-                        onSubmit={onProductUrlSubmit}
-                        className="w-full max-w-md flex flex-col items-center text-center gap-4"
-                      >
-                        <div
-                          className="w-16 h-16 rounded-2xl flex items-center justify-center"
-                          style={{ background: SURFACE, border: `1px solid ${LINE}` }}
-                        >
-                          <Film size={26} style={{ color: '#C4B5FD' }} />
-                        </div>
-                        <div>
-                          <p className="text-[17px] font-medium" style={{ color: '#F4F4F7' }}>
-                            Product reference
-                          </p>
-                          <p className="text-[13px] mt-1.5 leading-relaxed" style={{ color: MUTED }}>
-                            Upload the actual product image so the commercial can preserve its
-                            appearance, packaging and branding.
-                          </p>
-                        </div>
-                        <input
-                          type="url"
-                          value={productUrl}
-                          onChange={(e) => onProductUrlChange(e.target.value)}
-                          placeholder="https://yourstore.com/product"
-                          className="w-full px-4 py-3 rounded-xl text-[14px] outline-none text-left"
-                          style={{ background: '#0A0A0E', border: `1px solid ${LINE}`, color: '#F4F4F7' }}
-                          disabled={isScrapingProduct}
-                        />
-                        <div className="flex w-full gap-2">
-                          <button
-                            type="submit"
-                            disabled={!productUrl.trim() || isScrapingProduct}
-                            className="flex-1 py-2.5 rounded-xl text-[13px] font-medium disabled:opacity-50"
-                            style={{ background: PURPLE, color: 'white' }}
-                          >
-                            {isScrapingProduct ? 'Fetching…' : 'Import URL'}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => fileInputRef.current?.click()}
-                            className="px-4 py-2.5 rounded-xl text-[13px] inline-flex items-center gap-1.5"
-                            style={{ background: SURFACE, border: `1px solid ${LINE}`, color: '#E8E8EE' }}
-                          >
-                            <Upload size={14} />
-                            Upload
-                          </button>
-                        </div>
-                      </form>
-                    )}
-                  </div>
-
-                  <div className="px-5 py-4 space-y-3" style={{ borderTop: `1px solid ${LINE}` }}>
-                    {product && (
-                      <div className="flex items-start gap-3">
-                        <div className="min-w-0 flex-1">
-                          <input
-                            value={product.product_name}
-                            onChange={(e) => patchProduct({ product_name: e.target.value })}
-                            className="w-full bg-transparent text-[16px] font-medium outline-none"
-                            style={{ color: '#F4F4F7' }}
-                          />
-                          <p className="text-[12px] mt-0.5" style={{ color: MUTED }}>
-                            {product.category || 'Product'}
-                            {product.brand_name
-                              ? ` · ${product.brand_name}`
-                              : brand?.name
-                                ? ` · ${brand.name}`
-                                : ''}
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setShowReplaceProduct((open) => !open)}
-                          className="text-[12px] flex-shrink-0"
-                          style={{ color: '#A1A1AA' }}
-                        >
-                          Replace
-                        </button>
-                      </div>
-                    )}
-                    {product && showReplaceProduct && (
-                      <form onSubmit={onProductUrlSubmit} className="flex gap-2">
-                        <input
-                          type="url"
-                          value={productUrl}
-                          onChange={(e) => onProductUrlChange(e.target.value)}
-                          placeholder="Replace via product URL"
-                          className="flex-1 px-3 py-2 rounded-lg text-[12px] outline-none"
-                          style={{ background: SURFACE, border: `1px solid ${LINE}`, color: '#F4F4F7' }}
-                          disabled={isScrapingProduct}
-                        />
-                        <button
-                          type="submit"
-                          disabled={!productUrl.trim() || isScrapingProduct}
-                          className="px-3 py-2 rounded-lg text-[12px] disabled:opacity-50"
-                          style={{ background: SURFACE_2, border: `1px solid ${LINE}`, color: '#E8E8EE' }}
-                        >
-                          Go
-                        </button>
-                      </form>
-                    )}
-
-                    <div className="flex items-center justify-between">
-                      <p className="text-[12px]" style={{ color: MUTED }}>
-                        Reference stills
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => fileInputRef.current?.click()}
-                        className="text-[12px] inline-flex items-center gap-1"
-                        style={{ color: '#D4D4DC' }}
-                      >
-                        <ImagePlus size={13} />
-                        Add
-                      </button>
-                    </div>
-                    <div className="flex gap-2">
-                      {(product?.product_images || []).slice(0, 4).map((img, idx) => {
-                        const selected = (selectedImageIndex ?? 0) === idx;
-                        return (
-                          <button
-                            key={`${img.slice(0, 24)}-${idx}`}
-                            type="button"
-                            onClick={() => onSelectImage(idx, img)}
-                            className="relative w-[72px] h-[72px] rounded-xl overflow-hidden flex-shrink-0"
-                            style={{
-                              border: selected ? `2px solid ${PURPLE}` : `1px solid ${LINE}`,
-                            }}
-                          >
-                            <img src={img} alt="" className="w-full h-full object-cover" />
-                          </button>
-                        );
-                      })}
-                      {referenceCount < 4 && (
-                        <button
-                          type="button"
-                          onClick={() => fileInputRef.current?.click()}
-                          className="w-[72px] h-[72px] rounded-xl flex items-center justify-center flex-shrink-0"
-                          style={{ border: `1px dashed ${LINE}`, color: MUTED }}
-                        >
-                          <Plus size={18} />
-                        </button>
                       )}
+                      <div className="min-w-0 flex-1 space-y-3">
+                        <div className="flex items-start gap-3">
+                          <div className="min-w-0 flex-1">
+                            <input
+                              value={product.product_name}
+                              onChange={(e) => patchProduct({ product_name: e.target.value })}
+                              className="w-full bg-transparent text-[16px] font-medium outline-none"
+                              style={{ color: '#F4F4F7' }}
+                            />
+                            <p className="text-[12px] mt-0.5" style={{ color: MUTED }}>
+                              {product.category || 'Product'}
+                              {product.brand_name
+                                ? ` · ${product.brand_name}`
+                                : brand?.name
+                                  ? ` · ${brand.name}`
+                                  : ''}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setShowReplaceProduct((open) => !open)}
+                            className="text-[13px] flex-shrink-0"
+                            style={{ color: '#A1A1AA' }}
+                          >
+                            {showReplaceProduct ? 'Cancel' : 'Change product'}
+                          </button>
+                        </div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {(product.product_images || []).slice(0, 4).map((img, idx) => {
+                            const selected = (selectedImageIndex ?? 0) === idx;
+                            return (
+                              <button
+                                key={`${img.slice(0, 24)}-${idx}`}
+                                type="button"
+                                onClick={() => onSelectImage(idx, img)}
+                                aria-label={`Use photo ${idx + 1}`}
+                                className="relative w-[64px] h-[64px] rounded-xl overflow-hidden flex-shrink-0"
+                                style={{ border: selected ? `2px solid ${PURPLE}` : `1px solid ${LINE}` }}
+                              >
+                                <img src={img} alt="" className="w-full h-full object-cover" />
+                              </button>
+                            );
+                          })}
+                          {referenceCount < 4 && (
+                            <button
+                              type="button"
+                              onClick={() => fileInputRef.current?.click()}
+                              aria-label="Add another photo"
+                              className="w-[64px] h-[64px] rounded-xl flex items-center justify-center flex-shrink-0"
+                              style={{ border: `1px dashed ${LINE}`, color: MUTED }}
+                            >
+                              <Plus size={18} />
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                  </div>
+                  ) : null}
+
+                  {(!product || showReplaceProduct) && (
+                    <ProductSourcePicker
+                      catalog={catalog}
+                      productUrl={productUrl}
+                      onProductUrlChange={onProductUrlChange}
+                      onProductUrlSubmit={onProductUrlSubmit}
+                      isScrapingProduct={isScrapingProduct}
+                      onUpload={() => fileInputRef.current?.click()}
+                    />
+                  )}
                 </section>
 
-                {/* Direction + output column */}
-                <section className="xl:col-span-7 flex flex-col gap-5 min-h-0">
+                {/* 2. What and how, then your own words and output */}
+                <section className="flex flex-col gap-5 min-h-0">
+                  <div
+                    className="rounded-2xl p-5 md:p-6"
+                    style={{
+                      background: 'linear-gradient(180deg, #14141C 0%, #101016 100%)',
+                      border: `1px solid ${LINE}`,
+                    }}
+                  >
+                    <GuidedAdSetup data={adBuilderData} onChange={onAdBuilderChange} />
+                  </div>
                   <div
                     className="flex-1 flex flex-col rounded-2xl p-5 md:p-6 min-h-[280px]"
                     style={{
@@ -1273,10 +1215,10 @@ export default function VideoStudioWorkspace({
                     <div className="flex items-start justify-between gap-3 mb-4">
                       <div>
                         <p className="text-[11px] tracking-[0.16em] uppercase" style={{ color: MUTED }}>
-                          Creative direction
+                          In your own words
                         </p>
                         <p className="text-[14px] mt-1" style={{ color: '#C8C8D2' }}>
-                          Tone, story, and what the viewer should feel.
+                          Tell us about your business and what you want people to feel or do. Type or speak — any language.
                         </p>
                       </div>
                       <button
@@ -1304,6 +1246,15 @@ export default function VideoStudioWorkspace({
                     />
 
                     <div className="mt-4 flex items-center justify-end gap-3">
+                      <VoiceInputButton
+                        language={voiceover.language}
+                        onText={(text) =>
+                          onAdBuilderChange({
+                            ...adBuilderData,
+                            userDescription: [adBuilderData.userDescription?.trim(), text].filter(Boolean).join(' '),
+                          })
+                        }
+                      />
                       {promptBeforeEnhance != null && !isEnhancingPrompt && (
                         <button
                           type="button"
@@ -1330,6 +1281,15 @@ export default function VideoStudioWorkspace({
                       </button>
                     </div>
 
+                    <div className="mt-5 pt-5" style={{ borderTop: `1px solid ${LINE}` }}>
+                      <IdeaCards
+                        data={adBuilderData}
+                        onChange={onAdBuilderChange}
+                        onRequestConcepts={onRequestConcepts}
+                        disabled={isBusy || !hasSubject}
+                      />
+                    </div>
+
                     {showAdvanced && (
                       <div
                         className="mt-5 pt-5 space-y-4"
@@ -1345,20 +1305,6 @@ export default function VideoStudioWorkspace({
                               adSetup: {
                                 ...adSetup,
                                 campaignGoal: goal as AdBuilderData['adSetup']['campaignGoal'],
-                              },
-                            })
-                          }
-                        />
-                        <FieldLabel>Creative format</FieldLabel>
-                        <ChipGrid
-                          items={[...CREATIVE_FORMATS]}
-                          value={adSetup.creativeFormat}
-                          onChange={(format) =>
-                            onAdBuilderChange({
-                              ...adBuilderData,
-                              adSetup: {
-                                ...adSetup,
-                                creativeFormat: format as AdBuilderData['adSetup']['creativeFormat'],
                               },
                             })
                           }
@@ -1560,10 +1506,19 @@ export default function VideoStudioWorkspace({
                           </div>
                         )}
                       </div>
+                      <div className="col-span-2">
+                        <p className="text-[11px] tracking-[0.14em] uppercase mb-2" style={{ color: MUTED }}>
+                          End card
+                        </p>
+                        <EndCardFields
+                          value={adBuilderData.endCard}
+                          onChange={(endCard) => onAdBuilderChange({ ...adBuilderData, endCard })}
+                        />
+                      </div>
                     </div>
                     <div className="sm:pl-2 sm:border-l flex-shrink-0" style={{ borderColor: LINE }}>
                       <p className="text-[12px] mb-2 hidden sm:block" style={{ color: MUTED }}>
-                        {product ? 'Brief looks solid.' : 'Add a product first.'}
+                        {hasSubject ? 'Brief looks solid.' : 'Add a product first.'}
                       </p>
                       {generateButton}
                     </div>
@@ -2129,6 +2084,199 @@ export default function VideoStudioWorkspace({
         className="hidden"
         onChange={onImageUpload}
       />
+    </div>
+  );
+}
+
+/** Pick a product scanned from the brand website. */
+function CatalogPanel({ catalog, onClose }: { catalog: CatalogControls; onClose: () => void }) {
+  const [query, setQuery] = useState('');
+  const items = (catalog.products || []).filter((p) =>
+    p.product_name.toLowerCase().includes(query.trim().toLowerCase())
+  );
+  return (
+    <div className="rounded-xl p-3 space-y-2" style={{ background: '#0A0A0E', border: `1px solid ${LINE}` }}>
+      <div className="flex items-center justify-between">
+        <p className="text-[13px] font-medium" style={{ color: '#F4F4F7' }}>
+          Your catalog{catalog.products?.length ? ` · ${catalog.products.length}` : ''}
+        </p>
+        <button type="button" onClick={onClose} className="text-[12px]" style={{ color: MUTED }}>
+          Close
+        </button>
+      </div>
+      {catalog.isScanning ? (
+        <p className="text-[13px] py-3" style={{ color: MUTED }}>
+          Finding products on your website… this can take a minute.
+        </p>
+      ) : !catalog.hasWebsite ? (
+        <p className="text-[13px] py-3" style={{ color: MUTED }}>
+          Add your website in Brand Kit to see your products here. For now, paste a product link or upload a photo.
+        </p>
+      ) : !items.length && !query ? (
+        <p className="text-[13px] py-3" style={{ color: MUTED }}>
+          No products found on your website. Paste a product link or upload a photo instead.
+        </p>
+      ) : (
+        <>
+          {(catalog.products?.length || 0) > 6 && (
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search your products"
+              className="w-full px-3 py-2 rounded-lg text-[14px] outline-none"
+              style={{ background: SURFACE, border: `1px solid ${LINE}`, color: '#F4F4F7' }}
+            />
+          )}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-[300px] overflow-y-auto pr-1">
+            {items.map((item, idx) => (
+              <button
+                key={`${item.product_name}-${idx}`}
+                type="button"
+                onClick={() => catalog.onSelect(item)}
+                className="text-left rounded-lg overflow-hidden"
+                style={{ background: SURFACE, border: `1px solid ${LINE}` }}
+              >
+                {item.product_images?.[0] ? (
+                  <img src={item.product_images[0]} alt="" className="w-full aspect-square object-cover" />
+                ) : (
+                  <div className="w-full aspect-square flex items-center justify-center" style={{ color: MUTED }}>
+                    <Film size={18} />
+                  </div>
+                )}
+                <span className="block px-2 py-1.5 text-[12px] leading-snug line-clamp-2" style={{ color: '#E8E8EE' }}>
+                  {item.product_name}
+                </span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** The three ways to add a product: catalog, link, upload. */
+function ProductSourcePicker({
+  catalog,
+  productUrl,
+  onProductUrlChange,
+  onProductUrlSubmit,
+  isScrapingProduct,
+  onUpload,
+  stacked,
+}: {
+  /** Narrow container (studio sidebar): one button per row. */
+  stacked?: boolean;
+  catalog: CatalogControls;
+  productUrl: string;
+  onProductUrlChange: (url: string) => void;
+  onProductUrlSubmit: (e: React.FormEvent) => void;
+  isScrapingProduct: boolean;
+  onUpload: () => void;
+}) {
+  const [catalogOpen, setCatalogOpen] = useState(false);
+  return (
+    <div className="space-y-3">
+      <div className={stacked ? 'grid grid-cols-1 gap-2' : 'grid grid-cols-1 md:grid-cols-[auto_1fr_auto] gap-2'}>
+        <button
+          type="button"
+          onClick={() => {
+            setCatalogOpen(true);
+            catalog.onBrowse();
+          }}
+          className="px-4 py-3 rounded-xl text-[14px] font-medium inline-flex items-center justify-center gap-2"
+          style={{ background: PURPLE_SOFT, border: `1px solid ${PURPLE_BORDER}`, color: '#F4F4F7' }}
+        >
+          <BookOpen size={16} />
+          Choose from catalog
+        </button>
+        <form onSubmit={onProductUrlSubmit} className="flex gap-2 min-w-0">
+          <input
+            type="url"
+            value={productUrl}
+            onChange={(e) => onProductUrlChange(e.target.value)}
+            placeholder="Or paste a product link"
+            className="flex-1 min-w-0 px-4 py-3 rounded-xl text-[14px] outline-none"
+            style={{ background: '#0A0A0E', border: `1px solid ${LINE}`, color: '#F4F4F7' }}
+            disabled={isScrapingProduct}
+          />
+          <button
+            type="submit"
+            disabled={!productUrl.trim() || isScrapingProduct}
+            className="px-4 py-3 rounded-xl text-[14px] font-medium disabled:opacity-50 flex-shrink-0"
+            style={{ background: PURPLE, color: 'white' }}
+          >
+            {isScrapingProduct ? 'Fetching…' : 'Import'}
+          </button>
+        </form>
+        <button
+          type="button"
+          onClick={onUpload}
+          className="px-4 py-3 rounded-xl text-[14px] inline-flex items-center justify-center gap-2"
+          style={{ background: SURFACE, border: `1px solid ${LINE}`, color: '#E8E8EE' }}
+        >
+          <Upload size={16} />
+          Upload photo
+        </button>
+      </div>
+      {catalogOpen && <CatalogPanel catalog={catalog} onClose={() => setCatalogOpen(false)} />}
+    </div>
+  );
+}
+
+/** Brand end card: offer, CTA and contact drawn on the last 3 seconds in post. */
+function EndCardFields({
+  value,
+  onChange,
+}: {
+  value: EndCardConfig | undefined;
+  onChange: (next: EndCardConfig) => void;
+}) {
+  const card = value ?? { enabled: true };
+  const input = (field: 'offer' | 'contact', placeholder: string) => (
+    <input
+      value={card[field] || ''}
+      onChange={(e) => onChange({ ...card, [field]: e.target.value })}
+      placeholder={placeholder}
+      maxLength={60}
+      className="w-full px-3 py-2.5 rounded-xl text-[13px] outline-none"
+      style={{ background: SURFACE, border: `1px solid ${LINE}`, color: '#F4F4F7' }}
+    />
+  );
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-[12px]" style={{ color: '#D0D0D8' }}>
+          Show logo, offer and contact in the last 3 seconds
+        </p>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={card.enabled}
+          aria-label="Show end card"
+          onClick={() => onChange({ ...card, enabled: !card.enabled })}
+          className="relative w-10 h-6 rounded-full transition-colors flex-shrink-0"
+          style={{
+            background: card.enabled ? PURPLE_SOFT : SURFACE_2,
+            border: `1px solid ${card.enabled ? PURPLE_BORDER : LINE}`,
+          }}
+        >
+          <span
+            className="absolute top-0.5 w-4 h-4 rounded-full transition-transform"
+            style={{ left: card.enabled ? 18 : 2, background: card.enabled ? PURPLE : MUTED }}
+          />
+        </button>
+      </div>
+      {card.enabled && (
+        <>
+          {input('offer', 'Offer (optional) — e.g. Buy 2, get 1 free')}
+          {input('contact', 'Phone, WhatsApp or website (optional)')}
+          <p className="text-[11px]" style={{ color: MUTED }}>
+            Uses your CTA as the button. Write the end card in English letters — other scripts are skipped.
+          </p>
+        </>
+      )}
     </div>
   );
 }

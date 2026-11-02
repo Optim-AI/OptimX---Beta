@@ -23,14 +23,18 @@ import {
   mapFullAnalyzeToBrandSnapshot,
 } from '@/app/web/src/components/creative-studio';
 import { authFetch, safeResponseJson } from '@/lib/utils';
+import type { CatalogProduct } from '@/app/web/src/components/creative-studio/types';
 import { supabase } from '@/auth/supabase/client';
 import StudioErrorBoundary from '@/app/web/src/components/creative-studio/StudioErrorBoundary';
 import {
   assertNativeDurationInvariant,
   buildStudioAvailableAssets,
   mapStudioFormToCampaignBrief,
+  MAX_ADDITIONAL_PRODUCTS,
   type CreativePlanSummary,
 } from '@/lib/creative-studio/commercial-production/studio-mapper';
+import { getAdTypePlaybook, normalizeAdType } from '@/lib/creative-studio/commercial-production/campaign/ad-type';
+import type { ConceptCard } from '@/lib/creative-studio/commercial-production/concepts/generate-concepts';
 import { isCampaignDurationSeconds } from '@/lib/creative-studio/commercial-production/campaign/campaign-duration';
 import { getVideoCreditsForDuration } from '@/lib/billing/video-credits';
 import {
@@ -192,6 +196,22 @@ async function prepareVideoGenerateImages(args: {
   };
 }
 
+/** Compress extra-product photos the same way as the primary reference. */
+async function prepareExtraProducts(
+  extras: AdBuilderData['extraProducts']
+): Promise<Array<{ name: string; image?: string }> | undefined> {
+  if (!extras?.length) return undefined;
+  return Promise.all(
+    extras
+      .filter((p) => p.name?.trim())
+      .slice(0, MAX_ADDITIONAL_PRODUCTS)
+      .map(async (p) => ({
+        name: p.name.trim(),
+        image: p.image ? await compressDataUrlForVideoApi(p.image, { maxDim: 1024 }) : undefined,
+      }))
+  );
+}
+
 /** Shrink inline images before session persist so PUT/GET stay under Next response limits. */
 async function productForSessionPersist(product: AdBuilderData['product']): Promise<AdBuilderData['product']> {
   if (!product) return product;
@@ -282,6 +302,9 @@ export default function VideoSessionPage() {
 
   // Loading states
   const [isScrapingProduct, setIsScrapingProduct] = useState(false);
+  /** Products scanned from the brand website (same scan the poster studio uses). */
+  const [catalogProducts, setCatalogProducts] = useState<CatalogProduct[] | null>(null);
+  const [isScanningCatalog, setIsScanningCatalog] = useState(false);
   const [isFetchingLogo, setIsFetchingLogo] = useState(false);
   const [isGeneratingScript, setIsGeneratingScript] = useState(false);
   const [isGeneratingStrategy, setIsGeneratingStrategy] = useState(false);
@@ -778,6 +801,71 @@ export default function VideoSessionPage() {
 
   // ============== Product Handlers ==============
 
+  async function handleBrowseCatalog() {
+    const website = brand?.website_url?.trim();
+    if (!website) {
+      setCatalogProducts([]);
+      return;
+    }
+    if (catalogProducts?.length) return;
+    setIsScanningCatalog(true);
+    try {
+      const res = await authFetch('/api/content-studio/scan', {
+        method: 'POST',
+        body: JSON.stringify({ url: website }),
+      });
+      const data = await safeResponseJson<{ ok?: boolean; products?: CatalogProduct[] }>(res);
+      setCatalogProducts(data?.ok && data.products ? data.products : []);
+    } catch {
+      setCatalogProducts([]);
+    } finally {
+      setIsScanningCatalog(false);
+    }
+  }
+
+  async function handleSelectCatalogProduct(item: CatalogProduct) {
+    setIsScrapingProduct(true);
+    try {
+      // Generation needs the image bytes (data URLs), not remote links.
+      const images = (
+        await Promise.all(
+          (item.product_images || []).slice(0, 3).map(async (url) => {
+            try {
+              const res = await authFetch('/api/creative-studio/fetch-image', {
+                method: 'POST',
+                body: JSON.stringify({ url, directFetch: true }),
+              });
+              const data = await safeResponseJson<{ ok?: boolean; dataUrl?: string }>(res);
+              return data?.ok && data.dataUrl ? data.dataUrl : null;
+            } catch {
+              return null;
+            }
+          })
+        )
+      ).filter((img): img is string => Boolean(img));
+      if (!images.length) {
+        showError('Could not load this product\'s photo. Try uploading the image instead.');
+        return;
+      }
+      setUploadedImages(images);
+      setSelectedImageIndex(0);
+      setAdBuilderData({
+        ...adBuilderData,
+        product: {
+          product_name: item.product_name,
+          brand_name: brand?.name || 'Brand',
+          product_images: images,
+          hero_image: images[0],
+          brand_logo: brand?.logo || null,
+          category: adBuilderData.product?.category || 'general',
+          product_url: item.product_url,
+        },
+      });
+    } finally {
+      setIsScrapingProduct(false);
+    }
+  }
+
   async function handleProductUrlSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!productUrl.trim()) return;
@@ -1126,11 +1214,112 @@ export default function VideoSessionPage() {
     adBuilderData.adSetup.duration,
   ]);
 
+  /**
+   * Brief + reference assets exactly as /api/commercial/generate receives them.
+   * Shared with the idea cards so the ideas match what will be generated.
+   */
+  async function buildStudioRequest(campaignId: string) {
+    // Brand / shop / festival ads may run without a product.
+    const product = adBuilderData.product ?? {
+      product_name: '',
+      product_images: [],
+      hero_image: null,
+      brand_logo: brand?.logo || brand?.logoUrl || null,
+    };
+    const preparedProduct = await prepareVideoGenerateImages({
+      hero_image: product.hero_image,
+      brand_logo: product.brand_logo,
+      product_images: product.product_images || [],
+    });
+    const productForGenerate = {
+      ...product,
+      hero_image: preparedProduct.hero_image,
+      brand_logo: preparedProduct.brand_logo,
+      // Keep only compressed canonical refs for Runway (gallery extras already sliced).
+      product_images: [
+        ...(preparedProduct.hero_image ? [preparedProduct.hero_image] : []),
+        ...preparedProduct.product_images,
+      ].filter(Boolean),
+    };
+
+    const brief = mapStudioFormToCampaignBrief({
+      campaignId,
+      product: productForGenerate,
+      adSetup: adBuilderData.adSetup,
+      brand,
+      userDescription: getCommercialBrief(adBuilderData),
+      voiceover: {
+        enabled: adBuilderData.voiceover.enabled !== false,
+        language: adBuilderData.voiceover.language ?? 'english',
+        tone: adBuilderData.voiceover.tone,
+        key_message: adBuilderData.voiceover.key_message,
+        cta: adBuilderData.voiceover.cta || adBuilderData.creativeStrategy?.cta,
+        ctaEnabled: adBuilderData.voiceover.ctaEnabled !== false,
+        script: getCanonicalVoiceover(
+          adBuilderData.voiceover.script,
+          adBuilderData.storyboard
+        ),
+      },
+      voiceoverCta: adBuilderData.voiceover.cta || adBuilderData.creativeStrategy?.cta,
+      voiceoverKeyMessage: adBuilderData.voiceover.key_message,
+      endCard: adBuilderData.endCard ?? { enabled: true },
+      adType: adBuilderData.adType,
+      extraProducts: await prepareExtraProducts(adBuilderData.extraProducts),
+      occasion: adBuilderData.occasion,
+      shopDetails: adBuilderData.shopDetails,
+      approvedConcept: adBuilderData.approvedConcept,
+      creativeStrategy: adBuilderData.creativeStrategy as never,
+      selectedConcept: (() => {
+        const c =
+          adBuilderData.adConcepts?.find((x) => x.id === adBuilderData.selectedConceptId) ||
+          adBuilderData.adConcepts?.[0];
+        if (!c) return undefined;
+        return {
+          id: c.id,
+          title: c.title,
+          hookType: c.hookType,
+          creativeAngle: c.creativeAngle,
+          frameworkId: c.frameworkId as never,
+          rationale: c.rationale,
+          predictedStrength: (c.predictedStrength as 'high' | 'medium' | 'experimental') || 'medium',
+          cta: c.cta,
+          oneLinePitch: c.oneLinePitch,
+        };
+      })(),
+    });
+
+    const availableAssets = buildStudioAvailableAssets(productForGenerate);
+    return { brief, availableAssets };
+  }
+
+  /** Brand films, shop/service and festival greetings can run without a product. */
+  const productOptional = getAdTypePlaybook(normalizeAdType(adBuilderData.adType)).productPhotoOptional;
+
+  /** Three plain-language ideas with storyboards — free, before spending Video Credits. */
+  async function handleRequestConcepts(): Promise<ConceptCard[]> {
+    const campaignId = session?.id;
+    if (!campaignId) throw new Error('Session is not ready yet. Please wait a moment and try again.');
+    if (!adBuilderData.product && !productOptional) {
+      throw new Error('Add your product first, then we can suggest ideas.');
+    }
+    const { brief } = await buildStudioRequest(campaignId);
+    // Ideas must not be pinned to an earlier pick.
+    const response = await authFetch('/api/commercial/concepts', {
+      method: 'POST',
+      body: JSON.stringify({ campaign: { ...brief, approvedConcept: undefined } }),
+    });
+    const data = await safeResponseJson<{ ok?: boolean; concepts?: ConceptCard[]; error?: string }>(response);
+    if (!response.ok || !data?.ok || !data.concepts?.length) {
+      throw new Error(data?.error || 'Could not create ideas right now. Please try again.');
+    }
+    return data.concepts;
+  }
+
   async function handleGenerateVideo(options?: {
     forceRegenerate?: boolean;
     generationVersion?: string;
   }) {
-    if (!adBuilderData.product) {
+    if (!adBuilderData.product && !productOptional) {
       showError('Add a product before generating your commercial.');
       return;
     }
@@ -1175,9 +1364,9 @@ export default function VideoSessionPage() {
     }
 
     const hasProductRef =
-      Boolean(adBuilderData.product.hero_image?.trim()) ||
-      (adBuilderData.product.product_images || []).some((u) => u?.trim());
-    if (!hasProductRef) {
+      Boolean(adBuilderData.product?.hero_image?.trim()) ||
+      (adBuilderData.product?.product_images || []).some((u) => u?.trim());
+    if (!hasProductRef && !productOptional) {
       showError(
         'Upload or import a product image so the commercial can preserve packaging and branding.',
         'Product reference needed'
@@ -1200,61 +1389,7 @@ export default function VideoSessionPage() {
     }
 
     try {
-      const preparedProduct = await prepareVideoGenerateImages({
-        hero_image: adBuilderData.product.hero_image,
-        brand_logo: adBuilderData.product.brand_logo,
-        product_images: adBuilderData.product.product_images || [],
-      });
-      const productForGenerate = {
-        ...adBuilderData.product,
-        hero_image: preparedProduct.hero_image,
-        brand_logo: preparedProduct.brand_logo,
-        // Keep only compressed canonical refs for Runway (gallery extras already sliced).
-        product_images: [
-          ...(preparedProduct.hero_image ? [preparedProduct.hero_image] : []),
-          ...preparedProduct.product_images,
-        ].filter(Boolean),
-      };
-
-      const brief = mapStudioFormToCampaignBrief({
-        campaignId,
-        product: productForGenerate,
-        adSetup: adBuilderData.adSetup,
-        brand,
-        userDescription: getCommercialBrief(adBuilderData),
-        voiceover: {
-          enabled: adBuilderData.voiceover.enabled !== false,
-          language: adBuilderData.voiceover.language ?? 'english',
-          tone: adBuilderData.voiceover.tone,
-          key_message: adBuilderData.voiceover.key_message,
-          cta: adBuilderData.voiceover.cta || adBuilderData.creativeStrategy?.cta,
-          ctaEnabled: adBuilderData.voiceover.ctaEnabled !== false,
-          script: getCanonicalVoiceover(
-            adBuilderData.voiceover.script,
-            adBuilderData.storyboard
-          ),
-        },
-        voiceoverCta: adBuilderData.voiceover.cta || adBuilderData.creativeStrategy?.cta,
-        voiceoverKeyMessage: adBuilderData.voiceover.key_message,
-        creativeStrategy: adBuilderData.creativeStrategy as never,
-        selectedConcept: (() => {
-          const c =
-            adBuilderData.adConcepts?.find((x) => x.id === adBuilderData.selectedConceptId) ||
-            adBuilderData.adConcepts?.[0];
-          if (!c) return undefined;
-          return {
-            id: c.id,
-            title: c.title,
-            hookType: c.hookType,
-            creativeAngle: c.creativeAngle,
-            frameworkId: c.frameworkId as never,
-            rationale: c.rationale,
-            predictedStrength: (c.predictedStrength as 'high' | 'medium' | 'experimental') || 'medium',
-            cta: c.cta,
-            oneLinePitch: c.oneLinePitch,
-          };
-        })(),
-      });
+      const { brief, availableAssets } = await buildStudioRequest(campaignId);
 
       // Hard invariant: UI duration === brief duration === ONE native generation
       const invariant = assertNativeDurationInvariant(duration, brief.campaignDuration);
@@ -1262,7 +1397,6 @@ export default function VideoSessionPage() {
         throw new Error('Internal error: generation mode must be native_continuous');
       }
 
-      const availableAssets = buildStudioAvailableAssets(productForGenerate);
       const generationVersion =
         options?.generationVersion ||
         pendingRegeneration?.nextVersion ||
@@ -1745,6 +1879,7 @@ export default function VideoSessionPage() {
             brand={brand}
             adBuilderData={adBuilderData}
             onAdBuilderChange={setAdBuilderData}
+            onRequestConcepts={handleRequestConcepts}
             generatedVideos={generatedVideos}
             selectedVideoId={selectedVideoId}
             onSelectVideo={setSelectedVideoId}
@@ -1752,6 +1887,13 @@ export default function VideoSessionPage() {
             onProductUrlChange={setProductUrl}
             onProductUrlSubmit={handleProductUrlSubmit}
             isScrapingProduct={isScrapingProduct}
+            catalog={{
+              products: catalogProducts,
+              isScanning: isScanningCatalog,
+              hasWebsite: Boolean(brand?.website_url?.trim()),
+              onBrowse: handleBrowseCatalog,
+              onSelect: handleSelectCatalogProduct,
+            }}
             isFetchingLogo={isFetchingLogo}
             selectedImageIndex={selectedImageIndex}
             onSelectImage={(index, img) => {
