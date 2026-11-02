@@ -15,7 +15,7 @@ import { endCardContentFromBrief } from "../finishing/attach-end-card";
 import { voiceoverAdContext } from "../audio/attach-gemini-voiceover";
 import { mapStudioFormToCampaignBrief } from "../studio-mapper";
 import { normalizeAdType, suggestedOccasions } from "../campaign/ad-type";
-import { buildConceptsPrompt, buildStoryboardPrompt, generateConceptCards } from "./generate-concepts";
+import { buildConceptsPrompt, buildStoryboardPrompt, generateConceptCards, toJpegDataUrl } from "./generate-concepts";
 
 let passed = 0;
 let failed = 0;
@@ -195,6 +195,28 @@ async function main() {
       generateConceptCards(makeValidBrief(), { writer: async () => "not json", renderer: async () => png }),
       /couldn't come up with ideas/
     );
+  });
+
+  await test("with a photo, the photo wins over a mistyped name in every prompt", () => {
+    assert.ok(buildConceptsPrompt(comboBrief).includes("THE PHOTO IS THE TRUTH"));
+    assert.ok(!buildConceptsPrompt(makeValidBrief()).includes("THE PHOTO IS THE TRUTH"));
+    assert.ok(buildStoryboardPrompt(comboBrief, { storyboardPanels: ["a", "b", "c"] }).includes("draw what the photo shows"));
+    assert.ok(buildDirectorUserPrompt(comboBrief).includes("The photo is the truth"));
+  });
+
+  await test("storyboards lose plain white bands but keep mostly-white pictures", async () => {
+    const strip = await sharp({ create: { width: 900, height: 300, channels: 3, background: "#884422" } }).png().toBuffer();
+    const padded = await sharp(strip).extend({ top: 120, bottom: 120, left: 0, right: 0, background: "#ffffff" }).jpeg().toBuffer();
+    const trimmed = await sharp(Buffer.from((await toJpegDataUrl(padded)).split(",")[1], "base64")).metadata();
+    assert.ok(trimmed.height! < 340, `expected bands trimmed, got height ${trimmed.height}`);
+
+    const mostlyWhite = await sharp(await sharp({ create: { width: 200, height: 100, channels: 3, background: "#884422" } }).png().toBuffer())
+      .extend({ top: 300, bottom: 300, left: 400, right: 400, background: "#ffffff" })
+      .jpeg()
+      .toBuffer();
+    const kept = await sharp(Buffer.from((await toJpegDataUrl(mostlyWhite)).split(",")[1], "base64")).metadata();
+    assert.equal(kept.width, 960);
+    assert.equal(kept.height, 672);
   });
 
   console.log(`\nResults: ${passed} passed, ${failed} failed\n`);

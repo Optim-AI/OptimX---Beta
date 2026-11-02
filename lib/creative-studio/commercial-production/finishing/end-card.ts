@@ -6,11 +6,13 @@
  * post instead: drawn as vector paths from a real font (poster-template text
  * engine), rasterised with sharp, and overlaid with ffmpeg.
  *
- * Text a font cannot draw (e.g. Tamil script with a Latin font) is left out
- * rather than rendered as boxes.
+ * Indian-script lines (Tamil, Hindi, …) need complex shaping that the vector
+ * engine can't do, so they are drawn by Pango/HarfBuzz (bundled with sharp)
+ * using the matching Noto Sans font. Text no font can draw is left out rather
+ * than rendered as boxes.
  */
 
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFile } from "node:child_process";
@@ -46,11 +48,95 @@ export interface EndCardContent {
 export interface EndCardFonts {
   bold: LoadedFont;
   medium: LoadedFont;
+  /**
+   * Path to a font file for an Indian script (e.g. "Noto Sans Tamil"), or null.
+   * Without it, lines in those scripts are skipped.
+   */
+  scriptFontFile?: (family: string, weight: number) => Promise<ScriptFont | null>;
+}
+
+export type ScriptFont = { path: string; family: string };
+
+const SCRIPT_FONTS: Array<[RegExp, string]> = [
+  [/[\u0B80-\u0BFF]/, "Noto Sans Tamil"],
+  [/[\u0900-\u097F]/, "Noto Sans Devanagari"],
+  [/[\u0C80-\u0CFF]/, "Noto Sans Kannada"],
+  [/[\u0D00-\u0D7F]/, "Noto Sans Malayalam"],
+  [/[\u0C00-\u0C7F]/, "Noto Sans Telugu"],
+  [/[\u0980-\u09FF]/, "Noto Sans Bengali"],
+  [/[\u0A80-\u0AFF]/, "Noto Sans Gujarati"],
+  [/[\u0A00-\u0A7F]/, "Noto Sans Gurmukhi"],
+];
+
+/** Noto family that covers the Indian script in `text`, if any. */
+export function scriptFontFamily(text: string): string | null {
+  return SCRIPT_FONTS.find(([re]) => re.test(text))?.[1] ?? null;
+}
+
+const scriptFontCache = new Map<string, Promise<ScriptFont | null>>();
+
+/** Fetch a Noto script font from Google Fonts once and keep it on local disk for Pango. */
+export function downloadScriptFont(family: string, weight: number): Promise<ScriptFont | null> {
+  const key = `${family}@${weight}`;
+  const hit = scriptFontCache.get(key);
+  if (hit) return hit;
+  const p = (async () => {
+    const loaded = await loadFont(family, weight);
+    if (loaded.fallback) return null;
+    const dir = join(tmpdir(), "skalx-fonts");
+    await mkdir(dir, { recursive: true });
+    const path = join(dir, `${family.replace(/\s+/g, "-")}-${loaded.weight}.ttf`);
+    await writeFile(path, Buffer.from(loaded.data));
+    return { path, family };
+  })().catch(() => null);
+  scriptFontCache.set(key, p);
+  return p;
 }
 
 export async function loadEndCardFonts(): Promise<EndCardFonts> {
   const [bold, medium] = await Promise.all([loadFont("Poppins", 700), loadFont("Poppins", 500)]);
-  return { bold, medium };
+  return { bold, medium, scriptFontFile: downloadScriptFont };
+}
+
+function escapeMarkup(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+/**
+ * Shape and rasterise text with Pango, shrinking until it fits `maxLines`.
+ * Returns a transparent PNG no wider than `width`.
+ */
+async function renderShapedText(input: {
+  text: string;
+  font: ScriptFont;
+  bold: boolean;
+  width: number;
+  minSize: number;
+  maxSize: number;
+  maxLines: number;
+  color: string;
+}): Promise<{ png: Buffer; width: number; height: number }> {
+  let size = input.maxSize;
+  for (;;) {
+    const { data, info } = await sharp({
+      text: {
+        text: `<span foreground="${escapeAttr(input.color)}">${escapeMarkup(input.text)}</span>`,
+        font: `${input.font.family}${input.bold ? " Bold" : ""} ${Math.round(size)}px`,
+        fontfile: input.font.path,
+        width: Math.round(input.width),
+        align: "centre",
+        wrap: "word",
+        rgba: true,
+        dpi: 72,
+      },
+    })
+      .png()
+      .toBuffer({ resolveWithObject: true });
+    if (info.height <= size * 1.6 * input.maxLines || size <= input.minSize) {
+      return { png: data, width: info.width, height: info.height };
+    }
+    size = Math.max(input.minSize, size * 0.88);
+  }
 }
 
 /** True when every visible character has a real glyph in the font. */
@@ -63,6 +149,7 @@ function escapeAttr(value: string): string {
 }
 
 type Block = { height: number; draw: (top: number) => string };
+type Overlay = { input: Buffer; left: number; top: number };
 
 /**
  * Render a transparent PNG the size of the video: a bottom gradient panel with
@@ -83,15 +170,57 @@ export async function renderEndCardPng(input: {
   const blocks: Block[] = [];
   const gap = unit * 0.025;
 
-  const usable = (label: string, text: string | undefined, font: opentype.Font): string | null => {
+  const overlays: Overlay[] = [];
+
+  /** Vector-drawable text, a Pango-shaped script font, or null (skipped). */
+  const usable = async (
+    label: string,
+    text: string | undefined,
+    font: opentype.Font,
+    weight: number
+  ): Promise<{ text: string; script: ScriptFont | null } | null> => {
     const t = text?.trim();
     if (!t) return null;
-    if (!fontCanDraw(font, t)) {
+    if (fontCanDraw(font, t)) {
+      drawn.push(label);
+      return { text: t, script: null };
+    }
+    const family = scriptFontFamily(t);
+    const script = family && fonts.scriptFontFile ? await fonts.scriptFontFile(family, weight) : null;
+    if (!script) {
       skipped.push(label);
       return null;
     }
     drawn.push(label);
-    return t;
+    return { text: t, script };
+  };
+
+  /** A centred line block drawn as a raster overlay instead of SVG paths. */
+  const rasterBlock = (img: { png: Buffer; width: number; height: number }): Block => ({
+    height: img.height,
+    draw: (top) => {
+      overlays.push({ input: img.png, left: Math.round((W - img.width) / 2), top: Math.round(top) });
+      return "";
+    },
+  });
+
+  const lineBlock = async (
+    item: { text: string; script: ScriptFont | null },
+    font: opentype.Font,
+    opts: { min: number; max: number; lines: number; fill: string; opacity?: number; bold: boolean }
+  ): Promise<Block> => {
+    if (!item.script) return textBlock(item.text, font, opts);
+    const img = await renderShapedText({
+      text: item.text,
+      font: item.script,
+      bold: opts.bold,
+      width: boxWidth,
+      minSize: opts.min,
+      maxSize: opts.max,
+      maxLines: opts.lines,
+      color: opts.fill,
+    });
+    return rasterBlock(img);
   };
 
   const textBlock = (text: string, font: opentype.Font, opts: { min: number; max: number; lines: number; fill: string; opacity?: number }): Block => {
@@ -136,33 +265,56 @@ export async function renderEndCardPng(input: {
     }
   }
   if (logoPng) {
-    blocks.push({ height: logoSize.h, draw: () => "" });
+    const logo = logoPng;
+    blocks.push(rasterBlock({ png: logo, width: logoSize.w, height: logoSize.h }));
   } else {
-    const brand = usable("brandName", content.brandName, fonts.bold.font);
-    if (brand) blocks.push(textBlock(brand, fonts.bold.font, { min: unit * 0.04, max: unit * 0.055, lines: 1, fill: "#FFFFFF" }));
+    const brand = await usable("brandName", content.brandName, fonts.bold.font, 700);
+    if (brand) blocks.push(await lineBlock(brand, fonts.bold.font, { min: unit * 0.04, max: unit * 0.055, lines: 1, fill: "#FFFFFF", bold: true }));
   }
 
-  const offer = usable("offer", content.offer, fonts.bold.font);
-  if (offer) blocks.push(textBlock(offer, fonts.bold.font, { min: unit * 0.045, max: unit * 0.07, lines: 2, fill: "#FFFFFF" }));
+  const offer = await usable("offer", content.offer, fonts.bold.font, 700);
+  if (offer) blocks.push(await lineBlock(offer, fonts.bold.font, { min: unit * 0.045, max: unit * 0.07, lines: 2, fill: "#FFFFFF", bold: true }));
 
-  const cta = usable("cta", content.cta, fonts.bold.font);
+  const cta = await usable("cta", content.cta, fonts.bold.font, 700);
   if (cta) {
     const accent = /^#[0-9a-fA-F]{6}$/.test(content.accentColor || "") ? content.accentColor! : DEFAULT_ACCENT;
     const label = pickReadable(relativeLuminance(hexToRgb(accent)), ["#FFFFFF", "#111111"], 4.5).color;
     const size = unit * 0.045;
-    const textW = Math.min(measureLine(fonts.bold.font, cta, size), boxWidth * 0.8);
-    const pillW = textW + size * 2;
     const pillH = size * 2;
-    blocks.push({
-      height: pillH,
-      draw: (top) =>
-        `<rect x="${(W - pillW) / 2}" y="${top}" width="${pillW}" height="${pillH}" rx="${pillH / 2}" fill="${escapeAttr(accent)}"/>` +
-        `<path d="${linePathData(fonts.bold.font, cta, (W - textW) / 2, top + pillH / 2 + size * 0.35, size)}" fill="${label}"/>`,
-    });
+    if (cta.script) {
+      const img = await renderShapedText({
+        text: cta.text,
+        font: cta.script,
+        bold: true,
+        width: boxWidth * 0.8,
+        minSize: size * 0.7,
+        maxSize: size,
+        maxLines: 1,
+        color: label,
+      });
+      const pillW = img.width + size * 2;
+      const h = Math.max(pillH, img.height + size * 0.6);
+      blocks.push({
+        height: h,
+        draw: (top) => {
+          overlays.push({ input: img.png, left: Math.round((W - img.width) / 2), top: Math.round(top + (h - img.height) / 2) });
+          return `<rect x="${(W - pillW) / 2}" y="${top}" width="${pillW}" height="${h}" rx="${h / 2}" fill="${escapeAttr(accent)}"/>`;
+        },
+      });
+    } else {
+      const textW = Math.min(measureLine(fonts.bold.font, cta.text, size), boxWidth * 0.8);
+      const pillW = textW + size * 2;
+      blocks.push({
+        height: pillH,
+        draw: (top) =>
+          `<rect x="${(W - pillW) / 2}" y="${top}" width="${pillW}" height="${pillH}" rx="${pillH / 2}" fill="${escapeAttr(accent)}"/>` +
+          `<path d="${linePathData(fonts.bold.font, cta.text, (W - textW) / 2, top + pillH / 2 + size * 0.35, size)}" fill="${label}"/>`,
+      });
+    }
   }
 
-  const contact = usable("contact", content.contact, fonts.medium.font);
-  if (contact) blocks.push(textBlock(contact, fonts.medium.font, { min: unit * 0.032, max: unit * 0.042, lines: 1, fill: "#FFFFFF", opacity: 0.9 }));
+  const contact = await usable("contact", content.contact, fonts.medium.font, 500);
+  if (contact) blocks.push(await lineBlock(contact, fonts.medium.font, { min: unit * 0.032, max: unit * 0.042, lines: 1, fill: "#FFFFFF", opacity: 0.9, bold: false }));
 
   const stackH = blocks.reduce((sum, b) => sum + b.height, 0) + gap * Math.max(0, blocks.length - 1);
   // Bottom safe area clears platform UI (Reels / Shorts captions and buttons).
@@ -171,7 +323,6 @@ export async function renderEndCardPng(input: {
   const panelTop = Math.max(0, top - H * 0.08);
 
   const parts: string[] = [];
-  const logoTop = top;
   for (const block of blocks) {
     parts.push(block.draw(top));
     top += block.height + gap;
@@ -188,10 +339,8 @@ ${parts.join("\n")}
 </svg>`;
 
   let card = sharp(Buffer.from(svg)).png();
-  if (logoPng) {
-    card = sharp(await card.toBuffer()).composite([
-      { input: logoPng, left: Math.round((W - logoSize.w) / 2), top: Math.round(logoTop) },
-    ]);
+  if (overlays.length) {
+    card = sharp(await card.toBuffer()).composite(overlays);
   }
   return { png: await card.png().toBuffer(), drawn, skipped };
 }

@@ -76,7 +76,7 @@ export default function WhatYouGetSection() {
           <div className="lg:col-span-8">
             <SectionHeading
               id="wyg-title"
-              index="03"
+              index="04"
               eyebrow="What SkalX does"
               title="Research, then strategy, then content."
               intro="Most tools jump straight to making ads. SkalX starts with what your market is telling you."

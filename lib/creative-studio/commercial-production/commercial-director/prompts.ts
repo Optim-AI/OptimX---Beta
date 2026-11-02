@@ -18,6 +18,7 @@ import {
   REALISM_RULE,
 } from "../campaign/creative-style";
 import { adTypeToPromptBlock, getAdTypePlaybook } from "../campaign/ad-type";
+import { adDirectionToPromptBlock } from "../campaign/ad-direction";
 
 export function buildDirectorSystemPrompt(): string {
   return `You are the Commercial Director for SkalX AI Ad Video Production.
@@ -127,6 +128,8 @@ ${adTypeToPromptBlock(getAdTypePlaybook(brief.adType), {
   shopDetails: brief.shopDetails,
 })}
 
+${adDirectionToPromptBlock(brief.adDirection)}
+
 BRAND
 name: ${brief.brand.name}
 personality: ${brief.brand.personality || "UNKNOWN — do not invent"}
@@ -142,7 +145,7 @@ PRODUCT
 name: ${brief.product.name}
 category: ${brief.product.category || "unspecified"}
 description: ${brief.product.description || "not provided"}
-hasProductReferenceImages: ${brief.product.images?.length ? "yes (attached above — study the real packaging, colours and size before planning)" : "no"}
+hasProductReferenceImages: ${brief.product.images?.length ? "yes (attached above — study the real packaging, colours and size before planning. The photo is the truth: if the typed name or description disagrees with it — a different flavour, variant or pack — plan around what the photo shows)" : "no"}
 physicalHandling: ${brief.product.handling || "not analysed — do not invent seals, tabs or wrappers; keep handling simple"}
 (physicalHandling is read from the product photo. Every interaction you plan — opening, pouring, serving — MUST match it. Put the correct opening action in productStrategy.interaction.)
 offer: ${brief.product.offer || "not provided"}

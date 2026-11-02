@@ -215,6 +215,7 @@ export async function produceFinalCommercial(
     productNames: allBriefProducts(brief).map((p) => p.name),
     occasion: brief.occasion,
     shopDetails: brief.shopDetails,
+    adDirection: brief.adDirection,
     // Brand / shop / festival ads may have no product photo at all.
     requireProductReference: hasProductPhotos || !getAdTypePlaybook(brief.adType).productPhotoOptional,
   });

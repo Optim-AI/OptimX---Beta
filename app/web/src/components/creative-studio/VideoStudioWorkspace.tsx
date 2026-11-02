@@ -4,18 +4,24 @@ import { useRouter } from 'next/router';
 import {
   ArrowLeft,
   BookOpen,
+  Check,
   ChevronDown,
   Download,
   Film,
   ImagePlus,
   Pause,
+  Pencil,
   Play,
   Plus,
+  RefreshCw,
   Save,
+  Smartphone,
   Sparkles,
   Upload,
+  X,
 } from 'lucide-react';
 import { InsufficientCreditsAlert } from '@/app/web/src/components/billing';
+import { VIDEO_CREDITS_PER_SECOND } from '@/lib/billing/video-credits';
 import { showError } from '@/app/web/src/components/ui/alert-modal-api';
 import { authFetch, safeResponseJson } from '@/lib/utils';
 import {
@@ -28,19 +34,22 @@ import {
 } from './types';
 import {
   HOOK_TYPES,
+  HOOK_LABELS,
   CAMPAIGN_GOALS,
+  CAMPAIGN_GOAL_LABELS,
   VIDEO_DURATIONS,
 } from './utils';
 import {
   VOICEOVER_CTA_OPTIONS,
   VOICEOVER_LANGUAGE_LABELS,
   VOICEOVER_LANGUAGES,
-  usesGeminiTts,
   type VoiceoverLanguage,
 } from '@/lib/creative-studio/commercial-production/audio/voiceover-languages';
 import { getAdTypePlaybook, normalizeAdType } from '@/lib/creative-studio/commercial-production/campaign/ad-type';
 import type { ConceptCard } from '@/lib/creative-studio/commercial-production/concepts/generate-concepts';
-import { GuidedAdSetup, IdeaCards, VoiceInputButton } from './GuidedAdSetup';
+import { GuidedAdSetup, IdeaCards, VoiceInputButton, WriteHelper } from './GuidedAdSetup';
+import type { AdDirection } from '@/lib/creative-studio/commercial-production/campaign/ad-direction';
+import { buildGenerationSteps, generationProgress } from './generation-steps';
 
 const PURPLE = '#A855F7';
 const PURPLE_SOFT = 'rgba(168, 85, 247, 0.16)';
@@ -50,18 +59,18 @@ const RAIL_BG = '#101014';
 const SURFACE = '#16161C';
 const SURFACE_2 = '#1A1A22';
 const LINE = 'rgba(255,255,255,0.08)';
-const MUTED = '#8B8B98';
+const MUTED = '#A3A3AF';
 
 const HOOK_DESCRIPTIONS: Record<string, string> = {
-  Auto: 'AI picks the strongest hook for your product and campaign goal.',
-  'Curiosity Hook': 'Pattern interrupt that makes viewers need to know more.',
-  'Before & After': 'Transformation contrast — problem state vs. result state.',
-  'Social Proof': 'Reviews, results, and credibility to overcome skepticism.',
-  Contrarian: 'Challenge a common belief to stop the scroll.',
-  'Problem Agitation': 'Amplify the pain before presenting your solution.',
-  'Founder Story': 'Authentic origin story that builds trust and differentiation.',
-  Testimonial: 'Real customer voice — relatable proof that converts.',
-  'Product Demonstration': 'Show the product working — clarity drives clicks.',
+  Auto: 'We pick the best opening for your product.',
+  'Curiosity Hook': 'Open with something that makes people want to keep watching.',
+  'Before & After': 'Show life before your product, then after.',
+  'Social Proof': 'Show that many people already love it.',
+  Contrarian: 'Open with a surprising fact people do not expect.',
+  'Problem Agitation': 'Start with the everyday problem your product solves.',
+  'Founder Story': 'Share why you started — it builds trust.',
+  Testimonial: 'A happy customer talks about it.',
+  'Product Demonstration': 'Simply show the product working.',
 };
 
 type PromptVariantPreview = {
@@ -129,6 +138,8 @@ type VideoStudioWorkspaceProps = {
   onAdBuilderChange: (data: AdBuilderData) => void;
   /** Three storyboarded ideas for the current brief (free, before generation). */
   onRequestConcepts: () => Promise<ConceptCard[]>;
+  /** "Help me write it": AI writes the description from tap-only answers. */
+  onRequestWrite: (direction: AdDirection | undefined) => Promise<string>;
   generatedVideos: GeneratedVideo[];
   selectedVideoId: string | null;
   onSelectVideo: (id: string) => void;
@@ -144,7 +155,8 @@ type VideoStudioWorkspaceProps = {
   onImageUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
   isGeneratingScript: boolean;
   isGeneratingVideo: boolean;
-  generationStep: number;
+  /** Seconds since the current generation started. */
+  generationElapsed: number;
   productionStatus: CommercialProductionStatus;
   pendingRegeneration: {
     nextVersion: string;
@@ -173,6 +185,7 @@ export default function VideoStudioWorkspace({
   adBuilderData,
   onAdBuilderChange,
   onRequestConcepts,
+  onRequestWrite,
   generatedVideos,
   selectedVideoId,
   onSelectVideo,
@@ -187,7 +200,7 @@ export default function VideoStudioWorkspace({
   onImageUpload,
   isGeneratingScript,
   isGeneratingVideo,
-  generationStep,
+  generationElapsed,
   productionStatus,
   pendingRegeneration,
   hasInsufficientCredits,
@@ -225,8 +238,18 @@ export default function VideoStudioWorkspace({
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showConcept, setShowConcept] = useState(false);
   const [showReplaceProduct, setShowReplaceProduct] = useState(false);
+  // A new product arrived (catalog, link or upload): the change-product panel has done its job.
+  const productKey = `${adBuilderData.product?.product_name ?? ''}|${adBuilderData.product?.hero_image?.slice(-48) ?? ''}`;
+  const lastProductKey = useRef(productKey);
+  useEffect(() => {
+    if (lastProductKey.current === productKey) return;
+    lastProductKey.current = productKey;
+    setShowReplaceProduct(false);
+  }, [productKey]);
   const [showQcDetails, setShowQcDetails] = useState(false);
-  const [showCreativePlan, setShowCreativePlan] = useState(true);
+  const [showCreativePlan, setShowCreativePlan] = useState(false);
+  // Finished ad: show the result view; the editor rail opens only on "Change & remake".
+  const [showEditor, setShowEditor] = useState(false);
   const [showRegenConfirm, setShowRegenConfirm] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -236,6 +259,11 @@ export default function VideoStudioWorkspace({
   const [stageOpened, setStageOpened] = useState(false);
   const [isEnhancingPrompt, setIsEnhancingPrompt] = useState(false);
   const [promptBeforeEnhance, setPromptBeforeEnhance] = useState<string | null>(null);
+  const [enhancedText, setEnhancedText] = useState<string | null>(null);
+  // Undo only applies while the enhanced text is still what is in the box
+  // (another change, e.g. "Help me write it", has its own undo).
+  const canUndoEnhance =
+    promptBeforeEnhance != null && enhancedText != null && adBuilderData.userDescription === enhancedText;
 
   const selectedVideo =
     generatedVideos.find((video) => video.id === selectedVideoId) ?? generatedVideos[generatedVideos.length - 1] ?? null;
@@ -246,6 +274,7 @@ export default function VideoStudioWorkspace({
   const videosWithUrl = generatedVideos.filter((v) => v.url);
   const isBusy = isGeneratingVideo || isGeneratingScript;
   const showStage = stageOpened || isBusy || hasVideo;
+  const isResultView = hasVideo && !isBusy && !showEditor;
 
   async function handleEnhancePrompt() {
     const current = adBuilderData.userDescription?.trim() || '';
@@ -296,6 +325,7 @@ export default function VideoStudioWorkspace({
         showError(data?.error || 'Could not enhance the prompt. Your original text was kept.');
         return;
       }
+      setEnhancedText(data.enhancedPrompt.trim());
       onAdBuilderChange({
         ...adBuilderData,
         userDescription: data.enhancedPrompt.trim(),
@@ -331,13 +361,13 @@ export default function VideoStudioWorkspace({
     adBuilderData?.adConcepts?.[0] ??
     null;
 
-  const generationSteps = [
-    'Understanding your brief',
-    'Planning your commercial',
-    `Generating your ${durationSeconds}-second commercial`,
-    'Checking the result',
-  ];
-  const cappedStep = Math.min(generationStep, generationSteps.length - 1);
+  const generationSteps = buildGenerationSteps({
+    durationSeconds,
+    voiceoverLanguage: voiceover.language,
+    voiceoverEnabled: voiceover.enabled,
+    endCardEnabled: adBuilderData.endCard?.enabled ?? true,
+  });
+  const { index: cappedStep, minutesLeft } = generationProgress(generationSteps, generationElapsed);
 
   const qcDecision = selectedVideo?.qcDecision;
   const creativePlan = selectedVideo?.creativePlan;
@@ -425,7 +455,7 @@ export default function VideoStudioWorkspace({
       {!product ? (
         <section className="space-y-3">
           <SectionLabel>Product reference</SectionLabel>
-          <p className="text-[13px] leading-relaxed" style={{ color: MUTED }}>
+          <p className="text-[14px] leading-relaxed" style={{ color: MUTED }}>
             Upload or import the actual product image so packaging and branding stay accurate.
           </p>
           <ProductSourcePicker
@@ -461,7 +491,7 @@ export default function VideoStudioWorkspace({
                 className="w-full bg-transparent text-[15px] font-medium outline-none leading-snug"
                 style={{ color: '#F4F4F7' }}
               />
-              <p className="text-[12px] mt-0.5 truncate" style={{ color: MUTED }}>
+              <p className="text-[13px] mt-0.5 truncate" style={{ color: MUTED }}>
                 {product.category || 'Product'}
                 {product.brand_name ? ` · ${product.brand_name}` : brand?.name ? ` · ${brand.name}` : ''}
                 {isFetchingLogo ? ' · fetching logo' : ''}
@@ -469,7 +499,7 @@ export default function VideoStudioWorkspace({
               <button
                 type="button"
                 onClick={() => setShowReplaceProduct((open) => !open)}
-                className="text-[12px] mt-1 hover:opacity-80"
+                className="text-[13px] mt-1 hover:opacity-80"
                 style={{ color: '#A1A1AA' }}
               >
                 Replace product
@@ -483,14 +513,14 @@ export default function VideoStudioWorkspace({
                 value={productUrl}
                 onChange={(e) => onProductUrlChange(e.target.value)}
                 placeholder="Replace via product URL"
-                className="flex-1 px-3 py-2 rounded-lg text-[12px] outline-none"
+                className="flex-1 px-3 py-2 rounded-lg text-[13px] outline-none"
                 style={{ background: SURFACE, border: `1px solid ${LINE}`, color: '#F4F4F7' }}
                 disabled={isScrapingProduct}
               />
               <button
                 type="submit"
                 disabled={!productUrl.trim() || isScrapingProduct}
-                className="px-3 py-2 rounded-lg text-[12px] disabled:opacity-50"
+                className="px-3 py-2 rounded-lg text-[13px] disabled:opacity-50"
                 style={{ background: SURFACE_2, border: `1px solid ${LINE}`, color: '#E8E8EE' }}
               >
                 {isScrapingProduct ? '…' : 'Go'}
@@ -502,13 +532,13 @@ export default function VideoStudioWorkspace({
 
       <section>
         <div className="flex items-center justify-between mb-2">
-          <p className="text-[12px]" style={{ color: MUTED }}>
+          <p className="text-[13px]" style={{ color: MUTED }}>
             {referenceCount} reference image{referenceCount === 1 ? '' : 's'}
           </p>
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="text-[12px] inline-flex items-center gap-1 hover:opacity-80"
+            className="text-[13px] inline-flex items-center gap-1 hover:opacity-80"
             style={{ color: '#D4D4DC' }}
           >
             <ImagePlus size={13} />
@@ -544,7 +574,7 @@ export default function VideoStudioWorkspace({
             </button>
           )}
         </div>
-        <p className="text-[12px] mt-3 leading-relaxed" style={{ color: MUTED }}>
+        <p className="text-[13px] mt-3 leading-relaxed" style={{ color: MUTED }}>
           This is the canonical product reference for packaging and branding.
         </p>
       </section>
@@ -555,7 +585,7 @@ export default function VideoStudioWorkspace({
 
       <section>
         <SectionLabel>In your own words</SectionLabel>
-        <p className="text-[13px] leading-relaxed mb-3" style={{ color: MUTED }}>
+        <p className="text-[14px] leading-relaxed mb-3" style={{ color: MUTED }}>
           Optional notes for the director. Strategy, concept, and cinematography are drafted automatically.
         </p>
         <textarea
@@ -579,11 +609,11 @@ export default function VideoStudioWorkspace({
               })
             }
           />
-          {promptBeforeEnhance != null && !isEnhancingPrompt && (
+          {canUndoEnhance && !isEnhancingPrompt && (
             <button
               type="button"
               onClick={handleUndoEnhance}
-              className="text-[13px]"
+              className="text-[14px]"
               style={{ color: '#C8C8D2' }}
             >
               Undo
@@ -593,20 +623,28 @@ export default function VideoStudioWorkspace({
             type="button"
             onClick={handleEnhancePrompt}
             disabled={isEnhancingPrompt || isBusy || !(adBuilderData.userDescription || '').trim()}
-            className="inline-flex items-center gap-1.5 text-[13px] px-2.5 py-1 rounded-lg disabled:opacity-40"
+            className="inline-flex items-center gap-1.5 text-[14px] px-2.5 py-1 rounded-lg disabled:opacity-40"
             style={{ color: '#E8E0FF', border: `1px solid ${PURPLE_BORDER}` }}
           >
             <Sparkles size={13} />
             {isEnhancingPrompt ? 'Enhancing…' : 'Enhance Prompt'}
           </button>
         </div>
+        <div className="mt-3">
+          <WriteHelper
+            data={adBuilderData}
+            onChange={onAdBuilderChange}
+            onRequestWrite={onRequestWrite}
+            disabled={isBusy || !hasSubject}
+          />
+        </div>
         <button
           type="button"
           onClick={() => setShowAdvanced((open) => !open)}
-          className="mt-2 text-[13px] inline-flex items-center gap-1"
+          className="mt-2 text-[14px] inline-flex items-center gap-1"
           style={{ color: '#D0D0D8' }}
         >
-          Advanced creative form
+          More options
           <ChevronDown size={14} className={`transition-transform ${showAdvanced ? 'rotate-180' : ''}`} />
         </button>
       </section>
@@ -624,9 +662,10 @@ export default function VideoStudioWorkspace({
 
       {showAdvanced && (
         <section className="space-y-4">
-          <FieldLabel>Campaign goal</FieldLabel>
+          <FieldLabel>Main goal of this ad</FieldLabel>
           <ChipGrid
             items={[...CAMPAIGN_GOALS]}
+            labels={CAMPAIGN_GOAL_LABELS}
             value={adSetup.campaignGoal}
             onChange={(goal) =>
               onAdBuilderChange({
@@ -640,25 +679,23 @@ export default function VideoStudioWorkspace({
           />
 
 
-          <FieldLabel>Hook type</FieldLabel>
-          <p className="text-[12px] -mt-2" style={{ color: MUTED }}>
+          <FieldLabel>How should the ad catch attention?</FieldLabel>
+          <p className="text-[14px] -mt-2" style={{ color: MUTED }}>
             {HOOK_DESCRIPTIONS[adSetup.hookType]}
           </p>
           <ChipGrid
-            items={HOOK_TYPES.map((hook) => (hook === 'Auto' ? 'Auto (Recommended)' : hook))}
-            value={adSetup.hookType === 'Auto' ? 'Auto (Recommended)' : adSetup.hookType}
+            items={[...HOOK_TYPES]}
+            labels={HOOK_LABELS}
+            value={adSetup.hookType}
             onChange={(hook) =>
               onAdBuilderChange({
                 ...adBuilderData,
-                adSetup: {
-                  ...adSetup,
-                  hookType: (hook === 'Auto (Recommended)' ? 'Auto' : hook) as AdBuilderData['adSetup']['hookType'],
-                },
+                adSetup: { ...adSetup, hookType: hook as AdBuilderData['adSetup']['hookType'] },
               })
             }
           />
 
-          <FieldLabel>Ad tone</FieldLabel>
+          <FieldLabel>How should the ad feel?</FieldLabel>
           <ChipGrid
             items={['Energetic', 'Calm', 'Premium', 'Fun']}
             value={voiceover.tone}
@@ -680,7 +717,7 @@ export default function VideoStudioWorkspace({
               })
             }
             placeholder="What should the viewer feel or believe?"
-            className="w-full px-3 py-2.5 rounded-xl text-[13px] outline-none"
+            className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none"
             style={{ background: SURFACE, border: `1px solid ${LINE}`, color: '#F4F4F7' }}
           />
 
@@ -694,7 +731,7 @@ export default function VideoStudioWorkspace({
               })
             }
             placeholder="Shop now, try it today…"
-            className="w-full px-3 py-2.5 rounded-xl text-[13px] outline-none"
+            className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none"
             style={{ background: SURFACE, border: `1px solid ${LINE}`, color: '#F4F4F7' }}
           />
 
@@ -715,10 +752,10 @@ export default function VideoStudioWorkspace({
                         background: selected ? PURPLE_SOFT : SURFACE,
                       }}
                     >
-                      <p className="text-[13px] font-medium" style={{ color: '#F4F4F7' }}>
+                      <p className="text-[14px] font-medium" style={{ color: '#F4F4F7' }}>
                         {variant.label}
                       </p>
-                      <p className="text-[12px] mt-1 line-clamp-2" style={{ color: MUTED }}>
+                      <p className="text-[13px] mt-1 line-clamp-2" style={{ color: MUTED }}>
                         {variant.summary}
                       </p>
                     </button>
@@ -732,7 +769,7 @@ export default function VideoStudioWorkspace({
 
       <section>
         <SectionLabel>Output</SectionLabel>
-        <p className="text-[12px] mb-2" style={{ color: MUTED }}>
+        <p className="text-[13px] mb-2" style={{ color: MUTED }}>
           Duration
         </p>
         <div className="flex gap-2 mb-4">
@@ -748,7 +785,7 @@ export default function VideoStudioWorkspace({
                     adSetup: { ...adSetup, duration: dur },
                   })
                 }
-                className="flex-1 py-2.5 rounded-xl text-[13px] font-medium"
+                className="flex-1 py-2.5 rounded-xl text-[14px] font-medium"
                 style={{
                   background: selected ? PURPLE_SOFT : SURFACE,
                   border: `1px solid ${selected ? PURPLE_BORDER : LINE}`,
@@ -760,7 +797,7 @@ export default function VideoStudioWorkspace({
             );
           })}
         </div>
-        <p className="text-[12px] mb-2" style={{ color: MUTED }}>
+        <p className="text-[13px] mb-2" style={{ color: MUTED }}>
           Aspect ratio
         </p>
         <div className="flex gap-2 mb-4">
@@ -771,7 +808,7 @@ export default function VideoStudioWorkspace({
                 key={ratio}
                 type="button"
                 onClick={() => onUpdateAspectRatio(ratio)}
-                className="flex-1 py-2.5 rounded-xl text-[13px] font-medium inline-flex items-center justify-center gap-1.5"
+                className="flex-1 py-2.5 rounded-xl text-[14px] font-medium inline-flex items-center justify-center gap-1.5"
                 style={{
                   background: selected ? PURPLE_SOFT : SURFACE,
                   border: `1px solid ${selected ? PURPLE_BORDER : LINE}`,
@@ -785,7 +822,7 @@ export default function VideoStudioWorkspace({
           })}
         </div>
 
-        <p className="text-[12px] mb-2" style={{ color: MUTED }}>
+        <p className="text-[13px] mb-2" style={{ color: MUTED }}>
           Voiceover language
         </p>
         <div className="flex flex-wrap gap-1.5 mb-2">
@@ -805,7 +842,7 @@ export default function VideoStudioWorkspace({
                     },
                   })
                 }
-                className="px-2.5 py-1.5 rounded-lg text-[12px] font-medium"
+                className="px-2.5 py-1.5 rounded-lg text-[13px] font-medium"
                 style={{
                   background: selected ? PURPLE_SOFT : SURFACE,
                   border: `1px solid ${selected ? PURPLE_BORDER : LINE}`,
@@ -817,14 +854,10 @@ export default function VideoStudioWorkspace({
             );
           })}
         </div>
-        <p className="text-[11px] mb-4 leading-relaxed" style={{ color: MUTED }}>
-          {usesGeminiTts(voiceover.language)
-            ? `${VOICEOVER_LANGUAGE_LABELS[(voiceover.language || 'tamil') as VoiceoverLanguage]} uses Gemini 3.8 Flash TTS — Seedance stays silent for speech.`
-            : 'English uses Seedance native voiceover audio.'}
-        </p>
+        <div className="mb-4" />
 
         <div className="flex items-center justify-between mb-2">
-          <p className="text-[12px]" style={{ color: MUTED }}>
+          <p className="text-[13px]" style={{ color: MUTED }}>
             CTA
           </p>
           <button
@@ -875,7 +908,7 @@ export default function VideoStudioWorkspace({
                         voiceover: { ...voiceover, cta: ctaOption, ctaEnabled: true },
                       })
                     }
-                    className="px-2.5 py-1.5 rounded-lg text-[12px] font-medium"
+                    className="px-2.5 py-1.5 rounded-lg text-[13px] font-medium"
                     style={{
                       background: selected ? PURPLE_SOFT : SURFACE,
                       border: `1px solid ${selected ? PURPLE_BORDER : LINE}`,
@@ -896,7 +929,7 @@ export default function VideoStudioWorkspace({
                 })
               }
               placeholder="Custom CTA…"
-              className="w-full px-3 py-2.5 rounded-xl text-[13px] outline-none"
+              className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none"
               style={{ background: SURFACE, border: `1px solid ${LINE}`, color: '#F4F4F7' }}
             />
           </>
@@ -908,6 +941,8 @@ export default function VideoStudioWorkspace({
         <EndCardFields
           value={adBuilderData.endCard}
           onChange={(endCard) => onAdBuilderChange({ ...adBuilderData, endCard })}
+          adBuilderData={adBuilderData}
+          brand={brand}
         />
       </section>
 
@@ -918,7 +953,7 @@ export default function VideoStudioWorkspace({
           className="w-full text-left py-2"
         >
           <div className="flex items-center justify-between">
-            <span className="text-[11px] tracking-[0.14em] uppercase" style={{ color: MUTED }}>
+            <span className="text-[12px] tracking-[0.14em] uppercase" style={{ color: MUTED }}>
               Creative concept
             </span>
             <ChevronDown
@@ -929,13 +964,13 @@ export default function VideoStudioWorkspace({
           </div>
           {showConcept && (
             <div className="mt-2">
-              <p className="text-[13px] font-medium" style={{ color: '#F4F4F7' }}>
+              <p className="text-[14px] font-medium" style={{ color: '#F4F4F7' }}>
                 {selectedConcept?.title || adSetup.creativeFormat}
               </p>
-              <p className="text-[12px] mt-1 leading-relaxed" style={{ color: MUTED }}>
+              <p className="text-[13px] mt-1 leading-relaxed" style={{ color: MUTED }}>
                 {selectedConcept?.oneLinePitch ||
                   adBuilderData.adAngle ||
-                  `${adSetup.hookType} · ${adSetup.campaignGoal}`}
+                  `${HOOK_LABELS[adSetup.hookType] ?? adSetup.hookType} · ${CAMPAIGN_GOAL_LABELS[adSetup.campaignGoal] ?? adSetup.campaignGoal}`}
               </p>
             </div>
           )}
@@ -965,6 +1000,574 @@ export default function VideoStudioWorkspace({
     </button>
   );
 
+  const player = (
+    <div
+      className="relative flex-1 min-h-[240px] rounded-xl overflow-hidden"
+      style={{ background: '#050507', border: `1px solid ${LINE}` }}
+    >
+      <div className="absolute inset-0 flex items-center justify-center">
+        <div
+          className="relative bg-black group/player"
+          style={{
+            aspectRatio: aspect,
+            width: isLandscape ? '100%' : undefined,
+            height: isLandscape ? undefined : '100%',
+            maxWidth: '100%',
+            maxHeight: '100%',
+          }}
+          onMouseEnter={() => revealControls(true)}
+          onMouseLeave={() => {
+            if (videoRef.current && !videoRef.current.paused) {
+              setControlsVisible(false);
+            } else {
+              setControlsVisible(true);
+            }
+          }}
+          onMouseMove={() => revealControls()}
+        >
+          {hasVideo && selectedVideo ? (
+            <video
+              ref={videoRef}
+              key={selectedVideo.id}
+              src={selectedVideo.url}
+              className="absolute inset-0 w-full h-full object-contain"
+              playsInline
+              crossOrigin="anonymous"
+              onPlay={() => {
+                setIsPlaying(true);
+                revealControls();
+              }}
+              onPause={() => {
+                setIsPlaying(false);
+                revealControls(true);
+              }}
+              onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime || 0)}
+              onLoadedMetadata={(e) => {
+                const d = e.currentTarget.duration;
+                setVideoDuration(Number.isFinite(d) ? d : selectedVideo.duration || durationSeconds);
+                setCurrentTime(e.currentTarget.currentTime || 0);
+              }}
+              onDurationChange={(e) => {
+                const d = e.currentTarget.duration;
+                if (Number.isFinite(d) && d > 0) setVideoDuration(d);
+              }}
+              onEnded={() => {
+                setIsPlaying(false);
+                revealControls(true);
+              }}
+              onClick={togglePlayback}
+            />
+          ) : product?.hero_image ? (
+            <img
+              src={product.hero_image}
+              alt=""
+              className="absolute inset-0 w-full h-full object-cover opacity-40"
+            />
+          ) : null}
+
+          {!hasVideo && !isBusy && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-6">
+              <div
+                className="w-14 h-14 rounded-full flex items-center justify-center mb-3"
+                style={{ background: 'rgba(255,255,255,0.06)', border: `1px solid ${LINE}` }}
+              >
+                <Play size={22} fill="white" className="ml-0.5" />
+              </div>
+              <p className="text-[14px] font-medium" style={{ color: '#F4F4F7' }}>
+                Preparing your commercial
+              </p>
+              <p className="text-[13px] mt-1 max-w-sm" style={{ color: MUTED }}>
+                Generation will appear here as soon as rendering starts.
+              </p>
+            </div>
+          )}
+
+          {hasVideo && !isBusy && (
+            <>
+              {/* Large center play when paused */}
+              {!isPlaying && (
+                <button
+                  type="button"
+                  onClick={togglePlayback}
+                  className="absolute inset-0 flex items-center justify-center z-[1]"
+                  aria-label="Play"
+                >
+                  <span
+                    className="w-16 h-16 rounded-full flex items-center justify-center"
+                    style={{
+                      background: 'rgba(0,0,0,0.45)',
+                      border: '1px solid rgba(255,255,255,0.16)',
+                    }}
+                  >
+                    <Play size={26} fill="white" className="ml-0.5" />
+                  </span>
+                </button>
+              )}
+
+              {/* Hover / focus control bar */}
+              <div
+                className={`absolute inset-x-0 bottom-0 z-[2] px-3 pb-3 pt-10 transition-opacity duration-200 ${
+                  controlsVisible || !isPlaying
+                    ? 'opacity-100'
+                    : 'opacity-0 pointer-events-none group-hover/player:opacity-100 group-hover/player:pointer-events-auto'
+                }`}
+                style={{
+                  background:
+                    'linear-gradient(180deg, transparent 0%, rgba(0,0,0,0.55) 45%, rgba(0,0,0,0.82) 100%)',
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <input
+                  type="range"
+                  min={0}
+                  max={Math.max(videoDuration || selectedVideo?.duration || durationSeconds, 0.1)}
+                  step={0.05}
+                  value={Math.min(currentTime, videoDuration || currentTime)}
+                  aria-label="Seek"
+                  onChange={(e) => seekVideo(Number(e.target.value))}
+                  className="w-full h-1.5 mb-2.5 appearance-none rounded-full cursor-pointer accent-[#A855F7]"
+                  style={{
+                    background: `linear-gradient(to right, ${PURPLE} ${
+                      videoDuration > 0 ? (currentTime / videoDuration) * 100 : 0
+                    }%, rgba(255,255,255,0.22) 0%)`,
+                  }}
+                />
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={togglePlayback}
+                    className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                    style={{
+                      background: 'rgba(255,255,255,0.08)',
+                      border: '1px solid rgba(255,255,255,0.12)',
+                      color: '#F4F4F7',
+                    }}
+                    aria-label={isPlaying ? 'Pause' : 'Play'}
+                  >
+                    {isPlaying ? (
+                      <Pause size={14} fill="currentColor" />
+                    ) : (
+                      <Play size={14} fill="currentColor" className="ml-0.5" />
+                    )}
+                  </button>
+                  <span
+                    className="text-[12px] tabular-nums font-medium min-w-[72px]"
+                    style={{ color: 'rgba(244,244,247,0.88)' }}
+                  >
+                    {formatVideoTime(currentTime)} /{' '}
+                    {formatVideoTime(
+                      videoDuration || selectedVideo?.duration || durationSeconds
+                    )}
+                  </span>
+                </div>
+              </div>
+            </>
+          )}
+
+          {isBusy && (
+            <div
+              className="absolute inset-0 flex flex-col items-center justify-center px-8 z-[3]"
+              style={{ background: 'rgba(5,5,7,0.72)' }}
+            >
+              <div className="w-10 h-10 rounded-full border-2 border-white/20 border-t-white animate-spin mb-4" />
+              <p className="text-[14px] font-medium" style={{ color: '#F4F4F7' }}>
+                {productionStatus === 'regenerating'
+                  ? 'Improving your commercial'
+                  : 'Creating your commercial'}
+              </p>
+              <ul className="mt-4 space-y-1.5 text-left w-64" aria-live="polite">
+                {generationSteps.map(({ label }, i) => {
+                  const done = i < cappedStep;
+                  const active = i === cappedStep;
+                  return (
+                    <li
+                      key={label}
+                      className="text-[13px] flex items-center gap-2"
+                      style={{
+                        color: done || active ? '#F4F4F7' : MUTED,
+                      }}
+                    >
+                      <span className="w-4 text-center" aria-hidden>
+                        {done ? '✓' : active ? '●' : '○'}
+                      </span>
+                      {label}
+                    </li>
+                  );
+                })}
+              </ul>
+              <p className="text-[12px] mt-4" style={{ color: MUTED }}>
+                {minutesLeft > 1
+                  ? `About ${minutesLeft} minutes left.`
+                  : 'Almost done…'}{' '}
+                Please keep this page open.
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
+  const regenModal = showRegenConfirm ? (
+    <div
+      className="fixed inset-0 z-40 flex items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,0.55)' }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) setShowRegenConfirm(false);
+      }}
+    >
+      <div
+        className="max-w-md w-full rounded-xl p-5"
+        style={{ background: RAIL_BG, border: `1px solid ${LINE}` }}
+        role="dialog"
+        aria-labelledby="regen-title"
+      >
+        <h3 id="regen-title" className="text-[15px] font-medium" style={{ color: '#F4F4F7' }}>
+          Regenerate commercial
+        </h3>
+        <p className="text-[13px] mt-2" style={{ color: MUTED }}>
+          Duration stays {durationSeconds}s — one continuous generation.
+        </p>
+        {(pendingRegeneration?.preservedRequirements?.length ||
+          selectedVideo?.qcSummary?.preservedRequirements?.length) && (
+          <div className="mt-3">
+            <p className="text-[13px] font-medium" style={{ color: '#E8E8EE' }}>
+              We&apos;ll preserve
+            </p>
+            <ul className="mt-1 text-[13px] space-y-0.5" style={{ color: MUTED }}>
+              {(
+                pendingRegeneration?.preservedRequirements ||
+                selectedVideo?.qcSummary?.preservedRequirements ||
+                []
+              )
+                .slice(0, 5)
+                .map((item) => (
+                  <li key={item}>• {item}</li>
+                ))}
+            </ul>
+          </div>
+        )}
+        {(pendingRegeneration?.requiredChanges?.length ||
+          selectedVideo?.qcSummary?.requiredChanges?.length) && (
+          <div className="mt-3">
+            <p className="text-[13px] font-medium" style={{ color: '#E8E8EE' }}>
+              We&apos;ll improve
+            </p>
+            <ul className="mt-1 text-[13px] space-y-0.5" style={{ color: MUTED }}>
+              {(
+                pendingRegeneration?.requiredChanges ||
+                selectedVideo?.qcSummary?.requiredChanges ||
+                []
+              )
+                .slice(0, 4)
+                .map((item) => (
+                  <li key={item}>• {item}</li>
+                ))}
+            </ul>
+          </div>
+        )}
+        <div className="flex gap-2 mt-4">
+          <button
+            type="button"
+            onClick={() => setShowRegenConfirm(false)}
+            className="flex-1 py-2 rounded-lg text-[14px]"
+            style={{ background: SURFACE_2, border: `1px solid ${LINE}`, color: '#E8E8EE' }}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setShowRegenConfirm(false);
+              // The new version lands back on the result view.
+              setShowEditor(false);
+              onConfirmRegenerate();
+            }}
+            className="flex-1 py-2 rounded-lg text-[14px] font-medium"
+            style={{ background: PURPLE, color: 'white' }}
+          >
+            Regenerate Commercial
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : null;
+
+  const needsReview = qcDecision === 'manual_review' || productionStatus === 'manual_review';
+  const suggestsRetry = qcDecision === 'regenerate' || Boolean(pendingRegeneration);
+  const languageLabel =
+    VOICEOVER_LANGUAGE_LABELS[(voiceover.language || 'english') as VoiceoverLanguage] ?? 'English';
+  const versionIndex = Math.max(0, generatedVideos.findIndex((v) => v.id === selectedVideo?.id));
+
+  const resultPanel = selectedVideo ? (
+    <div className="space-y-6">
+      <div>
+        <div className="flex items-center gap-2.5">
+          <span
+            className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
+            style={
+              suggestsRetry
+                ? { background: 'rgba(251,191,36,0.14)', color: '#FBBF24' }
+                : { background: 'rgba(52,211,153,0.14)', color: '#34D399' }
+            }
+          >
+            {suggestsRetry ? <RefreshCw size={15} /> : <Check size={16} strokeWidth={2.5} />}
+          </span>
+          <h2 className="text-[20px] font-semibold tracking-[-0.01em]" style={{ color: '#F7F7FA' }}>
+            {suggestsRetry ? 'One more try may help' : 'Your ad is ready'}
+          </h2>
+        </div>
+        <p className="text-[13px] mt-2" style={{ color: MUTED }}>
+          {selectedVideo.duration || durationSeconds} seconds · {isLandscape ? 'Wide' : 'Tall'} ({aspectRatio}) ·{' '}
+          {languageLabel}
+          {generatedVideos.length > 1 ? ` · Version ${versionIndex + 1}` : ''}
+        </p>
+        {(suggestsRetry || needsReview) && (
+          <p
+            className="text-[13px] mt-3 leading-relaxed rounded-xl px-3.5 py-3"
+            style={{ background: SURFACE, border: `1px solid ${LINE}`, color: '#D4D4DC' }}
+          >
+            {suggestsRetry
+              ? selectedVideo.qcSummary?.reason ||
+                pendingRegeneration?.reason ||
+                'We spotted something a new version could fix.'
+              : 'Please watch it once. Keep it if you like it, or make a new version.'}
+          </p>
+        )}
+      </div>
+
+      <div className="space-y-2.5">
+        <button
+          type="button"
+          onClick={() => onDownload(selectedVideo)}
+          className="w-full inline-flex items-center justify-center gap-2 py-3.5 rounded-xl text-[15px] font-semibold transition-all hover:brightness-110"
+          style={{ background: PURPLE, color: 'white', boxShadow: '0 10px 28px rgba(168,85,247,0.28)' }}
+        >
+          <Download size={17} />
+          Download video
+        </button>
+        {needsReview && (
+          <button
+            type="button"
+            onClick={onKeepVersion}
+            className="w-full inline-flex items-center justify-center gap-2 py-3 rounded-xl text-[14px] font-medium"
+            style={{ background: SURFACE_2, border: `1px solid ${LINE}`, color: '#F4F4F7' }}
+          >
+            <Check size={16} />
+            Keep this version
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={() => setFeedPreview(true)}
+          className="w-full inline-flex items-center justify-center gap-2 py-3 rounded-xl text-[14px] font-medium hover:brightness-110"
+          style={{ background: SURFACE, border: `1px solid ${LINE}`, color: '#E8E8EE' }}
+        >
+          <Smartphone size={16} />
+          See it on Instagram
+        </button>
+      </div>
+
+      <div className="pt-5" style={{ borderTop: `1px solid ${LINE}` }}>
+        <p className="text-[14px] font-medium mb-3" style={{ color: '#F4F4F7' }}>
+          Not quite right?
+        </p>
+        <div className="space-y-2">
+          <button
+            type="button"
+            onClick={() => setShowEditor(true)}
+            className="w-full flex items-center gap-3 text-left px-3.5 py-3 rounded-xl hover:brightness-110"
+            style={{ background: SURFACE, border: `1px solid ${LINE}` }}
+          >
+            <Pencil size={16} style={{ color: '#C4B5FD' }} className="flex-shrink-0" />
+            <span className="min-w-0">
+              <span className="block text-[14px] font-medium" style={{ color: '#F4F4F7' }}>
+                Change and remake
+              </span>
+              <span className="block text-[12px]" style={{ color: MUTED }}>
+                Edit the idea, style, language or offer
+              </span>
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowRegenConfirm(true)}
+            disabled={hasInsufficientCredits}
+            className="w-full flex items-center gap-3 text-left px-3.5 py-3 rounded-xl hover:brightness-110 disabled:opacity-45 disabled:cursor-not-allowed"
+            style={
+              suggestsRetry
+                ? { background: PURPLE_SOFT, border: `1px solid ${PURPLE_BORDER}` }
+                : { background: SURFACE, border: `1px solid ${LINE}` }
+            }
+          >
+            <RefreshCw size={16} style={{ color: '#C4B5FD' }} className="flex-shrink-0" />
+            <span className="min-w-0">
+              <span className="block text-[14px] font-medium" style={{ color: '#F4F4F7' }}>
+                Make a new version
+              </span>
+              <span className="block text-[12px]" style={{ color: MUTED }}>
+                Same settings, fresh take · {durationSeconds * VIDEO_CREDITS_PER_SECOND} credits
+              </span>
+            </span>
+          </button>
+        </div>
+        {hasInsufficientCredits && (
+          <div className="mt-3">
+            <InsufficientCreditsAlert type="video" />
+          </div>
+        )}
+      </div>
+
+      {generatedVideos.length > 1 && (
+        <div className="pt-5" style={{ borderTop: `1px solid ${LINE}` }}>
+          <p className="text-[14px] font-medium mb-3" style={{ color: '#F4F4F7' }}>
+            Your versions
+          </p>
+          <div className="flex gap-2.5 overflow-x-auto pb-1">
+            {generatedVideos.map((video, index) => {
+              const selected = video.id === selectedVideo.id;
+              return (
+                <button
+                  key={video.id}
+                  type="button"
+                  onClick={() => onSelectVideo(video.id)}
+                  className="flex-shrink-0 text-center"
+                  aria-label={`Version ${index + 1}`}
+                  aria-pressed={selected}
+                >
+                  <span
+                    className="block rounded-lg overflow-hidden bg-black"
+                    style={{
+                      width: isLandscape ? 96 : 56,
+                      aspectRatio: aspect,
+                      border: selected ? `2px solid ${PURPLE}` : `1px solid ${LINE}`,
+                    }}
+                  >
+                    {video.url && (
+                      <video
+                        src={`${video.url}#t=1`}
+                        muted
+                        playsInline
+                        preload="metadata"
+                        className="w-full h-full object-cover pointer-events-none"
+                      />
+                    )}
+                  </span>
+                  <span
+                    className="block text-[11px] mt-1"
+                    style={{ color: selected ? '#F4F4F7' : MUTED }}
+                  >
+                    Version {index + 1}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {creativePlan && (
+        <div className="pt-5" style={{ borderTop: `1px solid ${LINE}` }}>
+          <button
+            type="button"
+            onClick={() => setShowCreativePlan((v) => !v)}
+            aria-expanded={showCreativePlan}
+            className="w-full flex items-center justify-between text-left"
+          >
+            <span className="text-[14px] font-medium" style={{ color: '#F4F4F7' }}>
+              What happens in this ad
+            </span>
+            <ChevronDown
+              size={16}
+              className="transition-transform"
+              style={{ color: MUTED, transform: showCreativePlan ? 'rotate(180deg)' : undefined }}
+            />
+          </button>
+          {!showCreativePlan && creativePlan.conceptTitle && (
+            <p className="text-[13px] mt-1" style={{ color: MUTED }}>
+              {creativePlan.conceptTitle}
+            </p>
+          )}
+          {showCreativePlan && (
+            <div className="mt-3 space-y-3">
+              <div>
+                <p className="text-[14px] font-medium" style={{ color: '#E9D5FF' }}>
+                  {creativePlan.conceptTitle}
+                </p>
+                {creativePlan.conceptPitch && (
+                  <p className="text-[13px] mt-1 leading-relaxed" style={{ color: '#C8C8D2' }}>
+                    {creativePlan.conceptPitch}
+                  </p>
+                )}
+              </div>
+              {creativePlan.storyBeats?.length > 0 && (
+                <ol className="space-y-2.5">
+                  {creativePlan.storyBeats.map((beat, i) => (
+                    <li key={beat.index} className="flex gap-3">
+                      <span
+                        className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-semibold flex-shrink-0"
+                        style={{ background: SURFACE_2, color: '#D4D4DC' }}
+                      >
+                        {i + 1}
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block text-[13px] font-medium" style={{ color: '#E8E8EE' }}>
+                          {beat.label}
+                        </span>
+                        {beat.intent && (
+                          <span className="block text-[12px] leading-relaxed line-clamp-2" style={{ color: MUTED }}>
+                            {beat.intent}
+                          </span>
+                        )}
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {selectedVideo.qcSummary?.categories && (
+        <div className="pt-5" style={{ borderTop: `1px solid ${LINE}` }}>
+          <button
+            type="button"
+            onClick={() => setShowQcDetails((v) => !v)}
+            aria-expanded={showQcDetails}
+            className="w-full flex items-center justify-between text-left text-[12px]"
+            style={{ color: MUTED }}
+          >
+            <span>
+              {selectedVideo.qcSummary.visualAvailable ? 'Quality checked' : 'Technical checks passed'}
+            </span>
+            <ChevronDown
+              size={14}
+              className="transition-transform"
+              style={{ transform: showQcDetails ? 'rotate(180deg)' : undefined }}
+            />
+          </button>
+          {showQcDetails && (
+            <ul className="mt-3 grid grid-cols-2 gap-2 text-[12px]">
+              {Object.entries(selectedVideo.qcSummary.categories).map(([key, status]) => (
+                <li
+                  key={key}
+                  className="flex justify-between gap-2 px-2 py-1.5 rounded-md"
+                  style={{ background: SURFACE_2 }}
+                >
+                  <span style={{ color: MUTED, textTransform: 'capitalize' }}>
+                    {key === 'artifacts' ? 'Visual artifacts' : key}
+                  </span>
+                  <span style={{ color: '#E8E8EE' }}>{String(status).replace(/_/g, ' ')}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  ) : null;
+
   return (
     <div
       className="flex-1 flex flex-col min-w-0 h-full overflow-hidden"
@@ -988,50 +1591,32 @@ export default function VideoStudioWorkspace({
         />
       )}
       <div
-        className="flex-shrink-0 px-4 h-11 flex items-center justify-between"
+        className="flex-shrink-0 px-4 md:px-5 py-2.5 flex items-center justify-between gap-3"
         style={{ borderBottom: `1px solid ${LINE}`, background: RAIL_BG }}
       >
         <div className="flex items-center gap-3 min-w-0">
           <button
             type="button"
             onClick={() => router.push('/brand-studio')}
-            className="inline-flex items-center gap-1.5 text-[13px] transition-colors hover:opacity-90"
-            style={{ color: MUTED }}
+            aria-label="Back to Brand Studio"
+            title="Back to Brand Studio"
+            className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors hover:bg-white/5"
+            style={{ color: '#D4D4DC', border: `1px solid ${LINE}` }}
           >
-            <ArrowLeft size={14} />
-            Back to Brand Studio
+            <ArrowLeft size={16} />
           </button>
-          <span className="text-[11px] tracking-[0.16em] uppercase font-medium" style={{ color: '#C4C4CE' }}>
-            Studio
-          </span>
-        </div>
-        <div className="text-[11px]" style={{ color: MUTED }}>
-          {isSaving ? 'Saving…' : isBusy ? 'Working…' : 'Ready'}
-        </div>
-      </div>
-
-      <div
-        className="flex-shrink-0 px-5 py-3 flex items-center justify-between gap-4 flex-wrap"
-        style={{ borderBottom: `1px solid ${LINE}` }}
-      >
-        <div className="min-w-0">
-          <h1 className="text-[15px] font-medium truncate" style={{ color: '#F4F4F7' }} title={title}>
-            {sessionName || title}
-          </h1>
-          {product?.brand_name && (
-            <p className="text-[11px] mt-0.5 truncate" style={{ color: MUTED }}>
-              {product.brand_name}
-              {product.category ? ` · ${product.category}` : ''}
+          <div className="min-w-0">
+            <h1 className="text-[15px] font-medium truncate" style={{ color: '#F4F4F7' }} title={title}>
+              {sessionName || title}
+            </h1>
+            <p className="text-[13px] truncate" style={{ color: MUTED }}>
+              {[product?.brand_name || brand?.name, isSaving ? 'Saving…' : isBusy ? 'Working…' : null]
+                .filter(Boolean)
+                .join(' · ') || 'Video ad'}
             </p>
-          )}
+          </div>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
-          {showStage && (
-            <>
-              <MetaChip>{durationSeconds}s</MetaChip>
-              <MetaChip>{aspectRatio}</MetaChip>
-            </>
-          )}
           {videoCredits !== null && (
             <MetaChip accent>
               {videoCredits.total} credit{videoCredits.total === 1 ? '' : 's'}
@@ -1039,15 +1624,9 @@ export default function VideoStudioWorkspace({
           )}
           <GhostButton onClick={onSaveDraft} disabled={!product}>
             <Save size={13} />
-            Save Draft
+            <span className="hidden sm:inline">Save draft</span>
           </GhostButton>
-          {showStage && (
-            <GhostButton onClick={() => selectedVideo && onDownload(selectedVideo)} disabled={!selectedVideo}>
-              <Download size={13} />
-              Download
-            </GhostButton>
-          )}
-          {showStage && generateButton}
+          {showStage && !isResultView && generateButton}
         </div>
       </div>
 
@@ -1078,7 +1657,7 @@ export default function VideoStudioWorkspace({
               <header className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
                 <div className="min-w-0 max-w-2xl">
                   <p
-                    className="text-[11px] tracking-[0.2em] uppercase mb-2"
+                    className="text-[12px] tracking-[0.2em] uppercase mb-2"
                     style={{ color: '#A78BFA' }}
                   >
                     Commercial brief
@@ -1108,7 +1687,7 @@ export default function VideoStudioWorkspace({
                     <p className="text-[16px] font-medium" style={{ color: '#F4F4F7' }}>
                       Your product
                     </p>
-                    <p className="text-[13px] mt-1 leading-relaxed" style={{ color: MUTED }}>
+                    <p className="text-[14px] mt-1 leading-relaxed" style={{ color: MUTED }}>
                       Use a real photo so the ad keeps its true packaging and branding.
                     </p>
                   </div>
@@ -1132,7 +1711,7 @@ export default function VideoStudioWorkspace({
                               className="w-full bg-transparent text-[16px] font-medium outline-none"
                               style={{ color: '#F4F4F7' }}
                             />
-                            <p className="text-[12px] mt-0.5" style={{ color: MUTED }}>
+                            <p className="text-[13px] mt-0.5" style={{ color: MUTED }}>
                               {product.category || 'Product'}
                               {product.brand_name
                                 ? ` · ${product.brand_name}`
@@ -1144,7 +1723,7 @@ export default function VideoStudioWorkspace({
                           <button
                             type="button"
                             onClick={() => setShowReplaceProduct((open) => !open)}
-                            className="text-[13px] flex-shrink-0"
+                            className="text-[14px] flex-shrink-0"
                             style={{ color: '#A1A1AA' }}
                           >
                             {showReplaceProduct ? 'Cancel' : 'Change product'}
@@ -1214,7 +1793,7 @@ export default function VideoStudioWorkspace({
                   >
                     <div className="flex items-start justify-between gap-3 mb-4">
                       <div>
-                        <p className="text-[11px] tracking-[0.16em] uppercase" style={{ color: MUTED }}>
+                        <p className="text-[12px] tracking-[0.16em] uppercase" style={{ color: MUTED }}>
                           In your own words
                         </p>
                         <p className="text-[14px] mt-1" style={{ color: '#C8C8D2' }}>
@@ -1224,10 +1803,10 @@ export default function VideoStudioWorkspace({
                       <button
                         type="button"
                         onClick={() => setShowAdvanced((open) => !open)}
-                        className="text-[12px] inline-flex items-center gap-1 flex-shrink-0"
+                        className="text-[13px] inline-flex items-center gap-1 flex-shrink-0"
                         style={{ color: '#D0D0D8' }}
                       >
-                        Advanced
+                        More options
                         <ChevronDown
                           size={14}
                           className={`transition-transform ${showAdvanced ? 'rotate-180' : ''}`}
@@ -1245,6 +1824,15 @@ export default function VideoStudioWorkspace({
                       style={{ color: '#F0F0F5' }}
                     />
 
+                    <div className="mt-4">
+                      <WriteHelper
+                        data={adBuilderData}
+                        onChange={onAdBuilderChange}
+                        onRequestWrite={onRequestWrite}
+                        disabled={isBusy || !hasSubject}
+                      />
+                    </div>
+
                     <div className="mt-4 flex items-center justify-end gap-3">
                       <VoiceInputButton
                         language={voiceover.language}
@@ -1255,11 +1843,11 @@ export default function VideoStudioWorkspace({
                           })
                         }
                       />
-                      {promptBeforeEnhance != null && !isEnhancingPrompt && (
+                      {canUndoEnhance && !isEnhancingPrompt && (
                         <button
                           type="button"
                           onClick={handleUndoEnhance}
-                          className="text-[13px] px-2 py-1.5 rounded-lg"
+                          className="text-[14px] px-2 py-1.5 rounded-lg"
                           style={{ color: '#C8C8D2' }}
                         >
                           Undo
@@ -1269,7 +1857,7 @@ export default function VideoStudioWorkspace({
                         type="button"
                         onClick={handleEnhancePrompt}
                         disabled={isEnhancingPrompt || isBusy || !(adBuilderData.userDescription || '').trim()}
-                        className="inline-flex items-center gap-1.5 text-[13px] px-3 py-1.5 rounded-lg transition-opacity disabled:opacity-40"
+                        className="inline-flex items-center gap-1.5 text-[14px] px-3 py-1.5 rounded-lg transition-opacity disabled:opacity-40"
                         style={{
                           color: '#E8E0FF',
                           background: 'rgba(168, 85, 247, 0.12)',
@@ -1295,9 +1883,10 @@ export default function VideoStudioWorkspace({
                         className="mt-5 pt-5 space-y-4"
                         style={{ borderTop: `1px solid ${LINE}` }}
                       >
-                        <FieldLabel>Campaign goal</FieldLabel>
+                        <FieldLabel>Main goal of this ad</FieldLabel>
                         <ChipGrid
                           items={[...CAMPAIGN_GOALS]}
+                          labels={CAMPAIGN_GOAL_LABELS}
                           value={adSetup.campaignGoal}
                           onChange={(goal) =>
                             onAdBuilderChange({
@@ -1309,23 +1898,18 @@ export default function VideoStudioWorkspace({
                             })
                           }
                         />
-                        <FieldLabel>Hook type</FieldLabel>
+                        <FieldLabel>How should the ad catch attention?</FieldLabel>
+                        <p className="text-[14px] -mt-2" style={{ color: MUTED }}>
+                          {HOOK_DESCRIPTIONS[adSetup.hookType]}
+                        </p>
                         <ChipGrid
-                          items={HOOK_TYPES.map((hook) =>
-                            hook === 'Auto' ? 'Auto (Recommended)' : hook
-                          )}
-                          value={
-                            adSetup.hookType === 'Auto' ? 'Auto (Recommended)' : adSetup.hookType
-                          }
+                          items={[...HOOK_TYPES]}
+                          labels={HOOK_LABELS}
+                          value={adSetup.hookType}
                           onChange={(hook) =>
                             onAdBuilderChange({
                               ...adBuilderData,
-                              adSetup: {
-                                ...adSetup,
-                                hookType: (hook === 'Auto (Recommended)'
-                                  ? 'Auto'
-                                  : hook) as AdBuilderData['adSetup']['hookType'],
-                              },
+                              adSetup: { ...adSetup, hookType: hook as AdBuilderData['adSetup']['hookType'] },
                             })
                           }
                         />
@@ -1342,7 +1926,7 @@ export default function VideoStudioWorkspace({
                   >
                     <div className="flex-1 grid grid-cols-2 gap-4">
                       <div>
-                        <p className="text-[11px] tracking-[0.14em] uppercase mb-2" style={{ color: MUTED }}>
+                        <p className="text-[12px] tracking-[0.14em] uppercase mb-2" style={{ color: MUTED }}>
                           Duration
                         </p>
                         <div className="flex gap-2">
@@ -1358,7 +1942,7 @@ export default function VideoStudioWorkspace({
                                     adSetup: { ...adSetup, duration: dur },
                                   })
                                 }
-                                className="flex-1 py-2.5 rounded-xl text-[13px] font-medium"
+                                className="flex-1 py-2.5 rounded-xl text-[14px] font-medium"
                                 style={{
                                   background: selected ? PURPLE_SOFT : SURFACE,
                                   border: `1px solid ${selected ? PURPLE_BORDER : LINE}`,
@@ -1372,7 +1956,7 @@ export default function VideoStudioWorkspace({
                         </div>
                       </div>
                       <div>
-                        <p className="text-[11px] tracking-[0.14em] uppercase mb-2" style={{ color: MUTED }}>
+                        <p className="text-[12px] tracking-[0.14em] uppercase mb-2" style={{ color: MUTED }}>
                           Aspect ratio
                         </p>
                         <div className="flex gap-2">
@@ -1383,7 +1967,7 @@ export default function VideoStudioWorkspace({
                                 key={ratio}
                                 type="button"
                                 onClick={() => onUpdateAspectRatio(ratio)}
-                                className="flex-1 py-2.5 rounded-xl text-[13px] font-medium inline-flex items-center justify-center gap-1.5"
+                                className="flex-1 py-2.5 rounded-xl text-[14px] font-medium inline-flex items-center justify-center gap-1.5"
                                 style={{
                                   background: selected ? PURPLE_SOFT : SURFACE,
                                   border: `1px solid ${selected ? PURPLE_BORDER : LINE}`,
@@ -1398,7 +1982,7 @@ export default function VideoStudioWorkspace({
                         </div>
                       </div>
                       <div className="col-span-2">
-                        <p className="text-[11px] tracking-[0.14em] uppercase mb-2" style={{ color: MUTED }}>
+                        <p className="text-[12px] tracking-[0.14em] uppercase mb-2" style={{ color: MUTED }}>
                           Voiceover language
                         </p>
                         <div className="flex flex-wrap gap-1.5 mb-2">
@@ -1418,7 +2002,7 @@ export default function VideoStudioWorkspace({
                                     },
                                   })
                                 }
-                                className="px-2.5 py-1.5 rounded-lg text-[12px] font-medium"
+                                className="px-2.5 py-1.5 rounded-lg text-[13px] font-medium"
                                 style={{
                                   background: selected ? PURPLE_SOFT : SURFACE,
                                   border: `1px solid ${selected ? PURPLE_BORDER : LINE}`,
@@ -1430,13 +2014,9 @@ export default function VideoStudioWorkspace({
                             );
                           })}
                         </div>
-                        <p className="text-[11px] mb-3" style={{ color: MUTED }}>
-                          {usesGeminiTts(voiceover.language)
-                            ? 'Gemini 3.8 Flash TTS · Seedance silent for speech'
-                            : 'Seedance native English voiceover'}
-                        </p>
+                        <div className="mb-3" />
                         <div className="flex items-center justify-between mb-2">
-                          <p className="text-[11px] tracking-[0.14em] uppercase" style={{ color: MUTED }}>
+                          <p className="text-[12px] tracking-[0.14em] uppercase" style={{ color: MUTED }}>
                             CTA
                           </p>
                           <button
@@ -1492,7 +2072,7 @@ export default function VideoStudioWorkspace({
                                       },
                                     })
                                   }
-                                  className="px-2.5 py-1.5 rounded-lg text-[12px] font-medium"
+                                  className="px-2.5 py-1.5 rounded-lg text-[13px] font-medium"
                                   style={{
                                     background: selected ? PURPLE_SOFT : SURFACE,
                                     border: `1px solid ${selected ? PURPLE_BORDER : LINE}`,
@@ -1507,17 +2087,19 @@ export default function VideoStudioWorkspace({
                         )}
                       </div>
                       <div className="col-span-2">
-                        <p className="text-[11px] tracking-[0.14em] uppercase mb-2" style={{ color: MUTED }}>
+                        <p className="text-[12px] tracking-[0.14em] uppercase mb-2" style={{ color: MUTED }}>
                           End card
                         </p>
                         <EndCardFields
                           value={adBuilderData.endCard}
                           onChange={(endCard) => onAdBuilderChange({ ...adBuilderData, endCard })}
+                          adBuilderData={adBuilderData}
+                          brand={brand}
                         />
                       </div>
                     </div>
                     <div className="sm:pl-2 sm:border-l flex-shrink-0" style={{ borderColor: LINE }}>
-                      <p className="text-[12px] mb-2 hidden sm:block" style={{ color: MUTED }}>
+                      <p className="text-[13px] mb-2 hidden sm:block" style={{ color: MUTED }}>
                         {hasSubject ? 'Brief looks solid.' : 'Add a product first.'}
                       </p>
                       {generateButton}
@@ -1530,541 +2112,57 @@ export default function VideoStudioWorkspace({
             </div>
           </div>
         </div>
+      ) : isResultView && selectedVideo ? (
+        <div className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden">
+          <div className="flex-1 min-w-0 min-h-[480px] lg:min-h-0 p-4 md:p-6 flex flex-col">
+            {player}
+          </div>
+          <aside
+            className="w-full lg:w-[380px] flex-shrink-0 lg:overflow-y-auto px-5 py-6 md:px-6"
+            style={{ background: RAIL_BG, borderLeft: `1px solid ${LINE}` }}
+          >
+            {resultPanel}
+          </aside>
+          {regenModal}
+        </div>
       ) : (
         <div className="flex-1 flex min-h-0">
           <aside
             className="w-[340px] flex-shrink-0 flex flex-col min-h-0"
             style={{ background: RAIL_BG, borderRight: `1px solid ${LINE}` }}
           >
+            {hasVideo && !isBusy && (
+              <div
+                className="flex-shrink-0 px-4 py-3 flex items-center justify-between gap-2"
+                style={{ borderBottom: `1px solid ${LINE}` }}
+              >
+                <div className="min-w-0">
+                  <p className="text-[14px] font-medium" style={{ color: '#F4F4F7' }}>
+                    Change your ad
+                  </p>
+                  <p className="text-[12px]" style={{ color: MUTED }}>
+                    Edit below, then press Regenerate.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowEditor(false)}
+                  aria-label="Back to your ad"
+                  title="Back to your ad"
+                  className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 hover:bg-white/5"
+                  style={{ color: '#D4D4DC', border: `1px solid ${LINE}` }}
+                >
+                  <X size={15} />
+                </button>
+              </div>
+            )}
             <div className="flex-1 overflow-y-auto px-4 py-4 space-y-5">{composer}</div>
           </aside>
 
           <div className="flex-1 flex flex-col min-w-0 min-h-0" style={{ background: STUDIO_BG }}>
             <div className="flex-1 min-h-0 px-5 pt-4 pb-3 flex flex-col">
-              <div className="flex items-start justify-between gap-4 mb-2 px-1">
-                <div className="min-w-0">
-                  <p className="text-[13px] font-medium truncate" style={{ color: '#F4F4F7' }}>
-                    {title}
-                  </p>
-                  <p className="text-[11px] mt-0.5" style={{ color: MUTED }}>
-                    {durationSeconds}s commercial · {aspectRatio}
-                    {versionLabel ? ` · ${versionLabel}` : ''} ·{' '}
-                    {isBusy
-                      ? productionStatus === 'regenerating'
-                        ? 'Regenerating'
-                        : 'Generating'
-                      : hasVideo
-                        ? 'Ready'
-                        : 'Directing'}
-                  </p>
-                </div>
-                {hasVideo && (
-                  <button
-                    type="button"
-                    onClick={() => setFeedPreview(true)}
-                    className="shrink-0 rounded-md px-2.5 py-1 text-[11px] font-medium"
-                    style={{ color: '#F4F4F7', border: '1px solid rgba(255,255,255,0.12)' }}
-                  >
-                    Preview in feed
-                  </button>
-                )}
-                {generatedVideos.length > 1 && (
-                  <div className="flex items-center gap-1.5 text-[11px]" style={{ color: MUTED }}>
-                    {generatedVideos.map((video, index) => (
-                      <button
-                        key={video.id}
-                        type="button"
-                        onClick={() => onSelectVideo(video.id)}
-                        className="w-2 h-2 rounded-full"
-                        style={{
-                          background: video.id === selectedVideo?.id ? PURPLE : 'rgba(255,255,255,0.22)',
-                        }}
-                        aria-label={`Version ${video.generationVersion || index + 1}`}
-                      />
-                    ))}
-                    <span>
-                      {versionLabel || `v${Math.max(1, generatedVideos.findIndex((video) => video.id === selectedVideo?.id) + 1)}`}
-                      {selectedVideo?.id === generatedVideos[generatedVideos.length - 1]?.id
-                        ? ' · Current'
-                        : ''}
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              <div
-                className="relative flex-1 min-h-[240px] rounded-xl overflow-hidden"
-                style={{ background: '#050507', border: `1px solid ${LINE}` }}
-              >
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div
-                    className="relative bg-black group/player"
-                    style={{
-                      aspectRatio: aspect,
-                      width: isLandscape ? '100%' : undefined,
-                      height: isLandscape ? undefined : '100%',
-                      maxWidth: '100%',
-                      maxHeight: '100%',
-                    }}
-                    onMouseEnter={() => revealControls(true)}
-                    onMouseLeave={() => {
-                      if (videoRef.current && !videoRef.current.paused) {
-                        setControlsVisible(false);
-                      } else {
-                        setControlsVisible(true);
-                      }
-                    }}
-                    onMouseMove={() => revealControls()}
-                  >
-                    {hasVideo && selectedVideo ? (
-                      <video
-                        ref={videoRef}
-                        key={selectedVideo.id}
-                        src={selectedVideo.url}
-                        className="absolute inset-0 w-full h-full object-contain"
-                        playsInline
-                        crossOrigin="anonymous"
-                        onPlay={() => {
-                          setIsPlaying(true);
-                          revealControls();
-                        }}
-                        onPause={() => {
-                          setIsPlaying(false);
-                          revealControls(true);
-                        }}
-                        onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime || 0)}
-                        onLoadedMetadata={(e) => {
-                          const d = e.currentTarget.duration;
-                          setVideoDuration(Number.isFinite(d) ? d : selectedVideo.duration || durationSeconds);
-                          setCurrentTime(e.currentTarget.currentTime || 0);
-                        }}
-                        onDurationChange={(e) => {
-                          const d = e.currentTarget.duration;
-                          if (Number.isFinite(d) && d > 0) setVideoDuration(d);
-                        }}
-                        onEnded={() => {
-                          setIsPlaying(false);
-                          revealControls(true);
-                        }}
-                        onClick={togglePlayback}
-                      />
-                    ) : product?.hero_image ? (
-                      <img
-                        src={product.hero_image}
-                        alt=""
-                        className="absolute inset-0 w-full h-full object-cover opacity-40"
-                      />
-                    ) : null}
-
-                    {!hasVideo && !isBusy && (
-                      <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-6">
-                        <div
-                          className="w-14 h-14 rounded-full flex items-center justify-center mb-3"
-                          style={{ background: 'rgba(255,255,255,0.06)', border: `1px solid ${LINE}` }}
-                        >
-                          <Play size={22} fill="white" className="ml-0.5" />
-                        </div>
-                        <p className="text-[14px] font-medium" style={{ color: '#F4F4F7' }}>
-                          Preparing your commercial
-                        </p>
-                        <p className="text-[12px] mt-1 max-w-sm" style={{ color: MUTED }}>
-                          Generation will appear here as soon as rendering starts.
-                        </p>
-                      </div>
-                    )}
-
-                    {hasVideo && !isBusy && (
-                      <>
-                        {/* Large center play when paused */}
-                        {!isPlaying && (
-                          <button
-                            type="button"
-                            onClick={togglePlayback}
-                            className="absolute inset-0 flex items-center justify-center z-[1]"
-                            aria-label="Play"
-                          >
-                            <span
-                              className="w-16 h-16 rounded-full flex items-center justify-center"
-                              style={{
-                                background: 'rgba(0,0,0,0.45)',
-                                border: '1px solid rgba(255,255,255,0.16)',
-                              }}
-                            >
-                              <Play size={26} fill="white" className="ml-0.5" />
-                            </span>
-                          </button>
-                        )}
-
-                        {/* Hover / focus control bar */}
-                        <div
-                          className={`absolute inset-x-0 bottom-0 z-[2] px-3 pb-3 pt-10 transition-opacity duration-200 ${
-                            controlsVisible || !isPlaying
-                              ? 'opacity-100'
-                              : 'opacity-0 pointer-events-none group-hover/player:opacity-100 group-hover/player:pointer-events-auto'
-                          }`}
-                          style={{
-                            background:
-                              'linear-gradient(180deg, transparent 0%, rgba(0,0,0,0.55) 45%, rgba(0,0,0,0.82) 100%)',
-                          }}
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <input
-                            type="range"
-                            min={0}
-                            max={Math.max(videoDuration || selectedVideo?.duration || durationSeconds, 0.1)}
-                            step={0.05}
-                            value={Math.min(currentTime, videoDuration || currentTime)}
-                            aria-label="Seek"
-                            onChange={(e) => seekVideo(Number(e.target.value))}
-                            className="w-full h-1.5 mb-2.5 appearance-none rounded-full cursor-pointer accent-[#A855F7]"
-                            style={{
-                              background: `linear-gradient(to right, ${PURPLE} ${
-                                videoDuration > 0 ? (currentTime / videoDuration) * 100 : 0
-                              }%, rgba(255,255,255,0.22) 0%)`,
-                            }}
-                          />
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={togglePlayback}
-                              className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
-                              style={{
-                                background: 'rgba(255,255,255,0.08)',
-                                border: '1px solid rgba(255,255,255,0.12)',
-                                color: '#F4F4F7',
-                              }}
-                              aria-label={isPlaying ? 'Pause' : 'Play'}
-                            >
-                              {isPlaying ? (
-                                <Pause size={14} fill="currentColor" />
-                              ) : (
-                                <Play size={14} fill="currentColor" className="ml-0.5" />
-                              )}
-                            </button>
-                            <span
-                              className="text-[11px] tabular-nums font-medium min-w-[72px]"
-                              style={{ color: 'rgba(244,244,247,0.88)' }}
-                            >
-                              {formatVideoTime(currentTime)} /{' '}
-                              {formatVideoTime(
-                                videoDuration || selectedVideo?.duration || durationSeconds
-                              )}
-                            </span>
-                            <div className="flex-1" />
-                            <button
-                              type="button"
-                              onClick={() => selectedVideo && onDownload(selectedVideo)}
-                              className="h-8 px-2.5 rounded-lg inline-flex items-center gap-1.5 text-[11px] font-medium shrink-0"
-                              style={{
-                                background: 'rgba(255,255,255,0.08)',
-                                border: '1px solid rgba(255,255,255,0.12)',
-                                color: '#F4F4F7',
-                              }}
-                              aria-label="Download video"
-                            >
-                              <Download size={13} />
-                              Download
-                            </button>
-                          </div>
-                        </div>
-                      </>
-                    )}
-
-                    {isBusy && (
-                      <div
-                        className="absolute inset-0 flex flex-col items-center justify-center px-8 z-[3]"
-                        style={{ background: 'rgba(5,5,7,0.72)' }}
-                      >
-                        <div className="w-10 h-10 rounded-full border-2 border-white/20 border-t-white animate-spin mb-4" />
-                        <p className="text-[14px] font-medium" style={{ color: '#F4F4F7' }}>
-                          {productionStatus === 'regenerating'
-                            ? 'Improving your commercial'
-                            : 'Creating your commercial'}
-                        </p>
-                        <ul className="mt-4 space-y-1.5 text-left w-64" aria-live="polite">
-                          {generationSteps.map((label, i) => {
-                            const done = i < cappedStep;
-                            const active = i === cappedStep;
-                            return (
-                              <li
-                                key={label}
-                                className="text-[12px] flex items-center gap-2"
-                                style={{
-                                  color: done || active ? '#F4F4F7' : MUTED,
-                                }}
-                              >
-                                <span className="w-4 text-center" aria-hidden>
-                                  {done ? '✓' : active ? '●' : '○'}
-                                </span>
-                                {label}
-                              </li>
-                            );
-                          })}
-                        </ul>
-                        <p className="text-[11px] mt-4" style={{ color: MUTED }}>
-                          Keep this tab open. One {durationSeconds}-second generation — usually a few
-                          minutes.
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {hasVideo && !isBusy && selectedVideo && (
-                <div className="mt-3 px-1 space-y-3">
-                  {/* QC status */}
-                  <div
-                    className="rounded-xl px-4 py-3"
-                    style={{ background: SURFACE, border: `1px solid ${LINE}` }}
-                  >
-                    {qcDecision === 'accept' || (!qcDecision && hasVideo) ? (
-                      <>
-                        <p className="text-[13px] font-medium" style={{ color: '#F4F4F7' }}>
-                          Commercial ready
-                        </p>
-                        <p className="text-[12px] mt-1" style={{ color: MUTED }}>
-                          Your {selectedVideo.duration || durationSeconds}s commercial
-                          {selectedVideo.qcSummary?.visualAvailable
-                            ? ' passed quality checks'
-                            : ' passed technical checks'}
-                          .
-                        </p>
-                      </>
-                    ) : qcDecision === 'manual_review' || productionStatus === 'manual_review' ? (
-                      <>
-                        <p className="text-[13px] font-medium" style={{ color: '#F4F4F7' }}>
-                          Commercial ready
-                        </p>
-                        <p className="text-[12px] mt-1" style={{ color: MUTED }}>
-                          Not quite right? Regenerate or edit this version.
-                        </p>
-                      </>
-                    ) : (
-                      <>
-                        <p className="text-[13px] font-medium" style={{ color: '#F4F4F7' }}>
-                          Improvement suggested
-                        </p>
-                        <p className="text-[12px] mt-1" style={{ color: MUTED }}>
-                          {selectedVideo.qcSummary?.reason ||
-                            pendingRegeneration?.reason ||
-                            'We found an issue worth regenerating.'}
-                        </p>
-                      </>
-                    )}
-
-                    <div className="flex flex-wrap gap-2 mt-3">
-                      {(qcDecision === 'regenerate' || pendingRegeneration) && (
-                        <button
-                          type="button"
-                          onClick={() => setShowRegenConfirm(true)}
-                          className="px-3 py-1.5 rounded-lg text-[12px] font-medium"
-                          style={{ background: PURPLE, color: 'white' }}
-                        >
-                          Regenerate
-                        </button>
-                      )}
-                      {(qcDecision === 'manual_review' || productionStatus === 'manual_review') && (
-                        <>
-                          <button
-                            type="button"
-                            onClick={onKeepVersion}
-                            className="px-3 py-1.5 rounded-lg text-[12px] font-medium"
-                            style={{ background: PURPLE, color: 'white' }}
-                          >
-                            Keep this version
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setShowRegenConfirm(true)}
-                            className="px-3 py-1.5 rounded-lg text-[12px]"
-                            style={{ background: SURFACE_2, border: `1px solid ${LINE}`, color: '#E8E8EE' }}
-                          >
-                            Regenerate
-                          </button>
-                        </>
-                      )}
-                      {(qcDecision === 'accept' || !qcDecision) && (
-                        <button
-                          type="button"
-                          onClick={() => setShowRegenConfirm(true)}
-                          className="px-3 py-1.5 rounded-lg text-[12px]"
-                          style={{ background: SURFACE_2, border: `1px solid ${LINE}`, color: '#E8E8EE' }}
-                        >
-                          Regenerate
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => setShowQcDetails((v) => !v)}
-                        className="px-3 py-1.5 rounded-lg text-[12px]"
-                        style={{ color: MUTED }}
-                      >
-                        {showQcDetails ? 'Hide QC details' : 'View QC details'}
-                      </button>
-                    </div>
-
-                    {showQcDetails && selectedVideo.qcSummary?.categories && (
-                      <ul className="mt-3 grid grid-cols-2 gap-2 text-[12px]">
-                        {Object.entries(selectedVideo.qcSummary.categories).map(([key, status]) => (
-                          <li
-                            key={key}
-                            className="flex justify-between gap-2 px-2 py-1.5 rounded-md"
-                            style={{ background: SURFACE_2 }}
-                          >
-                            <span style={{ color: MUTED, textTransform: 'capitalize' }}>
-                              {key === 'artifacts' ? 'Visual artifacts' : key}
-                            </span>
-                            <span style={{ color: '#E8E8EE' }}>{String(status).replace(/_/g, ' ')}</span>
-                          </li>
-                        ))}
-                        <li className="col-span-2 text-[11px]" style={{ color: MUTED }}>
-                          {selectedVideo.qcSummary.visualAvailable
-                            ? 'Includes visual review of sampled frames.'
-                            : 'Technical checks only — visual review was not run.'}
-                        </li>
-                      </ul>
-                    )}
-                  </div>
-
-                  {/* Creative plan */}
-                  {creativePlan && (
-                    <div
-                      className="rounded-xl px-4 py-3"
-                      style={{ background: SURFACE, border: `1px solid ${LINE}` }}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => setShowCreativePlan((v) => !v)}
-                        className="w-full flex items-center justify-between text-left"
-                      >
-                        <span className="text-[11px] tracking-[0.16em] uppercase" style={{ color: MUTED }}>
-                          Creative plan
-                        </span>
-                        <ChevronDown
-                          size={14}
-                          style={{
-                            color: MUTED,
-                            transform: showCreativePlan ? 'rotate(180deg)' : undefined,
-                          }}
-                        />
-                      </button>
-                      {showCreativePlan && (
-                        <div className="mt-3 space-y-2">
-                          <p className="text-[13px] font-medium" style={{ color: '#F4F4F7' }}>
-                            {creativePlan.conceptTitle}
-                          </p>
-                          {creativePlan.conceptPitch && (
-                            <p className="text-[12px] leading-relaxed" style={{ color: MUTED }}>
-                              {creativePlan.conceptPitch}
-                            </p>
-                          )}
-                          {creativePlan.visualDirection && (
-                            <p className="text-[12px] leading-relaxed" style={{ color: '#D0D0D8' }}>
-                              {creativePlan.visualDirection}
-                            </p>
-                          )}
-                          {creativePlan.storyBeats?.length > 0 && (
-                            <ol className="mt-2 space-y-1">
-                              {creativePlan.storyBeats.map((beat) => (
-                                <li key={beat.index} className="text-[12px]" style={{ color: MUTED }}>
-                                  <span style={{ color: '#E8E8EE' }}>
-                                    {String(beat.index).padStart(2, '0')} {beat.label}
-                                  </span>
-                                  {beat.intent ? ` — ${beat.intent}` : ''}
-                                </li>
-                              ))}
-                            </ol>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {showRegenConfirm && (
-                <div
-                  className="fixed inset-0 z-40 flex items-center justify-center p-4"
-                  style={{ background: 'rgba(0,0,0,0.55)' }}
-                  onClick={(e) => {
-                    if (e.target === e.currentTarget) setShowRegenConfirm(false);
-                  }}
-                >
-                  <div
-                    className="max-w-md w-full rounded-xl p-5"
-                    style={{ background: RAIL_BG, border: `1px solid ${LINE}` }}
-                    role="dialog"
-                    aria-labelledby="regen-title"
-                  >
-                    <h3 id="regen-title" className="text-[15px] font-medium" style={{ color: '#F4F4F7' }}>
-                      Regenerate commercial
-                    </h3>
-                    <p className="text-[12px] mt-2" style={{ color: MUTED }}>
-                      Duration stays {durationSeconds}s — one continuous generation.
-                    </p>
-                    {(pendingRegeneration?.preservedRequirements?.length ||
-                      selectedVideo?.qcSummary?.preservedRequirements?.length) && (
-                      <div className="mt-3">
-                        <p className="text-[12px] font-medium" style={{ color: '#E8E8EE' }}>
-                          We&apos;ll preserve
-                        </p>
-                        <ul className="mt-1 text-[12px] space-y-0.5" style={{ color: MUTED }}>
-                          {(
-                            pendingRegeneration?.preservedRequirements ||
-                            selectedVideo?.qcSummary?.preservedRequirements ||
-                            []
-                          )
-                            .slice(0, 5)
-                            .map((item) => (
-                              <li key={item}>• {item}</li>
-                            ))}
-                        </ul>
-                      </div>
-                    )}
-                    {(pendingRegeneration?.requiredChanges?.length ||
-                      selectedVideo?.qcSummary?.requiredChanges?.length) && (
-                      <div className="mt-3">
-                        <p className="text-[12px] font-medium" style={{ color: '#E8E8EE' }}>
-                          We&apos;ll improve
-                        </p>
-                        <ul className="mt-1 text-[12px] space-y-0.5" style={{ color: MUTED }}>
-                          {(
-                            pendingRegeneration?.requiredChanges ||
-                            selectedVideo?.qcSummary?.requiredChanges ||
-                            []
-                          )
-                            .slice(0, 4)
-                            .map((item) => (
-                              <li key={item}>• {item}</li>
-                            ))}
-                        </ul>
-                      </div>
-                    )}
-                    <div className="flex gap-2 mt-4">
-                      <button
-                        type="button"
-                        onClick={() => setShowRegenConfirm(false)}
-                        className="flex-1 py-2 rounded-lg text-[13px]"
-                        style={{ background: SURFACE_2, border: `1px solid ${LINE}`, color: '#E8E8EE' }}
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowRegenConfirm(false);
-                          onConfirmRegenerate();
-                        }}
-                        className="flex-1 py-2 rounded-lg text-[13px] font-medium"
-                        style={{ background: PURPLE, color: 'white' }}
-                      >
-                        Regenerate Commercial
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
+              {player}
+              {regenModal}
             </div>
 
             {hasInsufficientCredits && (
@@ -2097,23 +2195,23 @@ function CatalogPanel({ catalog, onClose }: { catalog: CatalogControls; onClose:
   return (
     <div className="rounded-xl p-3 space-y-2" style={{ background: '#0A0A0E', border: `1px solid ${LINE}` }}>
       <div className="flex items-center justify-between">
-        <p className="text-[13px] font-medium" style={{ color: '#F4F4F7' }}>
+        <p className="text-[14px] font-medium" style={{ color: '#F4F4F7' }}>
           Your catalog{catalog.products?.length ? ` · ${catalog.products.length}` : ''}
         </p>
-        <button type="button" onClick={onClose} className="text-[12px]" style={{ color: MUTED }}>
+        <button type="button" onClick={onClose} className="text-[13px]" style={{ color: MUTED }}>
           Close
         </button>
       </div>
       {catalog.isScanning ? (
-        <p className="text-[13px] py-3" style={{ color: MUTED }}>
+        <p className="text-[14px] py-3" style={{ color: MUTED }}>
           Finding products on your website… this can take a minute.
         </p>
       ) : !catalog.hasWebsite ? (
-        <p className="text-[13px] py-3" style={{ color: MUTED }}>
+        <p className="text-[14px] py-3" style={{ color: MUTED }}>
           Add your website in Brand Kit to see your products here. For now, paste a product link or upload a photo.
         </p>
       ) : !items.length && !query ? (
-        <p className="text-[13px] py-3" style={{ color: MUTED }}>
+        <p className="text-[14px] py-3" style={{ color: MUTED }}>
           No products found on your website. Paste a product link or upload a photo instead.
         </p>
       ) : (
@@ -2128,7 +2226,8 @@ function CatalogPanel({ catalog, onClose }: { catalog: CatalogControls; onClose:
               style={{ background: SURFACE, border: `1px solid ${LINE}`, color: '#F4F4F7' }}
             />
           )}
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-[300px] overflow-y-auto pr-1">
+          {/* Medium thumbnails: about 6 per row in the full-width brief, 2 in the narrow sidebar. */}
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-2.5 max-h-[420px] overflow-y-auto pr-1">
             {items.map((item, idx) => (
               <button
                 key={`${item.product_name}-${idx}`}
@@ -2144,7 +2243,12 @@ function CatalogPanel({ catalog, onClose }: { catalog: CatalogControls; onClose:
                     <Film size={18} />
                   </div>
                 )}
-                <span className="block px-2 py-1.5 text-[12px] leading-snug line-clamp-2" style={{ color: '#E8E8EE' }}>
+                <span
+                  className="px-2 py-1.5 text-[14px] leading-snug"
+                  title={item.product_name}
+                  // Long scraped names: keep cards even at two lines.
+                  style={{ color: '#E8E8EE', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}
+                >
                   {item.product_name}
                 </span>
               </button>
@@ -2229,25 +2333,31 @@ function ProductSourcePicker({
 function EndCardFields({
   value,
   onChange,
+  adBuilderData,
+  brand,
 }: {
   value: EndCardConfig | undefined;
   onChange: (next: EndCardConfig) => void;
+  adBuilderData: AdBuilderData;
+  brand: BrandSnapshot | null;
 }) {
   const card = value ?? { enabled: true };
-  const input = (field: 'offer' | 'contact', placeholder: string) => (
+  const voiceover = adBuilderData.voiceover;
+  const voiceoverCta = voiceover?.ctaEnabled !== false ? voiceover?.cta?.trim() : undefined;
+  const input = (field: 'offer' | 'cta' | 'contact', placeholder: string) => (
     <input
       value={card[field] || ''}
       onChange={(e) => onChange({ ...card, [field]: e.target.value })}
       placeholder={placeholder}
       maxLength={60}
-      className="w-full px-3 py-2.5 rounded-xl text-[13px] outline-none"
+      className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none min-h-[44px]"
       style={{ background: SURFACE, border: `1px solid ${LINE}`, color: '#F4F4F7' }}
     />
   );
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between gap-3">
-        <p className="text-[12px]" style={{ color: '#D0D0D8' }}>
+        <p className="text-[14px]" style={{ color: '#E4E4EA' }}>
           Show logo, offer and contact in the last 3 seconds
         </p>
         <button
@@ -2256,34 +2366,116 @@ function EndCardFields({
           aria-checked={card.enabled}
           aria-label="Show end card"
           onClick={() => onChange({ ...card, enabled: !card.enabled })}
-          className="relative w-10 h-6 rounded-full transition-colors flex-shrink-0"
+          className="relative w-11 h-7 rounded-full transition-colors flex-shrink-0"
           style={{
             background: card.enabled ? PURPLE_SOFT : SURFACE_2,
             border: `1px solid ${card.enabled ? PURPLE_BORDER : LINE}`,
           }}
         >
           <span
-            className="absolute top-0.5 w-4 h-4 rounded-full transition-transform"
-            style={{ left: card.enabled ? 18 : 2, background: card.enabled ? PURPLE : MUTED }}
+            className="absolute top-0.5 w-5 h-5 rounded-full transition-transform"
+            style={{ left: card.enabled ? 20 : 2, background: card.enabled ? PURPLE : MUTED }}
           />
         </button>
       </div>
       {card.enabled && (
-        <>
-          {input('offer', 'Offer (optional) — e.g. Buy 2, get 1 free')}
-          {input('contact', 'Phone, WhatsApp or website (optional)')}
-          <p className="text-[11px]" style={{ color: MUTED }}>
-            Uses your CTA as the button. Write the end card in English letters — other scripts are skipped.
-          </p>
-        </>
+        <div className="flex gap-3 items-start">
+          <div className="flex-1 min-w-0 space-y-2">
+            {input('offer', 'Offer (optional) — e.g. Buy 2, get 1 free')}
+            {input('cta', voiceoverCta ? `Button text — e.g. ${voiceoverCta}` : 'Button text — e.g. Order now')}
+            {input('contact', 'Phone, WhatsApp or website (optional)')}
+            <p className="text-[13px] leading-relaxed" style={{ color: MUTED }}>
+              Type in English, Tamil, Hindi, Kannada or Malayalam. The picture shows how it will look.
+            </p>
+          </div>
+          <EndCardPreview
+            brandName={brand?.name || adBuilderData.product?.brand_name || ''}
+            logoUrl={brand?.logo || brand?.logoUrl || adBuilderData.product?.brand_logo || undefined}
+            accentColor={brand?.primaryColors?.[0]}
+            offer={card.offer}
+            cta={card.cta?.trim() || voiceoverCta}
+            contact={card.contact}
+            productImage={adBuilderData.product?.hero_image || adBuilderData.product?.product_images?.[0]}
+            aspectRatio={adBuilderData.adSetup?.aspect_ratio === '16:9' ? '16:9' : '9:16'}
+          />
+        </div>
       )}
+    </div>
+  );
+}
+
+/** Live end card drawn by the same renderer as the finished video, over the product photo. */
+function EndCardPreview({
+  brandName,
+  logoUrl,
+  accentColor,
+  offer,
+  cta,
+  contact,
+  productImage,
+  aspectRatio,
+}: {
+  brandName: string;
+  logoUrl?: string;
+  accentColor?: string;
+  offer?: string;
+  cta?: string;
+  contact?: string;
+  productImage?: string;
+  aspectRatio: '9:16' | '16:9';
+}) {
+  const [cardUrl, setCardUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    let objectUrl: string | null = null;
+    const timer = setTimeout(async () => {
+      try {
+        const response = await authFetch('/api/commercial/end-card-preview', {
+          method: 'POST',
+          body: JSON.stringify({ aspectRatio, brandName, logoUrl, accentColor, offer, cta, contact }),
+        });
+        if (!response.ok || cancelled) return;
+        objectUrl = URL.createObjectURL(await response.blob());
+        if (cancelled) {
+          URL.revokeObjectURL(objectUrl);
+          return;
+        }
+        setCardUrl(objectUrl);
+      } catch {
+        // Preview only — keep the last picture.
+      }
+    }, 450);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [aspectRatio, brandName, logoUrl, accentColor, offer, cta, contact]);
+
+  const landscape = aspectRatio === '16:9';
+  return (
+    <div
+      className="relative flex-shrink-0 overflow-hidden rounded-xl"
+      style={{
+        width: landscape ? 192 : 112,
+        aspectRatio: landscape ? '16 / 9' : '9 / 16',
+        background: SURFACE_2,
+        border: `1px solid ${LINE}`,
+      }}
+      aria-label="End card preview"
+    >
+      {productImage && (
+        <img src={productImage} alt="" className="absolute inset-0 w-full h-full object-cover" />
+      )}
+      {cardUrl && <img src={cardUrl} alt="End card preview" className="absolute inset-0 w-full h-full" />}
     </div>
   );
 }
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <p className="text-[11px] tracking-[0.16em] uppercase mb-2" style={{ color: MUTED }}>
+    <p className="text-[12px] tracking-[0.16em] uppercase mb-2" style={{ color: MUTED }}>
       {children}
     </p>
   );
@@ -2291,7 +2483,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 
 function FieldLabel({ children }: { children: React.ReactNode }) {
   return (
-    <p className="text-[12px] font-medium" style={{ color: '#D0D0D8' }}>
+    <p className="text-[14px] font-medium" style={{ color: '#E4E4EA' }}>
       {children}
     </p>
   );
@@ -2300,7 +2492,7 @@ function FieldLabel({ children }: { children: React.ReactNode }) {
 function MetaChip({ children, accent }: { children: React.ReactNode; accent?: boolean }) {
   return (
     <span
-      className="px-2 py-1 rounded-md text-[11px] font-medium"
+      className="px-2 py-1 rounded-md text-[12px] font-medium"
       style={{
         background: accent ? PURPLE_SOFT : SURFACE,
         border: `1px solid ${accent ? PURPLE_BORDER : LINE}`,
@@ -2326,7 +2518,7 @@ function GhostButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:brightness-110"
+      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[13px] font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:brightness-110"
       style={{ background: SURFACE, border: `1px solid ${LINE}`, color: '#E8E8EE' }}
     >
       {children}
@@ -2338,13 +2530,16 @@ function ChipGrid({
   items,
   value,
   onChange,
+  labels,
 }: {
   items: readonly string[] | string[];
   value: string;
   onChange: (value: string) => void;
+  /** Display text per value; values are what gets stored. */
+  labels?: Record<string, string>;
 }) {
   return (
-    <div className="flex flex-wrap gap-1.5">
+    <div className="flex flex-wrap gap-2">
       {items.map((item) => {
         const selected = value === item;
         return (
@@ -2352,14 +2547,15 @@ function ChipGrid({
             key={item}
             type="button"
             onClick={() => onChange(item)}
-            className="px-2.5 py-1.5 rounded-lg text-[12px] font-medium"
+            aria-pressed={selected}
+            className="px-3 py-2 rounded-lg text-[14px] font-medium min-h-[40px]"
             style={{
               background: selected ? PURPLE_SOFT : SURFACE,
               border: `1px solid ${selected ? PURPLE_BORDER : LINE}`,
-              color: selected ? '#F4F4F7' : MUTED,
+              color: selected ? '#F4F4F7' : '#C4C4CE',
             }}
           >
-            {item}
+            {labels?.[item] ?? item}
           </button>
         );
       })}

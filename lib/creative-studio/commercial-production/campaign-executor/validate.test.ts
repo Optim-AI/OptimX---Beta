@@ -282,10 +282,10 @@ async function main() {
       campaignId: "c1",
       product: { product_name: "Oorgaa Pickle" },
       adSetup: { duration: 15, aspect_ratio: "9:16", creativeFormat: "Motion Graphics" },
-      endCard: { enabled: true, offer: " Buy 2 get 1 ", contact: "" },
+      endCard: { enabled: true, offer: " Buy 2 get 1 ", cta: " இப்போவே வாங்குங்க ", contact: "" },
     });
     assert.equal(brief.creativeStyle, "motion_graphics");
-    assert.deepEqual(brief.endCard, { enabled: true, offer: "Buy 2 get 1", contact: undefined });
+    assert.deepEqual(brief.endCard, { enabled: true, offer: "Buy 2 get 1", cta: "இப்போவே வாங்குங்க", contact: undefined });
     const off = mapStudioFormToCampaignBrief({
       campaignId: "c2",
       product: { product_name: "X" },

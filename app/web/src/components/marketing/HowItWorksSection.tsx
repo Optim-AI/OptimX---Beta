@@ -52,7 +52,7 @@ export default function HowItWorksSection() {
       <div className="mx-auto grid max-w-6xl gap-12 px-4 py-20 sm:px-6 md:grid-cols-12 md:py-32">
         <div className="md:col-span-5">
           <div className="md:sticky md:top-32">
-            <SectionHeading id="how-title" index="02" eyebrow="How it works" title="Three simple steps." />
+            <SectionHeading id="how-title" index="03" eyebrow="How it works" title="Three simple steps." />
             <p aria-hidden className="mt-8 hidden font-display text-[7rem] font-bold leading-none tracking-[-0.06em] text-ink/[0.07] md:block">
               {active < 0 ? 1 : active + 1}/{STEPS.length}
             </p>

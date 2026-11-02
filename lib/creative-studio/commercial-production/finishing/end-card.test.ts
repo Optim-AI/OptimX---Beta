@@ -7,7 +7,7 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -18,7 +18,7 @@ import { FALLBACK_FONT_PATH, type LoadedFont } from "@/lib/creative-studio/poste
 import { probeMediaBuffer } from "../audio/mux-voiceover";
 import { makeValidBrief } from "../commercial-director/fixtures";
 import { endCardContentFromBrief } from "./attach-end-card";
-import { applyEndCard, fontCanDraw, renderEndCardPng, type EndCardFonts } from "./end-card";
+import { applyEndCard, fontCanDraw, renderEndCardPng, scriptFontFamily, type EndCardFonts } from "./end-card";
 
 const execFileAsync = promisify(execFile);
 
@@ -74,6 +74,49 @@ async function main() {
     // Top of the frame stays fully transparent (the video shows through).
     const { data } = await sharp(png).extract({ left: 0, top: 0, width: 720, height: 200 }).raw().toBuffer({ resolveWithObject: true });
     for (let i = 3; i < data.length; i += 4) assert.equal(data[i], 0);
+  });
+
+  // Pango + a Tamil font: use the macOS system font when present (no network).
+  const tamilFont = "/System/Library/Fonts/Supplemental/Tamil Sangam MN.ttc";
+  if (existsSync(tamilFont)) {
+    await test("Tamil lines are shaped with a script font instead of skipped", async () => {
+      const asked: string[] = [];
+      const { png, drawn, skipped } = await renderEndCardPng({
+        width: 720,
+        height: 1280,
+        fonts: {
+          ...fonts,
+          scriptFontFile: async (family) => {
+            asked.push(family);
+            return family === "Noto Sans Tamil" ? { path: tamilFont, family: "Tamil Sangam MN" } : null;
+          },
+        },
+        content: {
+          brandName: "Oorgaa",
+          offer: "2 வாங்கினால் 1 இலவசம்",
+          cta: "இப்போவே order பண்ணுங்க",
+          contact: "हमें कॉल करें",
+        },
+      });
+      assert.deepEqual(drawn, ["brandName", "offer", "cta"]);
+      assert.deepEqual(skipped, ["contact"]);
+      assert.deepEqual(asked, ["Noto Sans Tamil", "Noto Sans Tamil", "Noto Sans Devanagari"]);
+      // Offer pixels land in the lower part of the frame.
+      const { data } = await sharp(png).extract({ left: 0, top: 900, width: 720, height: 380 }).raw().toBuffer({ resolveWithObject: true });
+      let white = 0;
+      for (let i = 0; i < data.length; i += 4) if (data[i] > 240 && data[i + 3] > 240) white += 1;
+      assert.ok(white > 500, `expected rendered Tamil text, got ${white} white pixels`);
+    });
+  } else {
+    console.log("  - Tamil shaping test skipped (no system Tamil font)");
+  }
+
+  await test("scriptFontFamily picks the Noto family for each Indian script", () => {
+    assert.equal(scriptFontFamily("பொங்கல்"), "Noto Sans Tamil");
+    assert.equal(scriptFontFamily("दिवाली ऑफर"), "Noto Sans Devanagari");
+    assert.equal(scriptFontFamily("ಹಬ್ಬ"), "Noto Sans Kannada");
+    assert.equal(scriptFontFamily("ഓണം"), "Noto Sans Malayalam");
+    assert.equal(scriptFontFamily("Order now"), null);
   });
 
   await test("brief → end card content: off unless enabled; CTA falls back to voiceover CTA", () => {

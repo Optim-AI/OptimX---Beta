@@ -117,6 +117,8 @@ export interface CampaignBrief {
   occasion?: string;
   /** Location / services for shop or service ads. */
   shopDetails?: string;
+  /** Owner's tap-only answers: who is on screen, where, the feeling, what viewers should do. */
+  adDirection?: import("./ad-direction").AdDirection;
   /**
    * Concept the user picked from the idea cards. The director must build on it
    * instead of choosing its own direction.

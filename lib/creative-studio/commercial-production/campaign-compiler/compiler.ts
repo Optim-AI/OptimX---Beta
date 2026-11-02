@@ -80,6 +80,7 @@ export function compileCampaignGeneration(
     productNames: input.productNames,
     occasion: input.occasion,
     shopDetails: input.shopDetails,
+    adDirection: input.adDirection,
   });
 
   const concept = blueprint.selectedConcept;

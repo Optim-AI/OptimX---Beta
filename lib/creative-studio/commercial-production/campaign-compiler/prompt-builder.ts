@@ -14,6 +14,7 @@ import {
   type CreativeStyleId,
 } from "../campaign/creative-style";
 import { adTypeToPromptBlock, getAdTypePlaybook, type AdTypeId } from "../campaign/ad-type";
+import { adDirectionToPromptBlock, type AdDirection } from "../campaign/ad-direction";
 
 function clean(parts: Array<string | undefined | null | false>): string {
   return parts
@@ -68,6 +69,7 @@ export function buildCampaignPrompt(input: {
   productNames?: string[];
   occasion?: string;
   shopDetails?: string;
+  adDirection?: AdDirection;
 }): { campaignPrompt: string; negativePrompt: string } {
   const { blueprint, shotPlan } = input;
   const silent = Boolean(input.suppressSpokenVoiceover);
@@ -174,6 +176,7 @@ export function buildCampaignPrompt(input: {
     (input.productNames?.length ?? 0) > 1
       ? `The product reference images are in the same order as the product list — each product must match its own reference exactly.`
       : undefined,
+    adDirectionToPromptBlock(input.adDirection) || undefined,
     silentPerformance,
     productHandling,
     concept

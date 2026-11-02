@@ -16,6 +16,7 @@ import {
   normalizeVoiceoverLanguage,
   type VoiceoverLanguage,
 } from "./voiceover-languages";
+import { MOODS, VIEWER_ACTIONS } from "../campaign/ad-direction";
 
 export type VoiceoverPipelinePhase =
   | "SCRIPT_GENERATION"
@@ -49,6 +50,10 @@ export function voiceoverAdContext(brief: CampaignBrief): string | undefined {
   if (brief.occasion) parts.push(`Occasion: ${brief.occasion}`);
   if (brief.endCard?.offer) parts.push(`Offer: ${brief.endCard.offer}`);
   if (brief.shopDetails) parts.push(`Shop: ${brief.shopDetails}`);
+  const direction = brief.adDirection;
+  if (direction?.mood) parts.push(`Feeling: ${MOODS[direction.mood].prompt}`);
+  if (direction?.viewerAction) parts.push(`End by asking viewers to ${VIEWER_ACTIONS[direction.viewerAction].prompt}`);
+  if (direction?.mustInclude) parts.push(`Owner wants this said or shown: ${direction.mustInclude}`);
   return parts.length ? parts.join(". ") : undefined;
 }
 

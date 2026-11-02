@@ -523,6 +523,28 @@ export const CAMPAIGN_GOALS = [
   "Retarget Visitors",
 ] as const;
 
+/** Plain-language labels for HOOK_TYPES (values stay the same for the backend). */
+export const HOOK_LABELS: Record<(typeof HOOK_TYPES)[number], string> = {
+  Auto: "Let us choose",
+  "Curiosity Hook": "Make them curious",
+  "Before & After": "Show before and after",
+  "Social Proof": "Show happy customers",
+  Contrarian: "Say something surprising",
+  "Problem Agitation": "Start with the problem",
+  "Founder Story": "Tell the owner's story",
+  Testimonial: "A customer recommends it",
+  "Product Demonstration": "Show it being used",
+};
+
+/** Plain-language labels for CAMPAIGN_GOALS. */
+export const CAMPAIGN_GOAL_LABELS: Record<(typeof CAMPAIGN_GOALS)[number], string> = {
+  "Drive Sales": "Buy from me",
+  "Generate Leads": "Call or message me",
+  "Product Launch": "Know about my new product",
+  "Build Awareness": "Remember my brand",
+  "Retarget Visitors": "Come back and buy",
+};
+
 export const AUDIENCE_TYPES = [
   "Auto",
   "Consumers",

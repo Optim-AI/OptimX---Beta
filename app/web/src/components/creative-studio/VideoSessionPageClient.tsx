@@ -24,6 +24,7 @@ import {
 } from '@/app/web/src/components/creative-studio';
 import { authFetch, safeResponseJson } from '@/lib/utils';
 import type { CatalogProduct } from '@/app/web/src/components/creative-studio/types';
+import { cleanProductName } from '@/lib/creative-studio/product-name';
 import { supabase } from '@/auth/supabase/client';
 import StudioErrorBoundary from '@/app/web/src/components/creative-studio/StudioErrorBoundary';
 import {
@@ -34,6 +35,7 @@ import {
   type CreativePlanSummary,
 } from '@/lib/creative-studio/commercial-production/studio-mapper';
 import { getAdTypePlaybook, normalizeAdType } from '@/lib/creative-studio/commercial-production/campaign/ad-type';
+import { normalizeAdDirection, type AdDirection } from '@/lib/creative-studio/commercial-production/campaign/ad-direction';
 import type { ConceptCard } from '@/lib/creative-studio/commercial-production/concepts/generate-concepts';
 import { isCampaignDurationSeconds } from '@/lib/creative-studio/commercial-production/campaign/campaign-duration';
 import { getVideoCreditsForDuration } from '@/lib/billing/video-credits';
@@ -42,6 +44,7 @@ import {
   formatPreGenerationCreditNotice,
 } from '@/lib/billing/credit-usage-messages';
 import { splitCreditDeduction } from '@/lib/billing/credit-split';
+import { buildGenerationSteps, generationProgress } from './generation-steps';
 
 const Sidebar = dynamic(() => import('@/app/web/src/components/Sidebar'), { ssr: false });
 const VideoStudioWorkspace = dynamic(
@@ -323,7 +326,7 @@ export default function VideoSessionPage() {
   const [isLoadingVariants, setIsLoadingVariants] = useState(false);
 
   // Video generation progress steps (0–5: each step completes, then next animates)
-  const [generationStep, setGenerationStep] = useState(0);
+  const [generationElapsed, setGenerationElapsed] = useState(0);
   const [productionStatus, setProductionStatus] = useState<CommercialProductionStatus>('idle');
   const [pendingRegeneration, setPendingRegeneration] = useState<{
     nextVersion: string;
@@ -409,36 +412,37 @@ export default function VideoSessionPage() {
     }
   }, [generatedVideos, selectedVideoId]);
 
-  // Stage-based progress while awaiting the commercial API (no fake %).
-  const isExtendedDuration = (adBuilderData.adSetup?.duration ?? 15) === 30;
+  // Step-based progress while awaiting the commercial API (no fake %): the
+  // active step is estimated from elapsed time against typical step durations.
+  const generationStepList = buildGenerationSteps({
+    durationSeconds: adBuilderData.adSetup?.duration ?? 15,
+    voiceoverLanguage: adBuilderData.voiceover?.language,
+    voiceoverEnabled: adBuilderData.voiceover?.enabled,
+    endCardEnabled: adBuilderData.endCard?.enabled ?? true,
+  });
+  const generationStepStatus = generationStepList[
+    generationProgress(generationStepList, generationElapsed).index
+  ].status;
   useEffect(() => {
     if (!isGeneratingVideo) {
-      setGenerationStep(0);
+      setGenerationElapsed(0);
       return;
     }
-    setGenerationStep(0);
-    setProductionStatus((prev) =>
-      prev === 'regenerating' ? 'regenerating' : 'planning'
-    );
-    // Stages: planning(0) → preparing(1) → generating(2) → evaluating(3)
-    const stepDuration = isExtendedDuration ? 25_000 : 12_000;
+    setGenerationElapsed(0);
+    const startedAt = Date.now();
     const interval = setInterval(() => {
-      setGenerationStep((prev) => {
-        const next = Math.min(prev + 1, 3);
-        const stages: CommercialProductionStatus[] = [
-          'planning',
-          'preparing',
-          'generating',
-          'evaluating',
-        ];
-        setProductionStatus((cur) =>
-          cur === 'regenerating' && next < 2 ? 'regenerating' : stages[next]
-        );
-        return next;
-      });
-    }, stepDuration);
+      setGenerationElapsed(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
     return () => clearInterval(interval);
-  }, [isGeneratingVideo, isExtendedDuration]);
+  }, [isGeneratingVideo]);
+  useEffect(() => {
+    if (!isGeneratingVideo) return;
+    setProductionStatus((cur) =>
+      cur === 'regenerating' && generationStepStatus !== 'generating' && generationStepStatus !== 'evaluating'
+        ? 'regenerating'
+        : generationStepStatus
+    );
+  }, [isGeneratingVideo, generationStepStatus]);
 
   // ============== Load Session ==============
 
@@ -852,7 +856,7 @@ export default function VideoSessionPage() {
       setAdBuilderData({
         ...adBuilderData,
         product: {
-          product_name: item.product_name,
+          product_name: cleanProductName(item.product_name, brand?.name) || item.product_name,
           brand_name: brand?.name || 'Brand',
           product_images: images,
           hero_image: images[0],
@@ -1268,6 +1272,7 @@ export default function VideoSessionPage() {
       occasion: adBuilderData.occasion,
       shopDetails: adBuilderData.shopDetails,
       approvedConcept: adBuilderData.approvedConcept,
+      adDirection: adBuilderData.adDirection,
       creativeStrategy: adBuilderData.creativeStrategy as never,
       selectedConcept: (() => {
         const c =
@@ -1313,6 +1318,26 @@ export default function VideoSessionPage() {
       throw new Error(data?.error || 'Could not create ideas right now. Please try again.');
     }
     return data.concepts;
+  }
+
+  /** "Help me write it" — one cheap text call that fills the description box. */
+  async function handleRequestWrite(direction: AdDirection | undefined): Promise<string> {
+    const campaignId = session?.id;
+    if (!campaignId) throw new Error('Session is not ready yet. Please wait a moment and try again.');
+    if (!adBuilderData.product && !productOptional) {
+      throw new Error('Add your product first, then we can write it for you.');
+    }
+    const { brief } = await buildStudioRequest(campaignId);
+    // The latest taps may not be in state yet; send exactly what the owner chose.
+    const response = await authFetch('/api/commercial/write-direction', {
+      method: 'POST',
+      body: JSON.stringify({ campaign: { ...brief, adDirection: normalizeAdDirection(direction), approvedConcept: undefined } }),
+    });
+    const data = await safeResponseJson<{ ok?: boolean; text?: string; error?: string }>(response);
+    if (!response.ok || !data?.ok || !data.text?.trim()) {
+      throw new Error(data?.error || 'Could not write that right now. Please try again.');
+    }
+    return data.text.trim();
   }
 
   async function handleGenerateVideo(options?: {
@@ -1660,7 +1685,19 @@ export default function VideoSessionPage() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `optimx-video-${video.id}.mp4`;
+      // e.g. "Oorgaa-Beef-Pickle-30s-v1.mp4" — readable in the customer's Downloads folder.
+      const fileName = [
+        brand?.name || adBuilderData.product?.brand_name,
+        adBuilderData.product?.product_name,
+        video.duration ? `${video.duration}s` : null,
+        video.generationVersion,
+      ]
+        .filter(Boolean)
+        .join('-')
+        .replace(/[^\p{L}\p{N}]+/gu, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 80);
+      a.download = `${fileName || 'skalx-video'}.mp4`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -1880,6 +1917,7 @@ export default function VideoSessionPage() {
             adBuilderData={adBuilderData}
             onAdBuilderChange={setAdBuilderData}
             onRequestConcepts={handleRequestConcepts}
+            onRequestWrite={handleRequestWrite}
             generatedVideos={generatedVideos}
             selectedVideoId={selectedVideoId}
             onSelectVideo={setSelectedVideoId}
@@ -1907,7 +1945,7 @@ export default function VideoSessionPage() {
             onImageUpload={handleImageUpload}
             isGeneratingScript={isGeneratingScript}
             isGeneratingVideo={isGeneratingVideo}
-            generationStep={generationStep}
+            generationElapsed={generationElapsed}
             productionStatus={productionStatus}
             pendingRegeneration={pendingRegeneration}
             hasInsufficientCredits={hasInsufficientCredits}

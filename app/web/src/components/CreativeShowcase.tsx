@@ -6,7 +6,7 @@ import colors from '@/lib/ui/colors';
 import { useScrollAnimation } from '../hooks/use-scroll-animation';
 
 /**
- * Sample work — fictional brands only. Never real client or third-party brand work.
+ * Sample ads made with SkalX.
  * Files live in /public/images/samples (see README there for required sizes).
  */
 type Sample = {
@@ -16,13 +16,12 @@ type Sample = {
 };
 
 const SAMPLES: Sample[] = [
-  { src: '/images/samples/sample-feed-01.png', format: 'Feed 4:5', alt: 'Sample feed ad for a fictional snack brand' },
-  { src: '/images/samples/sample-story-01.png', format: 'Story 9:16', alt: 'Sample story ad for a fictional brand' },
-  { src: '/images/samples/sample-feed-02.png', format: 'Feed 4:5', alt: 'Sample feed ad for a fictional beverage brand' },
-  { src: '/images/samples/sample-video-01.png', format: 'Video 9:16', alt: 'Frame from a sample video ad for a fictional brand' },
-  { src: '/images/samples/sample-feed-03.png', format: 'Feed 4:5', alt: 'Sample feed ad for a fictional skincare brand' },
-  { src: '/images/samples/sample-story-02.png', format: 'Story 9:16', alt: 'Sample story ad for a fictional brand' },
-  { src: '/images/samples/sample-feed-04.png', format: 'Feed 4:5', alt: 'Sample feed ad for a fictional personal-care brand' },
+  { src: '/images/samples/sample-feed-01.jpg', format: 'Feed 4:5', alt: 'Feed ad for Crunchwell masala makhana' },
+  { src: '/images/samples/sample-story-01.jpg', format: 'Story 9:16', alt: 'Story ad for Tidal Lime sparkling soda' },
+  { src: '/images/samples/sample-feed-05.jpg', format: 'Feed 4:5', alt: 'Feed ad for Yoga Bar high protein oats' },
+  { src: '/images/samples/sample-video-01.jpg', format: 'Video 9:16', alt: 'Frame from a sample video ad' },
+  { src: '/images/samples/sample-story-03.jpg', format: 'Story 9:16', alt: 'Story ad for Plum body lotion' },
+  { src: '/images/samples/sample-feed-06.jpg', format: 'Feed 4:5', alt: 'Feed ad for The Whole Truth plant protein' },
 ];
 
 const CreativeShowcase: React.FC = () => {
@@ -57,7 +56,7 @@ const CreativeShowcase: React.FC = () => {
 
         <ul
           className="flex gap-4 overflow-x-auto snap-x snap-mandatory pb-4 items-end"
-          aria-label="Sample creatives for fictional brands"
+          aria-label="Sample ads made with SkalX"
         >
           {SAMPLES.map((item) => {
             const tall = item.format !== 'Feed 4:5';
@@ -92,7 +91,7 @@ const CreativeShowcase: React.FC = () => {
         </ul>
 
         <p className="mt-4 text-sm text-center" style={{ color: colors.mutedForeground }}>
-          Sample work for fictional brands. Not client campaigns.
+          Sample &amp; fictional brand ads made with SkalX.
         </p>
       </div>
     </section>

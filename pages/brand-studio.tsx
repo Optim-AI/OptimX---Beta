@@ -1,7 +1,7 @@
 // pages/brand-studio.tsx
 // Brand Studio Landing Page - Refactored for modular architecture
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
 import { showError } from '@/app/web/src/components/ui/alert-modal-api';
 import Link from 'next/link';
@@ -31,6 +31,8 @@ export default function BrandStudioLanding() {
   // Brand state
   const [brand, setBrand] = useState<BrandSnapshot | null>(null);
   const [brandLoaded, setBrandLoaded] = useState(false);
+  /** A "New poster/video" click that arrived before the brand finished loading. */
+  const pendingStartRef = useRef<'poster' | 'video' | null>(null);
 
   // Session naming modal state
   const [showNameModal, setShowNameModal] = useState(false);
@@ -148,6 +150,16 @@ export default function BrandStudioLanding() {
     return () => { cancelled = true; };
   }, []);
 
+  // Run a start click that came in while the brand was still loading.
+  useEffect(() => {
+    if (!brandLoaded || !pendingStartRef.current) return;
+    const pending = pendingStartRef.current;
+    pendingStartRef.current = null;
+    if (pending === 'poster') handleStartPosterSession();
+    else handleStartVideoSession();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [brandLoaded]);
+
   // ============== Session Handlers ==============
 
   /** Brand Studio builds from the Brand Kit, so set that up first. */
@@ -156,6 +168,11 @@ export default function BrandStudioLanding() {
   }
 
   function handleStartPosterSession() {
+    // Clicked before the brand loaded: wait instead of wrongly sending them to setup.
+    if (!brandLoaded) {
+      pendingStartRef.current = 'poster';
+      return;
+    }
     if (!brand) {
       goToBrandKitSetup();
       return;
@@ -165,6 +182,10 @@ export default function BrandStudioLanding() {
   }
 
   function handleStartVideoSession() {
+    if (!brandLoaded) {
+      pendingStartRef.current = 'video';
+      return;
+    }
     if (!brand) {
       goToBrandKitSetup();
       return;

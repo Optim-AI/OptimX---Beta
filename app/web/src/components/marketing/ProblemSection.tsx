@@ -8,7 +8,7 @@ export default function ProblemSection() {
   return (
     <section id="problem" aria-labelledby="problem-title" className="relative">
       <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6 md:py-32">
-        <SectionHeading id="problem-title" index="01" eyebrow="The problem" title="Good ads wear out. Fast." />
+        <SectionHeading id="problem-title" index="02" eyebrow="The problem" title="Good ads wear out. Fast." />
         <ol className="mt-14 border-b border-line">
           {PROBLEMS.map((p, i) => (
             <Reveal

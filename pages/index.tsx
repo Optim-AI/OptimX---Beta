@@ -48,10 +48,11 @@ const Home: React.FC = () => {
         ]}
       />
       <HeroSection />
+      {/* Proof first: real ads right under the promise, then the why and the how. */}
+      <SampleWorkSection />
       <ProblemSection />
       <HowItWorksSection />
       <WhatYouGetSection />
-      <SampleWorkSection />
       <ComparisonSection />
       <PricingTeaser />
       <FounderNote />

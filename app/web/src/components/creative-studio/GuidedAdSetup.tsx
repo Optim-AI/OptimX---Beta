@@ -20,27 +20,39 @@ import {
   Lightbulb,
   Loader2,
   Mic,
-  MicOff,
+  Square,
   Package,
   PartyPopper,
   Plus,
   Rocket,
   Shapes,
   Smartphone,
+  Sparkles,
+  X,
   Store,
   Trash2,
   type LucideIcon,
 } from 'lucide-react';
 import type { AdBuilderData } from './types';
+import { authFetch } from '@/lib/utils';
 import { suggestedOccasions } from '@/lib/creative-studio/commercial-production/campaign/ad-type';
 import type { ConceptCard } from '@/lib/creative-studio/commercial-production/concepts/generate-concepts';
+import {
+  CAST_AGES,
+  CAST_REGIONS,
+  MOODS,
+  SETTINGS,
+  VIEWER_ACTIONS,
+  type AdDirection,
+  type CastAgeId,
+} from '@/lib/creative-studio/commercial-production/campaign/ad-direction';
 
 const PURPLE = '#A855F7';
 const PURPLE_SOFT = 'rgba(168, 85, 247, 0.16)';
 const PURPLE_BORDER = 'rgba(168, 85, 247, 0.42)';
 const SURFACE = '#16161C';
 const LINE = 'rgba(255,255,255,0.08)';
-const MUTED = '#8B8B98';
+const MUTED = '#A3A3AF';
 const TEXT = '#F4F4F7';
 
 const MAX_EXTRA_PRODUCTS = 3;
@@ -169,12 +181,12 @@ function OptionCards({
             )}
             <span className="flex items-center gap-2">
               <Icon size={compact ? 14 : 18} style={{ color: selected ? '#E9D5FF' : MUTED }} aria-hidden />
-              <span className={compact ? 'text-[12px] font-medium' : 'text-[14px] font-medium'} style={{ color: TEXT }}>
+              <span className={compact ? 'text-[13px] font-medium' : 'text-[14px] font-medium'} style={{ color: TEXT }}>
                 {opt.label}
               </span>
             </span>
             {!compact && (
-              <span className="block text-[12px] mt-1 leading-snug" style={{ color: MUTED }}>
+              <span className="block text-[13px] mt-1 leading-snug" style={{ color: MUTED }}>
                 {opt.hint}
               </span>
             )}
@@ -187,7 +199,7 @@ function OptionCards({
 
 function Label({ children }: { children: React.ReactNode }) {
   return (
-    <p className="text-[11px] tracking-[0.14em] uppercase mb-2" style={{ color: MUTED }}>
+    <p className="text-[12px] tracking-[0.14em] uppercase mb-2" style={{ color: MUTED }}>
       {children}
     </p>
   );
@@ -233,7 +245,7 @@ function ExtraProductsEditor({
     onChange(items.map((p, j) => (j === i ? { ...p, ...patch } : p)));
   return (
     <div className="space-y-2">
-      <p className="text-[12px]" style={{ color: MUTED }}>
+      <p className="text-[13px]" style={{ color: MUTED }}>
         Your main product is the one under Product reference. Add up to {MAX_EXTRA_PRODUCTS} more, each with a clear photo.
       </p>
       {items.map((p, i) => (
@@ -270,7 +282,7 @@ function ExtraProductsEditor({
             onChange={(e) => update(i, { name: e.target.value })}
             placeholder={`Product ${i + 2} name`}
             maxLength={60}
-            className="flex-1 min-w-0 px-3 py-2.5 rounded-xl text-[13px] outline-none"
+            className="flex-1 min-w-0 px-3 py-2.5 rounded-xl text-[14px] outline-none"
             style={inputStyle}
           />
           <button
@@ -288,7 +300,7 @@ function ExtraProductsEditor({
         <button
           type="button"
           onClick={() => onChange([...items, { name: '' }])}
-          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-[13px]"
+          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-[14px]"
           style={{ ...inputStyle, color: '#E9D5FF' }}
         >
           <Plus size={14} /> Add another product
@@ -316,7 +328,7 @@ function AdTypeExtras({
         />
         {adType === 'combo_offer' && (
           <div>
-            <p className="text-[12px] mb-1.5" style={{ color: '#D0D0D8' }}>
+            <p className="text-[13px] mb-1.5" style={{ color: '#D0D0D8' }}>
               What is the offer?
             </p>
             <input
@@ -324,7 +336,7 @@ function AdTypeExtras({
               onChange={(e) => onChange({ ...data, endCard: { ...endCard, enabled: true, offer: e.target.value } })}
               placeholder="e.g. All 3 for ₹499 — save ₹150"
               maxLength={60}
-              className="w-full px-3 py-2.5 rounded-xl text-[13px] outline-none"
+              className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none"
               style={inputStyle}
             />
           </div>
@@ -336,7 +348,7 @@ function AdTypeExtras({
     const suggested = suggestedOccasions();
     return (
       <div className="space-y-2">
-        <p className="text-[12px]" style={{ color: '#D0D0D8' }}>
+        <p className="text-[13px]" style={{ color: '#D0D0D8' }}>
           Which festival or occasion?
         </p>
         <div className="flex flex-wrap gap-1.5">
@@ -348,7 +360,7 @@ function AdTypeExtras({
                 type="button"
                 aria-pressed={selected}
                 onClick={() => onChange({ ...data, occasion })}
-                className="px-3 py-1.5 rounded-lg text-[13px] font-medium"
+                className="px-3 py-1.5 rounded-lg text-[14px] font-medium"
                 style={{
                   background: selected ? PURPLE_SOFT : SURFACE,
                   border: `1px solid ${selected ? PURPLE_BORDER : LINE}`,
@@ -365,7 +377,7 @@ function AdTypeExtras({
           onChange={(e) => onChange({ ...data, occasion: e.target.value })}
           placeholder="Or type any occasion — e.g. Shop anniversary"
           maxLength={40}
-          className="w-full px-3 py-2.5 rounded-xl text-[13px] outline-none"
+          className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none"
           style={inputStyle}
         />
       </div>
@@ -374,7 +386,7 @@ function AdTypeExtras({
   if (adType === 'shop_service') {
     return (
       <div className="space-y-1.5">
-        <p className="text-[12px]" style={{ color: '#D0D0D8' }}>
+        <p className="text-[13px]" style={{ color: '#D0D0D8' }}>
           Where are you, and what do you offer?
         </p>
         <input
@@ -382,7 +394,7 @@ function AdTypeExtras({
           onChange={(e) => onChange({ ...data, shopDetails: e.target.value })}
           placeholder="e.g. Family dental clinic in Anna Nagar, Chennai — open 7 days"
           maxLength={140}
-          className="w-full px-3 py-2.5 rounded-xl text-[13px] outline-none"
+          className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none"
           style={inputStyle}
         />
       </div>
@@ -440,34 +452,27 @@ export function GuidedAdSetup({
 
 /* ---------------- Voice input ---------------- */
 
-type RecognitionResultEvent = { results: ArrayLike<ArrayLike<{ transcript: string }> & { isFinal: boolean }> };
-interface SpeechRecognitionLike {
-  lang: string;
-  continuous: boolean;
-  interimResults: boolean;
-  onresult: ((e: RecognitionResultEvent) => void) | null;
-  onend: (() => void) | null;
-  onerror: (() => void) | null;
-  start(): void;
-  stop(): void;
-}
-type RecognitionCtor = new () => SpeechRecognitionLike;
+/** Longest recording we accept (the server caps size too). */
+const MAX_RECORDING_SECONDS = 120;
 
-const SPEECH_LANG: Record<string, string> = {
-  english: 'en-IN',
-  tamil: 'ta-IN',
-  hindi: 'hi-IN',
-  malayalam: 'ml-IN',
-  kannada: 'kn-IN',
-};
-
-function getRecognitionCtor(): RecognitionCtor | null {
-  if (typeof window === 'undefined') return null;
-  const w = window as unknown as { SpeechRecognition?: RecognitionCtor; webkitSpeechRecognition?: RecognitionCtor };
-  return w.SpeechRecognition || w.webkitSpeechRecognition || null;
+function pickRecordingMimeType(): string {
+  if (typeof MediaRecorder === 'undefined') return '';
+  return ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg'].find((t) => MediaRecorder.isTypeSupported(t)) || '';
 }
 
-/** Speak instead of typing (browser speech recognition, in the voiceover language). */
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+}
+
+/**
+ * Speak instead of typing. Records the microphone and has the server write it
+ * down (any browser; browser speech recognition only works in desktop Chrome).
+ */
 export function VoiceInputButton({
   language,
   onText,
@@ -475,56 +480,139 @@ export function VoiceInputButton({
   language?: string;
   onText: (text: string) => void;
 }) {
-  // The studio is client-only (ssr: false), so reading window here is safe.
-  const [supported] = useState(() => Boolean(getRecognitionCtor()));
-  const [listening, setListening] = useState(false);
-  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const [state, setState] = useState<'idle' | 'recording' | 'transcribing'>('idle');
+  const [seconds, setSeconds] = useState(0);
+  const [message, setMessage] = useState<string | null>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  // Latest callback, so text lands on the brief as it is when transcription finishes.
+  const onTextRef = useRef(onText);
+  onTextRef.current = onText;
 
-  useEffect(() => () => recognitionRef.current?.stop(), []);
+  useEffect(() => {
+    if (state !== 'recording') return;
+    const startedAt = Date.now();
+    const timer = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - startedAt) / 1000);
+      setSeconds(elapsed);
+      if (elapsed >= MAX_RECORDING_SECONDS) recorderRef.current?.stop();
+    }, 500);
+    return () => clearInterval(timer);
+  }, [state]);
 
-  if (!supported) return null;
-
-  const toggle = () => {
-    if (listening) {
-      recognitionRef.current?.stop();
-      return;
-    }
-    const Ctor = getRecognitionCtor();
-    if (!Ctor) return;
-    const rec = new Ctor();
-    rec.lang = SPEECH_LANG[language || 'english'] || 'en-IN';
-    rec.continuous = true;
-    rec.interimResults = false;
-    rec.onresult = (e) => {
-      const finals: string[] = [];
-      for (let i = 0; i < e.results.length; i++) {
-        if (e.results[i].isFinal) finals.push(e.results[i][0].transcript);
+  useEffect(
+    () => () => {
+      const rec = recorderRef.current;
+      if (rec && rec.state !== 'inactive') {
+        rec.onstop = null;
+        rec.stop();
+        rec.stream.getTracks().forEach((t) => t.stop());
       }
-      const text = finals.join(' ').trim();
-      if (text) onText(text);
-    };
-    rec.onend = () => setListening(false);
-    rec.onerror = () => setListening(false);
-    recognitionRef.current = rec;
-    rec.start();
-    setListening(true);
+    },
+    []
+  );
+
+  const transcribe = async (blob: Blob) => {
+    setState('transcribing');
+    try {
+      const response = await authFetch('/api/commercial/transcribe', {
+        method: 'POST',
+        body: JSON.stringify({ audio: await blobToBase64(blob), mimeType: blob.type || 'audio/webm', language }),
+      });
+      const result = (await response.json().catch(() => ({}))) as { ok?: boolean; text?: string; error?: string };
+      if (!response.ok || !result.ok) {
+        setMessage(result.error || 'We couldn’t hear that clearly. Please try again.');
+      } else if (!result.text?.trim()) {
+        setMessage('We didn’t catch any words. Please speak a little closer to the microphone.');
+      } else {
+        onTextRef.current(result.text.trim());
+        setMessage(null);
+      }
+    } catch {
+      setMessage('No internet connection. Please try again.');
+    } finally {
+      setState('idle');
+    }
   };
 
+  const start = async () => {
+    setMessage(null);
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      setMessage('This browser can’t record your voice. Please type instead, or open SkalX in Chrome or Safari.');
+      return;
+    }
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (err) {
+      const name = err instanceof DOMException ? err.name : '';
+      setMessage(
+        name === 'NotAllowedError' || name === 'SecurityError'
+          ? 'Please allow microphone access (the icon in the address bar), then tap Speak again.'
+          : 'We couldn’t find a microphone. Please check it is connected.'
+      );
+      return;
+    }
+    const mimeType = pickRecordingMimeType();
+    const rec = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+    const chunks: Blob[] = [];
+    rec.ondataavailable = (e) => {
+      if (e.data.size) chunks.push(e.data);
+    };
+    rec.onstop = () => {
+      stream.getTracks().forEach((t) => t.stop());
+      recorderRef.current = null;
+      const blob = new Blob(chunks, { type: rec.mimeType || mimeType || 'audio/webm' });
+      if (blob.size < 1000) {
+        setState('idle');
+        setMessage('That was too short. Tap Speak, talk, then tap Done.');
+        return;
+      }
+      void transcribe(blob);
+    };
+    recorderRef.current = rec;
+    rec.start();
+    setSeconds(0);
+    setState('recording');
+  };
+
+  const recording = state === 'recording';
+  const busy = state === 'transcribing';
+  const clock = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+
   return (
-    <button
-      type="button"
-      onClick={toggle}
-      aria-pressed={listening}
-      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-medium"
-      style={{
-        background: listening ? 'rgba(239, 68, 68, 0.16)' : SURFACE,
-        border: `1px solid ${listening ? 'rgba(239, 68, 68, 0.5)' : LINE}`,
-        color: listening ? '#FCA5A5' : '#D0D0D8',
-      }}
-    >
-      {listening ? <MicOff size={13} /> : <Mic size={13} />}
-      {listening ? 'Stop — I’m listening' : 'Speak instead'}
-    </button>
+    <span className="relative inline-flex">
+      <button
+        type="button"
+        onClick={() => (recording ? recorderRef.current?.stop() : start())}
+        disabled={busy}
+        aria-pressed={recording}
+        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-[14px] font-medium min-h-[40px] disabled:opacity-70"
+        style={{
+          background: recording ? 'rgba(239, 68, 68, 0.16)' : SURFACE,
+          border: `1px solid ${recording ? 'rgba(239, 68, 68, 0.5)' : LINE}`,
+          color: recording ? '#FCA5A5' : '#D0D0D8',
+        }}
+      >
+        {busy ? (
+          <Loader2 size={14} className="animate-spin" />
+        ) : recording ? (
+          <Square size={12} fill="currentColor" />
+        ) : (
+          <Mic size={14} />
+        )}
+        {busy ? 'Writing it down…' : recording ? `Done (${clock})` : 'Speak instead'}
+      </button>
+      {recording && (
+        <span className="absolute right-0 top-full mt-1 w-[260px] text-right text-[12px]" style={{ color: '#FCA5A5' }} aria-live="polite">
+          Listening… talk about your product, then tap Done.
+        </span>
+      )}
+      {message && !recording && (
+        <span className="absolute right-0 top-full mt-1 w-[280px] text-right text-[12px] z-10" style={{ color: '#FCD34D' }} role="status">
+          {message}
+        </span>
+      )}
+    </span>
   );
 }
 
@@ -574,7 +662,7 @@ export function IdeaCards({
           type="button"
           onClick={load}
           disabled={disabled || loading}
-          className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-[13px] font-medium disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-[14px] font-medium disabled:opacity-50"
           style={{ background: PURPLE_SOFT, border: `1px solid ${PURPLE_BORDER}`, color: TEXT }}
         >
           {loading ? <Loader2 size={14} className="animate-spin" /> : <Lightbulb size={14} />}
@@ -584,7 +672,7 @@ export function IdeaCards({
           <button
             type="button"
             onClick={() => onChange({ ...data, approvedConcept: undefined })}
-            className="text-[12px] underline"
+            className="text-[13px] underline"
             style={{ color: MUTED }}
           >
             Let AI decide instead
@@ -592,17 +680,17 @@ export function IdeaCards({
         )}
       </div>
       {!cards && !loading && (
-        <p className="text-[12px]" style={{ color: MUTED }}>
+        <p className="text-[13px]" style={{ color: MUTED }}>
           Free — see sketches of three different ads and pick the one you like before using Video Credits.
         </p>
       )}
       {error && (
-        <p className="text-[12px]" role="alert" style={{ color: '#FCA5A5' }}>
+        <p className="text-[13px]" role="alert" style={{ color: '#FCA5A5' }}>
           {error}
         </p>
       )}
       {picked && !cards && (
-        <p className="text-[12px]" style={{ color: '#E9D5FF' }}>
+        <p className="text-[13px]" style={{ color: '#E9D5FF' }}>
           Using your idea: <span className="font-medium">{picked.title}</span>
         </p>
       )}
@@ -634,21 +722,21 @@ export function IdeaCards({
                     </span>
                     {selected && <Check size={15} style={{ color: PURPLE }} aria-label="Picked" />}
                   </span>
-                  <span className="block text-[13px] leading-snug" style={{ color: '#D0D0D8' }}>
+                  <span className="block text-[14px] leading-snug" style={{ color: '#D0D0D8' }}>
                     {card.idea}
                   </span>
                   {!compact && card.beats.length > 0 && (
-                    <span className="block text-[12px] leading-snug" style={{ color: MUTED }}>
+                    <span className="block text-[13px] leading-snug" style={{ color: MUTED }}>
                       {card.beats.map((b, i) => `${i + 1}. ${b}`).join('  ')}
                     </span>
                   )}
                   {!compact && card.whyItWorks && (
-                    <span className="block text-[12px] italic" style={{ color: MUTED }}>
+                    <span className="block text-[13px] italic" style={{ color: MUTED }}>
                       {card.whyItWorks}
                     </span>
                   )}
                   <span
-                    className="inline-block mt-1 text-[12px] font-medium"
+                    className="inline-block mt-1 text-[13px] font-medium"
                     style={{ color: selected ? '#E9D5FF' : PURPLE }}
                   >
                     {selected ? 'Picked — this will be your ad' : 'Use this idea'}
@@ -658,6 +746,205 @@ export function IdeaCards({
             );
           })}
         </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------------- Help me write it ---------------- */
+
+function ChipRow<T extends string>({
+  table,
+  value,
+  onToggle,
+}: {
+  table: Record<T, { label: string }>;
+  value: (id: T) => boolean;
+  onToggle: (id: T) => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {(Object.keys(table) as T[]).map((id) => {
+        const selected = value(id);
+        return (
+          <button
+            key={id}
+            type="button"
+            aria-pressed={selected}
+            onClick={() => onToggle(id)}
+            className="px-3 py-1.5 rounded-lg text-[14px] font-medium"
+            style={{
+              background: selected ? PURPLE_SOFT : SURFACE,
+              border: `1px solid ${selected ? PURPLE_BORDER : LINE}`,
+              color: selected ? TEXT : MUTED,
+            }}
+          >
+            {table[id].label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * Tap-only questions (what viewers should do, feeling, who, where) that the AI
+ * turns into the "In your own words" text. Answers are saved as they are tapped,
+ * so ideas and the video follow them even if the owner never presses "Write it".
+ */
+export function WriteHelper({
+  data,
+  onChange,
+  onRequestWrite,
+  disabled,
+}: {
+  data: AdBuilderData;
+  onChange: (next: AdBuilderData) => void;
+  onRequestWrite: (direction: AdDirection | undefined) => Promise<string>;
+  disabled?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [previousText, setPreviousText] = useState<string | null>(null);
+  const [writtenText, setWrittenText] = useState<string | null>(null);
+  const direction = data.adDirection ?? {};
+  // Offer "Undo" only while the written text is untouched; once it is enhanced or
+  // edited, that change has its own undo and two "Undo" links would be confusing.
+  const canUndo = previousText != null && writtenText != null && data.userDescription === writtenText;
+
+  // Answers change the ad, so an idea picked earlier no longer fits.
+  const setDirection = (next: AdDirection) =>
+    onChange({ ...data, adDirection: next, approvedConcept: undefined });
+  const toggle = <K extends 'viewerAction' | 'mood' | 'castRegion' | 'setting'>(key: K, id: AdDirection[K]) =>
+    setDirection({ ...direction, [key]: direction[key] === id ? undefined : id });
+  const toggleAge = (id: CastAgeId) => {
+    const ages = direction.castAges ?? [];
+    const next = ages.includes(id) ? ages.filter((a) => a !== id) : [...ages, id];
+    setDirection({ ...direction, castAges: next.length ? next : undefined });
+  };
+
+  const write = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const text = await onRequestWrite(data.adDirection);
+      setPreviousText(data.userDescription || '');
+      setWrittenText(text);
+      onChange({ ...data, userDescription: text, approvedConcept: undefined });
+      setOpen(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not write that right now.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const undo = () => {
+    if (previousText == null) return;
+    onChange({ ...data, userDescription: previousText });
+    setPreviousText(null);
+    setWrittenText(null);
+  };
+
+  if (!open) {
+    return (
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          disabled={disabled}
+          className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-[14px] font-medium disabled:opacity-50"
+          style={{ background: PURPLE_SOFT, border: `1px solid ${PURPLE_BORDER}`, color: TEXT }}
+        >
+          <Sparkles size={14} />
+          Help me write it
+        </button>
+        {canUndo ? (
+          <span className="text-[13px]" style={{ color: '#E9D5FF' }}>
+            Written for you — change anything you like.{' '}
+            <button type="button" onClick={undo} className="underline" style={{ color: MUTED }}>
+              Undo
+            </button>
+          </span>
+        ) : (
+          <span className="text-[13px]" style={{ color: MUTED }}>
+            Answer a few taps and we&apos;ll write it for you.
+          </span>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-xl p-3.5 space-y-4" style={{ background: 'rgba(255,255,255,0.02)', border: `1px solid ${PURPLE_BORDER}` }}>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[15px] font-medium" style={{ color: TEXT }}>
+          Help me write it
+        </p>
+        <button type="button" onClick={() => setOpen(false)} aria-label="Close" style={{ color: MUTED }}>
+          <X size={16} />
+        </button>
+      </div>
+      <p className="text-[13px] -mt-2" style={{ color: MUTED }}>
+        Tap what fits. Skip anything you&apos;re not sure about.
+      </p>
+
+      <div>
+        <Label>What should people do after watching?</Label>
+        <ChipRow table={VIEWER_ACTIONS} value={(id) => direction.viewerAction === id} onToggle={(id) => toggle('viewerAction', id)} />
+      </div>
+      <div>
+        <Label>How should it feel?</Label>
+        <ChipRow table={MOODS} value={(id) => direction.mood === id} onToggle={(id) => toggle('mood', id)} />
+      </div>
+      <div>
+        <Label>Who should be in it?</Label>
+        <ChipRow table={CAST_REGIONS} value={(id) => direction.castRegion === id} onToggle={(id) => toggle('castRegion', id)} />
+        {direction.castRegion !== 'no_people' && (
+          <div className="mt-2">
+            <p className="text-[13px] mb-1.5" style={{ color: '#D0D0D8' }}>
+              Their age (pick any)
+            </p>
+            <ChipRow table={CAST_AGES} value={(id) => Boolean(direction.castAges?.includes(id))} onToggle={toggleAge} />
+          </div>
+        )}
+      </div>
+      <div>
+        <Label>Where?</Label>
+        <ChipRow table={SETTINGS} value={(id) => direction.setting === id} onToggle={(id) => toggle('setting', id)} />
+      </div>
+      <div>
+        <Label>Anything you must show or say?</Label>
+        <input
+          value={direction.mustInclude || ''}
+          onChange={(e) => setDirection({ ...direction, mustInclude: e.target.value || undefined })}
+          placeholder="e.g. Made at home with no preservatives — show the jar being opened"
+          maxLength={300}
+          className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none"
+          style={inputStyle}
+        />
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          onClick={write}
+          disabled={disabled || loading}
+          className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-[14px] font-semibold disabled:opacity-50"
+          style={{ background: PURPLE, color: '#fff' }}
+        >
+          {loading ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+          {loading ? 'Writing…' : 'Write it for me'}
+        </button>
+        <span className="text-[13px]" style={{ color: MUTED }}>
+          Free. {data.userDescription?.trim() ? 'Keeps what you already wrote.' : 'You can change the words after.'}
+        </span>
+      </div>
+      {error && (
+        <p className="text-[13px]" role="alert" style={{ color: '#FCA5A5' }}>
+          {error}
+        </p>
       )}
     </div>
   );

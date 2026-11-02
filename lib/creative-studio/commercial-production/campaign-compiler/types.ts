@@ -137,6 +137,7 @@ export interface CompileCampaignGenerationInput {
   productNames?: string[];
   occasion?: string;
   shopDetails?: string;
+  adDirection?: import("../campaign/ad-direction").AdDirection;
   /** When false, a shot plan that shows a product may still compile with no product photo. Default true. */
   requireProductReference?: boolean;
 }

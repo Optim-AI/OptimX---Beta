@@ -16,6 +16,7 @@ import type { CampaignBrief } from "../campaign/types";
 import { adTypeToPromptBlock, getAdTypePlaybook } from "../campaign/ad-type";
 import { creativeStyleToPromptBlock, getCreativeStylePlaybook, REALISM_RULE } from "../campaign/creative-style";
 import { loadImageInline } from "../product-understanding/analyze-product";
+import { adDirectionToPromptBlock, castLine } from "../campaign/ad-direction";
 
 export const CONCEPTS_MODEL = "gemini-3.8-flash";
 const CONCEPT_COUNT = 3;
@@ -53,6 +54,10 @@ export type ConceptWriter = (input: {
   images: Array<{ mimeType: string; data: string }>;
 }) => Promise<string>;
 
+/** Owners mistype names; the photo is what the customer will actually receive. */
+export const PHOTO_IS_TRUTH =
+  "The real product photo(s) are attached — keep the packaging true to them. THE PHOTO IS THE TRUTH: if the typed name or description disagrees with the photo (a different flavour, variant, ingredient or pack), describe and show the product exactly as the photo shows it, never as the mistyped text says.";
+
 function productNames(brief: CampaignBrief): string[] {
   return [brief.product, ...(brief.additionalProducts || [])].map((p) => p.name);
 }
@@ -71,7 +76,8 @@ Customers: ${brief.targetAudience || "infer from the product"}
 Offer: ${brief.endCard?.offer || brief.offer || "none"}
 ${adTypeToPromptBlock(adType, { productNames: productNames(brief), occasion: brief.occasion, shopDetails: brief.shopDetails })}
 ${creativeStyleToPromptBlock(style, brief.campaignDuration)}
-${brief.product.images?.length ? "The real product photo(s) are attached — keep the packaging true to them." : ""}
+${adDirectionToPromptBlock(brief.adDirection)}
+${brief.product.images?.length ? PHOTO_IS_TRUTH : ""}
 ${REALISM_RULE}
 
 WRITE FOR THE OWNER
@@ -91,7 +97,8 @@ Panel 1: ${panels[0] || draft.beats?.[0] || ""}
 Panel 2: ${panels[1] || draft.beats?.[1] || ""}
 Panel 3: ${panels[2] || draft.beats?.[2] || ""}
 Style: polished colour storyboard illustration, cinematic framing, consistent characters and setting across panels.
-${brief.product.images?.length ? "The product must look exactly like the attached product photo (same packaging, label colours and shape)." : ""}
+${castLine(brief.adDirection) ? `People: ${castLine(brief.adDirection)}.` : ""}
+${brief.product.images?.length ? "The product must look exactly like the attached product photo (same packaging, label colours, label artwork and shape). If a panel description names a different flavour or variant than the photo shows, draw what the photo shows." : ""}
 No text, captions, letters, numbers or speech bubbles anywhere.`;
 }
 
@@ -147,8 +154,23 @@ const liveStoryboardRenderer: StoryboardRenderer = async ({ prompt, productImage
   return result.buffer;
 };
 
-async function toJpegDataUrl(buffer: Buffer): Promise<string> {
-  const jpeg = await sharp(buffer).resize({ width: STORYBOARD_WIDTH, withoutEnlargement: true }).jpeg({ quality: 72 }).toBuffer();
+/** Crop the plain white/flat bands image models sometimes leave around the strip. */
+async function trimFlatBorders(buffer: Buffer): Promise<Buffer> {
+  try {
+    const { data, info } = await sharp(buffer).trim({ threshold: 40 }).toBuffer({ resolveWithObject: true });
+    const original = await sharp(buffer).metadata();
+    // Never trim away most of the picture (e.g. a mostly-white scene).
+    if (original.width && original.height && info.width * info.height < original.width * original.height * 0.5) {
+      return buffer;
+    }
+    return data;
+  } catch {
+    return buffer;
+  }
+}
+
+export async function toJpegDataUrl(buffer: Buffer): Promise<string> {
+  const jpeg = await sharp(await trimFlatBorders(buffer)).resize({ width: STORYBOARD_WIDTH, withoutEnlargement: true }).jpeg({ quality: 72 }).toBuffer();
   return `data:image/jpeg;base64,${jpeg.toString("base64")}`;
 }
 

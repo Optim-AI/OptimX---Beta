@@ -13,6 +13,7 @@ import type { AvailableCampaignAssets } from "./reference-engine/types";
 import { normalizeVoiceoverLanguage } from "./audio/voiceover-languages";
 import { normalizeCreativeStyle } from "./campaign/creative-style";
 import { getAdTypePlaybook, normalizeAdType } from "./campaign/ad-type";
+import { normalizeAdDirection, viewerActionCta } from "./campaign/ad-direction";
 
 /** Most extra products sent to the video model (Seedance takes 8 references total). */
 export const MAX_ADDITIONAL_PRODUCTS = 3;
@@ -86,13 +87,15 @@ export interface StudioFormInput {
   selectedConcept?: CampaignBrief["selectedConcept"];
   /** Extra stills that are NOT the canonical product (optional). */
   creativeReferenceUrls?: string[];
-  endCard?: { enabled: boolean; offer?: string; contact?: string };
+  endCard?: { enabled: boolean; offer?: string; cta?: string; contact?: string };
   /** Ad type id (product, multi_product, combo_offer, brand, shop_service, festival, launch). */
   adType?: string;
   extraProducts?: StudioFormExtraProduct[];
   occasion?: string;
   shopDetails?: string;
   approvedConcept?: CampaignBrief["approvedConcept"];
+  /** "Help me write it" answers (who is on screen, feeling, where, what viewers should do). */
+  adDirection?: unknown;
 }
 
 export interface StudioNativeRequestInvariant {
@@ -208,6 +211,7 @@ export function mapStudioFormToCampaignBrief(input: StudioFormInput): CampaignBr
     throw new Error("campaignId is required");
   }
   const adType = normalizeAdType(input.adType);
+  const adDirection = normalizeAdDirection(input.adDirection);
   // Brand films, shop/service and festival greetings can run without a product.
   const productOptional = getAdTypePlaybook(adType).productPhotoOptional;
   if (!input.product?.product_name?.trim() && !productOptional) {
@@ -302,10 +306,12 @@ export function mapStudioFormToCampaignBrief(input: StudioFormInput): CampaignBr
     occasion: input.occasion?.trim() || undefined,
     shopDetails: input.shopDetails?.trim() || undefined,
     approvedConcept: input.approvedConcept,
+    adDirection,
     endCard: input.endCard?.enabled
       ? {
           enabled: true,
           offer: input.endCard.offer?.trim() || undefined,
+          cta: input.endCard.cta?.trim() || undefined,
           contact: input.endCard.contact?.trim() || undefined,
         }
       : undefined,
@@ -320,6 +326,7 @@ export function mapStudioFormToCampaignBrief(input: StudioFormInput): CampaignBr
       cta:
         input.voiceover?.cta?.trim() ||
         input.voiceoverCta?.trim() ||
+        viewerActionCta(adDirection) ||
         undefined,
       ctaEnabled: input.voiceover?.ctaEnabled !== false,
       script: input.voiceover?.script?.trim() || undefined,
