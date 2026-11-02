@@ -36,6 +36,7 @@ import {
   type GeneratedVideo,
 } from './types';
 import FixEditor, { formatClock } from './FixEditor';
+import GenerationReveal from './GenerationReveal';
 import {
   HOOK_TYPES,
   HOOK_LABELS,
@@ -383,7 +384,7 @@ export default function VideoStudioWorkspace({
     voiceoverEnabled: voiceover.enabled,
     endCardEnabled: adBuilderData.endCard?.enabled ?? true,
   });
-  const { index: cappedStep, minutesLeft } = generationProgress(generationSteps, generationElapsed);
+  const { index: cappedStep } = generationProgress(generationSteps, generationElapsed);
 
   const qcDecision = selectedVideo?.qcDecision;
   const creativePlan = selectedVideo?.creativePlan;
@@ -1181,43 +1182,16 @@ export default function VideoStudioWorkspace({
           )}
 
           {isBusy && (
-            <div
-              className="absolute inset-0 flex flex-col items-center justify-center px-8 z-[3]"
-              style={{ background: 'rgba(5,5,7,0.72)' }}
-            >
-              <div className="w-10 h-10 rounded-full border-2 border-white/20 border-t-white animate-spin mb-4" />
-              <p className="text-[14px] font-medium" style={{ color: '#F4F4F7' }}>
-                {productionStatus === 'regenerating'
-                  ? 'Improving your commercial'
-                  : 'Creating your commercial'}
-              </p>
-              <ul className="mt-4 space-y-1.5 text-left w-64" aria-live="polite">
-                {generationSteps.map(({ label }, i) => {
-                  const done = i < cappedStep;
-                  const active = i === cappedStep;
-                  return (
-                    <li
-                      key={label}
-                      className="text-[13px] flex items-center gap-2"
-                      style={{
-                        color: done || active ? '#F4F4F7' : MUTED,
-                      }}
-                    >
-                      <span className="w-4 text-center" aria-hidden>
-                        {done ? '✓' : active ? '●' : '○'}
-                      </span>
-                      {label}
-                    </li>
-                  );
-                })}
-              </ul>
-              <p className="text-[12px] mt-4" style={{ color: MUTED }}>
-                {minutesLeft > 1
-                  ? `About ${minutesLeft} minutes left.`
-                  : 'Almost done…'}{' '}
-                Please keep this page open.
-              </p>
-            </div>
+            <GenerationReveal
+              variant="overlay"
+              image={product?.hero_image}
+              aspect={aspect}
+              title={productionStatus === 'regenerating' ? 'Improving your video ad' : 'Creating your video ad'}
+              steps={generationSteps.map((step) => step.label)}
+              activeStep={cappedStep}
+              expectedSeconds={generationSteps.reduce((sum, step) => sum + step.seconds, 0)}
+              elapsedSeconds={generationElapsed}
+            />
           )}
         </div>
       </div>

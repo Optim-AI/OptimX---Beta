@@ -13,7 +13,8 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { ArcSpinner, DotWave } from "@/app/web/src/components/ui/loaders";
+import { ArcSpinner } from "@/app/web/src/components/ui/loaders";
+import GenerationReveal from "./GenerationReveal";
 import type { BrandSnapshot, PosterConfig, Product } from "./types";
 import { ASPECT_RATIOS, POSTER_THEMES } from "./utils";
 import { cn } from "@/lib/utils";
@@ -497,34 +498,22 @@ export function PosterCreativeWorkspace({
 
       {/* Generating */}
       {isGenerating && !brandReviewSlot && (
-        <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-6 py-16">
-          <div className="w-full max-w-md space-y-6 text-center">
-            <DotWave className="mx-auto text-2xl" style={{ color: BLUE.solid }} label="Working on your creative" />
-            <div>
-              <h2 className="text-lg font-medium tracking-tight text-white">
-                {generatingHeadline(thinkingMessages)}
-              </h2>
-              <p className="mt-2 text-sm text-white/45">
-                {thinkingMessages.find((m) => m.startsWith("→")) ||
-                  thinkingMessages[thinkingMessages.length - 1] ||
-                  "Working on your creative…"}
-              </p>
-            </div>
-            {thinkingMessages.length > 0 && (
-              <ul className="space-y-2 text-left text-sm text-white/40">
-                {thinkingMessages.slice(0, 6).map((msg, i) => (
-                  <li key={i} className="flex items-start gap-2">
-                    <span
-                      className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full"
-                      style={{ background: BLUE.solid }}
-                    />
-                    {msg}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </div>
+        <GenerationReveal
+          image={displayThumb}
+          aspect={String(aspectRatio || "4:5").replace(":", " / ")}
+          title={generatingHeadline(thinkingMessages)}
+          steps={["Understanding your brand", "Planning the design", "Creating your poster", "Final checks"]}
+          activeStep={
+            generatingHeadline(thinkingMessages) === "Creating your poster"
+              ? 2
+              : generatingHeadline(thinkingMessages) === "Understanding your campaign"
+                ? 0
+                : 1
+          }
+          expectedSeconds={90}
+          detail={thinkingMessages.find((m) => m.startsWith("→")) || thinkingMessages[thinkingMessages.length - 1]}
+          accent={BLUE.solid}
+        />
       )}
 
       {/* Results */}
