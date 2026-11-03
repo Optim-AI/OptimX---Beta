@@ -2,6 +2,7 @@
 import { db } from '../client';
 import { payments, webhookEvents, creditPacks } from '@/database/schema';
 import { eq, and, desc } from 'drizzle-orm';
+import { isUniqueViolation } from '@/lib/db/unique-violation';
 // `and` used by captureIfCreated
 
 // Type inference from Drizzle schema
@@ -47,10 +48,7 @@ export class PaymentsDAO {
       const payment = await this.create(data);
       return { payment, created: true };
     } catch (error: any) {
-      if (
-        error?.code === '23505' ||
-        /unique|duplicate/i.test(String(error?.message || ''))
-      ) {
+      if (isUniqueViolation(error)) {
         const raced = await this.getByRazorpayId(data.razorpayPaymentId);
         if (raced) return { payment: raced, created: false };
       }

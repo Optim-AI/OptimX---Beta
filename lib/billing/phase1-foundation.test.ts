@@ -107,7 +107,11 @@ async function main() {
       paymentsDao.includes('createIfAbsentByRazorpayPaymentId'),
       'C: PaymentsDAO exposes createIfAbsent'
     );
-    assert(paymentsDao.includes('23505'), 'C: createIfAbsent handles unique race');
+    const uniqueHelper = readFileSync(resolve(__dirname, '../db/unique-violation.ts'), 'utf8');
+    assert(
+      paymentsDao.includes('isUniqueViolation(') && uniqueHelper.includes('23505'),
+      'C: createIfAbsent handles unique race'
+    );
     console.log('PASS C: duplicate subscription.charged payment insert guarded');
   }
 

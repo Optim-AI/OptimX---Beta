@@ -14,6 +14,7 @@ import {
   classifyInitialProvisionReason,
   type PaymentOutcomeKind,
 } from '@/lib/billing/subscription-payment-outcome';
+import { isUniqueViolation } from '@/lib/db/unique-violation';
 
 interface WebhookPayload {
   entity: string;
@@ -118,10 +119,7 @@ export class WebhookService {
         try {
           webhookEvent = await WebhookEventsDAO.create(eventId, payload.event, payload);
         } catch (insertError: any) {
-          if (
-            insertError?.code === '23505' ||
-            /unique|duplicate/i.test(String(insertError?.message || ''))
-          ) {
+          if (isUniqueViolation(insertError)) {
             console.log(`Webhook event ${eventId} insert race, skipping`);
             return { success: true };
           }

@@ -125,41 +125,45 @@ export async function provisionSubscriptionCycleForCharge(
     let cycle = existing[0] ?? null;
 
     if (!cycle) {
-      try {
-        const [inserted] = await tx
-          .insert(subscriptionCycles)
-          .values({
-            subscriptionId: params.subscriptionId,
-            userId: params.userId,
-            planId: params.planId,
-            razorpayPaymentId,
-            periodStart: now.toISOString(),
-            periodEnd: periodEnd.toISOString(),
-            imageCreditsGranted: imageCredits,
-            videoCreditsGranted: videoCredits,
-            status: 'pending',
-            idempotencyKey,
-            metadata: params.metadata ?? null,
-          })
-          .returning();
+      // ON CONFLICT DO NOTHING instead of catching a unique violation: a violation would abort
+      // this transaction (and drizzle wraps the pg error, hiding its code). Under concurrent
+      // delivery the losing insert waits for the winner to commit, inserts nothing, and the
+      // re-select below sees the winner's committed cycle.
+      const [inserted] = await tx
+        .insert(subscriptionCycles)
+        .values({
+          subscriptionId: params.subscriptionId,
+          userId: params.userId,
+          planId: params.planId,
+          razorpayPaymentId,
+          periodStart: now.toISOString(),
+          periodEnd: periodEnd.toISOString(),
+          imageCreditsGranted: imageCredits,
+          videoCreditsGranted: videoCredits,
+          status: 'pending',
+          idempotencyKey,
+          metadata: params.metadata ?? null,
+        })
+        .onConflictDoNothing()
+        .returning();
+
+      if (inserted) {
         cycle = inserted;
-      } catch (error: any) {
-        if (
-          error?.code === '23505' ||
-          /unique|duplicate/i.test(String(error?.message || ''))
-        ) {
-          const raced = await tx
-            .select()
-            .from(subscriptionCycles)
-            .where(eq(subscriptionCycles.idempotencyKey, idempotencyKey))
-            .limit(1);
-          if (raced[0]?.status === 'provisioned') {
-            return { cycle: raced[0], created: false, creditsGranted: false };
-          }
-          cycle = raced[0] ?? null;
-          if (!cycle) throw error;
-        } else {
-          throw error;
+      } else {
+        const raced = await tx
+          .select()
+          .from(subscriptionCycles)
+          .where(eq(subscriptionCycles.idempotencyKey, idempotencyKey))
+          .limit(1);
+        if (raced[0]?.status === 'provisioned') {
+          return { cycle: raced[0], created: false, creditsGranted: false };
+        }
+        cycle = raced[0] ?? null;
+        if (!cycle) {
+          throw new SubscriptionEntitlementError(
+            'PROVISION_FAILED',
+            `Cycle insert conflicted but no cycle found for ${idempotencyKey}`
+          );
         }
       }
     }

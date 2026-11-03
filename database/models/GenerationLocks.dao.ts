@@ -4,6 +4,7 @@
 import { db } from '../client';
 import { generationJobLocks } from '@/database/schema';
 import { and, eq, inArray } from 'drizzle-orm';
+import { isUniqueViolation } from '@/lib/db/unique-violation';
 
 export type GenerationJobLock = typeof generationJobLocks.$inferSelect;
 
@@ -83,10 +84,7 @@ export class GenerationLocksDAO {
         .returning();
       return { claimed: true, lock: created };
     } catch (error: any) {
-      if (
-        error?.code === '23505' ||
-        /unique|duplicate/i.test(String(error?.message || ''))
-      ) {
+      if (isUniqueViolation(error)) {
         const raced = await this.getByKey(lockKey);
         if (raced) {
           if (raced.status === 'in_progress') {
