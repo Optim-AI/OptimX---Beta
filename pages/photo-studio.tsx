@@ -3,11 +3,12 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { JSX } from "react";
 import Head from "next/head";
 import { useRouter } from "next/router";
-import { Activity, ArrowLeft, CupSoda, Package, Shirt, Soup, UtensilsCrossed, Camera, Check, Cylinder, Download, Flower2, Gem, Hand, House, ImagePlus, Images, LayoutGrid, Lock, Palette, RefreshCw, ShoppingBag, Sparkles, Trash2, Upload, User, Wand2 } from "lucide-react";
+import { Activity, ArrowLeft, CupSoda, Package, Pencil, Shirt, Soup, UtensilsCrossed, Camera, Check, Cylinder, Download, Flower2, Gem, Hand, House, ImagePlus, Images, LayoutGrid, Lock, Palette, RefreshCw, ShoppingBag, Sparkles, Trash2, Upload, User, Wand2 } from "lucide-react";
 import { ArcSpinner, ShimmerGrid, ShimmerTile, StepProgress } from "@/app/web/src/components/ui/loaders";
 import { toast } from "sonner";
 import Sidebar from "../app/web/src/components/Sidebar";
 import CreativeViewer from "@/app/web/src/components/creative-studio/CreativeViewer";
+import PhotoEditDialog from "@/app/web/src/components/photo-studio/PhotoEditDialog";
 import colors from "@/lib/ui/colors";
 import { authFetch } from "@/lib/utils";
 import { friendlyError, readJson, responseError } from "@/lib/api-errors";
@@ -135,6 +136,8 @@ export default function PhotoStudioPage(): JSX.Element {
   const [results, setResults] = useState<ShotResult[]>([]);
   const [running, setRunning] = useState(false);
   const [viewer, setViewer] = useState<number | null>(null);
+  /** Index into results of the photo being edited */
+  const [editing, setEditing] = useState<number | null>(null);
   const [tab, setTab] = useState<"plan" | "photos">("plan");
   const [kindOverride, setKindOverride] = useState<ProductKind | null>(null);
   const [recent, setRecent] = useState<Array<{ id: string; name: string; cover: string | null; sourceUrl: string | null; photos: number }>>([]);
@@ -334,6 +337,18 @@ export default function PhotoStudioPage(): JSX.Element {
     const def = shoot?.catalog.find((s) => s.id === r.shotId);
     return { id: `${i}-${r.url}`, images: [r.url], title: def?.label || r.shotId, caption: shoot?.profile.name, headline: shoot?.profile.name };
   });
+
+  const editPhoto = useCallback(async (photoUrl: string, request: string) => {
+    if (!shoot) return;
+    const res = await authFetch("/api/photo-studio/edit", {
+      method: "POST",
+      body: JSON.stringify({ sessionId: shoot.sessionId, photoUrl, request }),
+    });
+    const j = await readJson<any>(res);
+    if (!res.ok || !j.ok || !j.result) throw new Error(responseError(res, j, "This edit didn't come out. Try again."));
+    setResults((r) => [...r, j.result as ShotResult]);
+    toast.success("Edited photo added next to the original.");
+  }, [shoot]);
 
   const download = async (url: string, name: string) => {
     try {
@@ -822,12 +837,19 @@ export default function PhotoStudioPage(): JSX.Element {
                       const Icon = SHOT_ICON[shot.id] || Camera;
                       const busy = st === "shooting" || st === "queued";
                       const pending = busy ? (shot.id === "marketplace_white" ? 1 : selected[shot.id] || 1) : 0;
-                      const caption = (k: number, total: number, withAction: boolean) => (
+                      const caption = (k: number, total: number, withAction: boolean, editIndex?: number) => (
                         <div className="mt-2 flex items-center justify-between gap-2">
                           <span className="inline-flex min-w-0 items-center gap-1.5 text-xs" style={{ color: colors.foreground }}>
                             <Icon className="h-3.5 w-3.5 shrink-0" style={{ color: colors.mutedForeground }} aria-hidden />
-                            <span className="truncate">{shot.label}{total > 1 ? ` ${k + 1}` : ""}</span>
+                            <span className="truncate">{shot.label}{total > 1 ? ` ${k + 1}` : ""}{editIndex !== undefined && results[editIndex]?.editedFrom ? " · edited" : ""}</span>
                           </span>
+                          <span className="inline-flex shrink-0 items-center gap-1">
+                          {editIndex !== undefined && (
+                            <button type="button" onClick={() => setEditing(editIndex)} title={`Edit this ${shot.label} photo`} aria-label={`Edit ${shot.label} photo ${k + 1}`}
+                              className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium ${focusRing}`} style={{ color: colors.foreground, border: `1px solid ${colors.border}` }}>
+                              <Pencil className="h-3.5 w-3.5" aria-hidden /> Edit
+                            </button>
+                          )}
                           {withAction && (busy ? (
                             <span className="text-[11px]" style={{ color: colors.primary }}>{st === "queued" ? "Queued" : "Shooting…"}</span>
                           ) : (
@@ -836,6 +858,7 @@ export default function PhotoStudioPage(): JSX.Element {
                               <RefreshCw className="h-3.5 w-3.5" />
                             </button>
                           ))}
+                          </span>
                         </div>
                       );
                       return [
@@ -845,7 +868,7 @@ export default function PhotoStudioPage(): JSX.Element {
                               className={`group block aspect-[4/5] w-full overflow-hidden rounded-xl ${focusRing}`} style={{ background: colors.secondary }}>
                               <img src={r.url} alt="" loading="lazy" className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]" />
                             </button>
-                            <figcaption>{caption(k, photos.length + pending, k === 0)}</figcaption>
+                            <figcaption>{caption(k, photos.length + pending, k === 0, i)}</figcaption>
                           </figure>
                         )),
                         ...Array.from({ length: pending }, (_, k) => (
@@ -910,14 +933,38 @@ export default function PhotoStudioPage(): JSX.Element {
           onClose={() => setViewer(null)}
           brand={{ name: p.name }}
           renderActions={(item, i) => (
-            <button type="button" onClick={() => void download(item.images[0], `${(results[i]?.shotId || "photo").replace(/_/g, "-")}-${i + 1}.jpg`)}
-              className="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium"
-              style={{ background: colors.card, color: colors.foreground, border: `1px solid ${colors.border}` }}>
-              <Download className="h-4 w-4" /> Download
-            </button>
+            <>
+              <button type="button" onClick={() => { setViewer(null); setEditing(i); }}
+                className="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium"
+                style={{ background: colors.primary, color: colors.primaryForeground }}>
+                <Pencil className="h-4 w-4" /> Edit
+              </button>
+              <button type="button" onClick={() => void download(item.images[0], `${(results[i]?.shotId || "photo").replace(/_/g, "-")}-${i + 1}.jpg`)}
+                className="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium"
+                style={{ background: colors.card, color: colors.foreground, border: `1px solid ${colors.border}` }}>
+                <Download className="h-4 w-4" /> Download
+              </button>
+            </>
           )}
         />
       )}
+
+      {editing !== null && results[editing] && (() => {
+        const r = results[editing];
+        const def = shoot.catalog.find((s) => s.id === r.shotId);
+        const sameShot = results.filter((x) => x.shotId === r.shotId);
+        const n = sameShot.indexOf(r);
+        return (
+          <PhotoEditDialog
+            imageUrl={r.url}
+            title={`${def?.label || "Photo"}${sameShot.length > 1 ? ` ${n + 1}` : ""}`}
+            withPeople={!!def?.usesModel || def?.method === "guided"}
+            isFood={!!p.isFood}
+            onSubmit={(request) => editPhoto(r.url, request)}
+            onClose={() => setEditing(null)}
+          />
+        );
+      })()}
 
     </div>
   );

@@ -74,4 +74,8 @@ export type ShotResult = {
   /** Guided shots: fidelity score 0–10 from the check (null when not checked) */
   fidelity?: number | null;
   createdAt: string;
+  /** Set on an edited photo: the photo it was made from */
+  editedFrom?: string;
+  /** The person's own words for the edit */
+  editRequest?: string;
 };

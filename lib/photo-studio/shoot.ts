@@ -100,7 +100,7 @@ export async function deleteShootSession(userId: string, sessionId: string): Pro
   return "deleted";
 }
 
-async function appendResults(userId: string, sessionId: string, results: ShotResult[]) {
+export async function appendResults(userId: string, sessionId: string, results: ShotResult[]) {
   const s = await CreativeStudioSessionDAO.getByIdAndUserId(sessionId, userId);
   if (!s) return;
   const config = (s.config || {}) as any;

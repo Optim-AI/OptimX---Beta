@@ -10,6 +10,7 @@ import { CANVAS, renderPackshot } from "./packshot";
 import { renderShot } from "./render";
 import { prepareMaster } from "./master";
 import { shootShot } from "./shoot";
+import { editPhoto, editPrompt } from "./edit";
 import type { ImageGenerationProvider } from "@/lib/creative-studio/poster-generation/types";
 
 async function main() {
@@ -172,6 +173,58 @@ async function main() {
   assert.equal(results[0].method, "exact");
   assert.equal(charged, 0, "no credits during the beta");
   console.log("  ok  free beta shots");
+
+  // Edit: only this shoot's photos, brief + product attached, added next to the original
+  const shotUrl = "mem://shot-1";
+  const editState = {
+    sourceUrl: dataUrl, masterUrl: dataUrl, cutoutUrl: dataUrl, prepared: true, profile: food, settings, shots: [],
+    results: [{ shotId: "food_scoop", url: shotUrl, method: "guided" as const, aspect: "4:5" as const, createdAt: "t" }],
+  };
+  const editReqs: any[] = [];
+  const photoEditProvider = {
+    ...provider,
+    generate: async (req: any) => (editReqs.push(req), { ok: true, imageBuffer: product }),
+  } as unknown as ImageGenerationProvider;
+  const saved: any[] = [];
+  let editCharged = 0;
+  const editDeps = {
+    provider: photoEditProvider,
+    loadImage: async () => ({ buffer: product, mimeType: "image/png" }),
+    writeBrief: async () => "Left hand holds the jar at chest height; right index finger points at the label.",
+    checkFidelity: async () => ({ checked: true, score: 9, issues: [] }),
+    store: async () => "mem://edited",
+    save: async (_u: string, _s: string, r: any[]) => void saved.push(...r),
+    deduct: async () => (editCharged++, true),
+  };
+  await assert.rejects(
+    editPhoto({ userId: "u", sessionId: "s", photoUrl: "https://evil.example/x.png", request: "point at it", state: editState }, editDeps),
+    /isn't part of this shoot/,
+    "only photos from this shoot can be edited"
+  );
+  await assert.rejects(editPhoto({ userId: "u", sessionId: "s", photoUrl: shotUrl, request: "   ", state: editState }, editDeps), /Say what/);
+  assert.equal(editReqs.length, 0, "rejected edits never reach the image model");
+  const edited = await editPhoto({ userId: "u", sessionId: "s", photoUrl: shotUrl, request: "make her point at it", state: editState }, editDeps);
+  assert.equal(edited.url, "mem://edited");
+  assert.equal(edited.shotId, "food_scoop", "edited photo stays with its shot");
+  assert.equal(edited.editedFrom, shotUrl);
+  assert.equal(edited.editRequest, "make her point at it");
+  assert.deepEqual(saved.map((r) => r.url), ["mem://edited"], "saved as a new photo, original kept");
+  assert.equal(editCharged, 0, "edits are free during the beta");
+  const sent = editReqs[0];
+  assert.equal(sent.mode, "edit");
+  assert.deepEqual(sent.referenceImages.map((r: any) => r.role), ["design_inspiration", "product_packshot"], "base photo + exact product attached");
+  assert.ok(sent.prompt.includes("right index finger points at the label") && sent.prompt.includes("make her point at it"));
+  // Low fidelity → one corrective retry, keeps the better one
+  editReqs.length = 0;
+  let editChecks = 0;
+  await editPhoto(
+    { userId: "u", sessionId: "s", photoUrl: shotUrl, request: "scoop", state: editState },
+    { ...editDeps, checkFidelity: async () => (++editChecks === 1 ? { checked: true, score: 4, issues: ["label says Helth"] } : { checked: true, score: 9, issues: [] }) }
+  );
+  assert.equal(editReqs.length, 2, "one retry when the product drifted");
+  assert.ok(editReqs[1].prompt.includes("label says Helth"));
+  assert.ok(!editPrompt("same", "same").includes("client's own words"), "no duplicate request when brief falls back to it");
+  console.log("  ok  photo edit");
   console.log("photo-studio tests passed");
 }
 void main();
