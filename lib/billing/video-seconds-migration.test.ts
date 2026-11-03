@@ -159,7 +159,8 @@ async function main() {
   }
 
   {
-    for (const amt of [1200, 2400, 4800]) {
+    // Previous (1200/2400/4800) and launch-offer (2400/4200/7800) monthly grants.
+    for (const amt of [1200, 2400, 4800, 4200, 7800]) {
       const d = classifyVideoWalletForSecondsMigration({
         videoCreditsSubscription: amt,
         videoCreditsAddon: 0,
@@ -176,7 +177,7 @@ async function main() {
       });
       assert(d.decision === 'skip_already_video_credits', `5: cycle ${amt}`);
     }
-    console.log('PASS 5: cycle 1200/2400/4800 NOT migrated');
+    console.log('PASS 5: cycle 1200/2400/4800/4200/7800 NOT migrated');
   }
 
   {

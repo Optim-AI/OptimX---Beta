@@ -117,19 +117,19 @@ run('email sender prefers Resend when configured', () => {
   assert.ok(!/re_[A-Za-z0-9_]{10,}/.test(send), 'API key must not be hardcoded');
 });
 
-run('paid plan prices and credits unchanged in marketing catalog', () => {
+run('paid plan prices unchanged; launch-offer credits in marketing catalog', () => {
   const starter = MARKETING_SUBSCRIPTION_PLANS.find((p) => p.id === 'skalx_starter')!;
   const growth = MARKETING_SUBSCRIPTION_PLANS.find((p) => p.id === 'skalx_growth')!;
   const pro = MARKETING_SUBSCRIPTION_PLANS.find((p) => p.id === 'skalx_pro')!;
   assert.equal(starter.priceInr, 3999);
-  assert.equal(starter.imageCredits, 50);
-  assert.equal(starter.videoCredits, 1200);
+  assert.equal(starter.imageCredits, 100);
+  assert.equal(starter.videoCredits, 2400);
   assert.equal(growth.priceInr, 6999);
-  assert.equal(growth.imageCredits, 150);
-  assert.equal(growth.videoCredits, 2400);
+  assert.equal(growth.imageCredits, 250);
+  assert.equal(growth.videoCredits, 4200);
   assert.equal(pro.priceInr, 12999);
-  assert.equal(pro.imageCredits, 300);
-  assert.equal(pro.videoCredits, 4800);
+  assert.equal(pro.imageCredits, 600);
+  assert.equal(pro.videoCredits, 7800);
 });
 
 console.log('\nall trial request tests passed');

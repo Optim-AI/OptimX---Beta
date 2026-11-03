@@ -42,7 +42,7 @@ If the founder still has the Razorpay payment id (dashboard) and local `subscrip
    - `razorpaySubscriptionId`
    - `razorpayPaymentId`
    - `razorpaySignature` from a legitimate Checkout response **or** use an ops-only path that fetches the payment server-side after dashboard verification (signature required by the public endpoint).
-3. Expect `status: provisioned` and Brand Studio to show **50 images / 1,200 video**.
+3. Expect `status: provisioned` and Brand Studio to show **100 images / 2,400 video**.
 4. A second call must remain idempotent (`alreadyProvisioned` / same cycle).
 
 If Checkout signature is unavailable, prefer Razorpay dashboard **resend** of `payment.captured` to the production webhook (below) rather than bypassing signature checks.
@@ -51,7 +51,7 @@ If Checkout signature is unavailable, prefer Razorpay dashboard **resend** of `p
 
 1. Confirm live webhook URL is `https://skalxai.app/api/billing/webhooks/razorpay` and secret matches production.
 2. Resend the existing `payment.captured` event for that payment only.
-3. Confirm DB: `webhook_events` processed, one `subscription_cycles` provisioned, subscription `active`, wallet 50 / 1200.
+3. Confirm DB: `webhook_events` processed, one `subscription_cycles` provisioned, subscription `active`, wallet 100 / 2400.
 
 ### After recovery
 

@@ -234,7 +234,15 @@ export default function TryPricingExperience({
                   : glass.boxShadow,
               }}
             >
-              <h2 className="text-2xl font-semibold mb-3">{plan.name}</h2>
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                <h2 className="text-2xl font-semibold">{plan.name}</h2>
+                <span
+                  className="rounded-full px-2.5 py-0.5 text-xs font-semibold"
+                  style={{ background: 'hsl(213 100% 55% / 0.15)', color: colors.accentForeground }}
+                >
+                  {plan.offerLabel}
+                </span>
+              </div>
               <div className="mb-1">
                 <span className="text-3xl font-bold tracking-tight">
                   {formatPricePlusGst(plan.priceInr)}

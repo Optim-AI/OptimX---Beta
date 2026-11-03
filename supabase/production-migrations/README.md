@@ -32,7 +32,11 @@ The catalog SQL raises an exception if any placeholder remains.
 6. `05_video_seconds_idempotency.sql`
 7. `06_production_plan_catalog.sql` — only after Live Razorpay IDs are substituted
 8. `07_subscription_cycles_security.sql`
-9. `99_postflight_readonly.sql` — read-only verification
+9. `08_launch_offer_plan_credits.sql` — launch-offer monthly credits (Starter 100 / 2,400,
+   Growth 250 / 4,200, Pro 600 / 7,800). Prices and Razorpay plan IDs unchanged. Existing
+   subscribers get the new amounts from their next successful renewal; current balances are
+   not touched. Deploy the app code with the new card values at the same time.
+10. `99_postflight_readonly.sql` — read-only verification (expects the 08 credit amounts)
 
 Wallet review (separate, still dry-run):
 

@@ -3,6 +3,8 @@
  * Must stay aligned with active catalog: skalx_starter / skalx_growth / skalx_pro.
  *
  * `priceInr` is the pre-GST catalog price (same as plans.price_inr).
+ * Credits must match plans.image_credits / plans.video_credits — renewals grant from the DB row
+ * (see supabase/migrations/20261103120000_launch_offer_plan_credits.sql).
  * Razorpay subscription plans must be created at the GST-inclusive total.
  */
 
@@ -10,30 +12,36 @@ import { BUY_CREDITS_PRICING } from './pricing';
 
 export const SUBSCRIPTION_GST_RATE = BUY_CREDITS_PRICING.gstRate; // 0.18
 
+/** Shown on the paid plan cards (not on Free Trial or Custom). Display only. */
+export const LAUNCH_OFFER_LABEL = 'Launch offer';
+
 export const MARKETING_SUBSCRIPTION_PLANS = [
   {
     id: 'skalx_starter' as const,
     name: 'Starter',
     priceInr: 3999,
-    imageCredits: 50,
-    videoCredits: 1200,
+    imageCredits: 100,
+    videoCredits: 2400,
     highlighted: false,
+    offerLabel: LAUNCH_OFFER_LABEL,
   },
   {
     id: 'skalx_growth' as const,
     name: 'Growth',
     priceInr: 6999,
-    imageCredits: 150,
-    videoCredits: 2400,
+    imageCredits: 250,
+    videoCredits: 4200,
     highlighted: false,
+    offerLabel: LAUNCH_OFFER_LABEL,
   },
   {
     id: 'skalx_pro' as const,
     name: 'Pro',
     priceInr: 12999,
-    imageCredits: 300,
-    videoCredits: 4800,
+    imageCredits: 600,
+    videoCredits: 7800,
     highlighted: false,
+    offerLabel: LAUNCH_OFFER_LABEL,
   },
 ] as const;
 

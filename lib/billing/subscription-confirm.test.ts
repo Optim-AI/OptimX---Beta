@@ -154,12 +154,12 @@ async function main() {
     const starter = MARKETING_SUBSCRIPTION_PLANS.find((p) => p.id === 'skalx_starter')!;
     const growth = MARKETING_SUBSCRIPTION_PLANS.find((p) => p.id === 'skalx_growth')!;
     const pro = MARKETING_SUBSCRIPTION_PLANS.find((p) => p.id === 'skalx_pro')!;
-    assertEqual(starter.imageCredits, 50, 'starter images');
-    assertEqual(starter.videoCredits, 1200, 'starter video');
-    assertEqual(growth.imageCredits, 150, 'growth images');
-    assertEqual(growth.videoCredits, 2400, 'growth video');
-    assertEqual(pro.imageCredits, 300, 'pro images');
-    assertEqual(pro.videoCredits, 4800, 'pro video');
+    assertEqual(starter.imageCredits, 100, 'starter images');
+    assertEqual(starter.videoCredits, 2400, 'starter video');
+    assertEqual(growth.imageCredits, 250, 'growth images');
+    assertEqual(growth.videoCredits, 4200, 'growth video');
+    assertEqual(pro.imageCredits, 600, 'pro images');
+    assertEqual(pro.videoCredits, 7800, 'pro video');
     assertEqual(subscriptionTotalsInr(3999).totalInr * 100, 471900, 'starter paise');
     console.log('PASS: plan entitlements');
   }
@@ -168,11 +168,11 @@ async function main() {
   {
     const parsed = parseCreditsBalancePayload({
       success: true,
-      imageCredits: { subscription: 50, addon: 2, total: 52 },
-      videoCredits: { subscription: 1200, addon: 0, total: 1200 },
+      imageCredits: { subscription: 100, addon: 2, total: 102 },
+      videoCredits: { subscription: 2400, addon: 0, total: 2400 },
     });
-    assertEqual(parsed?.imageTotal, 52, 'image total');
-    assertEqual(parsed?.videoTotal, 1200, 'video total');
+    assertEqual(parsed?.imageTotal, 102, 'image total');
+    assertEqual(parsed?.videoTotal, 2400, 'video total');
     assertEqual(parseCreditsBalancePayload({ success: false }), null, 'failed payload');
     console.log('PASS: balance client parser');
   }
@@ -375,7 +375,7 @@ async function main() {
       assertEqual(r.status, 'rejected', 'missing signature rejected');
     }
 
-    // Valid captured Starter → 50 / 1200
+    // Valid captured Starter → 100 / 2400
     const signature = createHmac('sha256', secret)
       .update(`${payId}|${rpSubId}`)
       .digest('hex');
@@ -394,8 +394,8 @@ async function main() {
     );
     assertEqual(first.status, 'provisioned', 'captured provisions');
     let bal = await client.query(`SELECT * FROM user_credits WHERE id = $1`, [userId]);
-    assertEqual(bal.rows[0].image_credits_subscription, 50, 'starter image 50');
-    assertEqual(bal.rows[0].video_credits_subscription, 1200, 'starter video 1200');
+    assertEqual(bal.rows[0].image_credits_subscription, 100, 'starter image 100');
+    assertEqual(bal.rows[0].video_credits_subscription, 2400, 'starter video 2400');
 
     // Duplicate confirm + concurrent-style second call → once
     const dup = await confirmSubscriptionPayment(
@@ -410,7 +410,7 @@ async function main() {
     );
     assertEqual(dup.status, 'provisioned', 'duplicate ok');
     bal = await client.query(`SELECT * FROM user_credits WHERE id = $1`, [userId]);
-    assertEqual(bal.rows[0].image_credits_subscription, 50, 'still 50');
+    assertEqual(bal.rows[0].image_credits_subscription, 100, 'still 100');
     const cycles = await client.query(
       `SELECT count(*)::int AS n FROM subscription_cycles WHERE user_id = $1`,
       [userId]
@@ -481,8 +481,8 @@ async function main() {
       );
       assert(g.handled, 'growth handled');
       bal = await client.query(`SELECT * FROM user_credits WHERE id = $1`, [userId]);
-      assertEqual(bal.rows[0].image_credits_subscription, 150, 'growth image');
-      assertEqual(bal.rows[0].video_credits_subscription, 2400, 'growth video');
+      assertEqual(bal.rows[0].image_credits_subscription, 250, 'growth image');
+      assertEqual(bal.rows[0].video_credits_subscription, 4200, 'growth video');
     }
 
     console.log('PASS: DB confirm + entitlements + idempotency');

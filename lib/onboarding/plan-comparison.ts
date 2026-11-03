@@ -4,7 +4,7 @@
  * Do not invent unsupported capabilities.
  */
 
-import type { MarketingPlanId } from '@/lib/billing/marketing-plans';
+import { getMarketingPlan, type MarketingPlanId } from '@/lib/billing/marketing-plans';
 
 export type ComparisonCell = boolean | 'coming_soon' | string;
 
@@ -24,26 +24,28 @@ export const PLAN_CARD_CAPABILITIES = [
   'No watermark on outputs',
 ] as const;
 
+/** Monthly credit amounts, read from the plan catalog so this table can't drift from it. */
+function creditValues(kind: 'imageCredits' | 'videoCredits'): Record<MarketingPlanId, ComparisonCell> {
+  const fmt = (id: MarketingPlanId) => (getMarketingPlan(id)?.[kind] ?? 0).toLocaleString('en-IN');
+  return {
+    skalx_starter: fmt('skalx_starter'),
+    skalx_growth: fmt('skalx_growth'),
+    skalx_pro: fmt('skalx_pro'),
+  };
+}
+
 export const PLAN_COMPARISON_ROWS: PlanComparisonRow[] = [
   {
     id: 'image_credits',
     label: 'Image Credits / month',
     hint: 'One successful image generation uses 1 Image Credit.',
-    values: {
-      skalx_starter: '50',
-      skalx_growth: '150',
-      skalx_pro: '300',
-    },
+    values: creditValues('imageCredits'),
   },
   {
     id: 'video_credits',
     label: 'Video Credits / month',
     hint: 'Video generation uses Video Credits based on duration (e.g. 15s = 300).',
-    values: {
-      skalx_starter: '1,200',
-      skalx_growth: '2,400',
-      skalx_pro: '4,800',
-    },
+    values: creditValues('videoCredits'),
   },
   {
     id: 'ai_posters',

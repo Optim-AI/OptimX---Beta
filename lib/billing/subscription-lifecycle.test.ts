@@ -174,8 +174,8 @@ async function main() {
           [userId]
         )
       ).rows[0];
-      assert(bal.image_credits_subscription === 150, '6: growth image');
-      assert(bal.video_credits_subscription === 2400, '6: growth video');
+      assert(bal.image_credits_subscription === 250, '6: growth image');
+      assert(bal.video_credits_subscription === 4200, '6: growth video');
       assert(bal.image_credits_addon === 7, '6/15: addon image preserved');
       assert(bal.video_credits_addon === 900, '6/15: addon video preserved');
 
@@ -212,8 +212,8 @@ async function main() {
           [userId]
         )
       ).rows[0];
-      assert(bal.image_credits_subscription === 150, '8: sub credits not zeroed');
-      assert(bal.video_credits_subscription === 2400, '8: video not zeroed');
+      assert(bal.image_credits_subscription === 250, '8: sub credits not zeroed');
+      assert(bal.video_credits_subscription === 4200, '8: video not zeroed');
       assert(bal.image_credits_addon === 7, '8: addon intact');
       console.log('PASS 8/9: cancel schedules period-end; access retained');
 
@@ -253,7 +253,7 @@ async function main() {
           [userId]
         )
       ).rows[0];
-      assert(bal.image_credits_subscription === 150, '10: cron did not reset balances');
+      assert(bal.image_credits_subscription === 250, '10: cron did not reset balances');
       console.log('PASS 10: no cron renewal grant after cancel scheduled');
     }
 

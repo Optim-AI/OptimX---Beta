@@ -103,12 +103,12 @@ async function main() {
     });
     assert(first.created && first.creditsGranted, 'first charge creates + grants');
     assertEqual(first.cycle.status, 'provisioned', 'first cycle provisioned');
-    assertEqual(first.cycle.imageCreditsGranted, 150, 'growth image 150');
-    assertEqual(first.cycle.videoCreditsGranted, 2400, 'growth video 2400');
+    assertEqual(first.cycle.imageCreditsGranted, 250, 'growth image 250');
+    assertEqual(first.cycle.videoCreditsGranted, 4200, 'growth video 4200');
 
     let bal = await client.query(`SELECT * FROM user_credits WHERE id = $1`, [userId]);
-    assertEqual(bal.rows[0].image_credits_subscription, 150, 'sub image reset to 150');
-    assertEqual(bal.rows[0].video_credits_subscription, 2400, 'sub video reset to 2400');
+    assertEqual(bal.rows[0].image_credits_subscription, 250, 'sub image reset to 250');
+    assertEqual(bal.rows[0].video_credits_subscription, 4200, 'sub video reset to 4200');
     assertEqual(bal.rows[0].image_credits_addon, 7, 'addon image preserved');
     assertEqual(bal.rows[0].video_credits_addon, 900, 'addon video preserved');
     // 12 and 400 did not roll over
@@ -201,8 +201,8 @@ async function main() {
     assert(renew.created && renew.creditsGranted, 'renewal creates new cycle');
     assert(renew.cycle.id !== first.cycle.id, 'renewal different cycle id');
     bal = await client.query(`SELECT * FROM user_credits WHERE id = $1`, [userId]);
-    assertEqual(bal.rows[0].image_credits_subscription, 150, 'renewal sub image 150');
-    assertEqual(bal.rows[0].video_credits_subscription, 2400, 'renewal sub video 2400');
+    assertEqual(bal.rows[0].image_credits_subscription, 250, 'renewal sub image 250');
+    assertEqual(bal.rows[0].video_credits_subscription, 4200, 'renewal sub video 4200');
     assertEqual(bal.rows[0].image_credits_addon, 7, 'renewal addon image');
     assertEqual(bal.rows[0].video_credits_addon, 900, 'renewal addon video');
     console.log('PASS 5/11: renewal new cycle + replace subscription balances');

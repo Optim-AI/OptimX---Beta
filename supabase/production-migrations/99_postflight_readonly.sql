@@ -200,10 +200,11 @@ SELECT
   p.slug,
   p.is_active
 FROM public.plans p
+-- Expected credits are the launch-offer amounts set by 08_launch_offer_plan_credits.sql.
 JOIN (VALUES
-  ('skalx_starter', 'skalx-starter', 3999, 50, 1200, 1),
-  ('skalx_growth', 'skalx-growth', 6999, 150, 2400, 2),
-  ('skalx_pro', 'skalx-pro', 12999, 300, 4800, 3)
+  ('skalx_starter', 'skalx-starter', 3999, 100, 2400, 1),
+  ('skalx_growth', 'skalx-growth', 6999, 250, 4200, 2),
+  ('skalx_pro', 'skalx-pro', 12999, 600, 7800, 3)
 ) AS e(id, slug, price_inr, image_credits, video_credits, display_order)
   ON e.id = p.id
 WHERE p.is_active IS DISTINCT FROM true

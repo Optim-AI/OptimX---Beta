@@ -85,7 +85,10 @@ export default function SubscriptionPlansSection({
             >
               <div className="plan-card-top">
                 <h3>{plan.name}</h3>
-                {isCurrent && <span className="current-badge">Active</span>}
+                <span className="plan-badges">
+                  {isCurrent && <span className="current-badge">Active</span>}
+                  <span className="offer-badge">{plan.offerLabel}</span>
+                </span>
               </div>
               <div className="plan-price">
                 <span className="plan-price-main">{formatPricePlusGst(plan.priceInr)}</span>
@@ -188,6 +191,19 @@ export default function SubscriptionPlansSection({
           margin: 0;
           font-size: 20px;
           font-weight: 600;
+        }
+        .plan-badges {
+          display: inline-flex;
+          flex-wrap: wrap;
+          gap: 6px;
+        }
+        .offer-badge {
+          font-size: 11px;
+          font-weight: 600;
+          color: ${colors.accentForeground};
+          background: hsl(213 100% 55% / 0.15);
+          border-radius: 999px;
+          padding: 3px 8px;
         }
         .current-badge {
           font-size: 11px;

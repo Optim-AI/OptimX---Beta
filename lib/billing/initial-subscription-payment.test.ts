@@ -189,7 +189,7 @@ async function main() {
         ],
       });
 
-    // A: initial payment provisions 50/1200
+    // A: initial payment provisions 100/2400
     const first = await tryProvisionInitialSubscriptionFromCapturedPayment(
       {
         id: payId,
@@ -207,8 +207,8 @@ async function main() {
     assertEqual(first.handled && first.subscriptionId, subscriptionId, 'A: sub id');
 
     let bal = await client.query(`SELECT * FROM user_credits WHERE id = $1`, [userId]);
-    assertEqual(bal.rows[0].image_credits_subscription, 50, 'A: image 50');
-    assertEqual(bal.rows[0].video_credits_subscription, 1200, 'A: video 1200');
+    assertEqual(bal.rows[0].image_credits_subscription, 100, 'A: image 100');
+    assertEqual(bal.rows[0].video_credits_subscription, 2400, 'A: video 2400');
     assertEqual(bal.rows[0].image_credits_addon, 3, 'A: addon image preserved');
     assertEqual(bal.rows[0].video_credits_addon, 111, 'A: addon video preserved');
 
@@ -225,9 +225,9 @@ async function main() {
     assertEqual(cycles.rows.length, 1, 'A: one cycle');
     assertEqual(cycles.rows[0].status, 'provisioned', 'A: cycle provisioned');
     assertEqual(cycles.rows[0].idempotency_key, `sub_charge:${payId}`, 'A: idempotency key');
-    assertEqual(cycles.rows[0].image_credits_granted, 50, 'A: cycle image');
-    assertEqual(cycles.rows[0].video_credits_granted, 1200, 'A: cycle video');
-    console.log('PASS A: initial addon payment → cycle #1 50/1200');
+    assertEqual(cycles.rows[0].image_credits_granted, 100, 'A: cycle image');
+    assertEqual(cycles.rows[0].video_credits_granted, 2400, 'A: cycle video');
+    console.log('PASS A: initial addon payment → cycle #1 100/2400');
 
     // B: duplicate same payment — no second grant
     const histBefore = await client.query(
@@ -252,8 +252,8 @@ async function main() {
     );
     assertEqual(histAfter.rows[0].c, histBefore.rows[0].c, 'B: history unchanged');
     bal = await client.query(`SELECT * FROM user_credits WHERE id = $1`, [userId]);
-    assertEqual(bal.rows[0].image_credits_subscription, 50, 'B: still 50');
-    assertEqual(bal.rows[0].video_credits_subscription, 1200, 'B: still 1200');
+    assertEqual(bal.rows[0].image_credits_subscription, 100, 'B: still 100');
+    assertEqual(bal.rows[0].video_credits_subscription, 2400, 'B: still 2400');
     console.log('PASS B: duplicate payment.captured is idempotent');
 
     // F: ambiguous — no invoice id

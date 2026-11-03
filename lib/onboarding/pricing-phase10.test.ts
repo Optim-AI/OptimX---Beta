@@ -11,6 +11,8 @@ import {
   isMarketingPlanId,
   subscriptionTotalsInr,
 } from '@/lib/billing/marketing-plans';
+import { VIDEO_CREDITS_BY_DURATION } from '@/lib/billing/video-credits';
+import { FREE_TRIAL_CARD } from '@/lib/trial/validate';
 import { PLAN_COMPARISON_ROWS } from './plan-comparison';
 import { parseTryOnboarding } from './try-onboarding';
 
@@ -23,16 +25,38 @@ function main() {
     ['skalx_starter', 'skalx_growth', 'skalx_pro']
   );
 
+  // Launch offer: label on the three paid plans only; prices / GST totals unchanged
+  assert.ok(MARKETING_SUBSCRIPTION_PLANS.every((p) => p.offerLabel === 'Launch offer'));
+  assert.ok(!('offerLabel' in FREE_TRIAL_CARD), 'Free Trial has no launch offer label');
+  assert.deepEqual(
+    MARKETING_SUBSCRIPTION_PLANS.map((p) => subscriptionTotalsInr(p.priceInr).totalInr),
+    [4719, 8259, 15339]
+  );
+  // Video credit rules unchanged (15s = 300, 30s = 600) → whole videos per month
+  assert.equal(VIDEO_CREDITS_BY_DURATION[15], 300);
+  assert.equal(VIDEO_CREDITS_BY_DURATION[30], 600);
+  assert.deepEqual(
+    MARKETING_SUBSCRIPTION_PLANS.map((p) => [p.videoCredits / 300, p.videoCredits / 600]),
+    [
+      [8, 4],
+      [14, 7],
+      [26, 13],
+    ]
+  );
+  // Comparison table reads the catalog (no hand-copied numbers)
+  const imageRow = PLAN_COMPARISON_ROWS.find((r) => r.id === 'image_credits');
+  assert.deepEqual(imageRow?.values, { skalx_starter: '100', skalx_growth: '250', skalx_pro: '600' });
+
   // No "Most Popular" highlight
   assert.ok(MARKETING_SUBSCRIPTION_PLANS.every((p) => p.highlighted === false));
 
   // Credits match product decisions
-  assert.equal(getMarketingPlan('skalx_starter')?.imageCredits, 50);
-  assert.equal(getMarketingPlan('skalx_starter')?.videoCredits, 1200);
-  assert.equal(getMarketingPlan('skalx_growth')?.imageCredits, 150);
-  assert.equal(getMarketingPlan('skalx_growth')?.videoCredits, 2400);
-  assert.equal(getMarketingPlan('skalx_pro')?.imageCredits, 300);
-  assert.equal(getMarketingPlan('skalx_pro')?.videoCredits, 4800);
+  assert.equal(getMarketingPlan('skalx_starter')?.imageCredits, 100);
+  assert.equal(getMarketingPlan('skalx_starter')?.videoCredits, 2400);
+  assert.equal(getMarketingPlan('skalx_growth')?.imageCredits, 250);
+  assert.equal(getMarketingPlan('skalx_growth')?.videoCredits, 4200);
+  assert.equal(getMarketingPlan('skalx_pro')?.imageCredits, 600);
+  assert.equal(getMarketingPlan('skalx_pro')?.videoCredits, 7800);
 
   // GST model: exclusive catalog → inclusive total
   const starter = subscriptionTotalsInr(3999);
@@ -84,7 +108,7 @@ function main() {
   const videoRow = PLAN_COMPARISON_ROWS.find((r) => r.id === 'video_credits');
   assert.ok(videoRow);
   assert.ok(videoRow!.label.includes('Video Credits'));
-  assert.equal(videoRow!.values.skalx_starter, '1,200');
+  assert.equal(videoRow!.values.skalx_starter, '2,400');
   assert.ok(!String(videoRow!.values.skalx_starter).toLowerCase().includes('second'));
 
   // Analytics marked coming soon honestly
