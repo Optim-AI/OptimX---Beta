@@ -7,7 +7,9 @@ import type { ProviderJobStatus, VideoProvider } from "../video/providers/types"
 import { VideoExecutorError } from "./types";
 
 const DEFAULT_POLL_INTERVAL_MS = 5000;
-const DEFAULT_MAX_WAIT_MS = 12 * 60 * 1000;
+export const DEFAULT_MAX_WAIT_MS = 12 * 60 * 1000;
+/** Consecutive getJob failures tolerated before polling gives up (the job keeps running). */
+const MAX_CONSECUTIVE_POLL_ERRORS = 3;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -23,9 +25,19 @@ export async function waitForVideoJob(input: {
   const pollIntervalMs = input.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
   const maxWaitMs = input.maxWaitMs ?? DEFAULT_MAX_WAIT_MS;
   const started = Date.now();
+  let consecutivePollErrors = 0;
 
   while (Date.now() - started < maxWaitMs) {
-    const status = await input.provider.getJob(input.providerJobId);
+    let status: ProviderJobStatus;
+    try {
+      status = await input.provider.getJob(input.providerJobId);
+      consecutivePollErrors = 0;
+    } catch (e) {
+      consecutivePollErrors++;
+      if (consecutivePollErrors >= MAX_CONSECUTIVE_POLL_ERRORS) throw e;
+      await sleep(pollIntervalMs);
+      continue;
+    }
     input.onPoll?.(status);
 
     if (status.state === "succeeded") return status;

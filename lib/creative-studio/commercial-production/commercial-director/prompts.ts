@@ -12,6 +12,13 @@ import {
   usesGeminiTts,
   voiceoverLanguageDisplayName,
 } from "../audio/voiceover-languages";
+import {
+  creativeStyleToPromptBlock,
+  getCreativeStylePlaybook,
+  REALISM_RULE,
+} from "../campaign/creative-style";
+import { adTypeToPromptBlock, getAdTypePlaybook } from "../campaign/ad-type";
+import { adDirectionToPromptBlock } from "../campaign/ad-direction";
 
 export function buildDirectorSystemPrompt(): string {
   return `You are the Commercial Director for SkalX AI Ad Video Production.
@@ -42,6 +49,14 @@ Explore 4–6 meaningfully different creative directions that differ in:
 Then select ONE and build the full blueprint around it.
 
 Product does NOT need to appear in every beat — only when it serves the story.
+
+Never plan on-screen text, titles, captions, taglines or end cards in beats or shots: the video model draws them
+as garbled letters. The offer, CTA and end card are added in post; beats show only images and action.
+
+The VISUAL STYLE in the brief is the user's choice. Every explored direction must be
+executable in that style — vary the idea, not the style.
+
+${REALISM_RULE}
 
 Do not invent brand facts that were not provided. List unknowns explicitly.
 
@@ -76,7 +91,11 @@ language: ${voLanguage}
 provider: Gemini 3.8 Flash TTS (post-production)
 Seedance must NOT invent spoken dialogue or English/native voiceover.
 In soundDesignIntent.voiceover write: "none — external ${voLanguage} TTS added after generation".
-Prefer non-speaking characters / closed mouths. Music + ambience only in the video model.
+No character may speak on camera in any beat — no testimonials, no talking to camera,
+no dialogue. The ${voLanguage} narrator is never seen, so any moving lips will not match.
+Show reactions silently (smiles, nods, savouring with lips closed).
+The final beat is a product hero shot with no faces, held for the narrator's closing line.
+Music + ambience only in the video model.
 CTA enabled: ${brief.voiceover?.ctaEnabled !== false ? "yes" : "no"}${
         brief.voiceover?.cta ? `\npreferred CTA: ${brief.voiceover.cta}` : ""
       }`
@@ -102,6 +121,18 @@ hookType: ${brief.hookType || brief.creativeStrategy?.hookType || "not provided"
 
 ${voiceoverBlock}
 
+VISUAL STYLE (user's choice — all concepts, beats and visualTreatment must follow it):
+${creativeStyleToPromptBlock(getCreativeStylePlaybook(brief.creativeStyle), duration)}
+
+AD TYPE (user's choice — the story structure and product presence must follow it):
+${adTypeToPromptBlock(getAdTypePlaybook(brief.adType), {
+  productNames: [brief.product.name, ...(brief.additionalProducts || []).map((p) => p.name)],
+  occasion: brief.occasion,
+  shopDetails: brief.shopDetails,
+})}
+
+${adDirectionToPromptBlock(brief.adDirection)}
+
 BRAND
 name: ${brief.brand.name}
 personality: ${brief.brand.personality || "UNKNOWN — do not invent"}
@@ -117,8 +148,19 @@ PRODUCT
 name: ${brief.product.name}
 category: ${brief.product.category || "unspecified"}
 description: ${brief.product.description || "not provided"}
-hasProductReferenceImages: ${brief.product.images?.length ? "yes" : "no"}
+hasProductReferenceImages: ${brief.product.images?.length ? "yes (attached above — study the real packaging, colours and size before planning. The photo is the truth: if the typed name or description disagrees with it — a different flavour, variant or pack — plan around what the photo shows)" : "no"}
+physicalHandling: ${brief.product.handling || "not analysed — do not invent seals, tabs or wrappers; keep handling simple"}
+(physicalHandling is read from the product photo. Every interaction you plan — opening, pouring, serving — MUST match it. Put the correct opening action in productStrategy.interaction.)
 offer: ${brief.product.offer || "not provided"}
+${(brief.additionalProducts || [])
+  .map(
+    (p, i) => `
+ADDITIONAL PRODUCT ${i + 2}
+name: ${p.name}
+hasProductReferenceImage: ${p.images?.length ? "yes (attached above, in product order)" : "no"}
+physicalHandling: ${p.handling || "not analysed — keep handling simple"}`
+  )
+  .join("\n")}
 
 PRODUCT INTELLIGENCE (heuristic, verify against brief):
 ${productIntelligenceToPromptBlock(intel)}
@@ -127,7 +169,17 @@ EXISTING STRATEGY (if any — honor without copying generically):
 ${brief.creativeStrategy ? JSON.stringify(brief.creativeStrategy) : "none"}
 SELECTED PERFORMANCE CONCEPT (if any — may inform but you still explore alternatives):
 ${brief.selectedConcept ? JSON.stringify(brief.selectedConcept) : "none"}
-
+${
+  brief.approvedConcept
+    ? `
+APPROVED CONCEPT (CRITICAL — the client already picked this idea from a storyboard):
+title: ${brief.approvedConcept.title}
+idea: ${brief.approvedConcept.idea}
+story moments: ${brief.approvedConcept.beats.map((b, i) => `${i + 1}. ${b}`).join(" ")}
+selectedConcept MUST be this idea and visualBeats MUST follow these moments in order.
+Explore alternatives only in exploredConcepts; refine and strengthen, never replace.`
+    : ""
+}
 TASK
 1. Internally explore 4–6 DISTINCT creative directions for THIS brief.
 2. Select the strongest for the objective, audience, and product truth.
@@ -184,7 +236,7 @@ JSON SCHEMA (return exactly this shape):
     "lensLanguage": "specific",
     "texture": "specific",
     "productionDesign": "specific",
-    "typographyDirection": "on-screen text policy for this campaign",
+    "typographyDirection": "always: no on-screen text in the generated video (offers, CTA and end card are added in post)",
     "motionLanguage": "specific",
     "pacing": "specific rhythm description"
   },

@@ -502,7 +502,7 @@ export default function IntegrationsNew(): JSX.Element {
                   boxShadow: "0 8px 30px rgba(11,116,255,0.06)",
                   margin: "0 auto"
                 }}>
-                  <img src="/images/Oli_AI_Logo.svg" alt="SkalX AI Logo" className="h-10 w-auto" />
+                  <img src="/images/SkalX_Logo.png" alt="SkalX AI" className="h-8 w-auto" />
                 </div>
               </div>
 

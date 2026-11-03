@@ -1,4 +1,5 @@
 // pages/api/creative-studio/scrape-product.ts
+import { cleanProductName, productNameFromHtml } from "@/lib/creative-studio/product-name";
 import type { NextApiRequest, NextApiResponse } from "next";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -41,17 +42,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const html = await response.text();
 
-    // Extract product information using regex patterns
-    // This is a simplified version - in production, use a proper HTML parser like cheerio
-    const productNameMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i) ||
-      html.match(/<h1[^>]*>([^<]+)<\/h1>/i) ||
-      html.match(/property="og:title"[^>]*content="([^"]+)"/i);
-
-    const productName = productNameMatch ? productNameMatch[1].trim() : "Product";
-
     // Extract brand name from domain
     const domain = new URL(url).hostname.replace("www.", "");
     const brandName = domain.split(".")[0].charAt(0).toUpperCase() + domain.split(".")[0].slice(1);
+
+    // Real product name, not the SEO page title ("Beef Pickle Online | … | oorgaa"):
+    // it is spoken in the voiceover and used in prompts.
+    const productName = cleanProductName(productNameFromHtml(html), brandName) || "Product";
 
     // Extract images - prioritize product images
     const imageUrls: string[] = [];

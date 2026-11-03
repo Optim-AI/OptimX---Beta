@@ -15,21 +15,29 @@ export const faqJsonLd = {
 
 export default function FaqSection() {
   return (
-    <section id="faq" aria-labelledby="faq-title" className="scroll-mt-20">
-      <div className="mx-auto grid max-w-6xl gap-10 px-4 py-20 sm:px-6 md:grid-cols-12 md:py-28">
+    <section id="faq" aria-labelledby="faq-title" className="sx-sheet scroll-mt-20 bg-paper-deep">
+      <div className="mx-auto grid max-w-6xl gap-10 px-4 py-20 sm:px-6 md:grid-cols-12 md:py-32">
         <div className="md:col-span-4">
-          <SectionHeading id="faq-title" eyebrow="FAQ" title="Questions founders ask." />
+          <div className="md:sticky md:top-32">
+            <SectionHeading id="faq-title" index="08" eyebrow="FAQ" title="Questions founders ask." />
+          </div>
         </div>
-        <div className="divide-y divide-line border-y border-line md:col-span-8">
-          {FAQS.map((f) => (
-            <details key={f.q} className="group py-1">
-              <summary className="flex cursor-pointer items-center justify-between gap-6 rounded-md py-5 text-lg font-medium">
-                {f.q}
-                <Plus aria-hidden className="h-5 w-5 shrink-0 text-ink-mute transition-transform group-open:rotate-45" />
+        <div className="border-t border-ink/15 md:col-span-8">
+          {FAQS.map((f, i) => (
+            <details key={f.q} className="sx-faq group border-b border-ink/15">
+              <summary className="flex cursor-pointer items-center gap-5 rounded-md py-6 text-lg font-medium transition-colors hover:text-accent-deep">
+                <span aria-hidden className="w-6 shrink-0 font-display text-sm tabular-nums text-ink-mute">
+                  {String(i + 1).padStart(2, '0')}
+                </span>
+                <span className="flex-1">{f.q}</span>
+                <span
+                  aria-hidden
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-ink/20 transition-[transform,background-color,border-color,color] duration-300 group-open:rotate-45 group-open:border-ink group-open:bg-ink group-open:text-paper"
+                >
+                  <Plus className="h-4 w-4" />
+                </span>
               </summary>
-              <p className="max-w-2xl pb-6 text-ink-soft">
-                {f.a}
-              </p>
+              <p className="max-w-2xl pb-7 pl-11 text-ink-soft">{f.a}</p>
             </details>
           ))}
         </div>

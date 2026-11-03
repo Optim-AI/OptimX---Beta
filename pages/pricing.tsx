@@ -14,7 +14,7 @@ import {
 import { BUY_CREDITS_PRICING } from '@/lib/billing/pricing';
 import { PLAN_COMPARISON_ROWS, type ComparisonCell } from '@/lib/onboarding/plan-comparison';
 import { WORKSPACE_PATH } from '@/lib/onboarding/try-onboarding';
-import { trackAuditEvent } from '@/lib/audit/analytics';
+import { auditPricingPath } from '@/lib/audit/analytics';
 import MarketingLayout from '@/app/web/src/components/marketing/MarketingLayout';
 import PlanCards from '@/app/web/src/components/marketing/PlanCards';
 import { ButtonLink, Eyebrow } from '@/app/web/src/components/marketing/ui';
@@ -40,8 +40,8 @@ function Cell({ value }: { value: ComparisonCell }) {
 /**
  * Public pricing: monthly self-serve plans (light cards).
  * Session/claim/subscription checks and checkout hand-off are unchanged from the previous page.
- * After a free audit: auth → /pricing?from=audit → home (or checkout).
- * Selection hands off to /subscribe; nothing here grants access.
+ * Public marketing plans. A free audit does not stay here — `?from=audit` continues
+ * into the onboarding pricing step. Nothing here grants access.
  */
 export default function PricingPage() {
   const router = useRouter();
@@ -49,30 +49,21 @@ export default function PricingPage() {
   const [selectedPlanId, setSelectedPlanId] = useState<MarketingPlanId | null>(null);
   const [activePlanName, setActivePlanName] = useState<string | null>(null);
   const [continuing, setContinuing] = useState(false);
-  const [claimed, setClaimed] = useState(false);
   const [trialDialogOpen, setTrialDialogOpen] = useState(false);
   const [signedIn, setSignedIn] = useState(false);
 
   useEffect(() => {
-    if (!router.isReady) return;
+    if (!router.isReady || !fromAudit) return;
+    void router.replace(auditPricingPath());
+  }, [router, router.isReady, fromAudit]);
+
+  useEffect(() => {
+    if (!router.isReady || fromAudit) return;
     let cancelled = false;
     (async () => {
       const { data } = await supabase.auth.getSession();
       if (!data.session || cancelled) return;
       setSignedIn(true);
-
-      if (fromAudit && !claimed) {
-        try {
-          const claimRes = await authFetch('/api/onboarding/claim', { method: 'POST' });
-          const claimBody = await claimRes.json().catch(() => null);
-          if (!cancelled && claimBody?.claimed) {
-            trackAuditEvent('audit_claimed', { via: 'pricing' });
-            setClaimed(true);
-          }
-        } catch {
-          /* guest cookie may already be cleared */
-        }
-      }
 
       try {
         const res = await authFetch('/api/billing/subscriptions/current');
@@ -88,7 +79,7 @@ export default function PricingPage() {
     return () => {
       cancelled = true;
     };
-  }, [router.isReady, fromAudit, claimed]);
+  }, [router.isReady, fromAudit]);
 
   useEffect(() => {
     trackSafe('pricing_viewed', { brand: 'unknown' });
@@ -113,6 +104,8 @@ export default function PricingPage() {
     continueToCheckout(planId);
   };
 
+  if (fromAudit) return null;
+
   return (
     <MarketingLayout>
       <PageSeo
@@ -120,68 +113,76 @@ export default function PricingPage() {
         description="SkalX plans from ₹3,999/month + GST: market research, strategy and ad creatives in one place. Monthly, cancel anytime."
         path="/pricing"
       />
-      <section aria-labelledby="pricing-heading" className="mx-auto max-w-6xl px-4 pb-16 pt-10 sm:px-6 md:pt-16">
-        <div className="max-w-2xl">
-          <Eyebrow>Pricing</Eyebrow>
-          <h1 id="pricing-heading" className="font-display text-[clamp(2.5rem,5vw,4rem)] font-medium leading-[1.04] tracking-[-0.02em]">
-            Simple monthly plans.
-          </h1>
-          <p className="mt-5 text-lg text-ink-soft sm:text-xl">
-            {fromAudit
-              ? 'Your free audit is saved to your account. Choose a plan to create campaigns — or head home anytime.'
-              : 'Research, strategy and content in one place. Pick the credits you need; top up or cancel anytime.'}
-          </p>
-        </div>
+      <section aria-labelledby="pricing-heading" className="relative isolate">
+        <div aria-hidden className="sx-grid-bg pointer-events-none absolute inset-0 -z-10" />
+        <div className="mx-auto max-w-6xl px-4 pb-24 pt-12 sm:px-6 md:pb-32 md:pt-20">
+          <div className="max-w-3xl">
+            <Eyebrow>Pricing</Eyebrow>
+            <h1 id="pricing-heading" className="font-display text-[clamp(2.75rem,7vw,5.5rem)] font-semibold leading-[0.95] tracking-[-0.045em]">
+              Simple monthly plans.
+            </h1>
+            <p className="mt-5 text-lg text-ink-soft sm:text-xl">
+              Research, strategy and content in one place. Pick the credits you need; top up or cancel anytime.
+            </p>
+          </div>
 
-        <div className="mt-12">
-          {activePlanName ? (
-            <div className="max-w-xl rounded-2xl border border-line bg-surface p-8">
-              <h2 className="font-display text-2xl font-medium">You&apos;re already on the {activePlanName} plan.</h2>
-              <p className="mt-2 text-ink-soft">Plan changes aren&apos;t available here. Continue into your workspace.</p>
-              <ButtonLink href={WORKSPACE_PATH} className="mt-6">
-                Go to SkalX →
-              </ButtonLink>
+          <div className="mt-14">
+            {activePlanName ? (
+              <div className="sx-crop max-w-xl rounded-[24px] border border-line bg-surface p-8">
+                <h2 className="font-display text-2xl font-semibold tracking-[-0.02em]">You&apos;re already on the {activePlanName} plan.</h2>
+                <p className="mt-2 text-ink-soft">Plan changes aren&apos;t available here. Continue into your workspace.</p>
+                <ButtonLink href={WORKSPACE_PATH} className="mt-6" arrow>
+                  Go to SkalX
+                </ButtonLink>
+              </div>
+            ) : (
+              <PlanCards
+                headingLevel="h2"
+                onChoosePlan={choosePlan}
+                onRequestTrial={() => {
+                  trackSafe('trial_request_opened', { source: 'pricing' });
+                  setTrialDialogOpen(true);
+                }}
+                selectedPlanId={selectedPlanId}
+                continuing={continuing}
+              />
+            )}
+          </div>
+          {!activePlanName ? (
+            <div className="mt-8 text-lg">
+              Not ready to pay?{' '}
+              <button
+                type="button"
+                onClick={() => {
+                  trackSafe('explore_clicked', { source: 'pricing', signed_in: signedIn ? 'yes' : 'no' });
+                  trackSafe('trial_request_opened', { source: 'pricing_explore' });
+                  setTrialDialogOpen(true);
+                }}
+                className="sx-link font-medium"
+              >
+                Explore SkalX first →
+              </button>
             </div>
-          ) : (
-            <PlanCards
-              headingLevel="h2"
-              onChoosePlan={choosePlan}
-              onRequestTrial={() => {
-                trackSafe('trial_request_opened', { source: 'pricing' });
-                setTrialDialogOpen(true);
-              }}
-              selectedPlanId={selectedPlanId}
-              continuing={continuing}
-            />
-          )}
+          ) : null}
+          <p className="mt-3 text-sm text-ink-soft">All prices are + 18% GST. Plans are monthly; cancel anytime.</p>
         </div>
-        {!activePlanName ? (
-          <p className="mt-8 text-lg">
-            Not ready to pay?{' '}
-            {/* Signed in: /try routes to the workspace or onboarding. Guests sign up first (new accounts land in /try). */}
-            <Link
-              href={signedIn ? '/try' : SIGNUP_HREF}
-              onClick={() => trackSafe('explore_clicked', { source: 'pricing', signed_in: signedIn ? 'yes' : 'no' })}
-              className="font-medium underline underline-offset-4"
-            >
-              Explore SkalX first →
-            </Link>
-          </p>
-        ) : null}
-        <p className="mt-3 text-sm text-ink-soft">All prices are + 18% GST. Plans are monthly; cancel anytime.</p>
       </section>
 
-      <FreeTrialRequestDialog open={trialDialogOpen} onOpenChange={setTrialDialogOpen} />
+      <FreeTrialRequestDialog
+        open={trialDialogOpen}
+        onOpenChange={setTrialDialogOpen}
+        exploreHref={signedIn ? WORKSPACE_PATH : SIGNUP_HREF}
+      />
 
-      <section aria-labelledby="compare-heading" className="bg-paper-deep">
-        <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 md:py-24">
-          <h2 id="compare-heading" className="font-display text-3xl font-medium sm:text-4xl">
+      <section aria-labelledby="compare-heading" className="sx-sheet bg-paper-deep">
+        <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6 md:py-28">
+          <h2 id="compare-heading" className="font-display text-[clamp(2.1rem,4.6vw,3.6rem)] font-semibold leading-[1.02] tracking-[-0.03em]">
             Compare plans
           </h2>
-          <div className="mt-8 overflow-x-auto rounded-2xl border border-line bg-surface">
+          <div className="mt-10 overflow-x-auto rounded-[20px] border border-line bg-surface shadow-[0_30px_60px_-46px_rgba(23,20,15,0.6)]">
             <table className="w-full min-w-[520px] border-collapse text-left text-[15px]">
               <thead>
-                <tr className="border-b border-line">
+                <tr className="border-b border-line bg-paper/60">
                   <th scope="col" className="p-4 font-medium text-ink-soft">
                     Feature
                   </th>
@@ -194,7 +195,7 @@ export default function PricingPage() {
               </thead>
               <tbody>
                 {LIVE_COMPARISON_ROWS.map((row) => (
-                  <tr key={row.id} className="border-b border-line last:border-0">
+                  <tr key={row.id} className="border-b border-line transition-colors last:border-0 hover:bg-paper/70">
                     <th scope="row" className="p-4 font-normal">
                       {row.label}
                       {row.hint ? <span className="mt-0.5 block text-[13px] text-ink-mute">{row.hint}</span> : null}
@@ -211,8 +212,8 @@ export default function PricingPage() {
           </div>
 
           <div className="mt-10 grid gap-4 md:grid-cols-2">
-            <div className="rounded-2xl border border-line bg-surface p-6">
-              <h3 className="font-display text-xl font-medium">How credits work</h3>
+            <div className="sx-lift rounded-[20px] border border-line bg-surface p-7">
+              <h3 className="font-display text-xl font-semibold tracking-[-0.015em]">How credits work</h3>
               <p className="mt-3 text-ink-soft">
                 <strong className="text-ink">Image Credits</strong> — one successful image generation uses one Image
                 Credit.
@@ -222,8 +223,8 @@ export default function PricingPage() {
                 duration (for example, 15 seconds uses 300 Video Credits).
               </p>
             </div>
-            <div className="rounded-2xl border border-line bg-surface p-6">
-              <h3 className="font-display text-xl font-medium">Need more credits?</h3>
+            <div className="sx-lift rounded-[20px] border border-line bg-surface p-7">
+              <h3 className="font-display text-xl font-semibold tracking-[-0.015em]">Need more credits?</h3>
               <p className="mt-3 text-ink-soft">After you subscribe, top up anytime (pay-as-you-go):</p>
               <ul className="mt-2 space-y-1 text-ink-soft">
                 <li>
@@ -239,7 +240,7 @@ export default function PricingPage() {
 
           <p className="mt-10 text-ink-soft">
             Not sure yet?{' '}
-            <Link href="/#start" className="font-medium text-ink underline underline-offset-4">
+            <Link href="/#start" className="sx-link font-medium text-ink">
               Get a free ad for your brand
             </Link>{' '}
             first.

@@ -18,6 +18,8 @@ import {
 import { eq } from "drizzle-orm";
 import { JSDOM } from "jsdom";
 import { Readability } from "@mozilla/readability";
+import { searchWithContextualQueries } from "@/lib/research/competitor-research";
+import { groundedResearch, parseJsonLoose } from "@/lib/research/gemini";
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GEMINI_VEO_API_KEY;
 const SEARCH_API_KEY = process.env.SEARCH_API_KEY || process.env.SERPAPI_KEY;
@@ -235,71 +237,6 @@ type BrandContext = {
   official_facebook_url?: string | null;
   official_instagram_url?: string | null;
 };
-
-function buildContextualQueries(ctx: BrandContext): string[] {
-  const { brand_name, domain_name, industry_category, product_category, country, is_ambiguous_brand } = ctx;
-  const industry = industry_category || "this industry";
-  const product = product_category || "products";
-  const loc = country ? ` in ${country}` : "";
-
-  if (is_ambiguous_brand) {
-    return [
-      `${domain_name} ${product} competitors${loc}`,
-      `brands similar to ${domain_name} ${product}`,
-      `top ${product} brands${loc}`,
-      `best ${product} under 5000${loc}`,
-      `${industry} brands like ${domain_name}`,
-    ];
-  }
-  return [
-    `${brand_name} ${product} competitors${loc}`,
-    `${domain_name} ${product} alternatives${loc}`,
-    `top ${product} brands${loc}`,
-    `best ${product}${loc}`,
-    `brands similar to ${brand_name} ${product}`,
-  ];
-}
-
-async function searchWithContextualQueries(
-  ctx: BrandContext,
-  searchApiKey: string | undefined
-): Promise<any[]> {
-  if (!searchApiKey) return [];
-  const queries = buildContextualQueries(ctx);
-  const seen = new Set<string>();
-  const results: any[] = [];
-  const brandDomainNorm = ctx.domain_name?.replace("www.", "").toLowerCase() || "";
-  for (const q of queries) {
-    if (!q?.trim()) continue;
-    try {
-      const url = `https://www.searchapi.io/api/v1/search?engine=google&q=${encodeURIComponent(q)}&api_key=${searchApiKey}&num=8`;
-      const res = await fetch(url);
-      if (!res.ok) continue;
-      const data = await res.json();
-      const organic = data.organic_results || [];
-      for (const r of organic) {
-        if (!r.link) continue;
-        try {
-          const host = new URL(r.link).hostname.replace("www.", "").toLowerCase();
-          if (seen.has(host)) continue;
-          if (host === brandDomainNorm || host.endsWith("." + brandDomainNorm)) continue;
-          seen.add(host);
-          results.push({
-            domain: host,
-            title: r.title,
-            snippet: r.snippet,
-            url: r.link,
-          });
-        } catch {
-          // skip invalid URLs
-        }
-      }
-    } catch (e) {
-      console.warn("Search API error:", e);
-    }
-  }
-  return results.slice(0, 15);
-}
 
 async function classifyIndustryRelevance(
   candidate: { domain: string; title?: string; snippet?: string },
@@ -684,7 +621,8 @@ async function fetchGoogleRankTracking(
   const results: any[] = [];
   for (const q of queries.slice(0, 5)) {
     try {
-      const url = `https://www.searchapi.io/api/v1/search?engine=google_rank_tracking&q=${encodeURIComponent(q)}&api_key=${searchApiKey}&num=30`;
+      // SEARCH_API_KEY is a SerpApi key; SerpApi's Google engine returns ranked organic_results.
+      const url = `https://serpapi.com/search.json?engine=google&q=${encodeURIComponent(q)}&api_key=${searchApiKey}&num=30`;
       const res = await fetch(url);
       if (!res.ok) continue;
       const data = await res.json();
@@ -731,56 +669,64 @@ async function fetchGoogleRankTracking(
 }
 
 /* ---------- Stage 3: Review Mining (via search + Gemini) ---------- */
-async function mineReviews(
-  ctx: BrandContext,
-  searchApiKey: string | undefined
-): Promise<any> {
-  let reviewSnippets: string[] = [];
-  if (searchApiKey) {
-    const query = ctx.is_ambiguous_brand
-      ? `${ctx.domain_name} ${ctx.product_category || ""} reviews`.trim()
-      : `${ctx.brand_name} ${ctx.product_category || ""} reviews`.trim();
-    try {
-      const url = `https://www.searchapi.io/api/v1/search?engine=google&q=${encodeURIComponent(query)}&api_key=${searchApiKey}&num=10`;
-      const res = await fetch(url);
-      if (res.ok) {
-        const data = await res.json();
-        const organic = data.organic_results || [];
-        reviewSnippets = organic
-          .map((r: any) => r.snippet)
-          .filter(Boolean)
-          .slice(0, 15);
-      }
-    } catch (e) {
-      console.warn("Review search error:", e);
+async function mineReviews(ctx: BrandContext): Promise<any> {
+  // Live web voice-of-customer (Reddit, marketplace reviews, forums). Every item
+  // carries where it was seen; nothing is filled in when the search finds nothing.
+  const subject = ctx.is_ambiguous_brand ? `${ctx.domain_name} (${ctx.product_category})` : ctx.brand_name;
+  const prompt = `Voice-of-customer research. Use Google Search: Reddit, Amazon/Flipkart/G2/Trustpilot reviews, YouTube comments, forums.
+
+Brand: ${subject} (${ctx.domain_name})
+Category: ${ctx.product_category || ctx.industry_category || "unknown"}
+Market: ${ctx.country || "unknown"}
+
+What do real buyers of this brand — and of this category — say? Report:
+- pain points with current options, desired outcomes, specific complaints (about this brand if found, else the category), emotional triggers, and exact repeated phrases.
+
+Return ONLY JSON:
+{
+  "pain_points": [{"label":"","sample_quote":"short quote or paraphrase","source":"e.g. reddit.com/r/...","about":"brand|category"}],
+  "desired_outcomes": [{"label":"","sample_quote":"","source":"","about":"brand|category"}],
+  "complaints": [{"label":"","sample_quote":"","source":"","about":"brand|category"}],
+  "emotional_patterns": [{"label":"","sample_quote":"","source":""}],
+  "repeated_phrases": [""]
+}
+3-6 items per list, only what you actually found. No percentages or counts.`;
+  const result = await groundedResearch(prompt, { label: "ci-reviews", timeoutMs: 70_000 });
+  const parsed = parseJsonLoose<Record<string, any>>(result.text) || {};
+  for (const key of ["pain_points", "desired_outcomes", "complaints", "emotional_patterns"]) {
+    if (Array.isArray(parsed[key])) {
+      parsed[key] = parsed[key].map((i: any) => ({ ...i, basis: "web", frequency_pct: null }));
     }
   }
-  const combined = reviewSnippets.join("\n\n") || `No review snippets found for ${ctx.brand_name}. Infer common pain points and desired outcomes for ${ctx.industry_category || "this"} industry.`;
-  const prompt = `You are a customer insight analyst. Cluster reviews into structured sentiment. No fluff. Return JSON only.
-
-Brand: ${ctx.brand_name}
-Industry: ${ctx.industry_category || "general"}
-Product: ${ctx.product_category || "unknown"}
-
-Review snippets:
-${combined}
-
-Return JSON (STEP 3 — CUSTOMER SENTIMENT MINING):
-{
-  "top_pain_points": [{"label":"...","frequency_percentage":0-100,"sample_quote":"...","sentiment_intensity_score":1-10}],
-  "top_desired_outcomes": [{"label":"...","frequency_percentage":0-100,"sample_quote":"...","sentiment_intensity_score":1-10}],
-  "common_complaints": [{"label":"...","frequency_percentage":0-100,"sample_quote":"..."}],
-  "emotional_triggers": [{"label":"...","frequency_percentage":0-100}],
-  "repeated_phrases": ["phrase1", "phrase2"],
-  "pain_points": [{"label":"...","frequency_pct":0-100,"sample_phrases":["..."]}],
-  "desired_outcomes": [{"label":"...","frequency_pct":0-100,"sample_phrases":["..."]}],
-  "emotional_patterns": [{"label":"...","frequency_pct":0-100}],
-  "complaints": [{"label":"...","frequency_pct":0-100}]
+  parsed.sources = result.sources;
+  return parsed;
 }
 
-Rank by frequency. Include both formats for compatibility. If no real data, infer plausible patterns.`;
-  const raw = await callGemini(prompt, "Return ONLY valid JSON.");
-  return safeParseJson(raw, {});
+/** Live web competitor discovery for when search-API results are thin or unavailable. */
+async function discoverCompetitorsGrounded(ctx: BrandContext, pageTitle: string): Promise<any[]> {
+  const prompt = `Find 5 real direct competitors of ${ctx.brand_name} (${ctx.domain_name}) — "${pageTitle}".
+Category: ${ctx.product_category || ctx.industry_category}. Market: ${ctx.country || "unknown"}.
+Brands a buyer would actually compare it with — not marketplaces, retailers, review sites or media. Use Google Search.
+Return ONLY JSON: {"competitors":[{"name":"","website":"https://...","positioning":"their main claim","price_point":"","weakness":"what customers complain about","source":"domain"}]}`;
+  const result = await groundedResearch(prompt, { label: "ci-competitors", timeoutMs: 70_000 });
+  const parsed = parseJsonLoose<{ competitors?: any[] }>(result.text);
+  return (parsed?.competitors || [])
+    .map((c: any) => {
+      let domain = "";
+      try {
+        domain = new URL(String(c.website || "")).hostname.replace(/^www\./, "").toLowerCase();
+      } catch {
+        /* keep name-only */
+      }
+      return {
+        domain: domain || String(c.name || "").toLowerCase(),
+        title: String(c.name || domain),
+        snippet: [c.positioning, c.price_point && `Price: ${c.price_point}`].filter(Boolean).join(" · "),
+        url: domain ? `https://${domain}` : undefined,
+        grounded: { price_point: c.price_point || null, weakness: c.weakness || null, source: c.source || null },
+      };
+    })
+    .filter((c: any) => c.title && c.domain !== ctx.domain_name);
 }
 
 const CREATIVE_INTELLIGENCE_SYSTEM = `You are the Creative Intelligence Engine. Your job is NOT to generate generic marketing ideas.
@@ -1088,49 +1034,25 @@ If brand_name is a common dictionary word (boat, apple, orange, nothing, noise, 
     }
 
     if (filtered.length < 3) {
-      const fallbackQuery = `top ${brandContext.product_category || brandContext.industry_category || "brands"} brands ${brandContext.country ? `in ${brandContext.country}` : ""}`.trim();
-      const fallbackResults = SEARCH_API_KEY
-        ? await (async () => {
-            try {
-              const url = `https://www.searchapi.io/api/v1/search?engine=google&q=${encodeURIComponent(fallbackQuery)}&api_key=${SEARCH_API_KEY}&num=10`;
-              const res = await fetch(url);
-              if (!res.ok) return [];
-              const data = await res.json();
-              const organic = data.organic_results || [];
-              const seen = new Set(filtered.map((f) => f.domain));
-              return organic
-                .filter((r: any) => r.link)
-                .map((r: any) => {
-                  try {
-                    const host = new URL(r.link).hostname.replace("www.", "").toLowerCase();
-                    if (seen.has(host)) return null;
-                    seen.add(host);
-                    return { domain: host, title: r.title, snippet: r.snippet, url: r.link };
-                  } catch {
-                    return null;
-                  }
-                })
-                .filter(Boolean);
-            } catch {
-              return [];
-            }
-          })()
-        : [];
-      for (const r of fallbackResults) {
-        if (filtered.length >= 5) break;
-        const classification = await classifyIndustryRelevance(r, brandContext, GEMINI_API_KEY);
-        if (classification === "Irrelevant") continue;
-        const { score: keywordScore, relevant } = await domainKeywordValidation(r, industryKeywords);
-        if (!relevant && classification === "Possibly Relevant") continue;
-        filtered.push({
-          ...r,
-          relevance_score: classification === "Relevant" ? 85 : 55,
-          industry_match_confidence: classification,
-          keyword_overlap_score: keywordScore,
-        });
+      // Search API empty or out of credits: discover competitors with live web research.
+      try {
+        const seen = new Set(filtered.map((f) => f.domain));
+        const grounded = await discoverCompetitorsGrounded(brandContext, pageData.title || "");
+        for (const r of grounded) {
+          if (filtered.length >= 5) break;
+          if (seen.has(r.domain)) continue;
+          seen.add(r.domain);
+          filtered.push({
+            ...r,
+            relevance_score: 85,
+            industry_match_confidence: "Relevant",
+            keyword_overlap_score: null,
+          });
+        }
+      } catch (e) {
+        console.warn("Grounded competitor discovery failed:", (e as Error)?.message);
       }
     }
-
     const competitorData: any[] = [];
     for (let i = 0; i < Math.min(5, filtered.length); i++) {
       const r = filtered[i];
@@ -1152,14 +1074,15 @@ If brand_name is a common dictionary word (boat, apple, orange, nothing, noise, 
       } catch {
         // use snippet only
       }
-      const saturation = i < 2 ? "high" : i < 4 ? "moderate" : "low";
+      // Saturation can't be measured from a search position; leave it unset.
+      const saturation = null;
       competitorData.push({
         name: r.title?.split(" - ")[0] || r.domain,
         domain: r.domain,
         core_positioning: positioning.slice(0, 500),
         primary_hook: r.snippet?.slice(0, 100) || null,
-        pricing_tier: null,
-        weakness_detected: null,
+        pricing_tier: r.grounded?.price_point ?? null,
+        weakness_detected: r.grounded?.weakness ?? null,
         saturation_level: saturation,
         relevance_score: r.relevance_score,
         industry_match_confidence: r.industry_match_confidence,
@@ -1349,7 +1272,7 @@ Return JSON (STEP 2 — COMPETITOR ANALYSIS):
     await updateProgress(runId, 5, STEPS[4]);
     let reviewClusters: Record<string, any> = {};
     try {
-      reviewClusters = await mineReviews(brandContext, SEARCH_API_KEY);
+      reviewClusters = await mineReviews(brandContext);
     } catch (e) {
       console.warn("Review mining failed:", e);
     }
@@ -1366,7 +1289,8 @@ Return JSON (STEP 2 — COMPETITOR ANALYSIS):
     };
     const seen = new Set<string>();
     for (const [type, items] of Object.entries(reviewClusters)) {
-      if (!Array.isArray(items)) continue;
+      // Only real clusters become rows; sources / repeated_phrases are metadata.
+      if (!Array.isArray(items) || !reviewTypeMap[type]) continue;
       const clusterType = reviewTypeMap[type] || type;
       for (const item of items) {
         const i = item as any;
@@ -1379,6 +1303,7 @@ Return JSON (STEP 2 — COMPETITOR ANALYSIS):
           clusterLabel: i.label || null,
           frequencyPct: i.frequency_pct ?? i.frequency_percentage ?? null,
           samplePhrases: i.sample_phrases || (i.sample_quote ? [i.sample_quote] : []),
+          // rawClusters keeps source/about/basis so the UI can show where it came from
           rawClusters: item,
         });
       }
@@ -1404,7 +1329,7 @@ Return JSON (STEP 2 — COMPETITOR ANALYSIS):
       },
       competitorData,
       competitorAnalysis,
-      reviewClusters,
+      { ...reviewClusters, sources: undefined },
       metaAds,
       { brand: fbBrand, competitors: fbCompetitors },
       googleRanks,

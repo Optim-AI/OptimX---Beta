@@ -125,6 +125,21 @@ export interface CompileCampaignGenerationInput {
    * When true, Seedance prompt forbids spoken VO (Gemini TTS path).
    */
   suppressSpokenVoiceover?: boolean;
+  /** Physical handling facts read from the product photo (closure, how it opens). */
+  productHandling?: string;
+  /** User-chosen visual style (continuous scene vs edited sequence, shot grammar). */
+  creativeStyle?: import("../campaign/creative-style").CreativeStyleId;
+  /** A brand end card is overlaid in post on the final seconds. */
+  endCard?: boolean;
+  /** What the ad sells; decides story structure and how products appear. */
+  adType?: import("../campaign/ad-type").AdTypeId;
+  /** Every product in the ad, in reference-image order. */
+  productNames?: string[];
+  occasion?: string;
+  shopDetails?: string;
+  adDirection?: import("../campaign/ad-direction").AdDirection;
+  /** When false, a shot plan that shows a product may still compile with no product photo. Default true. */
+  requireProductReference?: boolean;
 }
 
 export type CampaignCompilerErrorCode =

@@ -6,8 +6,8 @@
  */
 
 import { db } from '@/database/client';
-import { brandKits, payments, profiles, subscriptions } from '@/database/schema';
-import { and, eq, gt, inArray, or } from 'drizzle-orm';
+import { brandKits, payments, profiles, subscriptionCycles, subscriptions, userCredits } from '@/database/schema';
+import { and, eq, exists, gt, inArray, or } from 'drizzle-orm';
 import { parseTryOnboarding } from '@/lib/onboarding/try-onboarding';
 import {
   decidePostAuthDestination,
@@ -37,7 +37,7 @@ export type PostAuthStateLoader = (userId: string) => Promise<PostAuthState>;
 async function loadPostAuthState(userId: string): Promise<PostAuthState> {
   const nowIso = new Date().toISOString();
 
-  const [profileRows, paymentRows, subscriptionRows, kitRows] = await Promise.all([
+  const [profileRows, paymentRows, subscriptionRows, kitRows, creditRows] = await Promise.all([
     db
       .select({
         businessName: profiles.businessName,
@@ -65,7 +65,16 @@ async function loadPostAuthState(userId: string): Promise<PostAuthState> {
             inArray(subscriptions.status, ['active', 'trialing', 'pending']),
             and(
               inArray(subscriptions.status, ['cancelled', 'past_due']),
-              gt(subscriptions.currentPeriodEnd, nowIso)
+              gt(subscriptions.currentPeriodEnd, nowIso),
+              // Only a subscription that was actually paid (provisioned at least once) keeps
+              // access until period end. Abandoned checkouts are `cancelled` too, with a
+              // future period end from create time — they must not unlock the app.
+              exists(
+                db
+                  .select({ id: subscriptionCycles.id })
+                  .from(subscriptionCycles)
+                  .where(eq(subscriptionCycles.subscriptionId, subscriptions.id))
+              )
             )
           )
         )
@@ -80,6 +89,27 @@ async function loadPostAuthState(userId: string): Promise<PostAuthState> {
       .catch((e: unknown) => {
         console.error('[postAuth] brand kit lookup failed', { userId, error: (e as Error)?.message });
         return [] as Array<{ name: string }>;
+      }),
+    db
+      .select({
+        imageCreditsSubscription: userCredits.imageCreditsSubscription,
+        imageCreditsAddon: userCredits.imageCreditsAddon,
+        videoCreditsSubscription: userCredits.videoCreditsSubscription,
+        videoCreditsAddon: userCredits.videoCreditsAddon,
+        credits: userCredits.credits,
+      })
+      .from(userCredits)
+      .where(eq(userCredits.id, userId))
+      .limit(1)
+      .catch((e: unknown) => {
+        console.error('[postAuth] credits lookup failed', { userId, error: (e as Error)?.message });
+        return [] as Array<{
+          imageCreditsSubscription: number;
+          imageCreditsAddon: number;
+          videoCreditsSubscription: number;
+          videoCreditsAddon: number;
+          credits: number;
+        }>;
       }),
   ]);
 
@@ -108,6 +138,16 @@ async function loadPostAuthState(userId: string): Promise<PostAuthState> {
     }
   }
 
+  const wallet = creditRows[0];
+  const hasProductCredits = Boolean(
+    wallet &&
+      (Number(wallet.imageCreditsSubscription) > 0 ||
+        Number(wallet.imageCreditsAddon) > 0 ||
+        Number(wallet.videoCreditsSubscription) > 0 ||
+        Number(wallet.videoCreditsAddon) > 0 ||
+        Number(wallet.credits) > 0)
+  );
+
   return {
     hasCapturedPayment: paymentRows.length > 0,
     subscriptionStatus,
@@ -115,6 +155,7 @@ async function loadPostAuthState(userId: string): Promise<PostAuthState> {
     onboarding,
     businessName: profile?.businessName ?? null,
     brandSnapshotName,
+    hasProductCredits,
   };
 }
 

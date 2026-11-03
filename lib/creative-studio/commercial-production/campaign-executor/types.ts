@@ -99,7 +99,20 @@ export interface FinalCommercial {
   commercialQC?: import("../commercial-qc/types").CommercialQCReport;
   /** Phase 9: frontend-safe creative plan (from Commercial Director blueprint). */
   creativePlan?: import("../studio-mapper").CreativePlanSummary;
+  /**
+   * The finished picture and sound before post overlays (end card). "Fix a part" edits this,
+   * then redraws the overlays, so a fix never bakes over or duplicates the end card.
+   */
+  masterVideoUrl?: string;
+  /** Overlay settings to redraw after a fix. */
+  finishing?: { endCard?: StoredEndCard };
   createdAt: string;
+}
+
+/** End card content as stored with a commercial; the logo is re-fetched from its URL. */
+export interface StoredEndCard {
+  content: Omit<import("../finishing/end-card").EndCardContent, "logo">;
+  logoUrl?: string;
 }
 
 export interface GenerateCampaignVideoInput {
@@ -135,6 +148,18 @@ export interface CampaignExecutorOptions {
   pollIntervalMs?: number;
   maxWaitMs?: number;
   maxRetries?: number;
+  /**
+   * Epoch ms by which provider polling must stop (leaves time for download, storage and QC
+   * before the serverless function is killed). Caps maxWaitMs.
+   */
+  deadlineAt?: number;
+  /**
+   * Reads packaging facts from the product photo. Default: live Gemini vision
+   * (skipped without an API key). Pass null to disable.
+   */
+  productAnalyzer?: import("../product-understanding/analyze-product").ProductAnalyzer | null;
+  /** Override the end-card finishing step (tests). Default: ffmpeg overlay + storage upload. */
+  endCardAttacher?: typeof import("../finishing/attach-end-card").attachEndCardIfNeeded;
   log?: (event: string, payload: Record<string, unknown>) => void;
   /** Phase 8: inject visual analyzer (tests use mocks; omit for deterministic-only). */
   visualAnalyzer?: import("../commercial-qc/types").CommercialVisualAnalyzer;

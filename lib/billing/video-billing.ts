@@ -10,6 +10,12 @@ import {
   type VideoGenerationDuration,
 } from '@/lib/billing/video-credits';
 
+/**
+ * A video reservation still held after this long belongs to a dead request
+ * (/api/commercial/generate is capped at 800s).
+ */
+export const STALE_VIDEO_RESERVATION_MINUTES = 20;
+
 export class VideoBillingError extends Error {
   code: 'INSUFFICIENT_CREDITS' | 'INVALID_DURATION' | 'RESERVE_FAILED' | 'AUTH_REQUIRED';
   requiredCredits?: number;
@@ -50,6 +56,18 @@ export async function assertAndReserveVideoCredits(params: {
   fromAddon: number;
 }> {
   const requiredCredits = requiredCreditsForCampaignDuration(params.durationSeconds);
+
+  // Return credits held by requests that died mid-generation before checking the balance.
+  const releasedStale = await CreditsDAO.releaseStaleVideoReservations(
+    params.userId,
+    STALE_VIDEO_RESERVATION_MINUTES
+  );
+  if (releasedStale > 0) {
+    console.warn('[video-billing] released stale video reservations', {
+      userId: params.userId,
+      count: releasedStale,
+    });
+  }
 
   const balance = await CreditsDAO.getFullBalance(params.userId);
   const available = balance?.videoCredits.total ?? 0;
@@ -120,4 +138,39 @@ export async function finalizeVideoReservation(params: {
       );
     }
   }
+}
+
+/**
+ * Reserve credits for a paid "Fix a part" edit (beyond the free allowance).
+ * Same reserve → consume / release lifecycle as a generation.
+ */
+export async function assertAndReserveFixCredits(params: {
+  userId: string;
+  credits: number;
+  referenceId: string;
+}): Promise<{ reservationId: string }> {
+  await CreditsDAO.releaseStaleVideoReservations(params.userId, STALE_VIDEO_RESERVATION_MINUTES);
+  const balance = await CreditsDAO.getFullBalance(params.userId);
+  const available = balance?.videoCredits.total ?? 0;
+  if (available < params.credits) {
+    throw new VideoBillingError(
+      'INSUFFICIENT_CREDITS',
+      `You need ${params.credits} Video Credits for this fix.`,
+      { requiredCredits: params.credits, availableCredits: available }
+    );
+  }
+  const reserved = await CreditsDAO.reserveVideoCredits({
+    userId: params.userId,
+    amount: params.credits,
+    purpose: 'video_fix',
+    referenceId: params.referenceId,
+    metadata: { requiredCredits: params.credits },
+  });
+  if (!reserved.success || !reserved.reservationId) {
+    throw new VideoBillingError('RESERVE_FAILED', reserved.error || 'Failed to reserve credits for the fix', {
+      requiredCredits: params.credits,
+      availableCredits: available,
+    });
+  }
+  return { reservationId: reserved.reservationId };
 }

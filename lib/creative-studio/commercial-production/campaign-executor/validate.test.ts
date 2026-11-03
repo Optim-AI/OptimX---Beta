@@ -21,6 +21,8 @@ import {
 } from "./fixtures";
 import { makeMockDirector, makeMockPlanner } from "../campaign-orchestrator/fixtures";
 import { VIDEO_EXECUTOR_MODEL } from "../video-executor/types";
+import { buildCampaignPrompt } from "../campaign-compiler/prompt-builder";
+import { mapStudioFormToCampaignBrief } from "../studio-mapper";
 
 let passed = 0;
 let failed = 0;
@@ -134,6 +136,204 @@ async function main() {
     );
     assert.equal(result.status, "failed");
     assert.ok(result.error?.code);
+  });
+
+  await test("poll timeout after accept never resubmits the provider job", async () => {
+    clearCampaignVideoCache();
+    const provider = new MockVideoProvider();
+    provider.timeoutOnce = true;
+    const result = await generateCampaignVideo(
+      { spec: makeNative15sSpec(), skipDownload: true, forceRegenerate: true },
+      { videoProvider: provider, pollIntervalMs: 2, maxWaitMs: 30, maxRetries: 2, log: () => undefined }
+    );
+    assert.equal(result.status, "failed");
+    assert.equal(provider.generateCalls.length, 1);
+    assert.ok(result.providerJobId, "failed result keeps providerJobId for recovery");
+  });
+
+  await test("transient poll errors are tolerated without resubmitting", async () => {
+    clearCampaignVideoCache();
+    const provider = new MockVideoProvider();
+    provider.transientPollErrors = 2;
+    const result = await generateCampaignVideo(
+      { spec: makeNative15sSpec(), skipDownload: true, forceRegenerate: true },
+      { videoProvider: provider, pollIntervalMs: 1, maxWaitMs: 5000, log: () => undefined }
+    );
+    assert.equal(result.status, "completed");
+    assert.equal(provider.generateCalls.length, 1);
+  });
+
+  await test("transient submit failure (before accept) still retries", async () => {
+    clearCampaignVideoCache();
+    const provider = new MockVideoProvider();
+    provider.failNextGenerate = true;
+    const result = await generateCampaignVideo(
+      { spec: makeNative15sSpec(), skipDownload: true, forceRegenerate: true },
+      { videoProvider: provider, pollIntervalMs: 1, maxWaitMs: 5000, log: () => undefined }
+    );
+    assert.equal(result.status, "completed");
+    assert.equal(provider.generateCalls.length, 2);
+  });
+
+  await test("expired deadline fails without submitting a provider job", async () => {
+    clearCampaignVideoCache();
+    const provider = new MockVideoProvider();
+    const result = await generateCampaignVideo(
+      { spec: makeNative15sSpec(), skipDownload: true, forceRegenerate: true },
+      { videoProvider: provider, pollIntervalMs: 1, deadlineAt: Date.now() - 1, log: () => undefined }
+    );
+    assert.equal(result.status, "failed");
+    assert.equal(provider.generateCalls.length, 0);
+  });
+
+  await test("product photo handling reaches the director and the video prompt", async () => {
+    clearCampaignVideoCache();
+    const input = make15sCompileInput();
+    const base = makeValidBrief({ campaignId: input.blueprint.campaignId, campaignDuration: 15 });
+    const brief = {
+      ...base,
+      product: {
+        ...base.product,
+        images: [
+          { id: "p1", kind: "product_image" as const, url: "https://example.com/jar.png", mimeType: "image/png" },
+        ],
+      },
+    };
+    const { options, videoProvider } = makeExecutorTestOptions({
+      blueprint: input.blueprint,
+      plan: input.shotPlan,
+    });
+    let directorSawHandling = "";
+    const director = options.director!;
+    const final = await produceFinalCommercial(
+      {
+        brief,
+        generationVersion: "v_handling",
+        generationMode: "native_continuous",
+        availableAssets: makeAvailableAssets(),
+        shotPlan: input.shotPlan,
+        skipDownload: true,
+        forceRegenerate: true,
+      },
+      {
+        ...options,
+        director: {
+          ...director,
+          direct: async (b) => {
+            directorSawHandling = b.product.handling || "";
+            return director.direct(b);
+          },
+        },
+        productAnalyzer: async () => ({
+          containerType: "glass jar",
+          closureType: "screw-top lid",
+          openingAction: "twist the lid counter-clockwise and lift it off.",
+          forbiddenInteractions: ["peeling a foil seal"],
+        }),
+      }
+    );
+    assert.ok(directorSawHandling.includes("screw-top lid"));
+    const sentPrompt = videoProvider.generateCalls[0].prompt.promptText;
+    assert.ok(sentPrompt.includes("PRODUCT HANDLING"));
+    assert.ok(sentPrompt.includes("twist the lid counter-clockwise"));
+    assert.ok(sentPrompt.includes("Never show: peeling a foil seal"));
+    assert.equal(final.productionMode, "native_continuous");
+  });
+
+  await test("dubbed-language prompt asks for silent acting and a faceless product ending", () => {
+    const input = make30sCompileInput();
+    const blueprint = {
+      ...input.blueprint,
+      visualBeats: input.blueprint.visualBeats.map((b, i) =>
+        i === input.blueprint.visualBeats.length - 1
+          ? { ...b, purpose: "She speaks to camera about the taste" }
+          : b
+      ),
+    };
+    const { campaignPrompt } = buildCampaignPrompt({
+      blueprint,
+      shotPlan: input.shotPlan,
+      suppressSpokenVoiceover: true,
+    });
+    assert.ok(campaignPrompt.includes("Nobody speaks on camera"));
+    assert.ok(campaignPrompt.includes("no faces in frame"));
+    assert.ok(!/speaks to camera/i.test(campaignPrompt));
+    const english = buildCampaignPrompt({ blueprint, shotPlan: input.shotPlan });
+    assert.ok(!english.campaignPrompt.includes("Nobody speaks on camera"));
+  });
+
+  await test("visual style decides structure; realism rule always present", () => {
+    const input = make15sCompileInput();
+    const showcase = buildCampaignPrompt({ ...input, creativeStyle: "product_showcase" }).campaignPrompt;
+    assert.ok(showcase.includes("edited sequence of shots"));
+    assert.ok(showcase.includes("Style: Product Showcase (4–6 shots)"));
+    assert.ok(!showcase.includes("single unbroken take"));
+    const ugc = buildCampaignPrompt({ ...input, creativeStyle: "ugc" }).campaignPrompt;
+    assert.ok(ugc.includes("single unbroken take"));
+    assert.ok(ugc.includes("Style: UGC"));
+    for (const p of [showcase, ugc]) assert.ok(p.includes("no glowing light rays"));
+    const withCard = buildCampaignPrompt({ ...input, endCard: true }).campaignPrompt;
+    assert.ok(withCard.includes("lower third is plain, empty background"));
+    assert.ok(!showcase.includes("lower third is plain"));
+    // Words like "end card" make the video model draw (garbled) text.
+    assert.ok(!/end card|closing line/i.test(withCard));
+    for (const p of [showcase, ugc, withCard]) assert.ok(p.includes("NO WRITTEN WORDS"));
+  });
+
+  await test("Studio creative format and end card reach the brief", () => {
+    const brief = mapStudioFormToCampaignBrief({
+      campaignId: "c1",
+      product: { product_name: "Oorgaa Pickle" },
+      adSetup: { duration: 15, aspect_ratio: "9:16", creativeFormat: "Motion Graphics" },
+      endCard: { enabled: true, offer: " Buy 2 get 1 ", cta: " இப்போவே வாங்குங்க ", contact: "" },
+    });
+    assert.equal(brief.creativeStyle, "motion_graphics");
+    assert.deepEqual(brief.endCard, { enabled: true, offer: "Buy 2 get 1", cta: "இப்போவே வாங்குங்க", contact: undefined });
+    const off = mapStudioFormToCampaignBrief({
+      campaignId: "c2",
+      product: { product_name: "X" },
+      adSetup: { duration: 15, aspect_ratio: "9:16", creativeFormat: "Unknown" },
+      endCard: { enabled: false },
+    });
+    assert.equal(off.creativeStyle, undefined);
+    assert.equal(off.endCard, undefined);
+  });
+
+  await test("end card failure keeps the commercial", async () => {
+    clearCampaignVideoCache();
+    const input = make15sCompileInput();
+    const brief = makeValidBrief({
+      campaignId: input.blueprint.campaignId,
+      campaignDuration: 15,
+      endCard: { enabled: true, offer: "20% off" },
+    });
+    const { options } = makeExecutorTestOptions({ blueprint: input.blueprint, plan: input.shotPlan });
+    const final = await produceFinalCommercial(
+      {
+        brief,
+        generationVersion: "v_card",
+        availableAssets: makeAvailableAssets(),
+        blueprint: input.blueprint,
+        shotPlan: input.shotPlan,
+        skipDownload: true,
+        forceRegenerate: true,
+      },
+      { ...options, endCardAttacher: async () => { throw new Error("ffmpeg exploded"); } }
+    );
+    assert.ok(final.videoUrl);
+    assert.equal(final.productionMode, "native_continuous");
+  });
+
+  await test("planner text that asks for on-screen words is removed from the video prompt", () => {
+    const input = make15sCompileInput();
+    const blueprint = {
+      ...input.blueprint,
+      visualBeats: input.blueprint.visualBeats.map((b, i) =>
+        i === input.blueprint.visualBeats.length - 1 ? { ...b, purpose: "End card with tagline appears over the jar" } : b
+      ),
+    };
+    const { campaignPrompt } = buildCampaignPrompt({ blueprint, shotPlan: input.shotPlan, suppressSpokenVoiceover: true });
+    assert.ok(!/end card|tagline/i.test(campaignPrompt), "end card / tagline wording stripped");
   });
 
   await test("QC: correct duration passes; wrong duration fails", () => {
@@ -271,6 +471,7 @@ async function main() {
         shotPlanner: makeMockPlanner(input.shotPlan),
         pollIntervalMs: 1,
         maxWaitMs: 8000,
+        productAnalyzer: null,
         log: () => undefined,
       }
     );

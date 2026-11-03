@@ -8,7 +8,12 @@ import { getActiveVideoProvider } from "../video/providers/registry";
 import { downloadRunwayProviderOutput } from "../video/providers/runway";
 import type { CompiledPrompt } from "../video/prompt/types";
 import type { StoredAssetRef } from "../assets";
-import { waitForVideoJob, mapProviderError, isRetryableProviderError } from "../video-executor/job-manager";
+import {
+  DEFAULT_MAX_WAIT_MS,
+  waitForVideoJob,
+  mapProviderError,
+  isRetryableProviderError,
+} from "../video-executor/job-manager";
 import { runDeterministicCampaignVideoQc } from "./qc";
 import {
   cacheCompletedCampaignVideo,
@@ -162,13 +167,28 @@ export async function generateCampaignVideo(
       startedAt: new Date().toISOString(),
     },
   };
-  markCampaignVideoInFlight(idempotencyKey, placeholder);
-
   const maxRetries = options.maxRetries ?? 2;
   let lastError: Error | undefined;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     const started = Date.now();
+    const maxWaitMs = Math.min(
+      options.maxWaitMs ?? DEFAULT_MAX_WAIT_MS,
+      options.deadlineAt != null ? options.deadlineAt - started : Infinity
+    );
+    if (maxWaitMs <= 0) {
+      // Out of time before submitting — never start a provider job we cannot wait for.
+      lastError = new CampaignExecutorError(
+        "PROVIDER_UNAVAILABLE",
+        "Not enough time left to run the video job. Please try again.",
+        { phase: "DEADLINE_BEFORE_SUBMIT" }
+      );
+      break;
+    }
+    markCampaignVideoInFlight(idempotencyKey, placeholder);
+    // Set once the provider accepts a job. After that we never resubmit:
+    // the job may still be running (and billing) on the provider side.
+    let submittedProviderJobId: string | undefined;
     try {
       log("native.submit", {
         campaignId: spec.campaignId,
@@ -194,6 +214,7 @@ export async function generateCampaignVideo(
         referenceImages: referenceImages.length ? referenceImages : undefined,
       });
 
+      submittedProviderJobId = accepted.providerJobId;
       placeholder.providerJobId = accepted.providerJobId;
       placeholder.model = accepted.model || VIDEO_EXECUTOR_MODEL;
       markCampaignVideoInFlight(idempotencyKey, placeholder);
@@ -202,7 +223,7 @@ export async function generateCampaignVideo(
         provider,
         providerJobId: accepted.providerJobId,
         pollIntervalMs: options.pollIntervalMs,
-        maxWaitMs: options.maxWaitMs,
+        maxWaitMs,
         onPoll: (status) => {
           log("native.poll", {
             campaignId: spec.campaignId,
@@ -355,7 +376,18 @@ export async function generateCampaignVideo(
         attempt,
         code: mapped.code,
         message: mapped.message,
+        providerJobId: submittedProviderJobId,
       });
+      if (submittedProviderJobId) {
+        // Accepted job timed out or polling failed — resubmitting would pay twice.
+        lastError = new CampaignExecutorError(
+          "NATIVE_GENERATION_FAILED",
+          mapped.message,
+          { providerJobId: submittedProviderJobId, phase: "PROVIDER_POLL", code: mapped.code },
+          false
+        );
+        break;
+      }
       if (!isRetryableProviderError(mapped) || attempt >= maxRetries) break;
     }
   }

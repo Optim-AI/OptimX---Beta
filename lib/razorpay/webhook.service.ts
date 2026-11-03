@@ -435,7 +435,13 @@ export class WebhookService {
       return;
     }
 
-    if (subscription.status === 'cancelled' || subscription.status === 'expired') {
+    // `pending` = first checkout never paid. Marking it past_due would block the user's retry
+    // (create treats past_due as an existing subscription).
+    if (
+      subscription.status === 'cancelled' ||
+      subscription.status === 'expired' ||
+      subscription.status === 'pending'
+    ) {
       return;
     }
 
@@ -471,7 +477,9 @@ export class WebhookService {
       if (
         subscription &&
         subscription.status !== 'cancelled' &&
-        subscription.status !== 'expired'
+        subscription.status !== 'expired' &&
+        // A failed first-checkout attempt leaves the checkout open for retry.
+        subscription.status !== 'pending'
       ) {
         await SubscriptionsDAO.markPastDue(subscription.id);
         console.log(

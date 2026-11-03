@@ -7,15 +7,13 @@
  */
 
 import { getGeminiApiKey, GEMINI_REST_BASE } from "@/lib/gemini-config";
-import {
-  computeVoiceoverBudget,
-  VOICEOVER_WORDS_PER_SECOND,
-} from "@/lib/creative-studio/video-prompt-utils";
+import { computeVoiceoverBudget } from "@/lib/creative-studio/video-prompt-utils";
 import {
   normalizeVoiceoverLanguage,
   voiceoverLanguageDisplayName,
   type VoiceoverLanguage,
 } from "./voiceover-languages";
+import { voiceoverWordBudgetFactor } from "./voiceover-fit";
 import {
   buildSpokenLanguageStyleInstructions,
   resolveSpokenLanguageStyle,
@@ -39,11 +37,18 @@ export interface GenerateVoiceoverScriptInput {
   targetAudience?: string;
   /** Prefer this script if already in the target language. */
   existingScript?: string;
+  /** Ad type, all products, occasion — so a combo or festival script says the right thing. */
+  adContext?: string;
   /**
    * Spoken register (natural_spoken / formal / pure_native).
    * Tamil defaults to natural_spoken when omitted.
    */
   spokenLanguageStyle?: SpokenLanguageStyle | string;
+  /**
+   * Condense mode: this script was measured too long when spoken.
+   * Rewrite it to about lengthRatio of its length, keeping meaning and CTA.
+   */
+  condense?: { previousScript: string; lengthRatio: number; maxSpeechSeconds: number };
 }
 
 function looksLikeTargetScript(script: string, language: VoiceoverLanguage): boolean {
@@ -73,7 +78,7 @@ export async function resolveVoiceoverScriptForTts(
     spokenLanguageStyle: input.spokenLanguageStyle,
   });
   const existing = input.existingScript?.trim();
-  if (existing && looksLikeTargetScript(existing, language)) {
+  if (!input.condense && existing && looksLikeTargetScript(existing, language)) {
     return existing;
   }
 
@@ -84,7 +89,14 @@ export async function resolveVoiceoverScriptForTts(
     );
   }
 
-  const budget = computeVoiceoverBudget(input.durationSeconds);
+  const englishBudget = computeVoiceoverBudget(input.durationSeconds);
+  const wordFactor = voiceoverWordBudgetFactor(language);
+  const budget = {
+    ...englishBudget,
+    targetWords: Math.round(englishBudget.targetWords * wordFactor),
+    minWords: Math.round(englishBudget.minWords * wordFactor),
+    maxWords: Math.round(englishBudget.maxWords * wordFactor),
+  };
   const langName = voiceoverLanguageDisplayName(language);
   const includeCta = input.ctaEnabled !== false;
   const ctaLine = includeCta
@@ -98,11 +110,29 @@ export async function resolveVoiceoverScriptForTts(
 
   const allowsNaturalEnglish = spokenStyle === "natural_spoken";
 
-  const prompt = `Write a complete ${input.durationSeconds}-second commercial voiceover script primarily in ${langName}.
+  const condense = input.condense;
+  const condenseWords = condense
+    ? Math.max(8, Math.round(condense.previousScript.split(/\s+/).length * condense.lengthRatio))
+    : 0;
+  const prompt = condense
+    ? `This ${langName} commercial voiceover runs too long when spoken. It must finish within ${condense.maxSpeechSeconds.toFixed(1)} seconds at a natural pace.
+
+Current script:
+${condense.previousScript}
+
+Rewrite it to about ${condenseWords} words (roughly ${Math.round(condense.lengthRatio * 100)}% of its current length).
+- Keep the same language, spoken style, brand name "${input.brandName}" and product name "${input.productName}".
+- Keep the hook, one benefit and ${ctaLine ? `the CTA ("${ctaLine}")` : "the soft close"}; drop everything else.
+- It must end on a complete sentence — the last words are the close, never a cut-off.
+- Output ONLY the spoken transcript.
+
+Return JSON only: { "voiceover_script": "..." }`
+    : `Write a complete ${input.durationSeconds}-second commercial voiceover script primarily in ${langName}.
 
 Brand: ${input.brandName}
 Product: ${input.productName}
-Tone: ${input.tone || "Energetic"}
+${input.adContext ? `Ad context: ${input.adContext}
+` : ""}Tone: ${input.tone || "Energetic"}
 Target audience: ${input.targetAudience?.trim() || "not provided"}
 Key message: ${input.keyMessage || input.campaignMessage || "not provided"}
 Creative concept: ${input.userConcept || "not provided"}
@@ -113,9 +143,9 @@ ${styleBlock}
 Rules:
 - Output ONLY the spoken transcript — what the voice actor should say aloud.
 - No stage directions, no tone notes, no speaker labels, no quotes wrapping the whole script.
-- Structure: hook → brand+product → one specific benefit → ${ctaLine ? "CTA" : "soft close"}.
-- Target about ${budget.targetWords} words (min ${budget.minWords}, max ${budget.maxWords}).
-- Speaking must finish by ~${budget.finishBySecond}s at ~${VOICEOVER_WORDS_PER_SECOND} words/sec.
+- Structure: hook → brand+product → one specific benefit → ${ctaLine ? "CTA" : "soft close"}. Follow the ad context: name every product in a combo or range, say the deal plainly for an offer, and greet warmly for a festival.
+- Target about ${budget.targetWords} words (min ${budget.minWords}, max ${budget.maxWords}) — ${langName} words are long, so stay at or under this count.
+- Speaking must finish by ~${budget.finishBySecond}s at a natural commercial pace. Short sentences.
 - Complete commercial sentences — never stop after the hook.
 - Preserve brand name "${input.brandName}" and product name "${input.productName}" exactly.
 - Do not invent prices, discounts, or claims not implied by the inputs.

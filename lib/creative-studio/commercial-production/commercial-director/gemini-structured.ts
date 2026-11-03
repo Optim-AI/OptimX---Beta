@@ -2,7 +2,7 @@
  * Gemini-backed StructuredGenerator for Commercial Director.
  * Uses existing getGeminiApiKey + fetchWithGeminiRateLimitRetry.
  *
- * Gemini 2.5 Flash can spend budget on "thinking" and return empty/truncated JSON.
+ * Flash models can spend budget on "thinking" and return empty/truncated JSON.
  * We disable thinking for structured blueprint output and raise the token ceiling.
  */
 
@@ -21,7 +21,7 @@ import {
   type StructuredGenerator,
 } from "./llm";
 
-const DEFAULT_MODEL = "gemini-2.5-flash";
+const DEFAULT_MODEL = "gemini-3.8-flash";
 const DEFAULT_MAX_OUTPUT_TOKENS = 65536;
 
 export interface GeminiStructuredGeneratorOptions {
@@ -95,7 +95,16 @@ export class GeminiStructuredGenerator implements StructuredGenerator {
     const maxOutputTokens = request.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS;
 
     const buildBody = (includeThinkingOff: boolean) => ({
-      contents: [{ parts: [{ text: request.userPrompt }] }],
+      contents: [
+        {
+          parts: [
+            ...(request.images || []).map((img) => ({
+              inline_data: { mime_type: img.mimeType, data: img.data },
+            })),
+            { text: request.userPrompt },
+          ],
+        },
+      ],
       system_instruction: { parts: [{ text: request.systemPrompt }] },
       generation_config: {
         temperature: request.temperature ?? 0.9,

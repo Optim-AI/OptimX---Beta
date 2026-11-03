@@ -3,7 +3,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
-import { ArrowLeft, Check, Loader2 } from 'lucide-react';
+import { ArrowLeft, Check } from 'lucide-react';
+import { ArcSpinner } from '@/app/web/src/components/ui/loaders';
 import { supabase } from '@/auth/supabase/client';
 import { authFetch } from '@/lib/utils';
 import colors from '@/lib/ui/colors';
@@ -15,6 +16,7 @@ import {
 } from '@/lib/billing/marketing-plans';
 import { useSubscription } from '@/app/web/src/hooks/use-subscription';
 import { consumeAuditAttribution, trackAuditEvent } from '@/lib/audit/analytics';
+import { rememberAuthContinuation } from '@/lib/auth/auth-continuation';
 import {
   buildTryOnboardingPatch,
   parseTryOnboarding,
@@ -32,7 +34,7 @@ declare global {
 
 type PagePhase = 'loading' | 'checkout' | 'already_subscribed';
 
-const WORKSPACE_PATH = '/content-studio';
+const WORKSPACE_PATH = '/workspace';
 
 /** Clear any leftover activation flags from earlier checkout builds. */
 function clearCheckoutSessionFlags() {
@@ -60,6 +62,8 @@ export default function SubscribePage() {
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
   const [phase, setPhase] = useState<PagePhase>('loading');
   const [existingPlanName, setExistingPlanName] = useState<string | null>(null);
+  /** A previous checkout is paid on Razorpay but credits are still being applied. */
+  const [paymentProcessing, setPaymentProcessing] = useState(false);
 
   const createInFlightRef = useRef(false);
 
@@ -192,6 +196,7 @@ export default function SubscribePage() {
           /* ignore */
         }
         const next = `/subscribe?plan=${encodeURIComponent(planForNext)}`;
+        rememberAuthContinuation(next);
         router.replace(`/auth/signin?next=${encodeURIComponent(next)}`);
         return;
       }
@@ -266,6 +271,15 @@ export default function SubscribePage() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.success) {
+        if (data.code === 'PAYMENT_PROCESSING') {
+          setPaymentProcessing(true);
+          setPaymentMessage(
+            typeof data.error === 'string'
+              ? data.error
+              : 'Your previous payment is still being confirmed. Please do not pay again.'
+          );
+          return;
+        }
         if (
           typeof data.error === 'string' &&
           data.error.toLowerCase().includes('already has an active')
@@ -304,6 +318,7 @@ export default function SubscribePage() {
           razorpay_signature?: string;
         }) {
           void (async () => {
+            setError(null);
             setPaymentMessage('Confirming payment and applying plan credits…');
             try {
               const paymentId = String(response?.razorpay_payment_id || '').trim();
@@ -344,7 +359,7 @@ export default function SubscribePage() {
               enterProduct(planId, { creditsPending: outcome === 'pending' });
             } catch {
               setError(
-                'Payment confirmation timed out. If you were charged, refresh Brand Studio shortly — do not pay again.'
+                'Payment confirmation timed out. If you were charged, your credits will appear in SkalX within a few minutes — do not pay again.'
               );
               setPaymentMessage(null);
             } finally {
@@ -365,10 +380,11 @@ export default function SubscribePage() {
       };
 
       const rzp = new RazorpayCtor(options);
-      rzp.on('payment.failed', () => {
-        setSubmitting(false);
-        createInFlightRef.current = false;
-        setError('Payment failed. You can try again.');
+      rzp.on('payment.failed', (resp: unknown) => {
+        const reason = (resp as { error?: { description?: string } } | null)?.error?.description;
+        setError(
+          `Payment failed${reason ? `: ${reason}` : ''}. No money was taken — you can retry in the checkout window or try another method.`
+        );
       });
       rzp.open();
     } catch (e: any) {
@@ -384,7 +400,7 @@ export default function SubscribePage() {
         className="min-h-screen flex items-center justify-center"
         style={{ background: colors.background, color: colors.foreground }}
       >
-        <Loader2 className="h-6 w-6 animate-spin" style={{ color: colors.primary }} />
+        <ArcSpinner className="h-6 w-6 animate-spin" style={{ color: colors.primary }} />
       </main>
     );
   }
@@ -423,7 +439,7 @@ export default function SubscribePage() {
         style={{ background: colors.background, color: colors.foreground }}
       >
         <p style={{ color: colors.mutedForeground }}>Choose a plan to continue.</p>
-        <Link href="/try" style={{ color: colors.primary }}>
+        <Link href="/pricing" style={{ color: colors.primary }}>
           View pricing
         </Link>
       </main>
@@ -439,14 +455,18 @@ export default function SubscribePage() {
         style={{ background: colors.background, color: colors.foreground }}
       >
         <div className="max-w-md mx-auto">
-          <Link
-            href="/try"
+          <button
+            type="button"
+            onClick={() => {
+              if (window.history.length > 1) router.back();
+              else router.push('/pricing');
+            }}
             className="inline-flex items-center gap-2 text-sm mb-8"
-            style={{ color: colors.mutedForeground }}
+            style={{ color: colors.mutedForeground, background: 'none', border: 'none', padding: 0 }}
           >
             <ArrowLeft className="h-4 w-4" />
             Back
-          </Link>
+          </button>
 
           <div
             className="rounded-[20px] p-8 border"
@@ -548,6 +568,19 @@ export default function SubscribePage() {
               </p>
             )}
 
+            {paymentProcessing ? (
+              <Link
+                href={`${WORKSPACE_PATH}?credits=pending`}
+                className="w-full inline-flex items-center justify-center rounded-xl py-3.5 font-semibold text-base"
+                style={{
+                  background: colors.gradientPrimary,
+                  color: colors.primaryForeground,
+                  boxShadow: colors.shadowGlow,
+                }}
+              >
+                Go to SkalX
+              </Link>
+            ) : (
             <button
               type="button"
               onClick={continueToRazorpay}
@@ -561,7 +594,7 @@ export default function SubscribePage() {
             >
               {submitting ? (
                 <span className="inline-flex items-center gap-2 justify-center">
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <ArcSpinner className="h-4 w-4 animate-spin" />
                   Opening checkout…
                 </span>
               ) : error ? (
@@ -570,6 +603,7 @@ export default function SubscribePage() {
                 'Continue to secure payment'
               )}
             </button>
+            )}
           </div>
         </div>
       </main>

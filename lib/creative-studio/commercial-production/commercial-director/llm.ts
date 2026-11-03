@@ -12,6 +12,8 @@ export interface StructuredGenerationRequest {
   schemaName: string;
   temperature?: number;
   maxOutputTokens?: number;
+  /** Images sent before the prompt (e.g. product photos), base64 without data: prefix. */
+  images?: Array<{ mimeType: string; data: string }>;
 }
 
 export interface StructuredGenerationResult<T> {

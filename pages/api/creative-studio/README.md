@@ -107,26 +107,9 @@ Generates a video ad script using AI.
 }
 ```
 
-### 9. `/api/creative-studio/generate-video` (POST)
-Generates a video ad using Google Veo 3.1.
-
-**Request:**
-```json
-{
-  "product_name": "Product Name",
-  "brand_name": "Brand Name",
-  "final_video_prompt": "...",
-  "style": "Cinematic",
-  "duration": 6,
-  "aspect_ratio": "9:16"
-}
-```
-
-### 10. `/api/creative-studio/generate-video-stitched` (POST)
-Generates a longer video ad by creating multiple Veo clips (typically 2× ~8 seconds) and stitching them into a single MP4.
-
-**Request:**
-Same as `generate-video`. Use `duration > 8` to trigger stitching.
+### 9. `/api/creative-studio/generate-video` and `/generate-video-stitched` (POST) — retired
+Both return `410 USE_BILLED_COMMERCIAL_GENERATE`. Commercial video generation is
+`POST /api/commercial/generate` (authenticated, bills Video Credits).
 
 ## Authentication
 

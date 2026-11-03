@@ -39,10 +39,16 @@ export type PostAuthState = {
   onboarding: PostAuthOnboarding;
   businessName: string | null;
   brandSnapshotName: string | null;
+  /**
+   * Manual free-trial credits (or any positive wallet balance) mean the user
+   * already entered the product — do not send them back through /try.
+   */
+  hasProductCredits?: boolean;
   now?: Date;
 };
 
-export const POST_AUTH_WORKSPACE_PATH = '/content-studio';
+/** Workspace entry: sends users without a Brand Kit to set one up, others to Ad Studio. */
+export const POST_AUTH_WORKSPACE_PATH = '/workspace';
 
 const IN_PROGRESS_STATUSES = new Set([
   'brand_started',
@@ -62,11 +68,13 @@ function periodEndMs(value: string | Date | null | undefined): number | null {
 }
 
 /**
- * Valid paid entitlement (priority 1).
+ * Valid paid or trial entitlement (priority 1).
  * `pending` alone is NOT entitlement.
+ * Positive credits count (operator-granted free trial wallets).
  */
 export function hasValidEntitlement(state: PostAuthState): boolean {
   if (state.hasCapturedPayment) return true;
+  if (state.hasProductCredits) return true;
 
   const status = (state.subscriptionStatus || '').toLowerCase();
   if (status === 'active' || status === 'trialing') return true;

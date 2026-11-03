@@ -14,14 +14,27 @@ import { supabase } from '@/auth/supabase/client';
 import { profileClient, imagesClient } from '@/database/client-helpers';
 import { storageClient } from '@/lib/storage/client';
 import { toast } from "sonner";
-import { Sparkles, Image as ImageIcon, Video } from "lucide-react";
+import { Sparkles, Image as ImageIcon, Camera, Orbit, Megaphone, Clapperboard, Play } from "lucide-react";
 import { authFetch } from "@/lib/utils";
 import { SkeletonImageGrid } from "@/app/web/src/components/ui/skeletons";
+
+/** Where a creative was made — shown on every card and filterable. */
+type CreativeSource = "photo" | "brand" | "ad" | "campaign";
 
 type UserImage = {
   id: string;
   imageUrl: string;
   createdAt: string;
+  source: CreativeSource;
+  sessionId?: string;
+};
+
+const SOURCE_META: Record<CreativeSource | "video", { label: string; Icon: typeof ImageIcon; tint: string }> = {
+  photo: { label: "Photo Studio", Icon: Camera, tint: "#22c55e" },
+  brand: { label: "Brand Studio", Icon: Orbit, tint: "#60a5fa" },
+  ad: { label: "Ad Studio", Icon: Megaphone, tint: "#f59e0b" },
+  campaign: { label: "Campaigns", Icon: Sparkles, tint: "#a78bfa" },
+  video: { label: "Brand Studio · Video", Icon: Clapperboard, tint: "#f472b6" },
 };
 
 type GeneratedVideo = {
@@ -143,12 +156,13 @@ export default function ImageLibraryPage(): JSX.Element {
 
     const parseImages = (rows: any[]): UserImage[] =>
       (rows || [])
-        .map((r: any) =>
+        .map((r: any): UserImage | null =>
           r && r.imageUrl
             ? {
                 id: String(r.id),
                 imageUrl: String(r.imageUrl),
                 createdAt: String(r.createdAt),
+                source: "campaign" as const,
               }
             : null
         )
@@ -156,7 +170,8 @@ export default function ImageLibraryPage(): JSX.Element {
 
     const mergeSessionPosters = (
       existing: UserImage[],
-      sessions: any[]
+      sessions: any[],
+      source: CreativeSource
     ): UserImage[] => {
       const seen = new Set(existing.map((img) => img.imageUrl));
       const extras: UserImage[] = [];
@@ -174,6 +189,8 @@ export default function ImageLibraryPage(): JSX.Element {
             id: `session-poster-${session.id}-${index}`,
             imageUrl: url,
             createdAt: sessionUpdatedAt,
+            source,
+            sessionId: session.id,
           });
         });
       }
@@ -225,7 +242,7 @@ export default function ImageLibraryPage(): JSX.Element {
             setFirstName(user.email ? user.email.split("@")[0] : "There");
         }
 
-        const [imagesResult, posterSessionsRes, videoSessionsRes] =
+        const [imagesResult, posterSessionsRes, videoSessionsRes, photoSessionsRes, adStudioRes] =
           await Promise.all([
             imagesClient.list(500).catch(() => ({ success: false, data: [] })),
             authFetch(
@@ -238,22 +255,54 @@ export default function ImageLibraryPage(): JSX.Element {
             )
               .then((res) => res.json())
               .catch(() => ({ ok: false, sessions: [] })),
+            // Photo Studio shoots store their photos the same way posters do.
+            authFetch(
+              "/api/creative-studio/sessions?type=photo&limit=100&includeMedia=1"
+            )
+              .then((res) => res.json())
+              .catch(() => ({ ok: false, sessions: [] })),
+            // Ad Studio posters and carousel slides (poster engine sessions with no studio session).
+            authFetch("/api/library/ad-studio")
+              .then((res) => res.json())
+              .catch(() => ({ ok: false, items: [] })),
           ]);
 
         if (!mounted) return;
 
         let nextImages: UserImage[] = [];
+        // Studio sessions first so a creative keeps its studio label; the images table
+        // (Create Campaign uploads) only adds what no studio claims.
+        let campaignImages: UserImage[] = [];
         if (!imagesResult.success) {
           toast.error("Failed to fetch images");
         } else {
-          nextImages = parseImages(imagesResult.data || []);
+          campaignImages = parseImages(imagesResult.data || []);
         }
 
         if (posterSessionsRes?.ok) {
           nextImages = mergeSessionPosters(
             nextImages,
-            posterSessionsRes.sessions || []
+            posterSessionsRes.sessions || [],
+            "brand"
           );
+        }
+
+        if (photoSessionsRes?.ok) {
+          nextImages = mergeSessionPosters(nextImages, photoSessionsRes.sessions || [], "photo");
+        }
+
+        if (adStudioRes?.ok) {
+          const seen = new Set(nextImages.map((img) => img.imageUrl));
+          for (const it of adStudioRes.items || []) {
+            if (!it?.imageUrl || seen.has(it.imageUrl)) continue;
+            seen.add(it.imageUrl);
+            nextImages.push({ id: it.id, imageUrl: it.imageUrl, createdAt: it.createdAt, source: "ad", sessionId: it.sessionId });
+          }
+        }
+
+        {
+          const seen = new Set(nextImages.map((img) => img.imageUrl));
+          nextImages = [...nextImages, ...campaignImages.filter((img) => !seen.has(img.imageUrl))];
         }
 
         let nextVideos: LibraryVideo[] = [];
@@ -306,6 +355,24 @@ export default function ImageLibraryPage(): JSX.Element {
 
     return [...posterItems, ...videoItems].sort((a, b) => b.sortAt - a.sortAt);
   }, [images, videos]);
+
+  const [tab, setTab] = React.useState<"all" | "images" | "videos">("all");
+  const [sourceFilter, setSourceFilter] = React.useState<CreativeSource | "all">("all");
+  const sourceCounts = React.useMemo(() => {
+    const counts = new Map<CreativeSource, number>();
+    for (const img of images) counts.set(img.source, (counts.get(img.source) || 0) + 1);
+    return (["photo", "brand", "ad", "campaign"] as const).filter((src) => counts.get(src)).map((src) => [src, counts.get(src)!] as const);
+  }, [images]);
+  const visibleItems = React.useMemo(
+    () =>
+      libraryItems.filter((item) => {
+        if (tab === "images" && item.kind !== "poster") return false;
+        if (tab === "videos" && item.kind !== "video") return false;
+        if (sourceFilter !== "all" && tab !== "videos" && (item.kind !== "poster" || item.image.source !== sourceFilter)) return false;
+        return true;
+      }),
+    [libraryItems, tab, sourceFilter]
+  );
 
   // DELETE flow with confirmation
   const handleDelete = () => {
@@ -787,115 +854,108 @@ export default function ImageLibraryPage(): JSX.Element {
 
       <div className="flex-1" style={{ marginLeft: 0 }}>
         <main className="max-w-6xl mx-auto p-6 pb-56">
-          <div className="mb-6">
-            <h2 className="text-2xl font-semibold">Generated contents</h2>
-            <p
-              className="text-sm mt-1"
-              style={{ color: colors.mutedForeground }}
-            >
-              {loading
-                ? "Loading your posters and videos…"
-                : `All posters and videos generated by ${greet}.`}
+          <header className="mb-6">
+            <h1 className="text-2xl font-semibold" style={{ color: colors.foreground }}>Generated contents</h1>
+            <p className="mt-1 text-sm" style={{ color: colors.mutedForeground }}>
+              Everything you&apos;ve created, {greet} — from Photo Studio, Brand Studio, Ad Studio and campaigns.
             </p>
-            {!loading && libraryItems.length > 0 && (
-              <div
-                className="mt-3 flex flex-wrap items-center gap-3 text-xs"
-                style={{ color: colors.mutedForeground }}
-              >
-                <span className="inline-flex items-center gap-1.5">
-                  <ImageIcon size={14} />
-                  {images.length} poster{images.length === 1 ? "" : "s"}
-                </span>
-                <span className="inline-flex items-center gap-1.5">
-                  <Video size={14} />
-                  {videos.length} video{videos.length === 1 ? "" : "s"}
-                </span>
-              </div>
-            )}
-          </div>
+          </header>
 
-          <Card
-            className="p-4 optim-deep-shadow"
-            style={{
-              background: colors.card,
-              border: `1px solid ${colors.border}`,
-            }}
-          >
-            {loading ? (
-              <SkeletonImageGrid count={12} />
-            ) : libraryItems.length === 0 ? (
-              <div style={{ color: colors.mutedForeground }}>
-                No generated content yet. Create posters or videos in Brand Studio and they&apos;ll appear here.
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-                {libraryItems.map((item) => {
-                  if (item.kind === "poster") {
-                    return (
-                      <button
-                        key={item.id}
-                        onClick={() => setSelectedImage(item.image)}
-                        className="group relative rounded overflow-hidden border focus:ring-2 focus:ring-sky-500 text-left"
-                        style={{ borderColor: colors.border }}
-                      >
-                        <img
-                          src={item.image.imageUrl}
-                          alt="generated poster"
-                          className="w-full h-40 object-cover"
-                        />
-                        <span
-                          className="absolute left-2 top-2 rounded-full px-2 py-0.5 text-[10px] font-semibold"
-                          style={{
-                            background: "rgba(54, 145, 255, 0.9)",
-                            color: "#fff",
-                          }}
-                        >
-                          Poster
-                        </span>
-                      </button>
-                    );
-                  }
-
-                  const { entry } = item;
+          {/* Type tabs + source filter */}
+          <div className="sticky top-0 z-10 -mx-6 mb-5 flex flex-wrap items-center justify-between gap-3 px-6 py-3 backdrop-blur" style={{ background: "rgba(15,15,15,0.72)" }}>
+            <div role="tablist" aria-label="Media type" className="inline-flex rounded-lg p-1" style={{ background: colors.secondary }}>
+              {([
+                ["all", "All", libraryItems.length],
+                ["images", "Images", images.length],
+                ["videos", "Videos", videos.length],
+              ] as const).map(([id, label, n]) => {
+                const on = tab === id;
+                return (
+                  <button key={id} role="tab" aria-selected={on} type="button" onClick={() => setTab(id)}
+                    className="rounded-md px-3 py-1.5 text-sm transition-colors"
+                    style={on ? { background: colors.card, color: colors.foreground, boxShadow: "0 1px 2px rgba(0,0,0,0.3)" } : { color: colors.mutedForeground }}>
+                    {label} <span className="ml-1 text-xs opacity-70">{loading ? "" : n}</span>
+                  </button>
+                );
+              })}
+            </div>
+            {tab !== "videos" && sourceCounts.length > 1 && (
+              <div className="flex flex-wrap items-center gap-1.5" aria-label="Filter by studio">
+                <button type="button" onClick={() => setSourceFilter("all")} className="rounded-full px-3 py-1 text-xs"
+                  style={sourceFilter === "all" ? { background: colors.foreground, color: colors.background } : { border: `1px solid ${colors.border}`, color: colors.mutedForeground }}>
+                  All studios
+                </button>
+                {sourceCounts.map(([src, n]) => {
+                  const meta = SOURCE_META[src];
+                  const on = sourceFilter === src;
                   return (
-                    <button
-                      key={item.id}
-                      onClick={() => setSelectedVideo(entry)}
-                      className="group relative rounded overflow-hidden border focus:ring-2 focus:ring-sky-500 text-left"
-                      style={{ borderColor: colors.border }}
-                    >
-                      <div className="h-40 w-full bg-black/80 relative">
-                        <video
-                          src={entry.video.url}
-                          className="w-full h-full object-cover"
-                          muted
-                          preload="metadata"
-                          playsInline
-                        />
-                        <span
-                          className="absolute left-2 top-2 rounded-full px-2 py-0.5 text-[10px] font-semibold"
-                          style={{
-                            background: "rgba(139, 92, 246, 0.92)",
-                            color: "#fff",
-                          }}
-                        >
-                          Video
-                        </span>
-                      </div>
-                      <div className="p-2">
-                        <p className="text-xs truncate" style={{ color: colors.mutedForeground }}>
-                          {entry.sessionName}
-                        </p>
-                        <p className="text-xs" style={{ color: colors.foreground }}>
-                          {new Date(entry.video.timestamp).toLocaleDateString()}
-                        </p>
-                      </div>
+                    <button key={src} type="button" onClick={() => setSourceFilter(on ? "all" : src)}
+                      className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs"
+                      style={on ? { background: `${meta.tint}26`, color: meta.tint, border: `1px solid ${meta.tint}66` } : { border: `1px solid ${colors.border}`, color: colors.mutedForeground }}>
+                      <meta.Icon className="h-3.5 w-3.5" style={{ color: meta.tint }} /> {meta.label} <span className="opacity-70">{n}</span>
                     </button>
                   );
                 })}
               </div>
             )}
-          </Card>
+          </div>
+
+          {loading ? (
+            <SkeletonImageGrid count={12} />
+          ) : visibleItems.length === 0 ? (
+            <div className="flex flex-col items-center rounded-2xl px-6 py-16 text-center" style={{ border: `1px dashed ${colors.border}` }}>
+              <ImageIcon className="h-8 w-8" style={{ color: colors.mutedForeground }} />
+              <p className="mt-3 text-sm font-medium" style={{ color: colors.foreground }}>
+                {libraryItems.length === 0 ? "Nothing here yet" : "Nothing matches this filter"}
+              </p>
+              <p className="mt-1 text-xs" style={{ color: colors.mutedForeground }}>
+                {libraryItems.length === 0
+                  ? "Photos, posters and videos you make in Photo Studio, Brand Studio and Ad Studio appear here."
+                  : "Try another tab or studio."}
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+              {visibleItems.map((item) => {
+                const isVideo = item.kind === "video";
+                const meta = SOURCE_META[isVideo ? "video" : item.image.source];
+                const when = new Date(isVideo ? Number(item.entry.video.timestamp) : Date.parse(item.image.createdAt));
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => (isVideo ? setSelectedVideo(item.entry) : setSelectedImage(item.image))}
+                    className="group overflow-hidden rounded-xl text-left transition-transform hover:-translate-y-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+                    style={{ background: colors.card, border: `1px solid ${colors.border}` }}
+                  >
+                    <div className="relative aspect-[4/5] w-full overflow-hidden" style={{ background: colors.secondary }}>
+                      {isVideo ? (
+                        <>
+                          <video src={item.entry.video.url} className="h-full w-full object-cover" muted preload="metadata" playsInline />
+                          <span className="absolute inset-0 flex items-center justify-center">
+                            <span className="flex h-11 w-11 items-center justify-center rounded-full bg-black/55 backdrop-blur-sm">
+                              <Play className="ml-0.5 h-5 w-5 text-white" fill="white" />
+                            </span>
+                          </span>
+                        </>
+                      ) : (
+                        <img src={item.image.imageUrl} alt={`${meta.label} creative`} loading="lazy" className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]" />
+                      )}
+                    </div>
+                    <div className="flex items-center justify-between gap-2 px-3 py-2">
+                      <span className="inline-flex min-w-0 items-center gap-1.5 text-xs" style={{ color: colors.foreground }}>
+                        <meta.Icon className="h-3.5 w-3.5 shrink-0" style={{ color: meta.tint }} />
+                        <span className="truncate">{isVideo ? item.entry.sessionName : meta.label}</span>
+                      </span>
+                      <span className="shrink-0 text-[11px]" style={{ color: colors.mutedForeground }}>
+                        {Number.isFinite(when.getTime()) ? when.toLocaleDateString(undefined, { day: "numeric", month: "short" }) : ""}
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </main>
       </div>
 

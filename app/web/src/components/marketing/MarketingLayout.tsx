@@ -17,8 +17,8 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
         }
       `}</style>
       <Head>
-        <link rel="preload" href="/fonts/fraunces-latin-v5.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
-        <link rel="preload" href="/fonts/instrument-sans-latin-v5.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
+        <link rel="preload" href="/fonts/montserrat-latin-400-800.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
+        <link rel="preload" href="/fonts/poppins-latin-400.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
       </Head>
       <noscript>
         <style>{`.sx-reveal{opacity:1!important;transform:none!important}`}</style>

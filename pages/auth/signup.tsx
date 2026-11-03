@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/router";
-import { Eye, EyeOff } from "lucide-react";
+import { Check, Eye, EyeOff } from "lucide-react";
 import { supabase } from "@/auth/supabase/client";
 import {
   getOAuthCallbackUrl,
@@ -16,7 +16,9 @@ import {
   resolvePostAuthPath,
 } from "@/lib/auth/client-post-auth";
 import { trackAuditEvent } from "@/lib/audit/analytics";
+import { authNextFrom, clearAuthContinuation, rememberAuthContinuation } from "@/lib/auth/auth-continuation";
 import AuthShell from "@/components/auth/AuthShell";
+import { authErrorMessage, classifyAuthError } from "@/lib/auth/auth-errors";
 
 export default function SignUpPage(): React.ReactElement {
   const router = useRouter();
@@ -27,7 +29,7 @@ export default function SignUpPage(): React.ReactElement {
   const [showPw, setShowPw] = useState(false);
   const [agreed, setAgreed] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<React.ReactNode | null>(null);
   const [info, setInfo] = useState<string | null>(null);
 
   const nextSuffix =
@@ -39,13 +41,30 @@ export default function SignUpPage(): React.ReactElement {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
   }
 
+  // Coming from "Log in" with an unknown email: keep what they typed.
+  useEffect(() => {
+    if (typeof router.query.email === "string" && !email) setEmail(router.query.email);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router.query.email]);
+
+  const alreadyRegistered = () => (
+    <>
+      You already have an account with this email.{" "}
+      <Link href={`/auth/signin${nextSuffix}`} style={{ textDecoration: "underline" }}>Log in</Link>
+      {" · "}
+      <Link href="/auth/forgot-password" style={{ textDecoration: "underline" }}>Reset password</Link>
+    </>
+  );
+
   async function routeAfterAuth() {
     const decision = await fetchPostAuthDestination();
     if (!decision.ok) {
       setError(decision.error);
       return;
     }
-    router.replace(resolvePostAuthPath(decision.path, router.query.next));
+    const next = authNextFrom(router.query.next);
+    clearAuthContinuation();
+    router.replace(resolvePostAuthPath(decision.path, next));
   }
 
   useEffect(() => {
@@ -80,18 +99,19 @@ export default function SignUpPage(): React.ReactElement {
     try {
       if (redirectWwwToCanonicalForOAuth()) return;
 
-      const redirectTo = getOAuthCallbackUrl(getSafeNextPath(router.query.next, "/try"));
+      const nextPath = rememberAuthContinuation(router.query.next, "/try");
+      const redirectTo = getOAuthCallbackUrl(nextPath);
       const { data, error: oauthError } = await supabase.auth.signInWithOAuth({
         provider,
         options: { redirectTo },
       });
       if (oauthError) {
-        setError(oauthError.message);
+        setError(authErrorMessage(oauthError));
       } else if (data?.url) {
         window.location.href = data.url;
       }
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(authErrorMessage(e));
     }
   };
 
@@ -127,7 +147,8 @@ export default function SignUpPage(): React.ReactElement {
 
     setLoading(true);
     try {
-      const auditNext = auditReturnPath(router.query.next);
+      const nextPath = rememberAuthContinuation(router.query.next, "/try");
+      const auditNext = auditReturnPath(nextPath);
       const { data, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
@@ -135,26 +156,33 @@ export default function SignUpPage(): React.ReactElement {
           data: {
             business_name: businessName.trim(),
           },
-          ...(auditNext ? { emailRedirectTo: getOAuthCallbackUrl(auditNext) } : {}),
+          emailRedirectTo: getOAuthCallbackUrl(nextPath),
         },
       });
 
       if (signUpError) {
-        setError(signUpError.message || "Failed to create account.");
+        setError(classifyAuthError(signUpError) === "already_registered" ? alreadyRegistered() : authErrorMessage(signUpError));
         setLoading(false);
         return;
       }
 
+      const user = (data as { user?: { id?: string; identities?: unknown[] } } | null)?.user ?? null;
+      // With email confirmation on, Supabase hides an existing account by returning a
+      // user with no identities and no session.
+      if (user && Array.isArray(user.identities) && user.identities.length === 0) {
+        setError(alreadyRegistered());
+        return;
+      }
       trackAuditEvent("signup_completed", { method: "email", fromAudit: Boolean(auditNext) });
-      const user = (data as { user?: { id?: string } } | null)?.user ?? null;
-      if (user?.id) {
+      // Only a session means they're signed in; otherwise they must confirm their email first.
+      if (data?.session) {
         await routeAfterAuth();
         return;
       }
 
-      setInfo("Account created. Please check your email to confirm and then sign in.");
+      setInfo(`Account created. We sent a confirmation link to ${email} — open it to finish signing up.`);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(authErrorMessage(e));
     } finally {
       setLoading(false);
     }
@@ -162,6 +190,7 @@ export default function SignUpPage(): React.ReactElement {
 
   return (
     <AuthShell
+      variant="signup"
       accountSwitch={
         <p className="auth-switch">
           Already have an account? <Link href={`/auth/signin${nextSuffix}`}>Log in</Link>
@@ -188,7 +217,7 @@ export default function SignUpPage(): React.ReactElement {
       }
     >
       <div>
-        <label className="sr-only" htmlFor="business-name">
+        <label className="auth-label" htmlFor="business-name">
           Business name
         </label>
         <input
@@ -196,13 +225,13 @@ export default function SignUpPage(): React.ReactElement {
           className="auth-input"
           value={businessName}
           onChange={(e) => setBusinessName(e.target.value)}
-          placeholder="Business name"
+          placeholder="e.g. Chai Point Snacks"
           autoComplete="organization"
         />
       </div>
 
       <div>
-        <label className="sr-only" htmlFor="email">
+        <label className="auth-label" htmlFor="email">
           Email address
         </label>
         <input
@@ -211,33 +240,40 @@ export default function SignUpPage(): React.ReactElement {
           type="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          placeholder="Email address"
+          placeholder="you@yourbrand.com"
           autoComplete="email"
         />
       </div>
 
-      <div className="auth-field">
-        <label className="sr-only" htmlFor="password">
+      <div>
+        <label className="auth-label" htmlFor="password">
           Create a password
         </label>
-        <input
-          id="password"
-          className="auth-input"
-          type={showPw ? "text" : "password"}
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="Create a password"
-          autoComplete="new-password"
-          style={{ paddingRight: 44 }}
-        />
-        <button
-          type="button"
-          className="auth-eye"
-          onClick={() => setShowPw((s) => !s)}
-          aria-label={showPw ? "Hide password" : "Show password"}
-        >
-          {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
-        </button>
+        <div className="auth-field">
+          <input
+            id="password"
+            className="auth-input"
+            type={showPw ? "text" : "password"}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            autoComplete="new-password"
+            aria-describedby="password-hint"
+            style={{ paddingRight: 48 }}
+          />
+          <button
+            type="button"
+            className="auth-eye"
+            onClick={() => setShowPw((s) => !s)}
+            aria-label={showPw ? "Hide password" : "Show password"}
+          >
+            {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
+          </button>
+        </div>
+        {/* Live hint for the same 6-character rule the submit check enforces. */}
+        <p id="password-hint" className="auth-hint" data-ok={password.length >= 6 ? "true" : "false"}>
+          {password.length >= 6 ? <Check size={13} aria-hidden /> : null}
+          At least 6 characters
+        </p>
       </div>
     </AuthShell>
   );

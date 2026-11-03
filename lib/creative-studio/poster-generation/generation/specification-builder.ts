@@ -22,6 +22,8 @@ import {
   copyDensityForConcept,
   dedupeCopyLines,
   filterCopyForDensity,
+  isConcreteSupportingLine,
+  SECONDARY_TYPE_RULE,
   trimPosterPhrase,
   type PosterCopyDensity,
 } from "./copy-density";
@@ -143,14 +145,15 @@ function platformForAspect(aspect: PosterAspectRatio): string {
 function buildPlannedCopyHierarchy(
   strategy: MarketingStrategy,
   headline: string,
-  density: PosterCopyDensity
+  density: PosterCopyDensity,
+  hasProductRef = false
 ): ReturnType<typeof buildCopyHierarchy> {
   const overrides = strategy.userOverrides || {};
-  const supporting =
-    (overrides.message && overrides.message.trim()) ||
-    strategy.copy.supporting ||
-    null;
-  const productLine = strategy.copy.productLine || null;
+  // Same rules as single posters: no product-name line next to the real pack, and a
+  // second line only when it carries a concrete fact.
+  const plannedSupporting = isConcreteSupportingLine(strategy.copy.supporting) ? strategy.copy.supporting : null;
+  const supporting = (overrides.message && overrides.message.trim()) || plannedSupporting || null;
+  const productLine = hasProductRef ? null : strategy.copy.productLine || null;
   const cta =
     (overrides.cta && overrides.cta.trim()) || strategy.copy.cta || null;
   const badges = [...(strategy.copy.badges || [])];
@@ -178,7 +181,7 @@ function buildPlannedCopyHierarchy(
     renderCopy: { headline, supporting, productLine, cta, badges },
     copyHierarchy,
     density,
-    textBudgetRule: "Render the planned copy for this slide.",
+    textBudgetRule: `Render the planned copy for this slide. ${SECONDARY_TYPE_RULE}`,
   };
 }
 
@@ -186,7 +189,8 @@ function buildCopyHierarchy(
   strategy: MarketingStrategy,
   concept: CreativeConcept,
   format: AdFormat,
-  applyCopyDensity = true
+  applyCopyDensity = true,
+  hasProductRefForCopy = false
 ): {
   renderCopy: GenerationSpecification["renderCopy"];
   copyHierarchy: GenerationCopySlot[];
@@ -209,9 +213,9 @@ function buildCopyHierarchy(
   // The concept's text budget decides how many lines render; repeats are dropped.
   const density = copyDensityForConcept(concept);
   if (!applyCopyDensity) {
-    return buildPlannedCopyHierarchy(strategy, headline, density);
+    return buildPlannedCopyHierarchy(strategy, headline, density, hasProductRefForCopy);
   }
-  const filtered = filterCopyForDensity({ strategy, density });
+  const filtered = filterCopyForDensity({ strategy, density, hasProductImage: hasProductRefForCopy });
 
   // The ad format can need copy the budget would drop: the offer/rating badge
   // on offer and social-proof ads, and the CTA where the objective is to act.
@@ -447,10 +451,15 @@ export function buildGenerationSpecification(
   const specId = input.specificationId || `spec_${generationId}`;
 
   const adFormat = resolveAdFormat({ brief, strategy, concept });
-  const { renderCopy, copyHierarchy, density, textBudgetRule } =
-    buildCopyHierarchy(strategy, concept, adFormat, input.applyCopyDensity !== false);
   const kit = input.brandKit ?? null;
   const refs = buildReferences(brief, brand, references, product, kit?.logo?.url ?? null);
+  const { renderCopy, copyHierarchy, density, textBudgetRule } = buildCopyHierarchy(
+    strategy,
+    concept,
+    adFormat,
+    input.applyCopyDensity !== false,
+    refs.some((r) => r.kind === "product" && r.url)
+  );
   const brandReqs = brandRequirements(brand, brief);
   const theme = resolveThemeRecipe(brief.visualDirection);
   const themeScene = applyThemeToSceneFields(theme, concept, dna);
@@ -599,6 +608,7 @@ export function buildGenerationSpecification(
         "Do not generate a generic canvas intended for later crop.",
         "Finished advertising poster ready for social use.",
         "Render ONLY the approved copy from the specification — do not invent or paraphrase required text.",
+        "No invented social proof: no stars, ratings, review or customer counts, testimonials or quote boxes unless that exact text is in the approved copy.",
         textBudgetRule,
         hasProductRef
           ? "The featured product packaging must be recognizably identical to the attached PRODUCT reference."
@@ -618,7 +628,7 @@ export function buildGenerationSpecification(
         : "No product reference attached. Do not invent branded packaging or fake SKUs.",
       logoFidelity: "Do not redesign, distort, or invent logos.",
       copyFidelity:
-        "Render approved copy exactly. Do not invent headlines, CTAs, claims, URLs, phones, or dates.",
+        "Render approved copy exactly. Do not invent headlines, CTAs, claims, URLs, phones, or dates. Never add star ratings, review counts, customer counts, testimonials, quotes or trust badges unless that exact text is in the approved copy.",
       unsupportedClaims: [
         ...strategy.forbiddenClaims,
         ...strategy.restrictedClaims,

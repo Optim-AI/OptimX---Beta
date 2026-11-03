@@ -8,6 +8,7 @@ import { profiles } from "@/database/schema";
 import { eq } from "drizzle-orm";
 import { ensureProfile } from "@/lib/auth/ensure-profile";
 import { getUserBrand, syncSnapshotIntoKits } from "@/lib/brand-kit/server";
+import { carryResearchForward } from "@/lib/research/store";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
@@ -59,9 +60,9 @@ async function handleUpdateBrandSnapshot(
   res: NextApiResponse,
   userId: string
 ) {
-  const { brandSnapshot } = req.body ?? {};
+  const { brandSnapshot: incoming } = req.body ?? {};
 
-  if (!brandSnapshot) {
+  if (!incoming) {
     return res.status(400).json({
       ok: false,
       error: "Brand snapshot is required",
@@ -69,6 +70,13 @@ async function handleUpdateBrandSnapshot(
   }
 
   try {
+    const [existing] = await db
+      .select({ brandSnapshot: profiles.brandSnapshot })
+      .from(profiles)
+      .where(eq(profiles.id, userId))
+      .limit(1);
+    const brandSnapshot = carryResearchForward(incoming, existing?.brandSnapshot as Record<string, any> | null);
+
     await db
       .update(profiles)
       .set({

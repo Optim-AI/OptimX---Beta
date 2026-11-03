@@ -8,10 +8,12 @@ type Props = {
   /** Stagger in ms. */
   delay?: number;
   as?: 'div' | 'li' | 'section';
+  /** "up" fades/slides in (default), "mask" wipes in from the top, "scale" grows in. */
+  variant?: 'up' | 'mask' | 'scale';
 };
 
 /** Fade/slide in once on scroll. Motion is skipped under prefers-reduced-motion (CSS). */
-export default function Reveal({ children, className = '', delay = 0, as = 'div' }: Props) {
+export default function Reveal({ children, className = '', delay = 0, as = 'div', variant = 'up' }: Props) {
   const ref = useRef<HTMLElement | null>(null);
   const [shown, setShown] = useState(false);
 
@@ -39,6 +41,7 @@ export default function Reveal({ children, className = '', delay = 0, as = 'div'
     <Tag
       ref={ref}
       data-shown={shown ? 'true' : 'false'}
+      data-variant={variant}
       className={`sx-reveal ${className}`}
       style={delay ? { transitionDelay: `${delay}ms` } : undefined}
     >

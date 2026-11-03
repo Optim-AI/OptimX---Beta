@@ -124,7 +124,8 @@ export class PaymentService {
         generatedSignature.length !== razorpaySignature.length ||
         !crypto.timingSafeEqual(Buffer.from(generatedSignature), Buffer.from(razorpaySignature))
       ) {
-        await PaymentsDAO.updateStatus(payment.id, 'failed');
+        // Leave the row untouched: a bad client request must not poison the order and block
+        // the genuine payment.captured webhook from granting credits.
         return { success: false, error: 'Invalid payment signature' };
       }
 

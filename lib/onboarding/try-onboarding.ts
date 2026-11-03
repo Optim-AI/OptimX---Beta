@@ -305,7 +305,7 @@ export function resolveTryEntry(input: EntryInputs): EntryDestination {
   };
 }
 
-export const WORKSPACE_PATH = '/content-studio';
+export const WORKSPACE_PATH = '/workspace';
 
 /** Cross-instance lock key for the one-shot onboarding poster demo. */
 export function onboardingDemoLockKey(userId: string): string {

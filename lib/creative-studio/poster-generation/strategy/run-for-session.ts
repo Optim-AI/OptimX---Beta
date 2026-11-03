@@ -11,7 +11,10 @@ import {
 } from "../session";
 import { strategistInputFromBrief } from "./from-brief";
 import { generateMarketingStrategy } from "./strategist";
+import type { MarketingStrategistInput } from "./strategy-input";
 import { PosterStrategyError } from "./strategy-errors";
+import { researchDigest } from "@/lib/research/brand-research";
+import { getBrandResearch, researchMatchesBrandName } from "@/lib/research/store";
 
 export type RunMarketingStrategyOptions = {
   sessionId: string;
@@ -53,7 +56,12 @@ export async function runMarketingStrategyForSession(
     return { session, strategy: session.strategy, reused: true };
   }
 
-  const input = strategistInputFromBrief(session.brief);
+  const input: MarketingStrategistInput = strategistInputFromBrief(session.brief);
+  // Saved brand research sharpens the framing; best effort, never blocks the strategy.
+  const research = await getBrandResearch(options.userId).catch(() => null);
+  if (research && researchMatchesBrandName(research, input.brand.identity.name?.value)) {
+    input.marketResearch = researchDigest(research, 1800);
+  }
   const strategy = await generateMarketingStrategy(input, {
     generator: options.generator,
   });

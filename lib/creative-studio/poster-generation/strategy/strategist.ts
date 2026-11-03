@@ -104,6 +104,14 @@ function buildUserPrompt(input: MarketingStrategistInput): string {
   parts.push("\n=== BRAND CONTEXT ===");
   parts.push(formatBrandForStrategist(brand));
 
+  if (input.marketResearch) {
+    parts.push("\n=== MARKET RESEARCH (insight for framing — NOT allowed claims) ===");
+    parts.push(input.marketResearch);
+    parts.push(
+      "Use this to choose the angle and words buyers respond to, and to avoid claims every competitor makes. Facts in the copy still come only from PRODUCT FACTS and BRAND CONTEXT. Never name competitors."
+    );
+  }
+
   parts.push("\n=== REFERENCES (strategic relevance only) ===");
   parts.push(
     `Product refs: ${references.productReferences.length}; Design refs: ${references.designReferences.length}; Supporting: ${references.supportingReferences.length}`

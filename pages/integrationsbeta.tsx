@@ -170,14 +170,7 @@ export default function IntegrationsBetaPage(): React.ReactElement {
           {/* Logo + SkalX AI brand */}
           <header className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-3">
-              <img
-                src="/images/Oli_AI_Logo.svg"
-                alt="SkalX AI logo"
-                className="w-10 h-10 md:w-12 md:h-12 object-contain"
-              />
-              <div className="text-2xl font-extrabold tracking-tight">
-                <span>SkalX AI</span>
-              </div>
+              <img src="/images/SkalX_Logo.png" alt="SkalX AI" className="h-7 w-auto md:h-8" />
             </div>
 
             {/* Skip text (go to dashboard) */}

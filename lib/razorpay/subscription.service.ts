@@ -30,6 +30,10 @@ interface CancelSubscriptionResult {
   error?: string;
 }
 
+/** Returned when a previous checkout is already paid on Razorpay but not yet provisioned locally. */
+export const PAYMENT_PROCESSING_ERROR =
+  'Your previous payment is still being confirmed. Your plan will activate in a few minutes — please do not pay again.';
+
 export class SubscriptionService {
   /**
    * Create a new subscription for a user.
@@ -74,7 +78,34 @@ export class SubscriptionService {
           };
         }
 
-        // Always abandon pending checkouts and recreate so first-invoice
+        // A pending row may already be paid on Razorpay while our confirm/webhook is still
+        // settling (closed tab, slow webhook). Cancelling it would strand that payment, so
+        // only abandon checkouts Razorpay confirms were never paid.
+        if (existingSubscription.razorpaySubscriptionId) {
+          let paidOnRazorpay = true;
+          try {
+            const remote: any = await razorpay.subscriptions.fetch(
+              existingSubscription.razorpaySubscriptionId
+            );
+            const remoteStatus = String(remote?.status || '');
+            paidOnRazorpay =
+              Number(remote?.paid_count || 0) > 0 ||
+              !['created', 'cancelled', 'expired'].includes(remoteStatus);
+          } catch (fetchErr) {
+            console.warn(
+              '[subscription] could not verify prior pending sub; refusing to replace it',
+              fetchErr instanceof Error ? fetchErr.message : fetchErr
+            );
+          }
+          if (paidOnRazorpay) {
+            return {
+              success: false,
+              error: PAYMENT_PROCESSING_ERROR,
+            };
+          }
+        }
+
+        // Unpaid checkout: abandon and recreate so first-invoice
         // (full plan amount via upfront addon) stays consistent.
         await SubscriptionsDAO.updateStatus(existingSubscription.id, 'cancelled');
         if (existingSubscription.razorpaySubscriptionId) {

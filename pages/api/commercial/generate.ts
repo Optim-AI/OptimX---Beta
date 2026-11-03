@@ -12,8 +12,11 @@
  *   forceRegenerate?,
  *   generationMode?: "native_continuous" | "shot_based_fallback",
  *   availableAssets?,
- *   runCommercialQc?: boolean
+ *   runCommercialQc?: boolean,
+ *   recoverOnly?: boolean   // fetch a finished result for this version; never starts or bills
  * }
+ *
+ * A completed version is never generated or billed twice: repeats replay the stored result free.
  */
 
 import type { NextApiRequest, NextApiResponse } from "next";
@@ -47,6 +50,43 @@ export const config = {
   maxDuration: 800,
 };
 
+const FUNCTION_MAX_DURATION_MS = 800_000;
+/** Stop provider polling this long before the function limit — time for download, storage, TTS and QC. */
+const POST_GENERATION_RESERVE_MS = 150_000;
+
+function errorSummary(error: unknown): Record<string, unknown> {
+  const details = (error as { details?: Record<string, unknown> })?.details;
+  return {
+    error: error instanceof Error ? error.message : String(error),
+    // Kept so an accepted-but-unfinished provider job can be recovered by hand.
+    providerJobId: typeof details?.providerJobId === "string" ? details.providerJobId : undefined,
+  };
+}
+
+type StoredCommercialResult = {
+  generationMode?: string;
+  finalCommercial: { commercialQC?: unknown } & Record<string, unknown>;
+};
+
+function storedResult(summary: unknown): StoredCommercialResult | null {
+  const s = summary as Partial<StoredCommercialResult> | null | undefined;
+  return s?.finalCommercial && typeof s.finalCommercial === "object"
+    ? (s as StoredCommercialResult)
+    : null;
+}
+
+function replayResponse(stored: StoredCommercialResult, referenceId: string) {
+  return {
+    ok: true,
+    replayed: true,
+    referenceId,
+    generationMode: stored.generationMode,
+    finalCommercial: stored.finalCommercial,
+    commercialQC: stored.finalCommercial.commercialQC,
+    creditsCharged: 0,
+  };
+}
+
 function isMissingLockTableError(error: unknown): boolean {
   const msg = error instanceof Error ? error.message : String(error);
   const code = (error as { code?: string })?.code;
@@ -62,6 +102,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ ok: false, error: "Method not allowed" });
   }
 
+  const startedAt = Date.now();
   const userId = await getUserIdFromRequest(req);
   if (!userId) {
     return res.status(401).json({
@@ -106,17 +147,40 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     ) as CampaignGenerationMode;
 
     const referenceId = `commercial:${brief.campaignId}:${generationVersion}:${duration}`;
+
+    // The browser lost a long response: hand back the finished video, or say it is still running.
+    if (body.recoverOnly === true) {
+      let existing: Awaited<ReturnType<typeof GenerationLocksDAO.getByKey>> = null;
+      try {
+        existing = await GenerationLocksDAO.getByKey(referenceId);
+      } catch (lookupErr) {
+        if (!isMissingLockTableError(lookupErr)) throw lookupErr;
+      }
+      if (!existing || existing.userId !== userId) {
+        return res.status(404).json({ ok: false, error: "No generation found", code: "GENERATION_NOT_FOUND" });
+      }
+      if (existing.status === "in_progress") {
+        return res.status(202).json({ ok: false, pending: true, code: "GENERATION_IN_PROGRESS" });
+      }
+      const replay = storedResult(existing.resultSummary);
+      if (existing.status === "completed" && replay) {
+        return res.status(200).json(replayResponse(replay, referenceId));
+      }
+      return res.status(404).json({ ok: false, error: "This generation did not finish", code: "GENERATION_NOT_FOUND" });
+    }
+
     lockKey = referenceId;
 
     // Cross-instance job lock (before reserve) — prevents duplicate provider jobs.
     // Soft-degrades if migration not applied yet.
     try {
-      const claim = await GenerationLocksDAO.tryClaim({
-        lockKey,
-        userId,
-        force: forceRegenerate,
-      });
+      const claim = await GenerationLocksDAO.tryClaim({ lockKey, userId });
       if (!claim.claimed) {
+        // Already billed and finished — return that video again at no charge.
+        const replay = claim.reason === "completed" ? storedResult(claim.lock.resultSummary) : null;
+        if (replay) {
+          return res.status(200).json(replayResponse(replay, referenceId));
+        }
         const status =
           claim.reason === "in_progress" || claim.reason === "completed" ? 409 : 403;
         return res.status(status).json({
@@ -125,7 +189,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             claim.reason === "in_progress"
               ? "A generation for this request is already in progress"
               : claim.reason === "completed"
-                ? "This generation already completed. Use forceRegenerate with a new generationVersion to bill a new run."
+                ? "This generation already completed. Use a new generationVersion to make another version."
                 : "Generation lock belongs to another user",
           code:
             claim.reason === "in_progress"
@@ -179,11 +243,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           forceRegenerate,
           generationMode,
           availableAssets: body.availableAssets,
-          skipDownload: Boolean(body.skipDownload),
-          skipStorage: Boolean(body.skipStorage),
-          concurrency: typeof body.concurrency === "number" ? body.concurrency : undefined,
+          // Server-pinned: customer videos are always downloaded and stored.
+          skipDownload: false,
+          skipStorage: false,
           userId,
           runCommercialQc: body.runCommercialQc !== false,
+        }, {
+          deadlineAt: startedAt + FUNCTION_MAX_DURATION_MS - POST_GENERATION_RESERVE_MS,
         });
 
         await finalizeVideoReservation({
@@ -199,6 +265,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               generationVersion,
               duration,
               generationMode,
+              // Kept so a repeat of this request replays the video instead of billing again.
+              finalCommercial,
             });
           } catch (markErr) {
             if (!isMissingLockTableError(markErr)) throw markErr;
@@ -207,6 +275,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
         return res.status(200).json({
           ok: true,
+          // Identifies this finished video for "Fix a part".
+          referenceId,
           generationMode,
           finalCommercial,
           commercialQC: finalCommercial.commercialQC,
@@ -227,9 +297,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         reservationId = null;
         if (lockClaimed && lockKey) {
           try {
-            await GenerationLocksDAO.markFailed(lockKey, {
-              error: genError instanceof Error ? genError.message : String(genError),
-            });
+            await GenerationLocksDAO.markFailed(lockKey, errorSummary(genError));
           } catch (markErr) {
             if (!isMissingLockTableError(markErr)) {
               console.error("[api/commercial/generate] lock markFailed", markErr);
@@ -247,9 +315,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         generationVersion,
         forceRegenerate,
         availableAssets: body.availableAssets,
-        skipDownload: Boolean(body.skipDownload),
-        skipStorage: Boolean(body.skipStorage),
-        concurrency: typeof body.concurrency === "number" ? body.concurrency : undefined,
+        skipDownload: false,
+        skipStorage: false,
         userId,
       });
 
@@ -293,9 +360,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       reservationId = null;
       if (lockClaimed && lockKey) {
         try {
-          await GenerationLocksDAO.markFailed(lockKey, {
-            error: genError instanceof Error ? genError.message : String(genError),
-          });
+          await GenerationLocksDAO.markFailed(lockKey, errorSummary(genError));
         } catch (markErr) {
           if (!isMissingLockTableError(markErr)) {
             console.error("[api/commercial/generate] lock markFailed", markErr);
@@ -314,9 +379,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
     if (lockClaimed && lockKey) {
       try {
-        await GenerationLocksDAO.markFailed(lockKey, {
-          error: error instanceof Error ? error.message : String(error),
-        });
+        await GenerationLocksDAO.markFailed(lockKey, errorSummary(error));
       } catch (markErr) {
         if (!isMissingLockTableError(markErr)) {
           console.error("[api/commercial/generate] lock markFailed", markErr);

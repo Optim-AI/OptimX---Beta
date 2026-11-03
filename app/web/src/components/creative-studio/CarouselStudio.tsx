@@ -8,12 +8,14 @@ import {
   ChevronDown,
   ChevronUp,
   Download,
-  Loader2,
+  Eye,
   Pencil,
   RefreshCw,
   Sparkles,
 } from "lucide-react";
+import { ArcSpinner } from "@/app/web/src/components/ui/loaders";
 import { cn } from "@/lib/utils";
+import CreativeViewer, { type ViewerBrand } from "./CreativeViewer";
 import {
   CarouselClientError,
   downloadCarouselSlide,
@@ -55,6 +57,8 @@ export type CarouselStudioProps = {
   onCreditsChanged?: () => void;
   onError: (message: string) => void;
   onNotice?: (message: string) => void;
+  /** Brand shown in the Instagram / Facebook feed preview */
+  brand?: ViewerBrand;
 };
 
 function statusMeta(status: PublicCarouselSlide["status"]): { label: string; className: string } {
@@ -62,7 +66,8 @@ function statusMeta(status: PublicCarouselSlide["status"]): { label: string; cla
     case "ready":
       return { label: "Ready", className: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30" };
     case "needs_review":
-      return { label: "Needs improvement", className: "bg-amber-500/15 text-amber-300 border-amber-500/30" };
+      // QC verdicts stay internal; a generated slide is shown as ready.
+      return { label: "Ready", className: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30" };
     case "failed":
       return { label: "Failed", className: "bg-red-500/15 text-red-300 border-red-500/30" };
     case "unbilled":
@@ -109,9 +114,13 @@ function SlideCard({
   onRetry,
   onIterate,
   onDownload,
+  onImage,
+  onOpen,
 }: {
   campaign: PublicCarouselCampaign;
   slide: PublicCarouselSlide;
+  onImage?: (slideId: string, url: string | null) => void;
+  onOpen?: (slide: PublicCarouselSlide) => void;
   busy: boolean;
   generationStarted: boolean;
   onRetry: (slide: PublicCarouselSlide) => void;
@@ -119,6 +128,9 @@ function SlideCard({
   onDownload: (slide: PublicCarouselSlide) => void;
 }) {
   const imageUrl = useSlideImage(campaign.id, slide);
+  useEffect(() => {
+    onImage?.(slide.slideId, imageUrl);
+  }, [imageUrl, slide.slideId, onImage]);
   const [qcOpen, setQcOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [editText, setEditText] = useState("");
@@ -134,11 +146,16 @@ function SlideCard({
       <div className={cn("relative w-full bg-black/30", ASPECT_CLASS[campaign.aspectRatio] || "aspect-[4/5]")}>
         {imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={imageUrl} alt={`Slide ${slide.slideNumber}: ${slide.copy.headline}`} className="h-full w-full object-cover" />
+          <img
+            src={imageUrl}
+            alt={`Slide ${slide.slideNumber}: ${slide.copy.headline}`}
+            className="h-full w-full cursor-zoom-in object-cover"
+            onClick={() => onOpen?.(slide)}
+          />
         ) : (
           <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-4 text-center">
             {working ? (
-              <Loader2 className="h-6 w-6 animate-spin" style={{ color: BLUE.solid }} />
+              <ArcSpinner className="h-6 w-6 animate-spin" style={{ color: BLUE.solid }} />
             ) : slide.status === "failed" ? (
               <AlertTriangle className="h-6 w-6 text-red-300/80" />
             ) : null}
@@ -290,7 +307,21 @@ export function CarouselStudio({
   onCreditsChanged,
   onError,
   onNotice,
+  brand,
 }: CarouselStudioProps) {
+  const [slideUrls, setSlideUrls] = useState<Record<string, string>>({});
+  const [viewerSlide, setViewerSlide] = useState<number | null>(null);
+  const [viewerMode, setViewerMode] = useState<"full" | "instagram">("full");
+  const reportImage = useCallback((slideId: string, url: string | null) => {
+    setSlideUrls((m) => {
+      if (!url) {
+        if (!(slideId in m)) return m;
+        const { [slideId]: _gone, ...rest } = m;
+        return rest;
+      }
+      return m[slideId] === url ? m : { ...m, [slideId]: url };
+    });
+  }, []);
   const [looping, setLooping] = useState(false);
   const [slideBusy, setSlideBusy] = useState<string | null>(null);
   const [zipBusy, setZipBusy] = useState(false);
@@ -455,7 +486,7 @@ export function CarouselStudio({
                 className="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-45"
                 style={{ background: BLUE.solid }}
               >
-                {looping ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                {looping ? <ArcSpinner className="h-4 w-4 animate-spin" /> : null}
                 Generate {campaign.slideCount} slides
                 <ArrowRight className="h-4 w-4" />
               </button>
@@ -465,7 +496,7 @@ export function CarouselStudio({
                 onClick={() => void onRegenerateStory()}
                 className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm text-white/75 hover:bg-white/[0.08] hover:text-white disabled:opacity-45"
               >
-                {isPlanning ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                {isPlanning ? <ArcSpinner className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                 Regenerate story
               </button>
               {onChangeDirection && (
@@ -492,12 +523,23 @@ export function CarouselStudio({
             <>
               <button
                 type="button"
+                disabled={Object.keys(slideUrls).length === 0}
+                onClick={() => {
+                  setViewerMode("instagram");
+                  setViewerSlide(0);
+                }}
+                className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm text-white/85 hover:bg-white/[0.08] hover:text-white disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                <Eye className="h-4 w-4" /> Preview in feed
+              </button>
+              <button
+                type="button"
                 disabled={zipBusy || finishedOrHasImage === 0}
                 onClick={() => void handleZip()}
                 className="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-45"
                 style={{ background: BLUE.solid }}
               >
-                {zipBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                {zipBusy ? <ArcSpinner className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
                 {finishedOrHasImage === campaign.slideCount
                   ? "Download ZIP"
                   : `Download ZIP (partial · ${finishedOrHasImage}/${campaign.slideCount})`}
@@ -523,7 +565,7 @@ export function CarouselStudio({
             <span>
               {looping || progress.generating > 0 ? (
                 <span className="inline-flex items-center gap-1.5">
-                  <Loader2 className="h-3 w-3 animate-spin" /> Generating slides…
+                  <ArcSpinner className="h-3 w-3 animate-spin" /> Generating slides…
                 </span>
               ) : campaign.status === "completed" ? (
                 <span className="inline-flex items-center gap-1.5 text-emerald-300/80">
@@ -560,9 +602,42 @@ export function CarouselStudio({
             onRetry={(s) => void handleRetry(s)}
             onIterate={handleIterate}
             onDownload={(s) => void handleDownload(s)}
+            onImage={reportImage}
+            onOpen={(s) => {
+              const ready = campaign.slides.filter((x) => slideUrls[x.slideId]);
+              const at = ready.findIndex((x) => x.slideId === s.slideId);
+              setViewerMode("full");
+              setViewerSlide(at < 0 ? 0 : at);
+            }}
           />
         ))}
       </div>
+
+      {viewerSlide !== null && (() => {
+        const ready = campaign.slides.filter((x) => slideUrls[x.slideId]);
+        if (!ready.length) return null;
+        const first = campaign.slides[0]?.copy;
+        return (
+          <CreativeViewer
+            items={[
+              {
+                id: campaign.id,
+                images: ready.map((x) => slideUrls[x.slideId]),
+                title: `Carousel · ${ready.length}/${campaign.slideCount} slides`,
+                caption: campaign.story.coreMessage || first?.headline,
+                headline: first?.headline,
+                ctaLabel: campaign.slides[campaign.slides.length - 1]?.copy.cta || undefined,
+              },
+            ]}
+            index={0}
+            onIndexChange={() => undefined}
+            initialSlide={viewerSlide}
+            initialMode={viewerMode}
+            onClose={() => setViewerSlide(null)}
+            brand={brand || { name: "yourbrand" }}
+          />
+        );
+      })()}
     </div>
   );
 }

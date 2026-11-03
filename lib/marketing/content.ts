@@ -114,19 +114,28 @@ export const FAQS = [
 export const FOUNDER = {
   name: 'Sudharsan AJ',
   shortName: 'AJ',
-  note: "Hi, I'm AJ. I'm a product designer from Chennai, and I built SkalX because good creative shouldn't need an agency budget. We're early, and we're taking on our first founding brands now — you'll work with me directly.",
+  note: [
+    "Hi, I'm AJ. A product designer from Chennai, building SkalX to make quality marketing accessible to growing brands.",
+    "We're welcoming our first founding brands. You'll work directly with me, and we'll grow together.",
+  ],
   email: SITE_SUPPORT_EMAIL,
-  // TODO: AJ's LinkedIn profile URL. The link renders once this is set.
-  linkedinUrl: '',
-  // TODO: add /public/images/founder-aj.jpg (800×800) and set this to '/images/founder-aj.jpg'.
-  photo: '',
+  
+  linkedinUrl: 'https://www.linkedin.com/in/designeraj/',
+  // 800×800 WebP in /public/images.
+  photo: '/images/founder-aj-2.webp',
 } as const;
 
 /** Primary CTA: the website box at the top of the homepage (research → ideas → sign-up → pricing). */
 export const START_HREF = '/#start';
-/** New accounts land in /try (onboarding + explore); existing accounts go to their workspace. */
-export const SIGNUP_HREF = '/auth/signup';
+/** New accounts continue into /try; existing accounts still go to their workspace. */
+export const SIGNUP_HREF = '/auth/signup?next=/try';
 export const LOGIN_HREF = '/auth/signin?next=/try';
+
+/**
+ * Optional real product walkthrough for the homepage hero (e.g. '/videos/skalx-demo.mp4' in /public).
+ * Empty = the coded demo in HeroDemo plays instead.
+ */
+export const HERO_DEMO_VIDEO = '';
 
 // TODO: a booking link (e.g. Cal.com / Calendly). Until then "Book a 15-min call" opens an email.
 export const BOOKING_URL = '';

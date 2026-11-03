@@ -3,9 +3,9 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '@/auth/supabase/client';
-import { auditReturnPath, fetchPostAuthDestination } from '@/lib/auth/client-post-auth';
+import { auditReturnPath, fetchPostAuthDestination, resolvePostAuthPath } from '@/lib/auth/client-post-auth';
+import { authNextFrom, clearAuthContinuation } from '@/lib/auth/auth-continuation';
 import { trackAuditEvent } from '@/lib/audit/analytics';
-import { getSafeNextPath } from '@/lib/routing/safe-next';
 import { PulseSpinner } from '@/app/web/src/components/ui/skeletons';
 import colors from '@/lib/ui/colors';
 
@@ -31,6 +31,9 @@ export default function AuthCallbackPage(): React.ReactElement {
         // done this during client init; exchange is idempotent enough via getSession.
         const code =
           typeof router.query.code === 'string' ? router.query.code : null;
+        const tokenHash =
+          typeof router.query.token_hash === 'string' ? router.query.token_hash : null;
+        const otpType = typeof router.query.type === 'string' ? router.query.type : null;
         if (code) {
           const { error: exchangeError } =
             await supabase.auth.exchangeCodeForSession(code);
@@ -41,6 +44,17 @@ export default function AuthCallbackPage(): React.ReactElement {
               throw new Error(
                 exchangeError.message || 'Could not complete sign-in.'
               );
+            }
+          }
+        } else if (tokenHash && otpType && otpType !== 'recovery') {
+          const { error: verifyError } = await supabase.auth.verifyOtp({
+            token_hash: tokenHash,
+            type: otpType as 'signup' | 'magiclink' | 'email' | 'invite',
+          });
+          if (verifyError) {
+            const { data: existing } = await supabase.auth.getSession();
+            if (!existing?.session) {
+              throw new Error(verifyError.message || 'Could not complete sign-in.');
             }
           }
         }
@@ -63,25 +77,15 @@ export default function AuthCallbackPage(): React.ReactElement {
         const authUser = data.user as { created_at?: string; app_metadata?: { provider?: string } };
         const createdAt = Date.parse(authUser.created_at || '');
         const provider = authUser.app_metadata?.provider || 'unknown';
-        const auditNext = auditReturnPath(router.query.next);
+        const next = authNextFrom(router.query.next);
         if (provider !== 'email' && Number.isFinite(createdAt) && Date.now() - createdAt < 10 * 60_000) {
-          trackAuditEvent('signup_completed', { method: provider, fromAudit: Boolean(auditNext) });
+          trackAuditEvent('signup_completed', { method: provider, fromAudit: Boolean(auditReturnPath(next)) });
         }
 
-        if (auditNext) {
-          router.replace(auditNext);
-          return;
-        }
-
-        // Account-state resolution is authoritative over next=.
-        if (decision.destination === 'workspace') {
-          router.replace(decision.path);
-          return;
-        }
-
-        // Optional safe next when resolver says Try — still stay on /try.
-        getSafeNextPath(router.query.next, '/try');
-        router.replace('/try');
+        // Existing accounts enter the product. New accounts continue
+        // audit → pricing, checkout, or /try — never back to the marketing site.
+        clearAuthContinuation();
+        router.replace(resolvePostAuthPath(decision.path, next));
       } catch (e: unknown) {
         if (cancelled) return;
         setError(

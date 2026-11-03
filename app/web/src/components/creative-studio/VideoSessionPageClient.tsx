@@ -15,6 +15,8 @@ import {
   type GeneratedVideo,
   type CommercialProductionStatus,
   type GeneratedVideoQcSummary,
+  type FixPlanPreview,
+  type FixTimelineData,
   BrandOnboarding,
   SessionNameModal,
   formatTimestamp,
@@ -23,14 +25,20 @@ import {
   mapFullAnalyzeToBrandSnapshot,
 } from '@/app/web/src/components/creative-studio';
 import { authFetch, safeResponseJson } from '@/lib/utils';
+import type { CatalogProduct } from '@/app/web/src/components/creative-studio/types';
+import { cleanProductName } from '@/lib/creative-studio/product-name';
 import { supabase } from '@/auth/supabase/client';
 import StudioErrorBoundary from '@/app/web/src/components/creative-studio/StudioErrorBoundary';
 import {
   assertNativeDurationInvariant,
   buildStudioAvailableAssets,
   mapStudioFormToCampaignBrief,
+  MAX_ADDITIONAL_PRODUCTS,
   type CreativePlanSummary,
 } from '@/lib/creative-studio/commercial-production/studio-mapper';
+import { getAdTypePlaybook, normalizeAdType } from '@/lib/creative-studio/commercial-production/campaign/ad-type';
+import { normalizeAdDirection, type AdDirection } from '@/lib/creative-studio/commercial-production/campaign/ad-direction';
+import type { ConceptCard } from '@/lib/creative-studio/commercial-production/concepts/generate-concepts';
 import { isCampaignDurationSeconds } from '@/lib/creative-studio/commercial-production/campaign/campaign-duration';
 import { getVideoCreditsForDuration } from '@/lib/billing/video-credits';
 import {
@@ -38,6 +46,7 @@ import {
   formatPreGenerationCreditNotice,
 } from '@/lib/billing/credit-usage-messages';
 import { splitCreditDeduction } from '@/lib/billing/credit-split';
+import { buildGenerationSteps, generationProgress } from './generation-steps';
 
 const Sidebar = dynamic(() => import('@/app/web/src/components/Sidebar'), { ssr: false });
 const VideoStudioWorkspace = dynamic(
@@ -88,6 +97,50 @@ const VERCEL_SAFE_BODY_BYTES = 4 * 1024 * 1024;
 /** Target per data-URL after compress (base64 expands ~33%, so ~750KB binary ≈ 1MB string). */
 const TARGET_DATA_URL_CHARS = 900_000;
 const MAX_PERSISTED_IMAGE_DATA_URL_CHARS = 350_000;
+
+/** After a dropped connection, how often and how long to ask the server for the finished video. */
+const RECOVERY_POLL_MS = 20_000;
+const RECOVERY_MAX_MS = 15 * 60_000;
+
+/** A version label no video in this session uses — reusing one replays that video instead. */
+function unusedGenerationVersion(videos: GeneratedVideo[], preferred?: string): string {
+  const used = new Set(videos.map((v) => v.generationVersion).filter(Boolean));
+  if (preferred && !used.has(preferred)) return preferred;
+  let n = videos.length + 1;
+  while (used.has(`v${n}`)) n++;
+  return `v${n}`;
+}
+
+/**
+ * POST a generation. If the connection drops or a gateway times out, the server may still
+ * finish (and bill) the video — keep asking for that same version's result, which is free.
+ */
+async function postGenerateWithRecovery(
+  url: string,
+  body: string,
+  recoverBody: string
+): Promise<Response> {
+  let first: Response | null = null;
+  try {
+    first = await authFetch(url, { method: 'POST', body });
+    if (![502, 503, 504].includes(first.status)) return first;
+  } catch {
+    // Connection dropped — the server may still be generating.
+  }
+  const deadline = Date.now() + RECOVERY_MAX_MS;
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, RECOVERY_POLL_MS));
+    try {
+      const res = await authFetch(url, { method: 'POST', body: recoverBody });
+      if (res.status === 202) continue;
+      return res.ok ? res : first ?? res;
+    } catch {
+      // Still offline — keep trying until the deadline.
+    }
+  }
+  if (first) return first;
+  throw new Error('Lost connection to the server. Reopen this session in a few minutes to see your video.');
+}
 
 async function compressDataUrlForVideoApi(
   dataUrl: string,
@@ -192,6 +245,22 @@ async function prepareVideoGenerateImages(args: {
   };
 }
 
+/** Compress extra-product photos the same way as the primary reference. */
+async function prepareExtraProducts(
+  extras: AdBuilderData['extraProducts']
+): Promise<Array<{ name: string; image?: string }> | undefined> {
+  if (!extras?.length) return undefined;
+  return Promise.all(
+    extras
+      .filter((p) => p.name?.trim())
+      .slice(0, MAX_ADDITIONAL_PRODUCTS)
+      .map(async (p) => ({
+        name: p.name.trim(),
+        image: p.image ? await compressDataUrlForVideoApi(p.image, { maxDim: 1024 }) : undefined,
+      }))
+  );
+}
+
 /** Shrink inline images before session persist so PUT/GET stay under Next response limits. */
 async function productForSessionPersist(product: AdBuilderData['product']): Promise<AdBuilderData['product']> {
   if (!product) return product;
@@ -282,6 +351,9 @@ export default function VideoSessionPage() {
 
   // Loading states
   const [isScrapingProduct, setIsScrapingProduct] = useState(false);
+  /** Products scanned from the brand website (same scan the poster studio uses). */
+  const [catalogProducts, setCatalogProducts] = useState<CatalogProduct[] | null>(null);
+  const [isScanningCatalog, setIsScanningCatalog] = useState(false);
   const [isFetchingLogo, setIsFetchingLogo] = useState(false);
   const [isGeneratingScript, setIsGeneratingScript] = useState(false);
   const [isGeneratingStrategy, setIsGeneratingStrategy] = useState(false);
@@ -300,7 +372,7 @@ export default function VideoSessionPage() {
   const [isLoadingVariants, setIsLoadingVariants] = useState(false);
 
   // Video generation progress steps (0–5: each step completes, then next animates)
-  const [generationStep, setGenerationStep] = useState(0);
+  const [generationElapsed, setGenerationElapsed] = useState(0);
   const [productionStatus, setProductionStatus] = useState<CommercialProductionStatus>('idle');
   const [pendingRegeneration, setPendingRegeneration] = useState<{
     nextVersion: string;
@@ -386,41 +458,48 @@ export default function VideoSessionPage() {
     }
   }, [generatedVideos, selectedVideoId]);
 
-  // Stage-based progress while awaiting the commercial API (no fake %).
-  const isExtendedDuration = (adBuilderData.adSetup?.duration ?? 15) === 30;
+  // Step-based progress while awaiting the commercial API (no fake %): the
+  // active step is estimated from elapsed time against typical step durations.
+  const generationStepList = buildGenerationSteps({
+    durationSeconds: adBuilderData.adSetup?.duration ?? 15,
+    voiceoverLanguage: adBuilderData.voiceover?.language,
+    voiceoverEnabled: adBuilderData.voiceover?.enabled,
+    endCardEnabled: adBuilderData.endCard?.enabled ?? true,
+  });
+  const generationStepStatus = generationStepList[
+    generationProgress(generationStepList, generationElapsed).index
+  ].status;
   useEffect(() => {
     if (!isGeneratingVideo) {
-      setGenerationStep(0);
+      setGenerationElapsed(0);
       return;
     }
-    setGenerationStep(0);
-    setProductionStatus((prev) =>
-      prev === 'regenerating' ? 'regenerating' : 'planning'
-    );
-    // Stages: planning(0) → preparing(1) → generating(2) → evaluating(3)
-    const stepDuration = isExtendedDuration ? 25_000 : 12_000;
+    setGenerationElapsed(0);
+    const startedAt = Date.now();
     const interval = setInterval(() => {
-      setGenerationStep((prev) => {
-        const next = Math.min(prev + 1, 3);
-        const stages: CommercialProductionStatus[] = [
-          'planning',
-          'preparing',
-          'generating',
-          'evaluating',
-        ];
-        setProductionStatus((cur) =>
-          cur === 'regenerating' && next < 2 ? 'regenerating' : stages[next]
-        );
-        return next;
-      });
-    }, stepDuration);
+      setGenerationElapsed(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
     return () => clearInterval(interval);
-  }, [isGeneratingVideo, isExtendedDuration]);
+  }, [isGeneratingVideo]);
+  useEffect(() => {
+    if (!isGeneratingVideo) return;
+    setProductionStatus((cur) =>
+      cur === 'regenerating' && generationStepStatus !== 'generating' && generationStepStatus !== 'evaluating'
+        ? 'regenerating'
+        : generationStepStatus
+    );
+  }, [isGeneratingVideo, generationStepStatus]);
 
   // ============== Load Session ==============
 
   // Track previous session ID for saving on switch
   const prevSessionIdRef = React.useRef<string | null>(null);
+  /**
+   * The session whose data is currently in state. Autosave only writes when it
+   * matches the session being shown, so a slow load (or switching sessions) can
+   * never save an empty or foreign brief over the customer's work.
+   */
+  const loadedSessionIdRef = React.useRef<string | null>(null);
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -432,6 +511,7 @@ export default function VideoSessionPage() {
     }
 
     async function loadSession() {
+      loadedSessionIdRef.current = null;
       setIsLoading(true);
       setError(null);
 
@@ -462,6 +542,7 @@ export default function VideoSessionPage() {
           }
           setIsLoading(false);
           prevSessionIdRef.current = typeof sessionId === 'string' ? sessionId : null;
+          loadedSessionIdRef.current = typeof sessionId === 'string' ? sessionId : null;
           return;
         }
 
@@ -544,6 +625,7 @@ export default function VideoSessionPage() {
         }
 
         prevSessionIdRef.current = typeof sessionId === 'string' ? sessionId : null;
+        loadedSessionIdRef.current = typeof sessionId === 'string' ? sessionId : null;
       } catch (err: any) {
         console.error('Error loading session:', err);
         setError(err.message || 'Failed to load session');
@@ -646,6 +728,8 @@ export default function VideoSessionPage() {
 
   const saveSession = useCallback(async () => {
     if (!sessionId || sessionId === 'new' || !brand) return;
+    // Never save before this session's own data has loaded.
+    if (loadedSessionIdRef.current !== sessionId) return;
 
     setIsSaving(true);
 
@@ -777,6 +861,71 @@ export default function VideoSessionPage() {
   }
 
   // ============== Product Handlers ==============
+
+  async function handleBrowseCatalog() {
+    const website = brand?.website_url?.trim();
+    if (!website) {
+      setCatalogProducts([]);
+      return;
+    }
+    if (catalogProducts?.length) return;
+    setIsScanningCatalog(true);
+    try {
+      const res = await authFetch('/api/content-studio/scan', {
+        method: 'POST',
+        body: JSON.stringify({ url: website }),
+      });
+      const data = await safeResponseJson<{ ok?: boolean; products?: CatalogProduct[] }>(res);
+      setCatalogProducts(data?.ok && data.products ? data.products : []);
+    } catch {
+      setCatalogProducts([]);
+    } finally {
+      setIsScanningCatalog(false);
+    }
+  }
+
+  async function handleSelectCatalogProduct(item: CatalogProduct) {
+    setIsScrapingProduct(true);
+    try {
+      // Generation needs the image bytes (data URLs), not remote links.
+      const images = (
+        await Promise.all(
+          (item.product_images || []).slice(0, 3).map(async (url) => {
+            try {
+              const res = await authFetch('/api/creative-studio/fetch-image', {
+                method: 'POST',
+                body: JSON.stringify({ url, directFetch: true }),
+              });
+              const data = await safeResponseJson<{ ok?: boolean; dataUrl?: string }>(res);
+              return data?.ok && data.dataUrl ? data.dataUrl : null;
+            } catch {
+              return null;
+            }
+          })
+        )
+      ).filter((img): img is string => Boolean(img));
+      if (!images.length) {
+        showError('Could not load this product\'s photo. Try uploading the image instead.');
+        return;
+      }
+      setUploadedImages(images);
+      setSelectedImageIndex(0);
+      setAdBuilderData({
+        ...adBuilderData,
+        product: {
+          product_name: cleanProductName(item.product_name, brand?.name) || item.product_name,
+          brand_name: brand?.name || 'Brand',
+          product_images: images,
+          hero_image: images[0],
+          brand_logo: brand?.logo || null,
+          category: adBuilderData.product?.category || 'general',
+          product_url: item.product_url,
+        },
+      });
+    } finally {
+      setIsScrapingProduct(false);
+    }
+  }
 
   async function handleProductUrlSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -1126,11 +1275,133 @@ export default function VideoSessionPage() {
     adBuilderData.adSetup.duration,
   ]);
 
+  /**
+   * Brief + reference assets exactly as /api/commercial/generate receives them.
+   * Shared with the idea cards so the ideas match what will be generated.
+   */
+  async function buildStudioRequest(campaignId: string) {
+    // Brand / shop / festival ads may run without a product.
+    const product = adBuilderData.product ?? {
+      product_name: '',
+      product_images: [],
+      hero_image: null,
+      brand_logo: brand?.logo || brand?.logoUrl || null,
+    };
+    const preparedProduct = await prepareVideoGenerateImages({
+      hero_image: product.hero_image,
+      brand_logo: product.brand_logo,
+      product_images: product.product_images || [],
+    });
+    const productForGenerate = {
+      ...product,
+      hero_image: preparedProduct.hero_image,
+      brand_logo: preparedProduct.brand_logo,
+      // Keep only compressed canonical refs for Runway (gallery extras already sliced).
+      product_images: [
+        ...(preparedProduct.hero_image ? [preparedProduct.hero_image] : []),
+        ...preparedProduct.product_images,
+      ].filter(Boolean),
+    };
+
+    const brief = mapStudioFormToCampaignBrief({
+      campaignId,
+      product: productForGenerate,
+      adSetup: adBuilderData.adSetup,
+      brand,
+      userDescription: getCommercialBrief(adBuilderData),
+      voiceover: {
+        enabled: adBuilderData.voiceover.enabled !== false,
+        language: adBuilderData.voiceover.language ?? 'english',
+        tone: adBuilderData.voiceover.tone,
+        key_message: adBuilderData.voiceover.key_message,
+        cta: adBuilderData.voiceover.cta || adBuilderData.creativeStrategy?.cta,
+        ctaEnabled: adBuilderData.voiceover.ctaEnabled !== false,
+        script: getCanonicalVoiceover(
+          adBuilderData.voiceover.script,
+          adBuilderData.storyboard
+        ),
+      },
+      voiceoverCta: adBuilderData.voiceover.cta || adBuilderData.creativeStrategy?.cta,
+      voiceoverKeyMessage: adBuilderData.voiceover.key_message,
+      endCard: adBuilderData.endCard ?? { enabled: true },
+      adType: adBuilderData.adType,
+      extraProducts: await prepareExtraProducts(adBuilderData.extraProducts),
+      occasion: adBuilderData.occasion,
+      shopDetails: adBuilderData.shopDetails,
+      approvedConcept: adBuilderData.approvedConcept,
+      adDirection: adBuilderData.adDirection,
+      creativeStrategy: adBuilderData.creativeStrategy as never,
+      selectedConcept: (() => {
+        const c =
+          adBuilderData.adConcepts?.find((x) => x.id === adBuilderData.selectedConceptId) ||
+          adBuilderData.adConcepts?.[0];
+        if (!c) return undefined;
+        return {
+          id: c.id,
+          title: c.title,
+          hookType: c.hookType,
+          creativeAngle: c.creativeAngle,
+          frameworkId: c.frameworkId as never,
+          rationale: c.rationale,
+          predictedStrength: (c.predictedStrength as 'high' | 'medium' | 'experimental') || 'medium',
+          cta: c.cta,
+          oneLinePitch: c.oneLinePitch,
+        };
+      })(),
+    });
+
+    const availableAssets = buildStudioAvailableAssets(productForGenerate);
+    return { brief, availableAssets };
+  }
+
+  /** Brand films, shop/service and festival greetings can run without a product. */
+  const productOptional = getAdTypePlaybook(normalizeAdType(adBuilderData.adType)).productPhotoOptional;
+
+  /** Three plain-language ideas with storyboards — free, before spending Video Credits. */
+  async function handleRequestConcepts(): Promise<ConceptCard[]> {
+    const campaignId = session?.id;
+    if (!campaignId) throw new Error('Session is not ready yet. Please wait a moment and try again.');
+    if (!adBuilderData.product && !productOptional) {
+      throw new Error('Add your product first, then we can suggest ideas.');
+    }
+    const { brief } = await buildStudioRequest(campaignId);
+    // Ideas must not be pinned to an earlier pick.
+    const response = await authFetch('/api/commercial/concepts', {
+      method: 'POST',
+      body: JSON.stringify({ campaign: { ...brief, approvedConcept: undefined } }),
+    });
+    const data = await safeResponseJson<{ ok?: boolean; concepts?: ConceptCard[]; error?: string }>(response);
+    if (!response.ok || !data?.ok || !data.concepts?.length) {
+      throw new Error(data?.error || 'Could not create ideas right now. Please try again.');
+    }
+    return data.concepts;
+  }
+
+  /** "Help me write it" — one cheap text call that fills the description box. */
+  async function handleRequestWrite(direction: AdDirection | undefined): Promise<string> {
+    const campaignId = session?.id;
+    if (!campaignId) throw new Error('Session is not ready yet. Please wait a moment and try again.');
+    if (!adBuilderData.product && !productOptional) {
+      throw new Error('Add your product first, then we can write it for you.');
+    }
+    const { brief } = await buildStudioRequest(campaignId);
+    // The latest taps may not be in state yet; send exactly what the owner chose.
+    const response = await authFetch('/api/commercial/write-direction', {
+      method: 'POST',
+      body: JSON.stringify({ campaign: { ...brief, adDirection: normalizeAdDirection(direction), approvedConcept: undefined } }),
+    });
+    const data = await safeResponseJson<{ ok?: boolean; text?: string; error?: string }>(response);
+    if (!response.ok || !data?.ok || !data.text?.trim()) {
+      throw new Error(data?.error || 'Could not write that right now. Please try again.');
+    }
+    return data.text.trim();
+  }
+
   async function handleGenerateVideo(options?: {
     forceRegenerate?: boolean;
     generationVersion?: string;
   }) {
-    if (!adBuilderData.product) {
+    if (!adBuilderData.product && !productOptional) {
       showError('Add a product before generating your commercial.');
       return;
     }
@@ -1175,9 +1446,9 @@ export default function VideoSessionPage() {
     }
 
     const hasProductRef =
-      Boolean(adBuilderData.product.hero_image?.trim()) ||
-      (adBuilderData.product.product_images || []).some((u) => u?.trim());
-    if (!hasProductRef) {
+      Boolean(adBuilderData.product?.hero_image?.trim()) ||
+      (adBuilderData.product?.product_images || []).some((u) => u?.trim());
+    if (!hasProductRef && !productOptional) {
       showError(
         'Upload or import a product image so the commercial can preserve packaging and branding.',
         'Product reference needed'
@@ -1200,61 +1471,7 @@ export default function VideoSessionPage() {
     }
 
     try {
-      const preparedProduct = await prepareVideoGenerateImages({
-        hero_image: adBuilderData.product.hero_image,
-        brand_logo: adBuilderData.product.brand_logo,
-        product_images: adBuilderData.product.product_images || [],
-      });
-      const productForGenerate = {
-        ...adBuilderData.product,
-        hero_image: preparedProduct.hero_image,
-        brand_logo: preparedProduct.brand_logo,
-        // Keep only compressed canonical refs for Runway (gallery extras already sliced).
-        product_images: [
-          ...(preparedProduct.hero_image ? [preparedProduct.hero_image] : []),
-          ...preparedProduct.product_images,
-        ].filter(Boolean),
-      };
-
-      const brief = mapStudioFormToCampaignBrief({
-        campaignId,
-        product: productForGenerate,
-        adSetup: adBuilderData.adSetup,
-        brand,
-        userDescription: getCommercialBrief(adBuilderData),
-        voiceover: {
-          enabled: adBuilderData.voiceover.enabled !== false,
-          language: adBuilderData.voiceover.language ?? 'english',
-          tone: adBuilderData.voiceover.tone,
-          key_message: adBuilderData.voiceover.key_message,
-          cta: adBuilderData.voiceover.cta || adBuilderData.creativeStrategy?.cta,
-          ctaEnabled: adBuilderData.voiceover.ctaEnabled !== false,
-          script: getCanonicalVoiceover(
-            adBuilderData.voiceover.script,
-            adBuilderData.storyboard
-          ),
-        },
-        voiceoverCta: adBuilderData.voiceover.cta || adBuilderData.creativeStrategy?.cta,
-        voiceoverKeyMessage: adBuilderData.voiceover.key_message,
-        creativeStrategy: adBuilderData.creativeStrategy as never,
-        selectedConcept: (() => {
-          const c =
-            adBuilderData.adConcepts?.find((x) => x.id === adBuilderData.selectedConceptId) ||
-            adBuilderData.adConcepts?.[0];
-          if (!c) return undefined;
-          return {
-            id: c.id,
-            title: c.title,
-            hookType: c.hookType,
-            creativeAngle: c.creativeAngle,
-            frameworkId: c.frameworkId as never,
-            rationale: c.rationale,
-            predictedStrength: (c.predictedStrength as 'high' | 'medium' | 'experimental') || 'medium',
-            cta: c.cta,
-            oneLinePitch: c.oneLinePitch,
-          };
-        })(),
-      });
+      const { brief, availableAssets } = await buildStudioRequest(campaignId);
 
       // Hard invariant: UI duration === brief duration === ONE native generation
       const invariant = assertNativeDurationInvariant(duration, brief.campaignDuration);
@@ -1262,11 +1479,10 @@ export default function VideoSessionPage() {
         throw new Error('Internal error: generation mode must be native_continuous');
       }
 
-      const availableAssets = buildStudioAvailableAssets(productForGenerate);
-      const generationVersion =
-        options?.generationVersion ||
-        pendingRegeneration?.nextVersion ||
-        `v${generatedVideos.length + 1}`;
+      const generationVersion = unusedGenerationVersion(
+        generatedVideos,
+        options?.generationVersion || pendingRegeneration?.nextVersion
+      );
 
       const requestBody = {
         campaign: brief,
@@ -1297,10 +1513,11 @@ export default function VideoSessionPage() {
       const videoEndpoint = '/api/commercial/generate';
       setProductionStatus(options?.forceRegenerate ? 'regenerating' : 'generating');
 
-      const response = await authFetch(videoEndpoint, {
-        method: 'POST',
-        body: bodyString,
-      });
+      const response = await postGenerateWithRecovery(
+        videoEndpoint,
+        bodyString,
+        JSON.stringify({ ...requestBody, availableAssets: undefined, recoverOnly: true })
+      );
 
       if (!response.ok) {
         let errMsg = `Server error (${response.status})`;
@@ -1322,6 +1539,8 @@ export default function VideoSessionPage() {
         ok: boolean;
         error?: string;
         generationMode?: string;
+        replayed?: boolean;
+        referenceId?: string;
         creditsCharged?: number;
         creditUsage?: {
           fromSubscription: number;
@@ -1434,6 +1653,7 @@ export default function VideoSessionPage() {
             }
           : undefined,
         creativePlan: fc.creativePlan,
+        sourceKey: result.referenceId,
       };
       setGeneratedVideos((prev) => [...prev, newVideo]);
       setSelectedVideoId(videoId);
@@ -1449,7 +1669,9 @@ export default function VideoSessionPage() {
         /* non-fatal */
       }
 
-      if (result.creditUsage) {
+      if (result.replayed) {
+        showSuccess('This is the video from your earlier request. No credits were used.', 'Video recovered');
+      } else if (result.creditUsage) {
         const summary = formatPostGenerationCreditSummary(result.creditUsage);
         const remaining =
           result.creditUsage.fromAddon > 0 && refreshed
@@ -1472,6 +1694,108 @@ export default function VideoSessionPage() {
     } finally {
       setIsGeneratingVideo(false);
     }
+  }
+
+  // ============== Fix a part ==============
+
+  /** Which video a fix starts from: its server id, or (older videos) its place in this session. */
+  function fixSourceRef(video: GeneratedVideo) {
+    return { sourceKey: video.sourceKey, sessionId: session?.id, videoId: video.id };
+  }
+
+  async function postFix<T>(path: string, body: Record<string, unknown>, fallbackError: string): Promise<T> {
+    const response = await authFetch(path, { method: 'POST', body: JSON.stringify(body) });
+    const data = await safeResponseJson<{ ok?: boolean; error?: string } & T>(response);
+    if (!response.ok || !data?.ok) throw new Error(data?.error || fallbackError);
+    return data as T;
+  }
+
+  /** Thumbnails and scene cuts for the Edit screen. Free. */
+  function handleLoadFixTimeline(video: GeneratedVideo): Promise<FixTimelineData> {
+    return postFix<FixTimelineData>(
+      '/api/commercial/fix/timeline',
+      fixSourceRef(video),
+      'We couldn\'t open this video for editing.'
+    );
+  }
+
+  /** Before/after picture and price for the picked part. Never charges. */
+  function handlePlanFix(
+    video: GeneratedVideo,
+    selection: { start: number; end: number },
+    request: string
+  ): Promise<FixPlanPreview> {
+    return postFix<FixPlanPreview>(
+      '/api/commercial/fix/plan',
+      {
+        ...fixSourceRef(video),
+        selectedStart: selection.start,
+        selectedEnd: selection.end,
+        request,
+        productName: adBuilderData.product?.product_name,
+      },
+      'We couldn\'t prepare that change. Please try again.'
+    );
+  }
+
+  /** Run a confirmed fix; the fixed video becomes a new version. */
+  async function handleApplyFix(video: GeneratedVideo, preview: FixPlanPreview): Promise<void> {
+    const body = {
+      ...fixSourceRef(video),
+      fixId: crypto.randomUUID(),
+      selectedStart: preview.window.selectedStart,
+      selectedEnd: preview.window.selectedEnd,
+      motionPrompt: preview.instructions.motionPrompt,
+      userSummary: preview.instructions.userSummary,
+      fixedFrame: preview.afterFrame,
+    };
+    const response = await postGenerateWithRecovery(
+      '/api/commercial/fix/apply',
+      JSON.stringify(body),
+      JSON.stringify({ ...body, recoverOnly: true })
+    );
+    const data = await safeResponseJson<{
+      ok?: boolean;
+      error?: string;
+      referenceId?: string;
+      free?: boolean;
+      creditsCharged?: number;
+      finalCommercial?: {
+        videoUrl: string;
+        generationVersion?: string;
+        duration?: number;
+        aspectRatio?: string;
+        fix?: { startSeconds: number; endSeconds: number; summary?: string };
+      };
+    }>(response);
+    await loadCredits().catch(() => undefined);
+    const fc = data?.finalCommercial;
+    if (!response.ok || !data?.ok || !fc?.videoUrl) {
+      throw new Error(data?.error || 'The fix didn\'t work this time. Nothing was charged.');
+    }
+
+    const fixedVideo: GeneratedVideo = {
+      ...video,
+      id: `video_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`,
+      url: fc.videoUrl,
+      timestamp: Date.now(),
+      generationVersion: fc.generationVersion,
+      sourceKey: data.referenceId,
+      fix: {
+        startSeconds: fc.fix?.startSeconds ?? preview.window.startSeconds,
+        endSeconds: fc.fix?.endSeconds ?? preview.window.endSeconds,
+        summary: fc.fix?.summary || preview.instructions.userSummary,
+        fixedFromId: video.id,
+      },
+    };
+    setGeneratedVideos((prev) => [...prev, fixedVideo]);
+    setSelectedVideoId(fixedVideo.id);
+    showSuccess(
+      data.free || !data.creditsCharged
+        ? 'Your video is fixed. This fix was free.'
+        : `Your video is fixed. ${data.creditsCharged} Video Credits used.`,
+      'Video fixed'
+    );
   }
 
   async function handleConfirmRegenerate() {
@@ -1526,7 +1850,19 @@ export default function VideoSessionPage() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `optimx-video-${video.id}.mp4`;
+      // e.g. "Oorgaa-Beef-Pickle-30s-v1.mp4" — readable in the customer's Downloads folder.
+      const fileName = [
+        brand?.name || adBuilderData.product?.brand_name,
+        adBuilderData.product?.product_name,
+        video.duration ? `${video.duration}s` : null,
+        video.generationVersion,
+      ]
+        .filter(Boolean)
+        .join('-')
+        .replace(/[^\p{L}\p{N}]+/gu, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 80);
+      a.download = `${fileName || 'skalx-video'}.mp4`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -1745,6 +2081,8 @@ export default function VideoSessionPage() {
             brand={brand}
             adBuilderData={adBuilderData}
             onAdBuilderChange={setAdBuilderData}
+            onRequestConcepts={handleRequestConcepts}
+            onRequestWrite={handleRequestWrite}
             generatedVideos={generatedVideos}
             selectedVideoId={selectedVideoId}
             onSelectVideo={setSelectedVideoId}
@@ -1752,6 +2090,13 @@ export default function VideoSessionPage() {
             onProductUrlChange={setProductUrl}
             onProductUrlSubmit={handleProductUrlSubmit}
             isScrapingProduct={isScrapingProduct}
+            catalog={{
+              products: catalogProducts,
+              isScanning: isScanningCatalog,
+              hasWebsite: Boolean(brand?.website_url?.trim()),
+              onBrowse: handleBrowseCatalog,
+              onSelect: handleSelectCatalogProduct,
+            }}
             isFetchingLogo={isFetchingLogo}
             selectedImageIndex={selectedImageIndex}
             onSelectImage={(index, img) => {
@@ -1765,7 +2110,7 @@ export default function VideoSessionPage() {
             onImageUpload={handleImageUpload}
             isGeneratingScript={isGeneratingScript}
             isGeneratingVideo={isGeneratingVideo}
-            generationStep={generationStep}
+            generationElapsed={generationElapsed}
             productionStatus={productionStatus}
             pendingRegeneration={pendingRegeneration}
             hasInsufficientCredits={hasInsufficientCredits}
@@ -1783,6 +2128,9 @@ export default function VideoSessionPage() {
             onSaveDraft={saveSession}
             onDownload={handleDownloadVideo}
             onUpdateAspectRatio={updateAspectRatio}
+            onLoadFixTimeline={handleLoadFixTimeline}
+            onPlanFix={handlePlanFix}
+            onApplyFix={handleApplyFix}
           />
         </StudioErrorBoundary>
         {showBrandOnboarding && !brand && (

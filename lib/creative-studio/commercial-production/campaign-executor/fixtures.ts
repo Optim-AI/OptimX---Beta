@@ -39,6 +39,7 @@ export function makeExecutorTestOptions(input?: {
       shotPlanner: makeMockPlanner(plan),
       pollIntervalMs: 1,
       maxWaitMs: 5000,
+      productAnalyzer: null,
       log: () => undefined,
     },
   };

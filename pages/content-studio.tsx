@@ -1,26 +1,23 @@
 // pages/content-studio.tsx
 // Ad Studio: Turn your website into high-converting ads
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/router";
 import Link from "next/link";
 import BrandKitCard from "@/app/web/src/components/creative-studio/BrandKitCard";
 import Sidebar from "@/app/web/src/components/Sidebar";
 import colors from "@/lib/ui/colors";
 import { authFetch, safeResponseJson } from "@/lib/utils";
+import { friendlyError, readJson, responseError } from "@/lib/api-errors";
 import { showError, showAlert } from "@/app/web/src/components/ui/alert-modal-api";
 import {
   type BrandSnapshot,
   BrandOnboarding,
   mapFullAnalyzeToBrandSnapshot,
-  fetchPosterCreativeDirectorVariants,
-  buildPosterPrompt,
-  getThemeForBrand,
 } from "@/app/web/src/components/creative-studio";
 import { DEFAULT_AD_BUILDER_DATA, saveBrandSnapshot } from "@/app/web/src/components/creative-studio/utils";
 import type { Product } from "@/app/web/src/components/creative-studio/types";
 import {
-  Loader2,
   Search,
   ImageIcon,
   Video,
@@ -38,7 +35,18 @@ import {
   RefreshCw,
   History,
 } from "lucide-react";
+import { ArcSpinner, StepProgress } from "@/app/web/src/components/ui/loaders";
 import PosterEditModal from "@/app/web/src/components/content-studio/PosterEditModal";
+import {
+  AngleMeta,
+  StrategyBriefPanel,
+  StrategyLoading,
+  angleCreativeBrief,
+} from "@/app/web/src/components/content-studio/StrategyBrief";
+import type { StrategyAngle, StrategyBrief } from "@/lib/research/product-strategy";
+import { CarouselStudio } from "@/app/web/src/components/creative-studio/CarouselStudio";
+import CreativeViewer from "@/app/web/src/components/creative-studio/CreativeViewer";
+import type { PublicCarouselCampaign } from "@/app/web/src/components/creative-studio/carousel-client";
 import { Button } from "@/app/web/src/components/ui/button";
 import { Input } from "@/app/web/src/components/ui/input";
 import { Progress } from "@/app/web/src/components/ui/progress";
@@ -58,7 +66,8 @@ type BrandSummary = {
   primaryValueProposition: string;
 };
 
-type AdAngle = {
+/** Older saved versions only have title + explanation; new strategy adds the reasoning. */
+type AdAngle = Partial<StrategyAngle> & {
   title: string;
   explanation: string;
 };
@@ -78,12 +87,15 @@ type CampaignPlanItem = {
   content_type: string;
   hook: string;
   description: string;
+  angle?: string;
+  rationale?: string;
 };
 
 type CampaignStrategy = {
   product_category: string;
   target_audience: string;
   content_themes: string[];
+  brief?: StrategyBrief;
 };
 
 const MAX_SESSIONS = 20;
@@ -111,6 +123,9 @@ type AdGenerationSession = {
   versionHistory?: VersionHistoryItem[];
   currentVersionId?: string | null;
   isRegenerating?: boolean;
+  /** Carousel plan items → a planned/generating carousel from the Brand Studio engine */
+  carousel?: { itemIndex: number; campaign: PublicCarouselCampaign } | null;
+  planningCarouselItem?: number | null;
 };
 
 const SCAN_MESSAGES = [
@@ -153,6 +168,9 @@ export default function ContentStudioPage() {
   const recentlyClosedBtnRef = React.useRef<HTMLButtonElement>(null);
 
   const { credits, fetchSubscription } = useSubscription();
+  /** Slides per carousel plan item (by plan index); 5 by default. */
+  const [carouselSlides, setCarouselSlides] = useState<Record<number, number>>({});
+  const [viewerIndex, setViewerIndex] = useState<number | null>(null);
 
   const [imageCredits, setImageCredits] = useState<number | null>(null);
   const [videoCredits, setVideoCredits] = useState<number | null>(null);
@@ -220,7 +238,7 @@ export default function ContentStudioPage() {
       }
       if (cancelled) return;
       setBrandLoaded(true);
-      setShowBrandOnboarding(true);
+      // No brand yet: a banner suggests the Brand Kit; the scan still works without it.
     })();
     return () => { cancelled = true; };
   }, []);
@@ -290,6 +308,7 @@ export default function ContentStudioPage() {
                           session.campaignStrategy = v.campaignStrategy || null;
                           session.generatedPosters = Array.isArray(v.generatedPosters) ? v.generatedPosters : [];
                           session.campaign = v.campaign || null;
+                          session.carousel = v.campaignStrategy?.carousel ?? null;
                           session.loadingAngles = false;
                           session.currentVersionId = latestId;
                           session.versionHistory = vhData.versions.map((vh: any) => ({
@@ -378,6 +397,8 @@ export default function ContentStudioPage() {
     }, 10000);
 
     try {
+      // Brand Research in the background, so product strategies can build on it.
+      void authFetch("/api/brand/research", { method: "POST", body: JSON.stringify({ url: normalized }) }).catch(() => null);
       const res = await authFetch("/api/content-studio/scan", {
         method: "POST",
         body: JSON.stringify({ url: normalized }),
@@ -428,9 +449,9 @@ export default function ContentStudioPage() {
     } catch (err: any) {
       clearInterval(msgInterval);
       clearInterval(progressInterval);
-      setError(err.message || "Failed to scan website");
+      setError(friendlyError(err, "Failed to scan website"));
       setStep("entry");
-      showError(err.message || "Failed to scan website");
+      showError(friendlyError(err, "Failed to scan website"));
     }
   };
 
@@ -496,6 +517,7 @@ export default function ContentStudioPage() {
                     campaignStrategy: v.campaignStrategy || null,
                     generatedPosters: Array.isArray(v.generatedPosters) ? v.generatedPosters : [],
                     campaign: v.campaign || null,
+                    carousel: v.campaignStrategy?.carousel ?? null,
                     loadingAngles: false,
                     versionHistory,
                     currentVersionId: latestId,
@@ -510,7 +532,7 @@ export default function ContentStudioPage() {
       // No saved versions — generate fresh
       const res = await authFetch("/api/content-studio/ad-angles", {
         method: "POST",
-        body: JSON.stringify({ product, brand }),
+        body: JSON.stringify({ product, brand, website: url ? normalizeUrl(url) : undefined }),
       });
       const data = await res.json();
 
@@ -627,6 +649,38 @@ export default function ContentStudioPage() {
       return null;
     }
   };
+  // Save each product's creatives as they change (posters, carousel) so a refresh keeps
+  // them. The carousel rides along in campaign_strategy; no extra column needed.
+  const savedCreatives = useRef<Record<string, string>>({});
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      for (const s of sessions) {
+        if (s.loadingAngles || s.isRegenerating) continue;
+        const key = JSON.stringify([s.currentVersionId ?? null, s.generatedPosters, s.carousel?.campaign?.id ?? null]);
+        if (savedCreatives.current[s.id] === key) continue;
+        const campaignStrategy = s.campaignStrategy ? { ...s.campaignStrategy, carousel: s.carousel ?? null } : null;
+        if (s.currentVersionId) {
+          savedCreatives.current[s.id] = key;
+          void authFetch(`/api/content-studio/versions?id=${s.currentVersionId}`, {
+            method: "PATCH",
+            body: JSON.stringify({ generatedPosters: s.generatedPosters, campaignStrategy }),
+          })
+            .then((r) => { if (!r.ok) delete savedCreatives.current[s.id]; })
+            .catch(() => { delete savedCreatives.current[s.id]; });
+        } else if (s.generatedPosters.length > 0 || s.carousel) {
+          // The first save didn't happen (e.g. it failed): create the version now.
+          savedCreatives.current[s.id] = key;
+          void saveVersionToDb({ ...s, campaignStrategy: campaignStrategy as AdGenerationSession["campaignStrategy"] }).then((id) => {
+            if (id) updateSession(s.id, () => ({ currentVersionId: id }));
+            else delete savedCreatives.current[s.id];
+          });
+        }
+      }
+    }, 800);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessions]);
+
 
   const handleRestoreVersion = async (versionId: string) => {
     if (!activeSession) return;
@@ -651,6 +705,7 @@ export default function ContentStudioPage() {
                 campaignStrategy: v.campaignStrategy ? { ...v.campaignStrategy } : null,
                 generatedPosters: Array.isArray(v.generatedPosters) ? [...v.generatedPosters] : [],
                 campaign: v.campaign ? { ...v.campaign } : null,
+                carousel: v.campaignStrategy?.carousel ?? null,
                 currentVersionId: versionId,
               }
             : s
@@ -682,7 +737,7 @@ export default function ContentStudioPage() {
     try {
       const res = await authFetch("/api/content-studio/ad-angles", {
         method: "POST",
-        body: JSON.stringify({ product, brand }),
+        body: JSON.stringify({ product, brand, website: url ? normalizeUrl(url) : undefined }),
       });
       const data = await res.json();
 
@@ -720,6 +775,12 @@ export default function ContentStudioPage() {
     }
   };
 
+  const viewerBrand = {
+    name: brandGuideline?.name || brand?.name || "yourbrand",
+    logo: brandGuideline?.logo || brandGuideline?.logoUrl || null,
+    website: url ? normalizeUrl(url) : brandGuideline?.website_url || null,
+  };
+
   const handleGeneratePoster = async (angle?: AdAngle) => {
     if (!activeSession || !selectedProduct) return;
     const sessionId = activeSession.id;
@@ -730,175 +791,38 @@ export default function ContentStudioPage() {
     const angleId = angle ? angle.title : "__default__";
     updateSession(sessionId, () => ({ generatingAngleId: angleId }));
     try {
-      const productImages = selectedProduct.product_images || [];
-      const productImage = productImages[0];
-      let productDataUrl: string | undefined;
-      const refDataUrls: string[] = [];
-
-      if (productImage && productImage.startsWith("http")) {
-        const fetchRes = await authFetch("/api/creative-studio/fetch-image", {
-          method: "POST",
-          body: JSON.stringify({ url: productImage }),
-        });
-        const fetchData = await fetchRes.json();
-        if (fetchData.ok && fetchData.dataUrl) {
-          productDataUrl = fetchData.dataUrl;
-        }
-      }
-
-      for (const imgUrl of productImages.slice(1, 3)) {
-        if (imgUrl?.startsWith("http")) {
-          try {
-            const r = await authFetch("/api/creative-studio/fetch-image", {
-              method: "POST",
-              body: JSON.stringify({ url: imgUrl }),
-            });
-            const d = await r.json();
-            if (d.ok && d.dataUrl) refDataUrls.push(d.dataUrl);
-          } catch {
-            /* skip */
-          }
-        }
-      }
-
-      const brandSnapshot: BrandSnapshot | null =
-        brandGuideline ||
-        (brand
-          ? {
-              name: brand.name,
-              description: brand.primaryValueProposition,
-              audience: brand.targetAudience,
-              offering: brand.industry,
-              tone: brand.tone,
-              brandVoice:
-                /professional|corporate/i.test(brand.tone)
-                  ? "Professional"
-                  : /playful|fun|energetic/i.test(brand.tone)
-                    ? "Playful"
-                    : /minimal|clean|simple/i.test(brand.tone)
-                      ? "Minimalist"
-                      : "Bold",
-              coreValueProp: brand.primaryValueProposition,
-            }
-          : null);
-
-      const angleText = angle
-        ? `${angle.title}. ${angle.explanation}`
-        : selectedProduct.short_benefit || selectedProduct.description;
-      const benefits = selectedProduct.key_benefits || [];
-
-      const themeHint = getThemeForBrand(brandSnapshot, angle);
-      const theme: "commercial" | "professional" =
-        angle && /clinical|proven|science|lab|performance/i.test(angle.title)
-          ? "professional"
-          : themeHint === "professional" || themeHint === "minimal"
-            ? "professional"
-            : "commercial";
-      const aspectRatio: "1:1" | "4:5" | "9:16" | "1.91:1" = "4:5";
-      const target = { width: 1080, height: 1350 };
-
-      const userRequest = [
-        `Create a marketing poster for ${selectedProduct.product_name}.`,
-        `Ad angle / creative brief: ${angleText}`,
-        benefits.length ? `Key benefits: ${benefits.join("; ")}` : null,
-      ]
-        .filter(Boolean)
-        .join("\n");
-
-      const directorResult = await fetchPosterCreativeDirectorVariants({
-        authFetch,
-        userRequest,
-        theme,
-        aspectRatio,
-        brand: brandSnapshot,
-        variantCount: 3,
-        hasProductImage: !!productDataUrl,
-        hasLogo: !!(brandSnapshot?.logo || brandSnapshot?.logoUrl),
-        productName: selectedProduct.product_name,
-        productDescription: selectedProduct.description,
-        productBenefits: benefits,
-        audience: brandSnapshot?.audience || selectedProduct.target_audience,
-        campaignObjective: "Drive sales and product consideration",
-        creativeBrief: angleText,
-        platform: "Instagram / Meta feed",
+      // Same poster engine as Brand Studio (strategist → concepts → art-directed posters),
+      // driven by this angle and the product's campaign strategy.
+      const brief = activeSession.campaignStrategy?.brief;
+      const res = await authFetch("/api/content-studio/engine-posters", {
+        method: "POST",
+        body: JSON.stringify({
+          product: selectedProduct,
+          brand,
+          angle: angle
+            ? {
+                title: angle.title,
+                explanation: angle.explanation,
+                angle: angle.angle,
+                insight: angle.insight,
+                message: angle.message,
+                proof: angle.proof,
+                audience: angle.audience,
+                funnel: angle.funnel,
+              }
+            : null,
+          campaign: brief
+            ? { bigIdea: brief.big_idea.line, positioning: brief.positioning, avoid: brief.avoid }
+            : null,
+        }),
       });
-
-      const variantPrompts: string[] =
-        directorResult.usedDirector && directorResult.prompts.length > 0
-          ? directorResult.prompts.slice(0, 3)
-          : ([1, 2, 3] as const).map((variantNum) =>
-              buildPosterPrompt({
-                userRequest,
-                theme,
-                aspectRatio,
-                brand: brandSnapshot,
-                hasProductImage: !!productDataUrl,
-                variant: variantNum,
-                productName: selectedProduct.product_name,
-                productDescription: selectedProduct.description,
-                productBenefits: benefits,
-              })
-            );
-
-      // Pad if needed
-      while (variantPrompts.length < 3) {
-        const n = (variantPrompts.length + 1) as 1 | 2 | 3;
-        variantPrompts.push(
-          buildPosterPrompt({
-            userRequest,
-            theme,
-            aspectRatio,
-            brand: brandSnapshot,
-            hasProductImage: !!productDataUrl,
-            variant: n,
-            productName: selectedProduct.product_name,
-            productDescription: selectedProduct.description,
-            productBenefits: benefits,
-          })
-        );
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 402) {
+        setInsufficientCreditsType("image");
+        return;
       }
-
-      const basePayload = {
-        mode: "generate" as const,
-        theme,
-        target,
-        aspectLabel: aspectRatio,
-        brandName: brandGuideline?.name || brand?.name || "",
-        brandSnapshot,
-        tone: brandGuideline?.tone || brand?.tone || theme,
-        productDataUrl,
-        productProvided: !!productDataUrl,
-        refDataUrls,
-      };
-
-      const results = await Promise.allSettled(
-        variantPrompts.map((prompt) =>
-          authFetch("/api/generate-campaign", {
-            method: "POST",
-            body: JSON.stringify({
-              ...basePayload,
-              prompt,
-              description: prompt,
-            }),
-          }).then(async (response) => {
-            const data = await response.json();
-            return { data };
-          })
-        )
-      );
-
-      const posters: string[] = [];
-      let lastError = "";
-      for (const result of results) {
-        if (result.status === "fulfilled") {
-          const { data } = result.value;
-          if (data.ok && data.image) {
-            posters.push(data.image as string);
-          } else if (data.error) lastError = data.error;
-        } else {
-          lastError = result.reason?.message || "Unknown error";
-        }
-      }
+      const posters: string[] = data.ok && Array.isArray(data.images) ? data.images : [];
+      const lastError: string = data.error || "";
 
       if (posters.length > 0) {
         updateSession(sessionId, (s) => ({
@@ -922,7 +846,7 @@ export default function ContentStudioPage() {
         showError(lastError || "Failed to generate posters");
       }
     } catch (err: any) {
-      showError(err.message || "Failed to generate poster");
+      showError(friendlyError(err, "Failed to generate poster"));
     } finally {
       updateSession(sessionId, () => ({ generatingAngleId: null }));
     }
@@ -934,17 +858,64 @@ export default function ContentStudioPage() {
     updateSession(sessionId, () => ({ generatingCampaignItem: index }));
     try {
       const isVideo = /video/i.test(item.content_type);
+      const source = item.angle
+        ? activeSession.adAngles.find((a) => a.angle?.toLowerCase() === item.angle?.toLowerCase())
+        : undefined;
       const angle: AdAngle = {
+        ...(source || {}),
         title: item.hook,
         explanation: `${item.content_type} for ${item.platform}. Goal: ${item.goal}. ${item.description}`,
+        message: item.description || source?.message,
       };
       if (isVideo) {
         await handleVideoAdClick(angle);
+      } else if (/carousel/i.test(item.content_type)) {
+        await handlePlanCarousel(angle, index, false);
       } else {
         await handleGeneratePoster(angle);
       }
     } finally {
       updateSession(sessionId, () => ({ generatingCampaignItem: null }));
+    }
+  };
+
+  /** Plan a carousel (story across N slides, no credits); CarouselStudio then generates it. */
+  const handlePlanCarousel = async (angle: AdAngle, index: number, replan: boolean) => {
+    if (!activeSession || !selectedProduct) return;
+    const sessionId = activeSession.id;
+    const slideCount = carouselSlides[index] ?? 5;
+    updateSession(sessionId, () => ({ planningCarouselItem: index }));
+    try {
+      const brief = activeSession.campaignStrategy?.brief;
+      const res = await authFetch("/api/content-studio/engine-carousel", {
+        method: "POST",
+        body: JSON.stringify({
+          product: selectedProduct,
+          brand,
+          slideCount,
+          angle: {
+            title: angle.title,
+            explanation: angle.explanation,
+            angle: angle.angle,
+            insight: angle.insight,
+            message: angle.message,
+            proof: angle.proof,
+            audience: angle.audience,
+            funnel: angle.funnel,
+          },
+          campaign: brief ? { bigIdea: brief.big_idea.line, positioning: brief.positioning, avoid: brief.avoid } : null,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.campaign) throw new Error(data.error || "Couldn't plan the carousel.");
+      updateSession(sessionId, () => ({ carousel: { itemIndex: index, campaign: data.campaign } }));
+      if (!replan) {
+        setTimeout(() => document.getElementById("adstudio-carousel")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+      }
+    } catch (err: any) {
+      showError(friendlyError(err, "Couldn't plan the carousel."));
+    } finally {
+      updateSession(sessionId, () => ({ planningCarouselItem: null }));
     }
   };
 
@@ -964,7 +935,7 @@ export default function ContentStudioPage() {
         showError(data.error || "Failed to generate campaign");
       }
     } catch (err: any) {
-      showError(err.message || "Failed to generate campaign");
+      showError(friendlyError(err, "Failed to generate campaign"));
     } finally {
       setLoadingCampaign(false);
     }
@@ -1000,7 +971,7 @@ export default function ContentStudioPage() {
       const adBuilderData = {
         ...DEFAULT_AD_BUILDER_DATA,
         product: productData,
-        userDescription: `Ad angle: ${angle.title}. ${angle.explanation}`,
+        userDescription: `Ad angle: ${angleCreativeBrief(angle)}`,
         adSetup: {
           ...DEFAULT_AD_BUILDER_DATA.adSetup,
           hookType: "Auto" as const,
@@ -1030,7 +1001,7 @@ export default function ContentStudioPage() {
         showError(data.error || "Failed to create video session");
       }
     } catch (err: any) {
-      showError(err.message || "Failed to create video session");
+      showError(friendlyError(err, "Failed to create video session"));
     } finally {
       updateSession(sessionId, () => ({ creatingVideoAngleId: null }));
     }
@@ -1097,8 +1068,33 @@ export default function ContentStudioPage() {
         showError(data.error || "Failed to regenerate poster");
       }
     } catch (err: any) {
-      showError(err.message || "Failed to regenerate poster");
+      showError(friendlyError(err, "Failed to regenerate poster"));
     }
+  };
+
+  /** Change only the boxed part of a poster (throws a readable message for the dialog). */
+  const handleAreaEdit = async (
+    posterIndex: number,
+    box: { x: number; y: number; w: number; h: number },
+    instruction: string
+  ) => {
+    const session = activeSession;
+    const posterUrl = session?.generatedPosters[posterIndex];
+    if (!session || !posterUrl) throw new Error("That poster isn't available any more.");
+    const res = await authFetch("/api/content-studio/area-edit", {
+      method: "POST",
+      body: JSON.stringify({ image: posterUrl, box, instruction }),
+    });
+    const data = await readJson<{ ok?: boolean; image?: string; error?: string }>(res);
+    if (res.status === 402) {
+      setInsufficientCreditsType("image");
+      throw new Error(data.error || "You need 1 image credit for this edit.");
+    }
+    if (!res.ok || !data.ok || !data.image) throw new Error(responseError(res, data, "The edit didn't come out. Try again."));
+    updateSession(session.id, (s) => ({
+      generatedPosters: s.generatedPosters.map((url, i) => (i === posterIndex ? data.image! : url)),
+    }));
+    void fetchSubscription({ force: true });
   };
 
   const handleStartOver = () => {
@@ -1180,140 +1176,123 @@ export default function ContentStudioPage() {
         <Sidebar />
       </div>
       <div className="flex-1 flex flex-col h-full overflow-hidden" style={{ backgroundColor: colors.card, borderLeft: `1px solid ${colors.border}` }}>
-        {/* Sticky Header */}
-        <div className="border-b flex-shrink-0" style={{ borderColor: colors.border, backgroundColor: colors.card }}>
-          <div className="max-w-6xl mx-auto px-6 py-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h1 className="text-2xl font-semibold flex items-center gap-2" style={{ color: colors.foreground }}>
-                  Content Studio
-                  <span
-                    className="shrink-0"
-                    style={{
-                      fontSize: 10,
-                      padding: '2px 6px',
-                      borderRadius: 4,
-                      background: 'rgba(34, 197, 94, 0.2)',
-                      color: '#22c55e',
-                      fontWeight: 600,
-                    }}
-                  >
-                    Beta
-                  </span>
-                </h1>
-                <p className="text-sm mt-1" style={{ color: colors.mutedForeground }}>
-                  Turn your website into high-converting ads
-                </p>
-              </div>
-              <div className="flex items-center gap-3">
-                {creditsPending && (imageCredits === 0 || imageCredits === null) && (
-                  <div
-                    className="px-3 py-2 rounded-lg text-sm max-w-xs"
-                    style={{
-                      background: 'hsl(45 90% 50% / 0.15)',
-                      border: '1px solid hsl(45 90% 50% / 0.35)',
-                      color: colors.foreground,
-                    }}
-                  >
-                    Payment received — plan credits are still confirming.
-                  </div>
-                )}
-                {imageCredits !== null && (
-                  <div className="flex items-center gap-2 px-4 py-2 rounded-lg" style={{ background: 'hsl(213 100% 55% / 0.15)', border: '1px solid hsl(213 100% 55% / 0.35)' }}>
-                    <svg className="w-5 h-5" style={{ color: colors.primary }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                    <span className="font-semibold" style={{ color: colors.primary }}>{imageCredits}</span>
-                    <span className="text-sm" style={{ color: colors.primary }}>images</span>
-                  </div>
-                )}
-                {videoCredits !== null && (
-                  <div className="flex items-center gap-2 px-4 py-2 rounded-lg" style={{ background: 'hsl(270 80% 55% / 0.15)', border: '1px solid hsl(270 80% 55% / 0.3)' }}>
-                    <svg className="w-5 h-5" style={{ color: 'hsl(270 80% 65%)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                    </svg>
-                    <span className="font-semibold" style={{ color: 'hsl(270 80% 70%)' }}>{videoCredits}</span>
-                    <span className="text-sm" style={{ color: 'hsl(270 80% 65%)' }}>video</span>
-                  </div>
-                )}
-              </div>
+        {/* Header */}
+        <div className="flex-shrink-0 border-b" style={{ borderColor: colors.border, backgroundColor: colors.card }}>
+          <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-6 py-4">
+            <div>
+              <h1 className="flex items-center gap-2 text-2xl font-semibold" style={{ color: colors.foreground }}>
+                Ad Studio
+                <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold" style={{ background: "rgba(34, 197, 94, 0.18)", color: "#22c55e" }}>Beta</span>
+              </h1>
+              <p className="mt-0.5 text-sm" style={{ color: colors.mutedForeground }}>
+                Your website → a marketer&apos;s strategy for each product → ready-to-run ads.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {creditsPending && (imageCredits === 0 || imageCredits === null) && (
+                <span className="rounded-full px-3 py-1.5 text-xs" style={{ background: "hsl(45 90% 50% / 0.15)", color: colors.foreground }}>
+                  Payment received — credits are confirming…
+                </span>
+              )}
+              {imageCredits !== null && (
+                <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs" style={{ border: `1px solid ${colors.border}`, color: colors.mutedForeground }}>
+                  <ImageIcon className="h-3.5 w-3.5" style={{ color: colors.primary }} />
+                  <strong style={{ color: colors.foreground }}>{imageCredits}</strong> image credits
+                </span>
+              )}
+              {videoCredits !== null && (
+                <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs" style={{ border: `1px solid ${colors.border}`, color: colors.mutedForeground }}>
+                  <Video className="h-3.5 w-3.5" style={{ color: "hsl(270 80% 70%)" }} />
+                  <strong style={{ color: colors.foreground }}>{videoCredits}</strong> video credits
+                </span>
+              )}
             </div>
           </div>
         </div>
 
         <div className="flex-1 overflow-y-auto">
         <div className="max-w-6xl mx-auto px-6 py-10">
-          {/* Beta feature note */}
-          <div className="mb-6 p-4 rounded-xl" style={{ backgroundColor: 'rgba(34, 197, 94, 0.12)', border: '1px solid rgba(34, 197, 94, 0.35)' }}>
-            <p className="text-sm leading-relaxed" style={{ color: '#e8f5e9' }}>
-              <strong style={{ color: '#e8f5e9' }}>Beta Feature:</strong> This feature is still in Beta, so you might notice occasional glitches or unexpected results. If you spot anything off or have ideas for improvement,{' '}
-              <Link href="/report" className="font-medium underline" style={{ color: '#4ade80' }}>
-                send us feedback here
-              </Link>
-              . Your input directly helps us refine the experience.
-            </p>
-          </div>
-
           {(step === "entry" || step === "results") && (
-            <div className="flex flex-col items-center py-12">
-              <div className="flex flex-col items-center mb-8">
-                <div className="flex items-center justify-center w-14 h-14 rounded-full mb-4" style={{ background: "hsl(213 100% 55% / 0.15)" }}>
-                  <Sparkles className="w-7 h-7" style={{ color: colors.primary }} />
+            <div className="flex flex-col items-center">
+              {/* No Brand Kit yet: suggest it, without blocking the scan */}
+              {brandLoaded && !brandGuideline && (
+                <div className="mb-6 flex w-full max-w-6xl flex-wrap items-center justify-between gap-3 rounded-xl px-4 py-3" style={{ background: "hsl(213 100% 55% / 0.1)", border: "1px solid hsl(213 100% 55% / 0.3)" }}>
+                  <p className="text-sm" style={{ color: colors.foreground }}>
+                    Set up your Brand Kit so every ad uses your logo, colours and fonts.
+                  </p>
+                  <Link href="/brand-kit?welcome=1" className="inline-flex items-center gap-1 text-sm font-medium" style={{ color: colors.primary }}>
+                    Set up Brand Kit <ChevronRight className="h-4 w-4" />
+                  </Link>
                 </div>
-                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium mb-4" style={{ background: "hsl(213 100% 55% / 0.15)", color: colors.primary }}>
-                  AI-Powered Ad Studio
-                  <span
-                    className="shrink-0"
-                    style={{
-                      fontSize: 10,
-                      padding: '2px 6px',
-                      borderRadius: 4,
-                      background: 'rgba(34, 197, 94, 0.2)',
-                      color: '#22c55e',
-                      fontWeight: 600,
-                    }}
-                  >
-                    Beta
-                  </span>
-                </div>
-                <h1 className="text-4xl md:text-5xl font-bold tracking-tight max-w-6xl mx-auto text-center" style={{ color: colors.foreground }}>
-                  Let&apos;s turn your website into high converting ads
-                </h1>
-                <p className="text-lg max-w-2xl mx-auto text-center mt-2" style={{ color: colors.mutedForeground }}>
-                  Paste your website URL and we&apos;ll extract products, generate ad creatives, and build campaigns all in one place.
-                </p>
-              </div>
+              )}
 
-              <div
-                className="w-full max-w-4xl rounded-2xl border p-6 sm:p-8"
-                style={{
-                  background: colors.card,
-                  borderColor: colors.border,
-                }}
-              >
-                <div className="flex gap-3">
-                  <Input
-                    placeholder="Paste Website URL"
-                    value={url}
-                    onChange={(e) => setUrl(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && handleAnalyze()}
-                    className="flex-1 min-w-0 bg-[hsl(0_0%_12%)] text-[hsl(0_0%_95%)] placeholder:text-[hsl(0_0%_50%)] rounded-lg h-12 text-sm"
-                    style={{ border: "1px solid hsl(213 100% 55%)" }}
-                  />
-                  <Button
-                    onClick={handleAnalyze}
-                    disabled={!url.trim()}
-                    className="flex-shrink-0 px-12 rounded-lg h-12 text-sm font-medium"
-                    style={{
-                      background: colors.primary,
-                      color: colors.primaryForeground,
-                    }}
+              {!hasFetchedProducts ? (
+                <div className="flex w-full flex-col items-center py-10">
+                  <h2 className="max-w-3xl text-center text-3xl font-semibold tracking-tight md:text-4xl" style={{ color: colors.foreground }}>
+                    Turn your website into ads that sell
+                  </h2>
+                  <p className="mt-3 max-w-xl text-center text-base" style={{ color: colors.mutedForeground }}>
+                    We read your site, find your products and build a strategy for each one — angles, hooks and finished creatives.
+                  </p>
+                  <form
+                    className="mt-8 flex w-full max-w-2xl flex-col gap-2 rounded-2xl p-2 sm:flex-row"
+                    style={{ background: colors.card, border: `1px solid ${colors.border}` }}
+                    onSubmit={(e) => { e.preventDefault(); handleAnalyze(); }}
                   >
-                    <Search className="w-5 h-5 mr-2" />
-                    Analyze Website
-                  </Button>
+                    <div className="relative flex-1">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2" style={{ color: colors.mutedForeground }} />
+                      <Input
+                        placeholder="yourbrand.com"
+                        value={url}
+                        onChange={(e) => setUrl(e.target.value)}
+                        aria-label="Website URL"
+                        className="h-12 border-0 bg-transparent pl-9 text-sm shadow-none focus-visible:ring-0"
+                        style={{ color: colors.foreground }}
+                      />
+                    </div>
+                    <Button type="submit" disabled={!url.trim()} className="h-12 rounded-xl px-6 text-sm font-medium" style={{ background: colors.primary, color: colors.primaryForeground }}>
+                      <Sparkles className="mr-2 h-4 w-4" /> Find my products
+                    </Button>
+                  </form>
+                  <ol className="mt-10 grid w-full max-w-3xl grid-cols-1 gap-3 sm:grid-cols-3">
+                    {[
+                      ["1", "Paste your website", "We find your products, prices and photos."],
+                      ["2", "Pick a product", "Get a strategy: buyer, angles and hooks."],
+                      ["3", "Create the ads", "Posters, carousels and videos per angle."],
+                    ].map(([n, t, d]) => (
+                      <li key={n} className="rounded-xl p-4" style={{ background: colors.card, border: `1px solid ${colors.border}` }}>
+                        <span className="flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold" style={{ background: "hsl(213 100% 55% / 0.15)", color: colors.primary }}>{n}</span>
+                        <p className="mt-2 text-sm font-medium" style={{ color: colors.foreground }}>{t}</p>
+                        <p className="mt-0.5 text-xs" style={{ color: colors.mutedForeground }}>{d}</p>
+                      </li>
+                    ))}
+                  </ol>
                 </div>
-              </div>
+              ) : (
+                <form
+                  className="flex w-full max-w-6xl flex-wrap items-center gap-2 rounded-xl p-2"
+                  style={{ background: colors.card, border: `1px solid ${colors.border}` }}
+                  onSubmit={(e) => { e.preventDefault(); handleAnalyze(); }}
+                >
+                  <div className="relative min-w-[220px] flex-1">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2" style={{ color: colors.mutedForeground }} />
+                    <Input
+                      value={url}
+                      onChange={(e) => setUrl(e.target.value)}
+                      aria-label="Website URL"
+                      placeholder="yourbrand.com"
+                      className="h-10 border-0 bg-transparent pl-9 text-sm shadow-none focus-visible:ring-0"
+                      style={{ color: colors.foreground }}
+                    />
+                  </div>
+                  <Button type="submit" variant="outline" disabled={!url.trim()} className="h-10 rounded-lg text-sm" style={{ borderColor: colors.border, color: colors.foreground }}>
+                    <RefreshCw className="mr-2 h-4 w-4" /> Scan again
+                  </Button>
+                  <Button type="button" variant="ghost" onClick={handleStartOver} className="h-10 rounded-lg text-sm" style={{ color: colors.mutedForeground }}>
+                    Start over
+                  </Button>
+                </form>
+              )}
 
               {hasFetchedProducts && (
                 <div className="w-full max-w-6xl mt-8">
@@ -1348,71 +1327,8 @@ export default function ContentStudioPage() {
                             {brand?.name && `${brand.name} • `}
                             {products.length} products detected
                           </h2>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={handleStartOver}
-                            style={{ borderColor: colors.border, color: colors.mutedForeground }}
-                          >
-                            Start over
-                          </Button>
+                          <span className="text-xs" style={{ color: colors.mutedForeground }}>Pick one to plan its ads</span>
                         </div>
-
-                        {brand && (
-                <section
-                  className="rounded-2xl p-6 border shadow-sm"
-                  style={{
-                    background: colors.card,
-                    borderColor: colors.border,
-                  }}
-                >
-                  <h2 className="text-lg font-semibold mb-4" style={{ color: colors.foreground }}>
-                    Brand Summary
-                  </h2>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <span className="text-sm" style={{ color: colors.mutedForeground }}>
-                        Brand Name
-                      </span>
-                      <p className="font-medium" style={{ color: colors.foreground }}>
-                        {brand.name}
-                      </p>
-                    </div>
-                    <div>
-                      <span className="text-sm" style={{ color: colors.mutedForeground }}>
-                        Brand Tone
-                      </span>
-                      <p className="font-medium" style={{ color: colors.foreground }}>
-                        {brand.tone || "—"}
-                      </p>
-                    </div>
-                    <div>
-                      <span className="text-sm" style={{ color: colors.mutedForeground }}>
-                        Industry
-                      </span>
-                      <p className="font-medium" style={{ color: colors.foreground }}>
-                        {brand.industry || "—"}
-                      </p>
-                    </div>
-                    <div>
-                      <span className="text-sm" style={{ color: colors.mutedForeground }}>
-                        Target Audience
-                      </span>
-                      <p className="font-medium" style={{ color: colors.foreground }}>
-                        {brand.targetAudience || "—"}
-                      </p>
-                    </div>
-                    <div className="md:col-span-2">
-                      <span className="text-sm" style={{ color: colors.mutedForeground }}>
-                        Primary Value Proposition
-                      </span>
-                      <p className="font-medium" style={{ color: colors.foreground }}>
-                        {brand.primaryValueProposition || "—"}
-                      </p>
-                    </div>
-                  </div>
-                </section>
-              )}
 
               {/* Brand Kit (replaces the old Brand Guideline) */}
               {brandLoaded && (
@@ -1422,61 +1338,48 @@ export default function ContentStudioPage() {
               )}
 
               <section>
-                <h2 className="text-lg font-semibold mb-4" style={{ color: colors.foreground }}>
-                  Product Library
-                </h2>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
                   {products.map((p, i) => {
                     const isSelected = selectedProduct?.product_name === p.product_name;
                     return (
-                      <div
+                      <button
                         key={i}
+                        type="button"
                         onClick={() => handleProductClick(p, i)}
-                        className="relative rounded-xl p-4 border-2 cursor-pointer transition-all hover:border-[hsl(213_100%_55%)] hover:shadow-lg"
-                        style={{
-                          background: colors.card,
-                          borderColor: isSelected ? colors.primary : colors.border,
-                        }}
+                        className="group relative overflow-hidden rounded-xl text-left transition-all hover:-translate-y-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+                        style={{ background: colors.card, border: `1px solid ${isSelected ? colors.primary : colors.border}`, boxShadow: isSelected ? `0 0 0 1px ${colors.primary}` : undefined }}
                       >
-                        {isSelected && (
-                          <div
-                            className="absolute top-3 right-3 z-10 flex items-center justify-center w-6 h-6 rounded-full"
-                            style={{ background: colors.primary }}
-                          >
-                            <Check className="w-3.5 h-3.5" style={{ color: colors.primaryForeground }} />
-                          </div>
-                        )}
-                        <div
-                          className="aspect-square rounded-lg mb-3 overflow-hidden bg-[hsl(0_0%_18%)]"
-                          style={{ minHeight: 140 }}
-                        >
+                        <div className="relative aspect-[4/5] w-full overflow-hidden" style={{ background: colors.secondary }}>
                           {p.product_images?.[0] ? (
-                            <img
-                              src={p.product_images[0]}
-                              alt={p.product_name}
-                              className="w-full h-full object-cover"
-                            />
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={p.product_images[0]} alt={p.product_name} loading="lazy" className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]" />
                           ) : (
-                            <div
-                              className="w-full h-full flex items-center justify-center"
-                              style={{ color: colors.mutedForeground }}
-                            >
-                              <ImageIcon className="w-12 h-12" />
-                            </div>
+                            <span className="flex h-full w-full items-center justify-center" style={{ color: colors.mutedForeground }}>
+                              <ImageIcon className="h-10 w-10" />
+                            </span>
+                          )}
+                          {p.price && (
+                            <span className="absolute left-2 top-2 rounded-full px-2 py-0.5 text-[11px] font-medium backdrop-blur" style={{ background: "rgba(0,0,0,0.6)", color: "#fff" }}>
+                              {p.price}
+                            </span>
+                          )}
+                          {isSelected ? (
+                            <span className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full" style={{ background: colors.primary }}>
+                              <Check className="h-3.5 w-3.5" style={{ color: colors.primaryForeground }} />
+                            </span>
+                          ) : (
+                            <span className="absolute inset-x-2 bottom-2 flex items-center justify-center gap-1 rounded-lg py-1.5 text-xs font-medium opacity-0 transition-opacity group-hover:opacity-100" style={{ background: colors.primary, color: colors.primaryForeground }}>
+                              Plan ads <ChevronRight className="h-3.5 w-3.5" />
+                            </span>
                           )}
                         </div>
-                        <h3 className="font-semibold truncate" style={{ color: colors.foreground }}>
-                          {p.product_name}
-                        </h3>
-                        {p.price && (
-                          <p className="text-sm font-medium" style={{ color: colors.primary }}>
-                            {p.price}
+                        <div className="px-3 py-2.5">
+                          <p className="truncate text-sm font-medium" style={{ color: colors.foreground }}>{p.product_name}</p>
+                          <p className="mt-0.5 line-clamp-2 text-xs" style={{ color: colors.mutedForeground }}>
+                            {p.short_benefit || p.description || "—"}
                           </p>
-                        )}
-                        <p className="text-sm truncate" style={{ color: colors.mutedForeground }}>
-                          {p.short_benefit || p.description || "—"}
-                        </p>
-                      </div>
+                        </div>
+                      </button>
                     );
                   })}
                 </div>
@@ -1495,38 +1398,43 @@ export default function ContentStudioPage() {
               {/* Ad Generation Section - tab-based, opens when product is selected */}
               {sessions.length > 0 && (
                 <>
-                {/* Tab bar - browser-like */}
-                <div className="w-full max-w-6xl mt-6 flex items-center gap-1 pb-2" style={{ borderBottom: `1px solid ${colors.border}` }}>
-                  <div className="flex items-center gap-1 overflow-x-auto flex-1 min-w-0">
-                    {sessions.map((s) => (
-                      <div
-                        key={s.id}
-                        className="flex items-center gap-1 px-1 rounded-t-lg text-sm font-medium shrink-0 transition-colors"
-                        style={{
-                          background: activeSessionId === s.id ? colors.card : "transparent",
-                          color: activeSessionId === s.id ? colors.foreground : colors.mutedForeground,
-                          border: `1px solid ${activeSessionId === s.id ? colors.border : "transparent"}`,
-                          borderBottom: activeSessionId === s.id ? `1px solid ${colors.card}` : "none",
-                        }}
-                      >
-                        <button
-                          type="button"
-                          onClick={() => setActiveSessionId(s.id)}
-                          className="flex items-center gap-2 px-3 py-2 rounded-md hover:opacity-90"
+                {/* Open products — one pill per product being planned */}
+                <div className="mt-6 flex w-full max-w-6xl items-center gap-2 pb-3" style={{ borderBottom: `1px solid ${colors.border}` }}>
+                  <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto">
+                    {sessions.map((s) => {
+                      const on = activeSessionId === s.id;
+                      const thumb = s.product.product_images?.[0];
+                      return (
+                        <div
+                          key={s.id}
+                          className="flex shrink-0 items-center gap-1 rounded-full py-1 pl-1 pr-2 text-sm transition-colors"
+                          style={{
+                            background: on ? colors.card : "transparent",
+                            color: on ? colors.foreground : colors.mutedForeground,
+                            border: `1px solid ${on ? colors.primary : colors.border}`,
+                          }}
                         >
-                          <span className="truncate max-w-[140px]">{s.product.product_name}</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => closeSession(s.id)}
-                          aria-label={`Close ${s.product.product_name}`}
-                          className="p-0.5 rounded hover:bg-black/10"
-                          style={{ color: colors.mutedForeground }}
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    ))}
+                          <button type="button" onClick={() => setActiveSessionId(s.id)} className="flex items-center gap-2 rounded-full pr-1">
+                            <span className="h-7 w-7 shrink-0 overflow-hidden rounded-full" style={{ background: colors.secondary }}>
+                              {thumb ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img src={thumb} alt="" className="h-full w-full object-cover" />
+                              ) : null}
+                            </span>
+                            <span className="max-w-[160px] truncate font-medium">{s.product.product_name}</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => closeSession(s.id)}
+                            aria-label={`Close ${s.product.product_name}`}
+                            className="rounded-full p-1 hover:bg-white/10"
+                            style={{ color: colors.mutedForeground }}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      );
+                    })}
                   </div>
 
                   {/* Recently closed tabs history button */}
@@ -1730,8 +1638,12 @@ export default function ContentStudioPage() {
                   </div>
                 </section>
 
+                {!activeSession.loadingAngles && activeSession.campaignStrategy?.brief && (
+                  <StrategyBriefPanel brief={activeSession.campaignStrategy.brief} />
+                )}
+
                 <section
-                  className="rounded-xl p-6 border overflow-y-auto max-h-[600px]"
+                  className="rounded-xl p-6 border overflow-y-auto max-h-[720px]"
                   style={{
                     background: colors.card,
                     borderColor: colors.border,
@@ -1741,11 +1653,14 @@ export default function ContentStudioPage() {
                       <h2 className="text-lg font-semibold" style={{ color: colors.foreground }}>
                         Ad Angles
                       </h2>
+                      {!activeSession.loadingAngles && activeSession.adAngles.length > 0 && !activeSession.campaignStrategy?.brief && (
+                        <p className="text-xs mt-0.5" style={{ color: colors.mutedForeground }}>
+                          Basic angles from the product page. Regenerate for a researched strategy.
+                        </p>
+                      )}
                     </div>
                     {activeSession.loadingAngles ? (
-                      <div className="flex items-center justify-center py-8">
-                        <Loader2 className="w-8 h-8 animate-spin" style={{ color: colors.primary }} />
-                      </div>
+                      <StrategyLoading />
                     ) : (
                       <div className="space-y-3">
                         {activeSession.adAngles.map((angle, i) => (
@@ -1760,9 +1675,13 @@ export default function ContentStudioPage() {
                             <p className="font-medium text-sm" style={{ color: colors.foreground }}>
                               {angle.title}
                             </p>
-                            <p className="text-xs mt-1" style={{ color: colors.mutedForeground }}>
-                              {angle.explanation}
-                            </p>
+                            {angle.message ? (
+                              <AngleMeta angle={angle} />
+                            ) : (
+                              <p className="text-xs mt-1" style={{ color: colors.mutedForeground }}>
+                                {angle.explanation}
+                              </p>
+                            )}
                             <div className="flex gap-2 mt-2">
                               <Button
                                 size="sm"
@@ -1775,7 +1694,10 @@ export default function ContentStudioPage() {
                                 }}
                               >
                                 {activeSession.generatingAngleId === angle.title ? (
-                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                  <>
+                                    <ArcSpinner className="w-3 h-3 animate-spin mr-1" />
+                                    Designing 3 posters… 1–2 min
+                                  </>
                                 ) : (
                                   <>
                                     <ImageIcon className="w-3 h-3 mr-1" />
@@ -1795,7 +1717,7 @@ export default function ContentStudioPage() {
                                 }}
                               >
                                 {activeSession.creatingVideoAngleId === angle.title ? (
-                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                  <ArcSpinner className="w-3 h-3 animate-spin" />
                                 ) : (
                                   <>
                                     <Video className="w-3 h-3 mr-1" />
@@ -1883,7 +1805,8 @@ export default function ContentStudioPage() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
                     {activeSession.campaignPlan.map((item, i) => {
                       const isVideo = /video/i.test(item.content_type);
-                      const isPosterOrCarousel = /poster|carousel/i.test(item.content_type);
+                      const isCarousel = /carousel/i.test(item.content_type);
+                      const isPosterOrCarousel = !isCarousel && /poster/i.test(item.content_type);
                       const isGenerating = activeSession.generatingCampaignItem === i;
                       return (
                         <div
@@ -1949,9 +1872,32 @@ export default function ContentStudioPage() {
                           </div>
 
                           {item.description && (
-                            <p className="text-xs mb-4" style={{ color: colors.mutedForeground }}>
+                            <p className="text-xs mb-2" style={{ color: colors.mutedForeground }}>
                               {item.description}
                             </p>
+                          )}
+                          {(item.angle || item.rationale) && (
+                            <p className="text-[11px] mb-4 leading-relaxed" style={{ color: colors.mutedForeground }}>
+                              {item.angle && <span className="font-medium" style={{ color: colors.foreground }}>{item.angle}. </span>}
+                              {item.rationale}
+                            </p>
+                          )}
+                          {!item.angle && !item.rationale && <div className="mb-2" />}
+
+                          {isCarousel && (
+                            <label className="flex items-center justify-between gap-2 mb-2 text-xs" style={{ color: colors.mutedForeground }}>
+                              Slides
+                              <select
+                                value={carouselSlides[i] ?? 5}
+                                onChange={(e) => setCarouselSlides((m) => ({ ...m, [i]: Number(e.target.value) }))}
+                                className="rounded-md px-2 py-1 text-xs"
+                                style={{ background: colors.muted, color: colors.foreground, border: `1px solid ${colors.border}` }}
+                              >
+                                {[3, 4, 5, 6, 7, 8].map((n) => (
+                                  <option key={n} value={n}>{n} slides · {n} credits</option>
+                                ))}
+                              </select>
+                            </label>
                           )}
 
                           <Button
@@ -1969,24 +1915,66 @@ export default function ContentStudioPage() {
                             }}
                           >
                             {isGenerating ? (
-                              <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />
+                              <ArcSpinner className="w-3.5 h-3.5 animate-spin mr-1.5" />
                             ) : isVideo ? (
                               <Play className="w-3.5 h-3.5 mr-1.5" />
                             ) : (
                               <ImageIcon className="w-3.5 h-3.5 mr-1.5" />
                             )}
                             {isGenerating
-                              ? "Generating..."
+                              ? isCarousel
+                                ? "Planning the slide story…"
+                                : "Generating..."
                               : isVideo
                                 ? "Generate Video Ad"
-                                : isPosterOrCarousel
-                                  ? "Generate Poster"
-                                  : "Generate Creative"}
+                                : isCarousel
+                                  ? activeSession.carousel?.itemIndex === i
+                                    ? "Plan carousel again"
+                                    : `Plan ${carouselSlides[i] ?? 5}-slide carousel`
+                                  : isPosterOrCarousel
+                                    ? "Generate Poster"
+                                    : "Generate Creative"}
                           </Button>
                         </div>
                       );
                     })}
                   </div>
+                </section>
+              )}
+
+              {activeSession.carousel && (
+                <section id="adstudio-carousel" className="rounded-xl p-6 border" style={{ background: colors.card, borderColor: colors.border }}>
+                  <h2 className="text-lg font-semibold" style={{ color: colors.foreground }}>
+                    Carousel · Day {activeSession.campaignPlan[activeSession.carousel.itemIndex]?.day ?? ""}
+                  </h2>
+                  <p className="text-xs mt-0.5 mb-4" style={{ color: colors.mutedForeground }}>
+                    &ldquo;{activeSession.campaignPlan[activeSession.carousel.itemIndex]?.hook}&rdquo; — one story across {activeSession.carousel.campaign.slideCount} slides. Review the story, then generate the slides.
+                  </p>
+                  <CarouselStudio
+                    campaign={activeSession.carousel.campaign}
+                    onCampaignChange={(c) =>
+                      updateSession(activeSession.id, (s) => ({ carousel: s.carousel ? { ...s.carousel, campaign: c } : s.carousel }))
+                    }
+                    onRegenerateStory={async () => {
+                      const idx = activeSession.carousel!.itemIndex;
+                      const item = activeSession.campaignPlan[idx];
+                      if (!item) return;
+                      const source = item.angle
+                        ? activeSession.adAngles.find((a) => a.angle?.toLowerCase() === item.angle?.toLowerCase())
+                        : undefined;
+                      await handlePlanCarousel(
+                        { ...(source || {}), title: item.hook, explanation: item.description, message: item.description || source?.message },
+                        idx,
+                        true
+                      );
+                    }}
+                    isPlanning={activeSession.planningCarouselItem != null}
+                    creditsAvailable={credits?.imageCredits.total ?? null}
+                    onCreditsChanged={() => void fetchSubscription({ force: true })}
+                    onError={(message) => showError(message)}
+                    onNotice={(message) => showAlert(message)}
+                    brand={viewerBrand}
+                  />
                 </section>
               )}
 
@@ -2018,7 +2006,8 @@ export default function ContentStudioPage() {
                           <img
                             src={img}
                             alt={`Creative ${i + 1}`}
-                            className="w-full h-full object-cover"
+                            className="w-full h-full object-cover cursor-zoom-in"
+                            onClick={() => setViewerIndex(i)}
                           />
                           <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                           <div className="absolute bottom-0 left-0 right-0 p-3 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -2128,36 +2117,25 @@ export default function ContentStudioPage() {
           )}
 
           {step === "scanning" && (
-            <div className="text-center py-24 space-y-8 max-w-lg mx-auto">
-              <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl" style={{ background: "hsl(213 100% 55% / 0.2)" }}>
-                <Loader2 className="w-10 h-10 animate-spin" style={{ color: colors.primary }} />
-              </div>
-              <div className="space-y-1">
-                <h2 className="text-xl font-semibold" style={{ color: colors.foreground }}>
-                  {SCAN_MESSAGES[scanMessageIndex].text}
-                </h2>
-                <p className="text-sm" style={{ color: colors.mutedForeground }}>
-                  {SCAN_MESSAGES[scanMessageIndex].detail}
-                </p>
-              </div>
-              <div className="space-y-2">
-                <Progress value={scanProgress} className="max-w-md mx-auto h-2.5 rounded-full" />
-                <p className="text-xs" style={{ color: colors.mutedForeground }}>
-                  Estimated time: 3–6 minutes
-                </p>
-              </div>
-              <div
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm animate-pulse"
-                style={{
-                  background: "hsl(213 100% 55% / 0.08)",
-                  color: colors.mutedForeground,
-                }}
-              >
-                <span className="text-lg" role="img" aria-hidden>☕</span>
-                <span>Grab a coffee and relax in the meantime</span>
+            <div className="mx-auto flex max-w-md flex-col items-center py-24">
+              <div className="w-full rounded-2xl p-6" style={{ background: colors.card, border: `1px solid ${colors.border}` }}>
+                <StepProgress
+                  step={scanMessageIndex}
+                  estimatedMs={240_000}
+                  hint="usually 3–6 minutes — you can grab a coffee"
+                  steps={SCAN_MESSAGES.map((m) => m.text)}
+                />
+                <p className="mt-3 text-xs" style={{ color: colors.mutedForeground }}>{SCAN_MESSAGES[scanMessageIndex].detail}</p>
               </div>
             </div>
           )}
+
+          {/* Beta note — quiet footnote */}
+          <p className="mt-12 pb-6 text-center text-xs" style={{ color: colors.mutedForeground }}>
+            Ad Studio is in beta. Something look off?{" "}
+            <Link href="/report" className="underline underline-offset-2" style={{ color: colors.foreground }}>Tell us</Link>
+            {" "}— it helps us improve it.
+          </p>
         </div>
         </div>
       </div>
@@ -2174,6 +2152,40 @@ export default function ContentStudioPage() {
         />
       )}
 
+      {/* Creative viewer: full size or Instagram / Facebook feed preview */}
+      {viewerIndex !== null && activeSession && activeSession.generatedPosters[viewerIndex] && (
+        <CreativeViewer
+          items={activeSession.generatedPosters.map((img, i) => ({
+            id: `${i}-${img.slice(-24)}`,
+            images: [img],
+            title: `Poster ${i + 1}`,
+            caption: selectedProduct?.short_benefit || selectedProduct?.description?.slice(0, 160),
+            headline: selectedProduct?.product_name,
+          }))}
+          index={viewerIndex}
+          onIndexChange={setViewerIndex}
+          onClose={() => setViewerIndex(null)}
+          brand={viewerBrand}
+          renderActions={(item, i) => (
+            <>
+              <Button size="sm" variant="secondary" onClick={() => handleDownload(item.images[0], `creative-${i + 1}.png`)}>
+                <Download className="w-3.5 h-3.5 mr-1" /> Download
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => {
+                  setViewerIndex(null);
+                  setEditingPosterIndex(i);
+                }}
+                style={{ background: colors.primary, color: colors.primaryForeground }}
+              >
+                <Pencil className="w-3.5 h-3.5 mr-1" /> Edit
+              </Button>
+            </>
+          )}
+        />
+      )}
+
       {/* Poster Edit Modal */}
       {editingPosterIndex !== null && activeSession?.generatedPosters[editingPosterIndex] && (
         <PosterEditModal
@@ -2187,6 +2199,7 @@ export default function ContentStudioPage() {
               editPrompt
             )
           }
+          onAreaEdit={(box, instruction) => handleAreaEdit(editingPosterIndex, box, instruction)}
         />
       )}
 

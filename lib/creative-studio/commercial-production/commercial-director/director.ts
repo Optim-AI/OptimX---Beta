@@ -14,6 +14,23 @@ import { assembleBlueprintFromDraft, type DirectorDraft } from "./assemble";
 import { createDefaultStructuredGenerator } from "./gemini-structured";
 import type { StructuredGenerator } from "./llm";
 import { StructuredGenerationError } from "./llm";
+import { loadImageInline } from "../product-understanding/analyze-product";
+
+/** Product photos the director looks at while planning (one per product; cost / latency cap). */
+const MAX_DIRECTOR_IMAGES = 4;
+
+async function loadProductImages(
+  brief: CampaignBrief
+): Promise<Array<{ mimeType: string; data: string }>> {
+  const loaded = await Promise.all(
+    [brief.product, ...(brief.additionalProducts || [])]
+      .map((p) => p.images?.[0])
+      .filter((ref): ref is NonNullable<typeof ref> => Boolean(ref))
+      .slice(0, MAX_DIRECTOR_IMAGES)
+      .map((ref) => loadImageInline(ref).catch(() => null))
+  );
+  return loaded.filter((img): img is { mimeType: string; data: string } => img != null);
+}
 import {
   buildDirectorSystemPrompt,
   buildDirectorUserPrompt,
@@ -69,11 +86,14 @@ export class DefaultCommercialDirector implements CommercialDirector {
     let draft: DirectorDraft;
     let model = this.generator.modelId;
     let repairAttempted = false;
+    // Seeing the real product grounds concepts, interactions and art direction.
+    const images = await loadProductImages(brief);
 
     try {
       const first = await this.generator.generateJson<DirectorDraft>({
         systemPrompt: buildDirectorSystemPrompt(),
         userPrompt: buildDirectorUserPrompt(brief),
+        images,
         schemaName: "commercial-blueprint",
         temperature: 0.9,
         maxOutputTokens: 16384,

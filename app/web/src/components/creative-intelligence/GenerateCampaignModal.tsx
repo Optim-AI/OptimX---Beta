@@ -3,7 +3,8 @@
 
 import React, { useState } from "react";
 import colors from "@/lib/ui/colors";
-import { X, Loader2, Check, AlertCircle } from "lucide-react";
+import { X, Check, AlertCircle } from "lucide-react";
+import { ArcSpinner } from "@/app/web/src/components/ui/loaders";
 import { Button } from "@/app/web/src/components/ui/button";
 
 export type HookData = {
@@ -128,7 +129,7 @@ export default function GenerateCampaignModal({
             >
               {isGenerating ? (
                 <>
-                  <Loader2 size={18} className="mr-2 animate-spin" />
+                  <ArcSpinner size={18} className="mr-2 animate-spin" />
                   Generating…
                 </>
               ) : generated ? (

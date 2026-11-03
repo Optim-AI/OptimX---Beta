@@ -164,6 +164,9 @@ async function submitAndAwait(
       estimatedCost,
     });
     markShotVideoInFlight(processingPlaceholder);
+    // Set once the provider accepts a job. After that we never resubmit:
+    // the job may still be running (and billing) on the provider side.
+    let submittedProviderJobId: string | undefined;
 
     try {
       log("video.submit", {
@@ -195,6 +198,7 @@ async function submitAndAwait(
         referenceImages: attemptRequest.referenceImages,
       });
 
+      submittedProviderJobId = accepted.providerJobId;
       const processing = baseResultFromRequest(attemptRequest, {
         status: "processing",
         jobId: attemptRequest.jobId,
@@ -347,9 +351,10 @@ async function submitAndAwait(
         code: mapped.code,
         retryable: isRetryableProviderError(mapped),
         message: mapped.message,
+        providerJobId: submittedProviderJobId,
       });
 
-      if (!isRetryableProviderError(mapped) || attempt >= maxRetries) {
+      if (submittedProviderJobId || !isRetryableProviderError(mapped) || attempt >= maxRetries) {
         break;
       }
     }

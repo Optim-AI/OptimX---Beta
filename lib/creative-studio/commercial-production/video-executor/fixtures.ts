@@ -28,6 +28,8 @@ export class MockVideoProvider implements VideoProvider {
   failNextGenerate = false;
   failNextGeneratePermanent = false;
   timeoutOnce = false;
+  /** getJob throws a transient network error this many times before answering. */
+  transientPollErrors = 0;
   jobDelayPolls = 1;
   private pollCounts = new Map<string, number>();
   private jobs = new Map<string, ProviderJobStatus>();
@@ -101,6 +103,10 @@ export class MockVideoProvider implements VideoProvider {
 
   async getJob(providerJobId: string): Promise<ProviderJobStatus> {
     this.getJobCalls.push(providerJobId);
+    if (this.transientPollErrors > 0) {
+      this.transientPollErrors--;
+      throw new Error("fetch failed");
+    }
     if (this.timeoutOnce) {
       // Never succeed — let waitForVideoJob time out when maxWaitMs is tiny
       return { providerJobId, state: "running" };

@@ -224,6 +224,8 @@ export type SafeFetchOptions = {
   maxBytes?: number;
   maxRedirects?: number;
   accept?: RegExp;
+  /** Some storefronts (Shopify) rate-limit agents containing "bot"; research passes a browser agent. */
+  userAgent?: string;
 };
 
 const DEFAULT_ACCEPT = /^(text\/html|application\/xhtml\+xml)/i;
@@ -250,7 +252,7 @@ function requestOnce(
         method: 'GET',
         lookup: safeLookup,
         headers: {
-          'User-Agent': 'SkalXAuditBot/1.0 (+https://skalx.ai)',
+          'User-Agent': opts.userAgent,
           Accept: 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.1',
           'Accept-Encoding': 'identity',
         },
@@ -346,6 +348,7 @@ export async function safeFetchText(rawUrl: string, options: SafeFetchOptions = 
     maxBytes: options.maxBytes ?? 2 * 1024 * 1024,
     maxRedirects: options.maxRedirects ?? 4,
     accept: options.accept ?? DEFAULT_ACCEPT,
+    userAgent: options.userAgent ?? 'SkalXAuditBot/1.0 (+https://skalx.ai)',
   };
   const deadline = Date.now() + opts.timeoutMs;
   let current = rawUrl;

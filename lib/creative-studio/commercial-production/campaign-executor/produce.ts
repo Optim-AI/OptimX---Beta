@@ -25,6 +25,15 @@ import {
   VIDEO_EXECUTOR_PROVIDER,
 } from "../video-executor/types";
 import { usesGeminiTts } from "../audio/voiceover-languages";
+import { attachEndCardIfNeeded } from "../finishing/attach-end-card";
+import {
+  analyzeProductPhysicalProfile,
+  productProfileToHandlingText,
+  type ProductAnalyzer,
+} from "../product-understanding/analyze-product";
+import type { CampaignBrief, CampaignProductInput } from "../campaign/types";
+import type { AvailableCampaignAssets } from "../reference-engine/types";
+import { getAdTypePlaybook } from "../campaign/ad-type";
 import {
   attachGeminiVoiceoverIfNeeded,
   VoiceoverPipelineError,
@@ -33,6 +42,81 @@ import {
 function defaultLog(event: string, payload: Record<string, unknown>): void {
   console.log(`[campaign-executor] ${event}`, payload);
 }
+
+/** Primary + additional products, in reference-image order. */
+export function allBriefProducts(brief: CampaignBrief): CampaignProductInput[] {
+  return [brief.product, ...(brief.additionalProducts || [])];
+}
+
+/**
+ * Analyse each product photo (in parallel) and attach handling facts.
+ * Per-product failures are logged and skipped — generation continues without them.
+ */
+async function withProductHandling(
+  brief: CampaignBrief,
+  analyzer: ProductAnalyzer,
+  log: (event: string, payload: Record<string, unknown>) => void
+): Promise<CampaignBrief> {
+  const products = await Promise.all(
+    allBriefProducts(brief).map(async (product) => {
+      if (product.handling || !product.images?.length) return product;
+      try {
+        const profile = await analyzer({
+          productName: product.name,
+          category: product.category,
+          description: product.description,
+          images: product.images,
+        });
+        if (!profile) return product;
+        log("produce.product_profile", {
+          campaignId: brief.campaignId,
+          product: product.name,
+          closureType: profile.closureType,
+          containerType: profile.containerType,
+        });
+        return { ...product, handling: productProfileToHandlingText(profile) };
+      } catch (err) {
+        log("produce.product_profile_failed", {
+          campaignId: brief.campaignId,
+          product: product.name,
+          message: err instanceof Error ? err.message : String(err),
+        });
+        return product;
+      }
+    })
+  );
+  const [primary, ...additional] = products;
+  return {
+    ...brief,
+    product: primary,
+    additionalProducts: brief.additionalProducts ? additional : undefined,
+  };
+}
+
+/** Handling facts for every product, labelled when there is more than one. */
+export function combinedProductHandling(brief: CampaignBrief): string | undefined {
+  const products = allBriefProducts(brief).filter((p) => p.handling);
+  if (products.length <= 1) return products[0]?.handling;
+  return products.map((p) => `${p.name} — ${p.handling}`).join(" | ");
+}
+
+/** Product photos for every product in the ad, deduplicated by URL, primary first. */
+export function mergeProductAssets(
+  brief: CampaignBrief,
+  available: AvailableCampaignAssets | undefined
+): AvailableCampaignAssets {
+  const seen = new Set<string>();
+  const productImages = [
+    ...(available?.productImages || []),
+    ...(brief.additionalProducts || []).flatMap((p) => p.images.slice(0, 1)),
+  ].filter((img) => {
+    if (!img.url || seen.has(img.url)) return false;
+    seen.add(img.url);
+    return true;
+  });
+  return { ...available, productImages };
+}
+
 
 /**
  * Full Phase 7 production:
@@ -45,7 +129,7 @@ export async function produceFinalCommercial(
   const log = options.log ?? defaultLog;
   const generationVersion = input.generationVersion || "v1";
   const generationMode = input.generationMode || "native_continuous";
-  const brief = input.brief;
+  let brief = input.brief;
 
   if (!brief?.campaignId) {
     throw new CampaignExecutorError("INVALID_SPEC", "brief.campaignId is required");
@@ -77,6 +161,13 @@ export async function produceFinalCommercial(
   }
 
   // Native continuous path
+  // Read how the real packaging is handled before anyone plans interactions with it.
+  const analyzer =
+    options.productAnalyzer === undefined ? analyzeProductPhysicalProfile : options.productAnalyzer;
+  if (analyzer) {
+    brief = await withProductHandling(brief, analyzer, log);
+  }
+
   let blueprint = input.blueprint;
   let shotPlan = input.shotPlan;
 
@@ -108,13 +199,25 @@ export async function produceFinalCommercial(
 
   const suppressSpokenVoiceover = usesGeminiTts(brief.voiceover?.language);
 
+  const availableAssets = mergeProductAssets(brief, input.availableAssets);
+  const hasProductPhotos = Boolean(availableAssets.productImages?.length);
   const spec = compileCampaignGeneration({
     blueprint,
     shotPlan,
-    availableAssets: input.availableAssets,
+    availableAssets,
     generationVersion,
     generationMode: "native_continuous",
     suppressSpokenVoiceover,
+    productHandling: combinedProductHandling(brief),
+    creativeStyle: brief.creativeStyle,
+    endCard: Boolean(brief.endCard?.enabled),
+    adType: brief.adType,
+    productNames: allBriefProducts(brief).map((p) => p.name),
+    occasion: brief.occasion,
+    shopDetails: brief.shopDetails,
+    adDirection: brief.adDirection,
+    // Brand / shop / festival ads may have no product photo at all.
+    requireProductReference: hasProductPhotos || !getAdTypePlaybook(brief.adType).productPhotoOptional,
   });
 
   log("produce.compiled", {
@@ -126,13 +229,15 @@ export async function produceFinalCommercial(
     voiceoverLanguage: brief.voiceover?.language || "english",
   });
 
-  // Gemini TTS path must download the Seedance MP4 so we can remux audio.
+  // Default: download + store in our bucket. Provider output URLs are signed and
+  // expire, so they must never be the URL a customer keeps.
+  // Gemini TTS path must always download the Seedance MP4 so we can remux audio.
   const skipDownload = suppressSpokenVoiceover
     ? false
-    : (input.skipDownload ?? true);
+    : (input.skipDownload ?? false);
   const skipStorage = suppressSpokenVoiceover
     ? false
-    : (input.skipStorage ?? true);
+    : (input.skipStorage ?? false);
 
   const native = await generateCampaignVideo(
     {
@@ -149,7 +254,7 @@ export async function produceFinalCommercial(
     throw new CampaignExecutorError(
       "NATIVE_GENERATION_FAILED",
       native.error?.message || "Native campaign generation failed",
-      { error: native.error },
+      { error: native.error, providerJobId: native.providerJobId || undefined },
       true
     );
   }
@@ -201,6 +306,20 @@ export async function produceFinalCommercial(
         { phase: "VOICEOVER_PIPELINE", error: String(ttsErr) },
         false
       );
+    }
+  }
+
+  // Finishing: brand end card (offer / CTA / contact / logo) drawn in post.
+  // Polish only — if it fails, the commercial ships without it.
+  if (brief.endCard?.enabled) {
+    try {
+      const withCard = await (options.endCardAttacher ?? attachEndCardIfNeeded)(brief, final, { log });
+      if (withCard) final = withCard;
+    } catch (err) {
+      log("produce.end_card_failed", {
+        campaignId: final.campaignId,
+        message: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 

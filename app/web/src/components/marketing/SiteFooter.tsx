@@ -32,13 +32,13 @@ const FOOTER_LINKS: Record<string, { name: string; href: string }[]> = {
 
 export default function SiteFooter() {
   return (
-    <footer className="border-t border-line bg-paper-deep text-ink">
-      <div className="mx-auto max-w-6xl px-4 py-14 sm:px-6">
+    <footer className="sx-sheet relative overflow-hidden bg-paper-deep text-ink">
+      <div className="mx-auto max-w-6xl px-4 pb-8 pt-16 sm:px-6 md:pt-20">
         <div className="grid grid-cols-2 gap-10 md:grid-cols-12">
           <div className="col-span-2 md:col-span-4">
             <Image src="/images/SkalX_Logo.png" alt="SkalX" width={99} height={28} className="h-7 w-auto" />
             <p className="mt-4 max-w-xs text-ink-soft">Market research to ready-to-post creatives, for D2C brands. Built in Chennai.</p>
-            <a href={`mailto:${SITE_SUPPORT_EMAIL}`} className="mt-3 inline-block text-ink underline underline-offset-4">
+            <a href={`mailto:${SITE_SUPPORT_EMAIL}`} className="sx-link mt-3 inline-block text-ink">
               {SITE_SUPPORT_EMAIL}
             </a>
           </div>
@@ -48,7 +48,7 @@ export default function SiteFooter() {
               <ul className="space-y-2.5">
                 {links.map((link) => (
                   <li key={`${group}-${link.name}`}>
-                    <Link href={link.href} className="text-ink-soft hover:text-ink hover:underline underline-offset-4">
+                    <Link href={link.href} className="sx-link sx-link-grow text-ink-soft transition-colors hover:text-ink">
                       {link.name}
                     </Link>
                   </li>
@@ -64,12 +64,19 @@ export default function SiteFooter() {
             target="_blank"
             rel="noopener noreferrer"
             aria-label="SkalX on Facebook"
-            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-line text-ink hover:bg-surface"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-ink/20 text-ink transition-colors hover:border-ink hover:bg-ink hover:text-paper"
           >
             <Facebook className="h-4 w-4" aria-hidden />
           </a>
         </div>
       </div>
+      {/* Oversized wordmark, cropped by the page edge. Decorative. */}
+      <p
+        aria-hidden
+        className="pointer-events-none -mb-[0.22em] select-none text-center font-display text-[clamp(6rem,27vw,23rem)] font-extrabold leading-none tracking-[-0.06em] text-ink/[0.06]"
+      >
+        SkalX
+      </p>
     </footer>
   );
 }

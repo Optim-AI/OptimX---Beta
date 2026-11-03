@@ -2,6 +2,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { getUserIdFromRequest } from '@/auth/request';
 import { SubscriptionService, isRazorpayConfigured } from '@/lib/razorpay';
+import { PAYMENT_PROCESSING_ERROR } from '@/lib/razorpay/subscription.service';
 import { isCanonicalSubscriptionPlanId } from '@/lib/billing/canonical-plans';
 
 function readBody(req: NextApiRequest): Record<string, unknown> {
@@ -74,6 +75,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
 
     if (!result.success) {
+      if (result.error === PAYMENT_PROCESSING_ERROR) {
+        return res.status(409).json({ error: result.error, code: 'PAYMENT_PROCESSING' });
+      }
       return res.status(400).json({
         error: result.error || 'Failed to create subscription',
       });

@@ -3,10 +3,16 @@
 
 import { db } from '../client';
 import { generationJobLocks } from '@/database/schema';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { isUniqueViolation } from '@/lib/db/unique-violation';
 
 export type GenerationJobLock = typeof generationJobLocks.$inferSelect;
+
+/**
+ * An in_progress lock older than this belongs to a request that can no longer be running
+ * (commercial generate is capped at 800s), e.g. the function was killed mid-run.
+ */
+export const STALE_GENERATION_LOCK_MINUTES = 15;
 
 export class GenerationLocksDAO {
   static async getByKey(lockKey: string): Promise<GenerationJobLock | null> {
@@ -20,18 +26,18 @@ export class GenerationLocksDAO {
 
   /**
    * Claim an exclusive in-progress lock for a logical generation request.
-   * - force=true: allow reclaim after completed/failed (QC regenerate / retry)
-   * - force=false: reject if in_progress or completed
+   * - completed: never reclaimed — it was already billed; the caller replays the stored result
+   * - failed: reclaimed (its credits were released)
+   * - in_progress older than STALE_GENERATION_LOCK_MINUTES is reclaimed (dead request)
    */
   static async tryClaim(params: {
     lockKey: string;
     userId: string;
-    force?: boolean;
   }): Promise<
     | { claimed: true; lock: GenerationJobLock }
     | { claimed: false; reason: 'in_progress' | 'completed' | 'owned_by_other'; lock: GenerationJobLock }
   > {
-    const { lockKey, userId, force = false } = params;
+    const { lockKey, userId } = params;
     const existing = await this.getByKey(lockKey);
 
     if (existing) {
@@ -39,12 +45,35 @@ export class GenerationLocksDAO {
         return { claimed: false, reason: 'owned_by_other', lock: existing };
       }
       if (existing.status === 'in_progress') {
+        const [reclaimed] = await db
+          .update(generationJobLocks)
+          .set({
+            status: 'in_progress',
+            reservationId: null,
+            resultSummary: { reclaimedStaleLock: true, previous: existing.resultSummary ?? null },
+            updatedAt: new Date().toISOString(),
+          })
+          .where(
+            and(
+              eq(generationJobLocks.lockKey, lockKey),
+              eq(generationJobLocks.status, 'in_progress'),
+              sql`${generationJobLocks.updatedAt} < now() - make_interval(mins => ${STALE_GENERATION_LOCK_MINUTES})`
+            )
+          )
+          .returning();
+        if (reclaimed) {
+          console.warn('[GenerationLocksDAO] reclaimed stale in_progress lock', {
+            lockKey,
+            staleReservationId: existing.reservationId,
+          });
+          return { claimed: true, lock: reclaimed };
+        }
         return { claimed: false, reason: 'in_progress', lock: existing };
       }
-      if (existing.status === 'completed' && !force) {
+      if (existing.status === 'completed') {
         return { claimed: false, reason: 'completed', lock: existing };
       }
-      // Reclaim failed or force-completed
+      // Reclaim failed
       const [updated] = await db
         .update(generationJobLocks)
         .set({
@@ -56,7 +85,7 @@ export class GenerationLocksDAO {
         .where(
           and(
             eq(generationJobLocks.lockKey, lockKey),
-            inArray(generationJobLocks.status, force ? ['completed', 'failed'] : ['failed'])
+            eq(generationJobLocks.status, 'failed')
           )
         )
         .returning();
@@ -97,6 +126,44 @@ export class GenerationLocksDAO {
       }
       throw error;
     }
+  }
+
+  /** Lock-key prefix shared by every fix of one original video. */
+  static fixKeyPrefix(rootKey: string): string {
+    return `fix:${rootKey}:`;
+  }
+
+  /** Free fixes that completed for this original video (failed fixes never count). */
+  static async countFreeFixes(userId: string, rootKey: string): Promise<number> {
+    const rows = await db
+      .select({ n: sql<number>`count(*)` })
+      .from(generationJobLocks)
+      .where(
+        and(
+          eq(generationJobLocks.userId, userId),
+          eq(generationJobLocks.status, 'completed'),
+          sql`starts_with(${generationJobLocks.lockKey}, ${this.fixKeyPrefix(rootKey)})`,
+          sql`${generationJobLocks.resultSummary}->>'free' = 'true'`
+        )
+      );
+    return Number(rows[0]?.n ?? 0);
+  }
+
+  /** A fix of this video still running (not left behind by a dead request). */
+  static async hasActiveFix(userId: string, rootKey: string): Promise<boolean> {
+    const rows = await db
+      .select({ lockKey: generationJobLocks.lockKey })
+      .from(generationJobLocks)
+      .where(
+        and(
+          eq(generationJobLocks.userId, userId),
+          eq(generationJobLocks.status, 'in_progress'),
+          sql`starts_with(${generationJobLocks.lockKey}, ${this.fixKeyPrefix(rootKey)})`,
+          sql`${generationJobLocks.updatedAt} >= now() - make_interval(mins => ${STALE_GENERATION_LOCK_MINUTES})`
+        )
+      )
+      .limit(1);
+    return rows.length > 0;
   }
 
   static async attachReservation(

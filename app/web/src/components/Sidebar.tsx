@@ -4,10 +4,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import {
-  LayoutGrid,
   Orbit,
   Image as ImageIcon,
-  Waypoints,
   ChartColumn,
   Folder,
   Library,
@@ -22,6 +20,8 @@ import {
   Trash2,
   ChevronsUpDown,
   Palette,
+  ScanSearch,
+  Camera,
   type LucideIcon,
 } from 'lucide-react';
 import { supabase } from '@/auth/supabase/client';
@@ -43,19 +43,21 @@ type NavSection = {
 };
 
 const NAV_SECTIONS: NavSection[] = [
-  {
-    id: 'overview',
-    label: 'Overview',
-    items: [
-      { href: '/dashboard', label: 'Dashboard', Icon: LayoutGrid, featureKey: 'dashboard' },
-    ],
-  },
+  // Dashboard is hidden until the overview screen is ready to ship.
+  // {
+  //   id: 'overview',
+  //   label: 'Overview',
+  //   items: [
+  //     { href: '/dashboard', label: 'Dashboard', Icon: LayoutGrid, featureKey: 'dashboard' },
+  //   ],
+  // },
   {
     id: 'create',
     label: 'Create',
     items: [
-      { href: '/brand-studio', label: 'Brand Studio', Icon: Orbit },
       { href: '/brand-kit', label: 'Brand Kit', Icon: Palette },
+      { href: '/photo-studio', label: 'Photoshoot Studio', Icon: Camera, betaBadge: true },
+      { href: '/brand-studio', label: 'Brand Studio', Icon: Orbit },
       { href: '/content-studio', label: 'Ad Studio', Icon: ImageIcon, betaBadge: true },
       { href: '/create-campaign', label: 'Create Campaign', Icon: PlusCircle, featureKey: 'create_campaigns' },
     ],
@@ -64,7 +66,7 @@ const NAV_SECTIONS: NavSection[] = [
     id: 'intelligence',
     label: 'Intelligence',
     items: [
-      { href: '/creative-intelligence', label: 'Creative Intelligence', Icon: Waypoints, betaBadge: true },
+      { href: '/brand-research', label: 'Brand Research', Icon: ScanSearch },
       { href: '/analytics', label: 'Analytics', Icon: ChartColumn, featureKey: 'basic_analytics' },
     ],
   },
@@ -145,6 +147,21 @@ const Sidebar: React.FC<SidebarProps> = ({
   const [accountOpen, setAccountOpen] = useState(false);
   const [accountInitial, setAccountInitial] = useState('');
   const accountRef = useRef<HTMLDivElement>(null);
+  const signingOut = useRef(false);
+
+  // Every app page has the sidebar, so it guards the session: signed out or expired →
+  // sign in, then come back to this page (instead of half-loaded pages and stuck loaders).
+  const toSignIn = React.useCallback(() => {
+    const next = signingOut.current ? '' : `?next=${encodeURIComponent(router.asPath)}`;
+    void router.replace(`/auth/signin${next}`);
+  }, [router]);
+
+  useEffect(() => {
+    const { data } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_OUT') toSignIn();
+    });
+    return () => data.subscription.unsubscribe();
+  }, [toSignIn]);
 
   useEffect(() => {
     authFetch('/api/features/access')
@@ -160,9 +177,14 @@ const Sidebar: React.FC<SidebarProps> = ({
     let cancelled = false;
     supabase.auth
       .getUser()
-      .then(({ data }) => {
+      .then(({ data, error }) => {
         if (cancelled) return;
         const user = data.user;
+        // No user and not just offline → the session is gone.
+        if (!user && error?.name !== 'AuthRetryableFetchError') {
+          toSignIn();
+          return;
+        }
         const meta = (user?.user_metadata ?? {}) as { full_name?: string; fullName?: string };
         const source = meta.full_name || meta.fullName || user?.email || 'A';
         const letter = source.trim().charAt(0).toUpperCase();
@@ -172,7 +194,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [toSignIn]);
 
   useEffect(() => {
     setAccountOpen(false);
@@ -214,6 +236,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   async function handleSignOut() {
     setAccountOpen(false);
+    signingOut.current = true;
     try {
       await supabase.auth.signOut();
     } catch (error) {
@@ -288,7 +311,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   return (
     <aside
-      className={`flex h-screen shrink-0 flex-col transition-[width] duration-200 ease-out ${
+      className={`sticky top-0 flex h-screen shrink-0 flex-col self-start transition-[width] duration-200 ease-out ${
         collapsed ? 'w-[72px]' : 'w-[260px]'
       }`}
       style={{
@@ -306,7 +329,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               <img src="/images/SkalX_Logo.png" alt="SkalX" className="h-5 w-auto object-contain" />
             </button>
           ) : (
-            <Link href="/dashboard" className="rounded-md" aria-label="SkalX">
+            <Link href="/workspace" className="rounded-md" aria-label="SkalX home">
               <img src="/images/SkalX_Logo.png" alt="SkalX" className="h-5 w-auto object-contain" />
             </Link>
           ))}
