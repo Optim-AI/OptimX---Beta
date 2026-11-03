@@ -11,6 +11,8 @@ import {
   isValidVideoPurchaseQuantity,
   VIDEO_CREDITS_BY_DURATION,
   VIDEO_CREDIT_MIN_PURCHASE,
+  VIDEO_CREDIT_BLOCK_PRICE_INR,
+  VIDEO_CREDIT_PRICE_PAISE,
   SECONDS_TO_CREDITS_RATE,
 } from './video-credits';
 import { calculateTotalsInr, clampQuantity, BUY_CREDITS_PRICING } from './pricing';
@@ -64,19 +66,37 @@ assert(!isValidVideoPurchaseQuantity(601), '601 invalid');
 assert(!isValidVideoPurchaseQuantity(750), '750 invalid (not multiple of 300)');
 assertEqual(VIDEO_CREDIT_MIN_PURCHASE, 600, 'min purchase 600');
 
-// Subtotal math: 600 credits = ₹4194
-assertEqual(videoPurchaseSubtotalInr(600), 4194, '600 → ₹4194');
-assertEqual(videoPurchaseSubtotalInr(300), 2097, '300 → ₹2097');
-assertEqual(videoPurchaseSubtotalInr(1200), 8388, '1200 → ₹8388');
-assertEqual(videoPurchaseSubtotalInr(100), 699, '100 → ₹699');
+// Subtotal math (₹199 per 100 Video Credits, before GST)
+assertEqual(VIDEO_CREDIT_BLOCK_PRICE_INR, 199, 'block price ₹199');
+assertEqual(VIDEO_CREDIT_PRICE_PAISE, 199, '199 paise per credit');
+assertEqual(videoPurchaseSubtotalInr(100), 199, '100 → ₹199');
+assertEqual(videoPurchaseSubtotalInr(300), 597, '300 → ₹597');
+assertEqual(videoPurchaseSubtotalInr(600), 1194, '600 → ₹1194');
+assertEqual(videoPurchaseSubtotalInr(900), 1791, '900 → ₹1791');
+assertEqual(videoPurchaseSubtotalInr(1200), 2388, '1200 → ₹2388');
+assertEqual(videoPurchaseSubtotalInr(2400), 4776, '2400 → ₹4776');
 
-// GST totals for 600 credits
-const totals600 = calculateTotalsInr({ creditType: 'video', credits: 600 });
-assertEqual(totals600.subtotalInr, 4194, 'subtotal 4194');
-assertEqual(totals600.gstAmountInr, Math.round(4194 * 0.18), 'gst rounded');
-assertEqual(totals600.totalInr, 4194 + Math.round(4194 * 0.18), 'total = sub+gst');
-// ≈ 4194 + 755 = 4949
-assertEqual(totals600.totalInr, 4949, '600 credits ≈ ₹4949 incl GST');
+// GST totals (18%, rounded to the rupee — unchanged rule)
+for (const [credits, subtotal, gst, total] of [
+  [600, 1194, 215, 1409],
+  [900, 1791, 322, 2113],
+  [1200, 2388, 430, 2818],
+  [2400, 4776, 860, 5636],
+] as const) {
+  const t = calculateTotalsInr({ creditType: 'video', credits });
+  assertEqual(t.subtotalInr, subtotal, `${credits} subtotal`);
+  assertEqual(t.gstAmountInr, gst, `${credits} gst`);
+  assertEqual(t.totalInr, total, `${credits} total incl GST`);
+  // A saved admin override of the same ₹199 must give the same server-side total
+  const viaOverride = calculateTotalsInr({ creditType: 'video', credits, overrides: { videoBlockPriceInr: 199 } });
+  assertEqual(viaOverride.totalInr, total, `${credits} override total`);
+}
+// A different saved admin price still wins over the default (stale ₹699 would charge the old rate)
+assertEqual(
+  calculateTotalsInr({ creditType: 'video', credits: 600, overrides: { videoBlockPriceInr: 699 } }).subtotalInr,
+  4194,
+  'stale ₹699 override still applies — DB setting must be updated'
+);
 
 const totals10img = calculateTotalsInr({ creditType: 'image', credits: 10 });
 assertEqual(totals10img.subtotalInr, 100, '10 images = ₹100');

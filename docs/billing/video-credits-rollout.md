@@ -5,7 +5,7 @@
 | Unit | Rule |
 |------|------|
 | Image credit | 1 successful image = 1 credit · ₹10 · min buy 10 |
-| Video credit | 100 credits = 5 sec · ₹699 / 100 · min buy 600 · then +300 (600, 900, 1200, …) |
+| Video credit | 100 credits = 5 sec · ₹199 / 100 (was ₹699 until Nov 2026) · min buy 600 · then +300 (600, 900, 1200, …) |
 | 15s generate | 300 Video Credits |
 | 30s generate | 600 Video Credits |
 
@@ -44,5 +44,6 @@ Existing video vouchers whose `credits` were issued as **seconds** must be multi
 2. Staging: purchase 600 credits, generate 15s/30s, fail a generation and confirm release
 3. Freeze video purchases briefly
 4. Run balance migration script
-5. Update admin `credit_pricing` to `{ imageCreditPriceInr: 10, videoCreditBlockPriceInr: 699 }`
+5. Update admin `credit_pricing` to `{ imageCreditPriceInr: 10, videoCreditBlockPriceInr: 199 }`
+   (migration `20261103130000_video_credit_price_199.sql` / Live `09_video_credit_price_199.sql` does this for any saved row)
 6. Unfreeze purchases

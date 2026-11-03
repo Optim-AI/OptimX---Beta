@@ -220,6 +220,14 @@ WHERE p.is_active IS DISTINCT FROM true
    OR p.razorpay_plan_id LIKE '%<%'
    OR p.razorpay_plan_id LIKE 'plan_TfW%';
 
+-- Video add-on price (09_video_credit_price_199.sql). No row = code default (₹199) applies.
+SELECT
+  'video_credit_block_price' AS check_name,
+  value->'videoCreditBlockPriceInr' AS saved_video_block_price_inr,
+  (NOT (value ? 'videoCreditBlockPriceInr') OR value->'videoCreditBlockPriceInr' = '199'::jsonb) AS ok
+FROM public.app_settings
+WHERE key = 'credit_pricing';
+
 SELECT
   'obsolete_still_active' AS check_name,
   id,

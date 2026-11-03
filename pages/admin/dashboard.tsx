@@ -23,6 +23,7 @@ import {
   Ticket,
 } from 'lucide-react';
 import colors from '@/lib/ui/colors';
+import { VIDEO_CREDIT_BLOCK_PRICE_INR } from '@/lib/billing/video-credits';
 
 interface Plan {
   id: string;
@@ -155,7 +156,7 @@ export default function AdminDashboard() {
   const [imageRetentionDays, setImageRetentionDays] = useState<number>(7);
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
-  const [creditPricing, setCreditPricing] = useState({ imageCreditPriceInr: 10, videoCreditBlockPriceInr: 699 });
+  const [creditPricing, setCreditPricing] = useState({ imageCreditPriceInr: 10, videoCreditBlockPriceInr: VIDEO_CREDIT_BLOCK_PRICE_INR as number });
   const [savingCreditPricing, setSavingCreditPricing] = useState(false);
 
   // Vouchers state
@@ -402,7 +403,7 @@ export default function AdminDashboard() {
       if (result.success) {
         setCreditPricing({
           imageCreditPriceInr: result.imageCreditPriceInr,
-          videoCreditBlockPriceInr: result.videoCreditBlockPriceInr ?? 699,
+          videoCreditBlockPriceInr: result.videoCreditBlockPriceInr ?? VIDEO_CREDIT_BLOCK_PRICE_INR,
         });
       }
     } catch (err: any) {
@@ -1444,7 +1445,7 @@ export default function AdminDashboard() {
                   </button>
                 </div>
                 <span className="help-text">
-                  Default: ₹10 per image credit, ₹699 per 100 Video Credits (15s = 300 credits, 30s = 600 credits).
+                  Default: ₹10 per image credit, ₹{VIDEO_CREDIT_BLOCK_PRICE_INR} per 100 Video Credits (15s = 300 credits, 30s = 600 credits).
                 </span>
               </div>
             </div>

@@ -5,7 +5,7 @@
 // - Amount calculations MUST be re-checked server-side (never trust client inputs).
 // - `gstRate` is a decimal (18% => 0.18).
 // - Video wallet unit is SkalX Video Credits (NOT seconds, NOT provider tokens).
-// - 100 Video Credits = ₹699 before GST; 100 credits = 5 seconds capacity.
+// - 100 Video Credits = ₹199 before GST; 100 credits = 5 seconds capacity.
 
 import {
   VIDEO_CREDIT_BLOCK_PRICE_INR,
@@ -20,7 +20,7 @@ export const BUY_CREDITS_PRICING = {
   imageCreditPriceInr: 10, // ₹10 per image credit
   /** Legacy key kept for admin/settings migration reads only — prefer block pricing. */
   videoSecondPriceInr: 30,
-  /** ₹699 per 100 Video Credits (customer-facing block). */
+  /** ₹199 per 100 Video Credits (customer-facing block). */
   videoCreditBlockSize: VIDEO_CREDIT_BLOCK_SIZE,
   videoCreditBlockPriceInr: VIDEO_CREDIT_BLOCK_PRICE_INR,
   minQuantity: 10,
@@ -78,7 +78,7 @@ export function clampQuantity(creditType: 'image' | 'video', value: number): num
  * Calculates subtotal + GST + total.
  * We round GST to the nearest rupee because our `payments.amount` is stored as an integer INR value in rupee.
  *
- * For video: subtotal is computed from block pricing (₹699 / 100 credits) via integer paise math.
+ * For video: subtotal is computed from block pricing (₹199 / 100 credits) via integer paise math.
  * Optional `overrides.unitPriceInr` for image only, or `overrides.videoBlockPriceInr` for video.
  */
 export function calculateTotalsInr(params: {

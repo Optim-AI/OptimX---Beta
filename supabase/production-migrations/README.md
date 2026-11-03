@@ -36,7 +36,11 @@ The catalog SQL raises an exception if any placeholder remains.
    Growth 250 / 4,200, Pro 600 / 7,800). Prices and Razorpay plan IDs unchanged. Existing
    subscribers get the new amounts from their next successful renewal; current balances are
    not touched. Deploy the app code with the new card values at the same time.
-10. `99_postflight_readonly.sql` — read-only verification (expects the 08 credit amounts)
+10. `09_video_credit_price_199.sql` — video add-on price ₹699 → ₹199 per 100 Video Credits
+    (updates a saved admin `credit_pricing` row, if any; the default is in code). Past
+    payments are not touched. Deploy the code with it.
+11. `99_postflight_readonly.sql` — read-only verification (expects the 08 credit amounts and
+    a saved video price, if any, of ₹199)
 
 Wallet review (separate, still dry-run):
 

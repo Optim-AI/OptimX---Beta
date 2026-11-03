@@ -17,7 +17,8 @@
 
 export const VIDEO_CREDITS_PER_SECOND = 20 as const;
 export const VIDEO_CREDIT_BLOCK_SIZE = 100 as const;
-export const VIDEO_CREDIT_BLOCK_PRICE_INR = 699 as const;
+/** ₹ per 100 Video Credits, before GST (add-on / PAYG). */
+export const VIDEO_CREDIT_BLOCK_PRICE_INR = 199 as const;
 /** Minimum PAYG video purchase (enough for one 30s generation). */
 export const VIDEO_CREDIT_MIN_PURCHASE = 600 as const;
 /**
@@ -41,10 +42,10 @@ export const VIDEO_CREDITS_BY_DURATION: Record<VideoGenerationDuration, number> 
 export const SECONDS_TO_CREDITS_RATE = 20 as const;
 
 /**
- * Price of one Video Credit in paise (integer), derived from ₹699 / 100 credits.
- * 699 INR / 100 = 6.99 INR = 699 paise per credit.
+ * Price of one Video Credit in paise (integer), derived from ₹199 / 100 credits.
+ * 199 INR / 100 = 1.99 INR = 199 paise per credit.
  */
-export const VIDEO_CREDIT_PRICE_PAISE = 699 as const;
+export const VIDEO_CREDIT_PRICE_PAISE = 199 as const;
 
 export function isVideoGenerationDuration(value: number): value is VideoGenerationDuration {
   return value === 15 || value === 30;
@@ -73,14 +74,14 @@ export function migrateSecondsToVideoCredits(seconds: number): number {
 /**
  * Subtotal for a video credit purchase in whole INR (paise-safe).
  * credits must be a multiple of VIDEO_CREDIT_BLOCK_SIZE for exact pricing;
- * we still compute with integer paise: credits * 699 paise / 100.
+ * we still compute with integer paise: credits * 199 paise / 100.
  */
 export function videoPurchaseSubtotalInr(credits: number): number {
   if (!Number.isFinite(credits) || credits < 0 || !Number.isInteger(credits)) {
     throw new Error('Video credits must be a non-negative integer');
   }
-  // 1 credit = 699 paise (₹6.99). Total INR = (credits * 699) / 100.
-  // For multiples of 100 this is always a whole rupee (e.g. 600 → ₹4194).
+  // 1 credit = 199 paise (₹1.99). Total INR = (credits * 199) / 100.
+  // For multiples of 100 this is always a whole rupee (e.g. 600 → ₹1194).
   const totalPaise = credits * VIDEO_CREDIT_PRICE_PAISE;
   if (totalPaise % 100 !== 0) {
     return Math.round(totalPaise / 100);
