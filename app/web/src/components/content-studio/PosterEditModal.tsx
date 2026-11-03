@@ -1,10 +1,12 @@
 // PosterEditModal.tsx
 // Natural-language poster iteration (Phase 8) with legacy fallback
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Check, MousePointerSquareDashed, X } from "lucide-react";
 import { ArcSpinner } from "@/app/web/src/components/ui/loaders";
 import { Button } from "@/app/web/src/components/ui/button";
+import { VoiceInputButton } from "@/app/web/src/components/creative-studio/GuidedAdSetup";
+import EditHintDemo, { hasSeenEditHint, markEditHintSeen } from "./EditHintDemo";
 
 export type PosterIterationPlanPreview = {
   iterationId: string;
@@ -104,6 +106,12 @@ export default function PosterEditModal({
   const drag = useRef<{ x: number; y: number } | null>(null);
   const promptRef = useRef<HTMLTextAreaElement>(null);
   const canSelect = !!onAreaEdit && step === "compose" && !isWorking;
+  // First time someone opens the area editor, show how it works once.
+  const [showHint, setShowHint] = useState(() => !!onAreaEdit && !hasSeenEditHint());
+  const hideHint = useCallback(() => setShowHint(false), []);
+  useEffect(() => {
+    if (showHint) markEditHintSeen();
+  }, [showHint]);
 
   const pointAt = (e: React.PointerEvent<HTMLDivElement>) => {
     const r = e.currentTarget.getBoundingClientRect();
@@ -236,9 +244,21 @@ export default function PosterEditModal({
       >
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 bg-black/40 p-4 md:p-6">
           {onAreaEdit && step === "compose" && (
-            <p className="inline-flex items-center gap-1.5 text-xs text-white/55">
-              <MousePointerSquareDashed className="h-3.5 w-3.5" />
+            <p className="inline-flex flex-wrap items-center justify-center gap-x-1.5 gap-y-1 text-center text-sm text-white/65">
+              <MousePointerSquareDashed className="h-4 w-4" />
               {box ? "Drag again to reselect" : "Drag over the part you want to change — or describe a change for the whole poster"}
+              {!showHint && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBox(null);
+                    setShowHint(true);
+                  }}
+                  className="font-medium text-blue-300 underline underline-offset-2 hover:text-blue-200"
+                >
+                  Show me how
+                </button>
+              )}
             </p>
           )}
           <div
@@ -270,6 +290,7 @@ export default function PosterEditModal({
                 }}
               />
             )}
+            {showHint && canSelect && <EditHintDemo onDone={hideHint} />}
           </div>
         </div>
 
@@ -310,10 +331,19 @@ export default function PosterEditModal({
                   </div>
                 )}
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-white/80">
-                    {box ? "What should change in the selected area?" : "What would you like to change?"}
-                  </label>
+                  <div className="mb-2 flex items-end justify-between gap-2">
+                    <label htmlFor="poster-edit-prompt" className="block text-sm font-medium text-white/80">
+                      {box ? "What should change in the selected area?" : "What would you like to change?"}
+                    </label>
+                    <VoiceInputButton
+                      onText={(t) => {
+                        setEditPrompt((prev) => (prev.trim() ? `${prev.trim()} ${t}` : t));
+                        requestAnimationFrame(() => promptRef.current?.focus());
+                      }}
+                    />
+                  </div>
                   <textarea
+                    id="poster-edit-prompt"
                     ref={promptRef}
                     value={editPrompt}
                     onChange={(e) => setEditPrompt(e.target.value)}

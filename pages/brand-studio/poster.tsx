@@ -4,6 +4,7 @@
 import { withLatestBrandKit } from '@/app/web/src/components/creative-studio/utils';
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/router';
+import { Download, Eye, Pencil } from 'lucide-react';
 import { showAlert, showError, showSuccess } from '@/app/web/src/components/ui/alert-modal-api';
 import { supabase } from '@/auth/supabase/client';
 import Sidebar from '@/app/web/src/components/Sidebar';
@@ -2237,8 +2238,7 @@ export default function PosterSessionPage() {
         const data = await res.json();
         if (data.ok && data.dataUrl) posterDataUrl = data.dataUrl;
       } catch {
-        showError("Could not load poster for editing");
-        return;
+        throw new Error("Could not load poster for editing");
       }
     }
 
@@ -2266,10 +2266,48 @@ export default function PosterSessionPage() {
           prev.map((url, i) => (i === posterIndex ? data.image : url))
         );
       } else {
-        showError(data.error || "Failed to regenerate poster");
+        throw new Error(data.error || "Failed to regenerate poster");
       }
     } catch (err: any) {
-      showError(friendlyError(err, "Failed to regenerate poster"));
+      // Thrown so the edit dialog stays open and shows the message.
+      throw new Error(friendlyError(err, "Failed to regenerate poster"));
+    }
+  }
+
+  /** Change only the boxed part of a poster — same endpoint as Ad Studio. */
+  async function handleAreaEdit(
+    posterIndex: number,
+    box: { x: number; y: number; w: number; h: number },
+    instruction: string
+  ) {
+    const posterUrl = generatedPosters[posterIndex];
+    if (!posterUrl) throw new Error("That poster isn't available any more.");
+    const res = await authFetch("/api/content-studio/area-edit", {
+      method: "POST",
+      body: JSON.stringify({ image: posterUrl, box, instruction }),
+    });
+    const data = await safeResponseJson<{ ok?: boolean; image?: string; error?: string }>(res);
+    if (!res.ok || !data?.ok || !data.image) {
+      throw new Error(data?.error || "The edit didn't come out. Try again.");
+    }
+    const edited = data.image;
+    setGeneratedPosters((prev) => prev.map((url, i) => (i === posterIndex ? edited : url)));
+    // The engine's record still points at the pre-edit image, so later
+    // whole-poster edits must start from this image instead (legacy path).
+    setEngineResultMeta((prev) =>
+      prev.map((m, i) => (i === posterIndex && m ? { ...m, generationId: "" } : m))
+    );
+    showSuccess("Poster updated · 1 Image Credit used");
+    try {
+      const bal = await authFetch("/api/credits/balance");
+      const balData = await bal.json();
+      if (balData?.ok && typeof balData.credits === "number") {
+        setCredits(balData.credits);
+      } else if (balData?.imageCredits?.total != null) {
+        setCredits(balData.imageCredits.total);
+      }
+    } catch {
+      /* ignore */
     }
   }
 
@@ -3106,6 +3144,7 @@ export default function PosterSessionPage() {
                     handleExecutePosterIteration(iterationId, editingPosterIndex)
                 : undefined
             }
+            onAreaEdit={(box, instruction) => handleAreaEdit(editingPosterIndex, box, instruction)}
             onRegenerate={
               engineSessionId && engineResultMeta[editingPosterIndex]?.generationId
                 ? undefined
@@ -3521,15 +3560,9 @@ function PosterGrid({
                     <img
                       src={poster}
                       alt={`Generated poster ${idx + 1}`}
-                      className="w-full h-auto block rounded-lg transition-transform duration-200 group-hover:scale-[1.02]"
+                      className="w-full h-auto block rounded-lg"
                       style={{ imageRendering: 'auto' }}
                     />
-                    {/* Hover overlay */}
-                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center rounded-lg pointer-events-none">
-                      <span className="opacity-0 group-hover:opacity-100 transition-opacity text-white bg-black/50 px-3 py-1.5 rounded-lg text-sm font-medium">
-                        Preview
-                      </span>
-                    </div>
                   </div>
 
                   {/* Three-dots menu - overlaid on image bottom-right */}
@@ -3574,16 +3607,6 @@ function PosterGrid({
                       >
                         <div className="py-1">
                           <button
-                            onClick={() => handleDownload(poster, idx)}
-                            className="w-full text-left px-4 py-2.5 text-sm transition-colors flex items-center gap-2"
-                            style={{ color: colors.foreground }}
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                            </svg>
-                            Download
-                          </button>
-                          <button
                             onClick={() => {
                               // For data URLs, create a blob and open it
                               if (poster.startsWith('data:')) {
@@ -3616,21 +3639,6 @@ function PosterGrid({
                             </svg>
                             View Full Size
                           </button>
-                          {onEditPoster && (
-                          <button
-                            onClick={() => {
-                              onEditPoster(idx);
-                              setOpenMenuIndex(null);
-                            }}
-                            className="w-full text-left px-4 py-2.5 text-sm transition-colors flex items-center gap-2"
-                            style={{ color: colors.foreground }}
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                            </svg>
-                            Edit Poster
-                          </button>
-                          )}
                           <button
                             onClick={() => {
                               onSavePoster(poster, idx);
@@ -3669,9 +3677,33 @@ function PosterGrid({
                   </div>
                 </div>
 
+                {/* Main actions — always visible, icon + word */}
+                <div className="mt-3 grid gap-2" style={{ gridTemplateColumns: `repeat(${onEditPoster ? 3 : 2}, minmax(0, 1fr))` }}>
+                  {[
+                    ...(onEditPoster ? [{ label: 'Edit', Icon: Pencil, onClick: () => onEditPoster(idx), primary: true }] : []),
+                    { label: 'Preview', Icon: Eye, onClick: () => setPreviewIndex(idx), primary: false },
+                    { label: 'Download', Icon: Download, onClick: () => void handleDownload(poster, idx), primary: false },
+                  ].map(({ label, Icon, onClick, primary }) => (
+                    <button
+                      key={label}
+                      type="button"
+                      onClick={onClick}
+                      className={`flex min-h-[44px] items-center justify-center gap-2 rounded-xl px-2 text-sm font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400 ${primary ? 'hover:brightness-110' : 'hover:bg-white/[0.08]'}`}
+                      style={
+                        primary
+                          ? { backgroundColor: colors.primary, color: 'white' }
+                          : { backgroundColor: 'rgba(255,255,255,0.04)', color: colors.foreground, border: `1px solid ${colors.border}` }
+                      }
+                    >
+                      <Icon className="h-4 w-4 shrink-0" aria-hidden />
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
                 {/* Action Button below image */}
                 {canCreateCampaigns && (
-                  <div className="mt-2.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button
                       onClick={() => onCreateCampaign(poster, idx)}
                       disabled={creatingCampaign === idx}
