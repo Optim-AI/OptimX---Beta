@@ -7,7 +7,7 @@ import colors from "@/lib/ui/colors";
 import { authFetch } from "@/lib/utils";
 import { friendlyError } from "@/lib/api-errors";
 import { toast } from "sonner";
-import { Globe, Search } from "lucide-react";
+import { Download, Globe, Search } from "lucide-react";
 import { ArcSpinner, ShimmerTile } from "@/app/web/src/components/ui/loaders";
 import BrandResearchReport, { ResearchPending } from "@/app/web/src/components/research/BrandResearchReport";
 import type { BrandResearch } from "@/lib/research/brand-research";
@@ -23,6 +23,7 @@ export default function BrandResearchPage(): JSX.Element {
   const [research, setResearch] = useState<BrandResearch | null>(null);
   const [running, setRunning] = useState(false);
   const [checkingAds, setCheckingAds] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -83,6 +84,21 @@ export default function BrandResearchPage(): JSX.Element {
     }
   }, [research]);
 
+  const downloadPdf = useCallback(async () => {
+    if (!research || exporting) return;
+    setExporting(true);
+    try {
+      // Loaded on demand so the PDF library never slows down the page itself.
+      const { downloadBrandResearchPdf } = await import("@/app/web/src/components/research/BrandResearchPdf");
+      await downloadBrandResearchPdf(research);
+    } catch (e) {
+      console.error("[brand-research] PDF export failed", e);
+      toast.error("Couldn't create the PDF. Please try again.");
+    } finally {
+      setExporting(false);
+    }
+  }, [research, exporting]);
+
   return (
     <div className="h-screen flex overflow-hidden app-page" style={{ background: colors.background }}>
       <Head>
@@ -127,6 +143,18 @@ export default function BrandResearchPage(): JSX.Element {
               {running ? <ArcSpinner className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
               {running ? "Researching…" : research ? "Research again" : "Research my market"}
             </button>
+            {research && (
+              <button
+                type="button"
+                onClick={() => void downloadPdf()}
+                disabled={exporting || running}
+                className="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-60"
+                style={{ border: `1px solid ${colors.border}`, color: colors.foreground }}
+              >
+                {exporting ? <ArcSpinner className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                {exporting ? "Preparing PDF…" : "Download PDF"}
+              </button>
+            )}
           </form>
 
           <div className="mt-6">
