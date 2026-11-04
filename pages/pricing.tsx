@@ -18,6 +18,13 @@ import { auditPricingPath } from '@/lib/audit/analytics';
 import MarketingLayout from '@/app/web/src/components/marketing/MarketingLayout';
 import PlanCards from '@/app/web/src/components/marketing/PlanCards';
 import { ButtonLink, Eyebrow } from '@/app/web/src/components/marketing/ui';
+import {
+  DFY_COPY,
+  DoneForYouView,
+  PricingModeToggle,
+  tabIdFor,
+  usePricingMode,
+} from '@/app/web/src/components/marketing/PricingModeToggle';
 import { SIGNUP_HREF } from '@/lib/marketing/content';
 
 function trackSafe(event: string, data?: Record<string, string>) {
@@ -51,6 +58,8 @@ export default function PricingPage() {
   const [continuing, setContinuing] = useState(false);
   const [trialDialogOpen, setTrialDialogOpen] = useState(false);
   const [signedIn, setSignedIn] = useState(false);
+  const { mode, setMode, panelId } = usePricingMode();
+  const dfy = mode === 'dfy';
 
   useEffect(() => {
     if (!router.isReady || !fromAudit) return;
@@ -119,52 +128,66 @@ export default function PricingPage() {
           <div className="max-w-3xl">
             <Eyebrow>Pricing</Eyebrow>
             <h1 id="pricing-heading" className="font-display text-[clamp(2.75rem,7vw,5.5rem)] font-semibold leading-[0.95] tracking-[-0.045em]">
-              Simple monthly plans.
+              {dfy ? DFY_COPY.title : 'Simple monthly plans.'}
             </h1>
             <p className="mt-5 text-lg text-ink-soft sm:text-xl">
-              Research, strategy and content in one place. Pick the credits you need; top up or cancel anytime.
+              {dfy
+                ? DFY_COPY.intro
+                : 'Research, strategy and content in one place. Pick the credits you need; top up or cancel anytime.'}
             </p>
           </div>
 
-          <div className="mt-14">
-            {activePlanName ? (
-              <div className="sx-crop max-w-xl rounded-[24px] border border-line bg-surface p-8">
-                <h2 className="font-display text-2xl font-semibold tracking-[-0.02em]">You&apos;re already on the {activePlanName} plan.</h2>
-                <p className="mt-2 text-ink-soft">Plan changes aren&apos;t available here. Continue into your workspace.</p>
-                <ButtonLink href={WORKSPACE_PATH} className="mt-6" arrow>
-                  Go to SkalX
-                </ButtonLink>
+          <PricingModeToggle mode={mode} onChange={setMode} panelId={panelId} className="mt-10" />
+
+          <div id={panelId} role="tabpanel" aria-labelledby={tabIdFor(panelId, mode)} className="mt-10 sm:mt-12">
+            {dfy ? (
+              <div key="dfy" className="sx-swap-in">
+                <DoneForYouView headingLevel="h2" />
               </div>
             ) : (
-              <PlanCards
-                headingLevel="h2"
-                onChoosePlan={choosePlan}
-                onRequestTrial={() => {
-                  trackSafe('trial_request_opened', { source: 'pricing' });
-                  setTrialDialogOpen(true);
-                }}
-                selectedPlanId={selectedPlanId}
-                continuing={continuing}
-              />
+              <div key="diy" className="sx-swap-in">
+                <div>
+                  {activePlanName ? (
+                    <div className="sx-crop max-w-xl rounded-[24px] border border-line bg-surface p-8">
+                      <h2 className="font-display text-2xl font-semibold tracking-[-0.02em]">You&apos;re already on the {activePlanName} plan.</h2>
+                      <p className="mt-2 text-ink-soft">Plan changes aren&apos;t available here. Continue into your workspace.</p>
+                      <ButtonLink href={WORKSPACE_PATH} className="mt-6" arrow>
+                        Go to SkalX
+                      </ButtonLink>
+                    </div>
+                  ) : (
+                    <PlanCards
+                      headingLevel="h2"
+                      onChoosePlan={choosePlan}
+                      onRequestTrial={() => {
+                        trackSafe('trial_request_opened', { source: 'pricing' });
+                        setTrialDialogOpen(true);
+                      }}
+                      selectedPlanId={selectedPlanId}
+                      continuing={continuing}
+                    />
+                  )}
+                </div>
+                {!activePlanName ? (
+                  <div className="mt-8 text-lg">
+                    Not ready to pay?{' '}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        trackSafe('explore_clicked', { source: 'pricing', signed_in: signedIn ? 'yes' : 'no' });
+                        trackSafe('trial_request_opened', { source: 'pricing_explore' });
+                        setTrialDialogOpen(true);
+                      }}
+                      className="sx-link font-medium"
+                    >
+                      Explore SkalX first →
+                    </button>
+                  </div>
+                ) : null}
+                <p className="mt-3 text-sm text-ink-soft">All prices are + 18% GST. Plans are monthly; cancel anytime.</p>
+              </div>
             )}
           </div>
-          {!activePlanName ? (
-            <div className="mt-8 text-lg">
-              Not ready to pay?{' '}
-              <button
-                type="button"
-                onClick={() => {
-                  trackSafe('explore_clicked', { source: 'pricing', signed_in: signedIn ? 'yes' : 'no' });
-                  trackSafe('trial_request_opened', { source: 'pricing_explore' });
-                  setTrialDialogOpen(true);
-                }}
-                className="sx-link font-medium"
-              >
-                Explore SkalX first →
-              </button>
-            </div>
-          ) : null}
-          <p className="mt-3 text-sm text-ink-soft">All prices are + 18% GST. Plans are monthly; cancel anytime.</p>
         </div>
       </section>
 
@@ -174,79 +197,81 @@ export default function PricingPage() {
         exploreHref={signedIn ? WORKSPACE_PATH : SIGNUP_HREF}
       />
 
-      <section aria-labelledby="compare-heading" className="sx-sheet bg-paper-deep">
-        <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6 md:py-28">
-          <h2 id="compare-heading" className="font-display text-[clamp(2.1rem,4.6vw,3.6rem)] font-semibold leading-[1.02] tracking-[-0.03em]">
-            Compare plans
-          </h2>
-          <div className="mt-10 overflow-x-auto rounded-[20px] border border-line bg-surface shadow-[0_30px_60px_-46px_rgba(23,20,15,0.6)]">
-            <table className="w-full min-w-[520px] border-collapse text-left text-[15px]">
-              <thead>
-                <tr className="border-b border-line bg-paper/60">
-                  <th scope="col" className="p-4 font-medium text-ink-soft">
-                    Feature
-                  </th>
-                  {MARKETING_SUBSCRIPTION_PLANS.map((p) => (
-                    <th key={p.id} scope="col" className="p-4 text-center font-semibold">
-                      {p.name}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {LIVE_COMPARISON_ROWS.map((row) => (
-                  <tr key={row.id} className="border-b border-line transition-colors last:border-0 hover:bg-paper/70">
-                    <th scope="row" className="p-4 font-normal">
-                      {row.label}
-                      {row.hint ? <span className="mt-0.5 block text-[13px] text-ink-mute">{row.hint}</span> : null}
+      {!dfy ? (
+        <section aria-labelledby="compare-heading" className="sx-sheet bg-paper-deep">
+          <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6 md:py-28">
+            <h2 id="compare-heading" className="font-display text-[clamp(2.1rem,4.6vw,3.6rem)] font-semibold leading-[1.02] tracking-[-0.03em]">
+              Compare plans
+            </h2>
+            <div className="mt-10 overflow-x-auto rounded-[20px] border border-line bg-surface shadow-[0_30px_60px_-46px_rgba(23,20,15,0.6)]">
+              <table className="w-full min-w-[520px] border-collapse text-left text-[15px]">
+                <thead>
+                  <tr className="border-b border-line bg-paper/60">
+                    <th scope="col" className="p-4 font-medium text-ink-soft">
+                      Feature
                     </th>
                     {MARKETING_SUBSCRIPTION_PLANS.map((p) => (
-                      <td key={p.id} className="p-4 text-center">
-                        <Cell value={row.values[p.id]} />
-                      </td>
+                      <th key={p.id} scope="col" className="p-4 text-center font-semibold">
+                        {p.name}
+                      </th>
                     ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="mt-10 grid gap-4 md:grid-cols-2">
-            <div className="sx-lift rounded-[20px] border border-line bg-surface p-7">
-              <h3 className="font-display text-xl font-semibold tracking-[-0.015em]">How credits work</h3>
-              <p className="mt-3 text-ink-soft">
-                <strong className="text-ink">Image Credits</strong> — one successful image generation uses one Image
-                Credit.
-              </p>
-              <p className="mt-2 text-ink-soft">
-                <strong className="text-ink">Video Credits</strong> — video generation uses Video Credits based on
-                duration (for example, 15 seconds uses 300 Video Credits).
-              </p>
+                </thead>
+                <tbody>
+                  {LIVE_COMPARISON_ROWS.map((row) => (
+                    <tr key={row.id} className="border-b border-line transition-colors last:border-0 hover:bg-paper/70">
+                      <th scope="row" className="p-4 font-normal">
+                        {row.label}
+                        {row.hint ? <span className="mt-0.5 block text-[13px] text-ink-mute">{row.hint}</span> : null}
+                      </th>
+                      {MARKETING_SUBSCRIPTION_PLANS.map((p) => (
+                        <td key={p.id} className="p-4 text-center">
+                          <Cell value={row.values[p.id]} />
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-            <div className="sx-lift rounded-[20px] border border-line bg-surface p-7">
-              <h3 className="font-display text-xl font-semibold tracking-[-0.015em]">Need more credits?</h3>
-              <p className="mt-3 text-ink-soft">After you subscribe, top up anytime (pay-as-you-go):</p>
-              <ul className="mt-2 space-y-1 text-ink-soft">
-                <li>
-                  Image: ₹{BUY_CREDITS_PRICING.imageCreditPriceInr} per Image Credit (minimum {BUY_CREDITS_PRICING.minQuantity})
-                </li>
-                <li>
-                  Video: ₹{BUY_CREDITS_PRICING.videoCreditBlockPriceInr} per 100 Video Credits (minimum{' '}
-                  {BUY_CREDITS_PRICING.minVideoQuantity}, in steps of {BUY_CREDITS_PRICING.videoQuantityStep})
-                </li>
-              </ul>
-            </div>
-          </div>
 
-          <p className="mt-10 text-ink-soft">
-            Not sure yet?{' '}
-            <Link href="/#start" className="sx-link font-medium text-ink">
-              Get a free ad for your brand
-            </Link>{' '}
-            first.
-          </p>
-        </div>
-      </section>
+            <div className="mt-10 grid gap-4 md:grid-cols-2">
+              <div className="sx-lift rounded-[20px] border border-line bg-surface p-7">
+                <h3 className="font-display text-xl font-semibold tracking-[-0.015em]">How credits work</h3>
+                <p className="mt-3 text-ink-soft">
+                  <strong className="text-ink">Image Credits</strong> — one successful image generation uses one Image
+                  Credit.
+                </p>
+                <p className="mt-2 text-ink-soft">
+                  <strong className="text-ink">Video Credits</strong> — video generation uses Video Credits based on
+                  duration (for example, 15 seconds uses 300 Video Credits).
+                </p>
+              </div>
+              <div className="sx-lift rounded-[20px] border border-line bg-surface p-7">
+                <h3 className="font-display text-xl font-semibold tracking-[-0.015em]">Need more credits?</h3>
+                <p className="mt-3 text-ink-soft">After you subscribe, top up anytime (pay-as-you-go):</p>
+                <ul className="mt-2 space-y-1 text-ink-soft">
+                  <li>
+                    Image: ₹{BUY_CREDITS_PRICING.imageCreditPriceInr} per Image Credit (minimum {BUY_CREDITS_PRICING.minQuantity})
+                  </li>
+                  <li>
+                    Video: ₹{BUY_CREDITS_PRICING.videoCreditBlockPriceInr} per 100 Video Credits (minimum{' '}
+                    {BUY_CREDITS_PRICING.minVideoQuantity}, in steps of {BUY_CREDITS_PRICING.videoQuantityStep})
+                  </li>
+                </ul>
+              </div>
+            </div>
+
+            <p className="mt-10 text-ink-soft">
+              Not sure yet?{' '}
+              <Link href="/#start" className="sx-link font-medium text-ink">
+                Get a free ad for your brand
+              </Link>{' '}
+              first.
+            </p>
+          </div>
+        </section>
+      ) : null}
     </MarketingLayout>
   );
 }

@@ -410,6 +410,8 @@ button:hover > .sx-btn-arrow { transform: translateX(3px); }
   .sx-line:nth-child(2) > span { animation-delay: 0.12s; }
   .sx-stroke path { stroke-dashoffset: 1; animation: sx-draw 0.9s var(--ease-out-expo) 0.75s forwards; }
   .sx-fade-in { animation: sx-fade-in 0.9s ease 0.35s both; }
+  /* Pricing toggle: the newly shown view fades in. */
+  .sx-swap-in { animation: sx-fade-in 0.35s ease both; }
 }
 
 /* Pointer-driven tilt (vars set by JS; static without it). */
