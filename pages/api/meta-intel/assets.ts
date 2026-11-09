@@ -7,6 +7,9 @@ import { getMetaStatus } from '@/lib/meta/status';
 import { metaLog } from '@/lib/meta/log';
 import { enqueueSync, SyncNotConfiguredError } from '@/lib/meta-sync/enqueue';
 
+// Starts background work that keeps running after the response (lib/jobs/background).
+export const config = { maxDuration: 300 };
+
 const isId = (v: unknown): v is string => typeof v === 'string' && /^\d{1,30}$/.test(v);
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {

@@ -7,6 +7,9 @@ import { enqueueSync, SyncNotConfiguredError } from '@/lib/meta-sync/enqueue';
 import { latestRuns, type SyncRunRow } from '@/lib/meta-sync/store';
 import { metaLog } from '@/lib/meta/log';
 
+// Starts background work that keeps running after the response (lib/jobs/background).
+export const config = { maxDuration: 300 };
+
 const MANUAL_COOLDOWN_MS = 5 * 60 * 1000;
 
 export type SyncRunView = {

@@ -10,6 +10,9 @@ import { SyncNotConfiguredError } from '@/lib/meta-sync/enqueue';
 import { metaLog } from '@/lib/meta/log';
 import type { BriefContent } from '@/lib/weekly-brief/content';
 
+// Starts background work that keeps running after the response (lib/jobs/background).
+export const config = { maxDuration: 300 };
+
 export const MANUAL_BRIEFS_PER_DAY = 3;
 
 export type BriefResponse = {

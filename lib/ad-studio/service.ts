@@ -30,7 +30,8 @@ export class AdStudioError extends Error {
   }
 }
 
-const RENDER_CONCURRENCY = 4;
+// All 8 drafts at once so a round (research + drawing) fits in one 5-minute Vercel function.
+const RENDER_CONCURRENCY = 8;
 
 /** "Make more like this": what the winning ad said and how it did, for the research step. */
 async function winnerBrief(userId: string, adId: string): Promise<string | null> {

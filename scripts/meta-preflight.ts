@@ -46,14 +46,11 @@ const PRIVATE_BUCKETS = ['meta-creatives', 'test-packs', 'ad-drafts'];
   else if (keyLen !== 32) bad('INTEGRATION_TOKEN_ENCRYPTION_KEY must decode to 32 bytes');
   else ok('INTEGRATION_TOKEN_ENCRYPTION_KEY (32 bytes). Use the SAME key everywhere, or saved Meta logins stop working');
   if (appUrl && !local && !appUrl.startsWith('https://')) bad('NEXT_PUBLIC_APP_URL must start with https:// outside localhost');
-  const trig = process.env.TRIGGER_SECRET_KEY?.trim() ?? '';
-  if (!trig) {
-    if (local && process.env.META_SYNC_INLINE === 'true') warn('TRIGGER_SECRET_KEY missing: fine for local dev (META_SYNC_INLINE=true), required in production');
-    else bad('TRIGGER_SECRET_KEY is missing: syncs, AI analysis and poster drafts will not run');
-  } else if (!local && !trig.startsWith('tr_prod_')) warn('TRIGGER_SECRET_KEY is not a production key (tr_prod_…) for a non-local app URL');
-  else ok('TRIGGER_SECRET_KEY');
+  if (!has('CRON_SECRET')) {
+    if (local) warn('CRON_SECRET missing: fine locally; in production the daily Meta sync and Monday brief crons are refused without it');
+    else bad('CRON_SECRET is missing: Vercel Cron can’t run the daily Meta sync or the Monday brief');
+  } else ok('CRON_SECRET');
   if (!has('RESEND_API_KEY')) warn('RESEND_API_KEY missing: the Monday brief email will not send');
-  if (process.env.META_SYNC_INLINE === 'true' && !local) warn('META_SYNC_INLINE=true is ignored in production; remove it there');
   if (process.env.NODE_TLS_REJECT_UNAUTHORIZED === '0') {
     if (local) warn('NODE_TLS_REJECT_UNAUTHORIZED=0 turns off HTTPS certificate checks: never set it in production');
     else bad('NODE_TLS_REJECT_UNAUTHORIZED=0 turns off HTTPS certificate checks: remove it');

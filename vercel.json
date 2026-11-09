@@ -12,5 +12,15 @@
       "destination": "https://skalxai.app/:path*",
       "statusCode": 308
     }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/meta-sync",
+      "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/monday-brief",
+      "schedule": "0,30 * * * *"
+    }
   ]
 }

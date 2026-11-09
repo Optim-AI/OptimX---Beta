@@ -2,7 +2,7 @@
  * Trends for a brand:
  *  - one shared trend list per category per day (India), so brands in the same category share the search cost
  *  - per brand: fit + ideas, stored in brand_trend_ideas
- * Runs in the background (Trigger.dev, or inline in local dev).
+ * Runs in the background inside the Vercel function that started it (lib/jobs/background).
  */
 import { and, desc, eq, gte, sql } from 'drizzle-orm';
 import { db } from '@/database/client';

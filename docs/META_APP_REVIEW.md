@@ -17,7 +17,7 @@ each box. Ad Performance only **reads** data. It never posts, edits ads or spend
 - [ ] The app's privacy policy, terms, data-deletion and deauthorize URLs are filled in. To get the exact URLs, run
       `npm run meta:preflight -- --env <production env file>`.
 - [ ] App icon (1024×1024), category and contact email are set.
-- [ ] Production is live and the pre-launch check passes: migrations applied, Trigger.dev deployed and
+- [ ] Production is live and the pre-launch check passes: migrations applied, `CRON_SECRET` set in Vercel and
       `GEMINI_API_KEY` set. Meta's reviewers try the app themselves, so it has to work on the real site.
 - [ ] A **SkalX login for the reviewers** exists: an email and password on production, with an
       Ad Studio product scanned and some credits. Put it in the "reviewer instructions" box.

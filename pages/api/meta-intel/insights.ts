@@ -13,6 +13,9 @@ import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '@/database/client';
 import { metaOrganicPosts } from '@/database/schema';
 
+// Starts background work that keeps running after the response (lib/jobs/background).
+export const config = { maxDuration: 300 };
+
 export const MANUAL_RUNS_PER_DAY = 5;
 
 export type InsightsResponse = {

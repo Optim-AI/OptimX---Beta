@@ -1,5 +1,5 @@
 /**
- * Runs one queued sync end to end. Called by the Trigger.dev task (or inline in local dev).
+ * Runs one queued sync end to end. Called in the background after a request, or by the hourly cron.
  * Steps per selected ad account: account info → structure → insights → back-fill → creatives;
  * then creative images, SKX tagging, organic (Instagram + Page).
  * A failing step is recorded and the run continues; auth errors stop the run and mark the

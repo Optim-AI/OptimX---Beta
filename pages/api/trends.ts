@@ -7,6 +7,9 @@ import { enqueueBrandTrends } from '@/lib/trends/enqueue';
 import { SyncNotConfiguredError } from '@/lib/meta-sync/enqueue';
 import { metaLog } from '@/lib/meta/log';
 
+// Starts background work that keeps running after the response (lib/jobs/background).
+export const config = { maxDuration: 300 };
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const userId = await getUserIdFromRequest(req);
   if (!userId) return res.status(401).json({ error: 'unauthorized' });

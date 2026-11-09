@@ -5,6 +5,9 @@ import { requestFormat } from '@/lib/ad-studio/ops';
 import { enqueueDraftOp } from '@/lib/ad-studio/enqueue';
 import { sendError } from '@/lib/ad-studio/api-errors';
 
+// Starts background work that keeps running after the response (lib/jobs/background).
+export const config = { maxDuration: 300 };
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' });
   const userId = await getUserIdFromRequest(req);
