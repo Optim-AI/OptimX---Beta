@@ -115,15 +115,22 @@ const DataHandlingSecurity: React.FC = () => {
                 <li>Preferences/settings</li>
               </ul>
 
+              <p><strong>Meta (Facebook &amp; Instagram) Data, only after you connect Meta</strong></p>
+              <ul className="list-disc ml-4">
+                <li>The ad accounts, Facebook Page and Instagram business account you choose to share</li>
+                <li>Your campaigns, ad sets, ads, ad creatives and their daily results (spend, impressions, clicks, purchases, purchase value)</li>
+                <li>Your Facebook Page and Instagram posts from the last 90 days and their stats (reach, views, likes, comments, saves, shares)</li>
+                <li>Public data you ask SkalX to watch: top public posts for up to 5 hashtags you choose, and the public profile and recent public posts of up to 5 competitor business accounts you choose. We don’t store who posted a hashtag post.</li>
+                <li>AI insights SkalX writes from the above</li>
+              </ul>
+              <p>SkalX only reads this data; it never posts, edits ads or spends money on Meta. All Meta data is deleted when you disconnect Meta, remove the app on Facebook, or ask us to delete it.</p>
+
               <p><strong>Does NOT include:</strong></p>
               <ul className="ml-4">
-                <li>❌ Meta ad data</li>
-                <li>❌ Instagram media fetched through APIs</li>
-                <li>❌ Google OAuth data</li>
-                <li>❌ Social login data</li>
+                <li>❌ Data about individual people who see or interact with your ads or posts</li>
+                <li>❌ Private messages</li>
+                <li>❌ Payment card details (handled by Razorpay)</li>
               </ul>
-
-              <p>API-fetched data is processed in-memory and not stored unless required for core functionality (e.g., analytics).</p>
 
               <h3 className="font-bold mt-8">2. Token Storage &amp; Access</h3>
               <ul className="list-disc ml-4">
@@ -137,12 +144,11 @@ const DataHandlingSecurity: React.FC = () => {
               <h3 className="font-bold mt-8">3. Data Processing</h3>
               <p>We process data strictly to:</p>
               <ul className="list-disc ml-4">
-                <li>Publish posts</li>
-                <li>Run ads</li>
-                <li>Fetch analytics</li>
-                <li>Provide insights</li>
-                <li>Improve platform features</li>
-                <li>Generate user-requested AI output</li>
+                <li>Show your ad and post results in SkalX (read-only)</li>
+                <li>Write plain-language insights and suggestions</li>
+                <li>Show the hashtags and competitor accounts you choose to watch</li>
+                <li>Generate the posters, videos and other output you ask for</li>
+                <li>Improve platform features, using only aggregated, de-identified information</li>
               </ul>
 
               <p>We never use Meta/Google data for AI training or internal model development.</p>
@@ -165,6 +171,7 @@ const DataHandlingSecurity: React.FC = () => {
               <ul className="list-disc ml-4">
                 <li>User account data: retained until deletion</li>
                 <li>API tokens: deleted immediately upon revocation</li>
+                <li>Meta data: until you disconnect Meta or ask us to delete it; watched hashtag and competitor data refreshes at most every 6 hours and is deleted when you remove it</li>
                 <li>Analytics logs: 60–90 days</li>
                 <li>Backups: 30 days rolling</li>
                 <li>Support conversations: 6 months</li>
@@ -180,6 +187,26 @@ const DataHandlingSecurity: React.FC = () => {
               </ul>
 
               <p>Requests are processed via <strong>info@skalxai.app</strong> within 15 days.</p>
+
+              <h3 className="font-bold mt-8">7. Service Providers</h3>
+              <p>These providers process data on our behalf, only to run SkalX:</p>
+              <ul className="list-disc ml-4">
+                <li><strong>Supabase</strong>: database and file storage (including encrypted access tokens and synced Meta data)</li>
+                <li><strong>Vercel</strong>: application hosting and computing</li>
+                <li><strong>Google (Gemini API)</strong>: AI processing for insights, trend and style reads, and content generation</li>
+                <li><strong>Resend</strong>: email delivery (for example, the weekly brief sent to you)</li>
+                <li><strong>Razorpay</strong>: payments (no Meta data)</li>
+              </ul>
+
+              <h3 className="font-bold mt-8">8. Requests from Public Authorities</h3>
+              <p>If a government body, regulator or law-enforcement agency asks us for users’ personal data:</p>
+              <ul className="list-disc ml-4">
+                <li><strong>Legality review:</strong> we check every request for a valid legal basis and proper authority before acting on it.</li>
+                <li><strong>Challenge:</strong> we refuse or challenge requests we consider unlawful, overly broad or not properly authorised, using the remedies available to us.</li>
+                <li><strong>Data minimisation:</strong> if we must disclose, we share only the minimum data the request legally requires.</li>
+                <li><strong>Records:</strong> we document every request, our response, the legal reasoning and the people involved.</li>
+                <li><strong>Notice:</strong> where the law allows, we tell the affected user before disclosing their data.</li>
+              </ul>
             </article>
 
             <div className="mt-8 flex justify-between items-center">

@@ -202,7 +202,7 @@ const PrivacyPolicy: React.FC = () => {
             Privacy Policy
           </h1>
           <div className="text-[15px]" style={{ color: colors.mutedForeground }}>
-            Last Updated: February 2026
+            Last Updated: November 2026
           </div>
         </div>
 
@@ -412,8 +412,7 @@ const PrivacyPolicy: React.FC = () => {
                   SkalX AI uses Meta data only to:
                 </p>
                 <ul className="list-disc pl-5 space-y-1 text-[15px] leading-[1.7] mb-4">
-                  <li>Publish posts and ads on your behalf</li>
-                  <li>Fetch performance insights</li>
+                  <li>Fetch performance insights (read-only)</li>
                   <li>Generate analytics and recommendations</li>
                   <li>Display analytics within your account</li>
                 </ul>
@@ -426,6 +425,7 @@ const PrivacyPolicy: React.FC = () => {
                   <li>Campaigns, ad sets, ads and ad creatives (text, headlines, images) in those ad accounts</li>
                   <li>Ad performance results such as spend, impressions, reach, clicks, purchases and purchase value</li>
                   <li>Your Page and Instagram posts and their insights (for example views, reach, likes, comments, saves and shares)</li>
+                  <li>Public Instagram data you choose to watch: top public posts for up to 5 hashtags (we don&apos;t store who posted them) and the public profile and recent public posts of up to 5 competitor business accounts</li>
                 </ul>
                 <p className="text-[15px] leading-[1.7] mb-4" style={{ color: colors.foreground }}>
                   We use this only to show your results in SkalX, explain what is and isn&apos;t working, and suggest new ads for you to test.
@@ -552,15 +552,29 @@ const PrivacyPolicy: React.FC = () => {
                 We share data only with essential service providers required to operate the platform, such as:
               </p>
               <ul className="list-disc pl-6 space-y-2 text-[15px] leading-[1.7] mb-4">
-                <li>AWS (hosting infrastructure)</li>
-                <li>Supabase (database services)</li>
-                <li>Meta and Google (API integrations)</li>
+                <li>Supabase (database and file storage)</li>
+                <li>Vercel (application hosting and computing)</li>
+                <li>Google, via the Gemini API (AI processing) and Google APIs you connect</li>
+                <li>Resend (email delivery)</li>
                 <li>Razorpay (payments)</li>
-                <li>Analytics providers</li>
+                <li>Meta (the Facebook and Instagram APIs you connect)</li>
               </ul>
-              <p className="text-[15px] leading-[1.7]" style={{ color: colors.foreground }}>
+              <p className="text-[15px] leading-[1.7] mb-4" style={{ color: colors.foreground }}>
                 All partners are subject to confidentiality and data-processing agreements. We do not sell personal data.
               </p>
+              <p className="text-[15px] font-medium mb-2" style={{ color: colors.foreground }}>
+                Requests from public authorities
+              </p>
+              <p className="text-[15px] leading-[1.7] mb-2" style={{ color: colors.foreground }}>
+                If a government body, regulator or law-enforcement agency asks us for users&apos; personal data, we:
+              </p>
+              <ul className="list-disc pl-6 space-y-2 text-[15px] leading-[1.7]">
+                <li>Review every request for a valid legal basis and proper authority before acting on it</li>
+                <li>Refuse or challenge requests we consider unlawful, overly broad or not properly authorised</li>
+                <li>Disclose only the minimum data the request legally requires</li>
+                <li>Document each request, our response, the legal reasoning and the people involved</li>
+                <li>Tell the affected user before disclosing, where the law allows</li>
+              </ul>
             </SectionBlock>
 
             <SectionBlock>
