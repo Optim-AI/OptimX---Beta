@@ -178,6 +178,10 @@ export default function ContentStudioPage() {
 
   const activeSession = activeSessionId ? sessions.find((s) => s.id === activeSessionId) : null;
   const selectedProduct = activeSession?.product ?? null;
+  // New poster flow (product → goal → format → 8 drafts, pay only for kept posters).
+  const posterFlowHref = selectedProduct
+    ? `/content-studio/posters/new?${new URLSearchParams({ ...(scanId ? { scan: scanId } : {}), product: selectedProduct.product_name }).toString()}`
+    : "/content-studio/posters/new";
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -1189,6 +1193,13 @@ export default function ContentStudioPage() {
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              <Link
+                href={posterFlowHref}
+                className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold"
+                style={{ background: colors.primary, color: colors.primaryForeground }}
+              >
+                Make poster ads
+              </Link>
               {creditsPending && (imageCredits === 0 || imageCredits === null) && (
                 <span className="rounded-full px-3 py-1.5 text-xs" style={{ background: "hsl(45 90% 50% / 0.15)", color: colors.foreground }}>
                   Payment received — credits are confirming…
@@ -1638,6 +1649,18 @@ export default function ContentStudioPage() {
                   </div>
                 </section>
 
+                <section className="flex flex-col gap-4 rounded-xl border p-6 sm:flex-row sm:items-center sm:justify-between" style={{ background: colors.accent, borderColor: colors.primary }}>
+                  <div>
+                    <h2 className="text-lg font-semibold" style={{ color: colors.foreground }}>Poster ads</h2>
+                    <p className="mt-1 text-sm" style={{ color: colors.secondaryForeground }}>
+                      Pick a goal and where it runs. SkalX researches and draws 8 ready-made posters for {activeSession.product.product_name} — you only pay for the ones you keep.
+                    </p>
+                  </div>
+                  <Link href={posterFlowHref} className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl px-5 text-sm font-semibold" style={{ background: colors.primary, color: colors.primaryForeground }}>
+                    <ImageIcon className="h-4 w-4" /> Make poster ads
+                  </Link>
+                </section>
+
                 {!activeSession.loadingAngles && activeSession.campaignStrategy?.brief && (
                   <StrategyBriefPanel brief={activeSession.campaignStrategy.brief} />
                 )}
@@ -1651,8 +1674,11 @@ export default function ContentStudioPage() {
                 >
                     <div className="mb-4">
                       <h2 className="text-lg font-semibold" style={{ color: colors.foreground }}>
-                        Ad Angles
+                        Video ad angles
                       </h2>
+                      <p className="text-xs mt-0.5" style={{ color: colors.mutedForeground }}>
+                        Pick an angle and hook for a video ad. For posters, use Poster ads above.
+                      </p>
                       {!activeSession.loadingAngles && activeSession.adAngles.length > 0 && !activeSession.campaignStrategy?.brief && (
                         <p className="text-xs mt-0.5" style={{ color: colors.mutedForeground }}>
                           Basic angles from the product page. Regenerate for a researched strategy.
@@ -1683,28 +1709,6 @@ export default function ContentStudioPage() {
                               </p>
                             )}
                             <div className="flex gap-2 mt-2">
-                              <Button
-                                size="sm"
-                                onClick={() => handleGeneratePoster(angle)}
-                                disabled={activeSession.generatingAngleId !== null}
-                                style={{
-                                  background: colors.primary,
-                                  color: colors.primaryForeground,
-                                  fontSize: 11,
-                                }}
-                              >
-                                {activeSession.generatingAngleId === angle.title ? (
-                                  <>
-                                    <ArcSpinner className="w-3 h-3 animate-spin mr-1" />
-                                    Designing 3 posters… 1–2 min
-                                  </>
-                                ) : (
-                                  <>
-                                    <ImageIcon className="w-3 h-3 mr-1" />
-                                    Generate Poster
-                                  </>
-                                )}
-                              </Button>
                               <Button
                                 size="sm"
                                 variant="outline"
@@ -1902,7 +1906,7 @@ export default function ContentStudioPage() {
 
                           <Button
                             size="sm"
-                            onClick={() => handleCampaignItemGenerate(item, i)}
+                            onClick={() => (isPosterOrCarousel ? void router.push(posterFlowHref) : handleCampaignItemGenerate(item, i))}
                             disabled={isGenerating || activeSession.generatingAngleId !== null || activeSession.creatingVideoAngleId !== null}
                             className="w-full mt-1"
                             style={{
@@ -1932,7 +1936,7 @@ export default function ContentStudioPage() {
                                     ? "Plan carousel again"
                                     : `Plan ${carouselSlides[i] ?? 5}-slide carousel`
                                   : isPosterOrCarousel
-                                    ? "Generate Poster"
+                                    ? "Make poster ads"
                                     : "Generate Creative"}
                           </Button>
                         </div>

@@ -36,6 +36,7 @@ import {
   fieldSelectStyle,
 } from "@/app/web/src/components/settings/SettingsUI";
 import { Image as ImageIcon, Video, Shield, KeyRound } from "lucide-react";
+import MetaIntegrationCard from "@/app/web/src/components/meta-intel/MetaIntegrationCard";
 
 type ProfilePayload = {
   id: string;
@@ -510,7 +511,7 @@ export default function SettingsPage(): JSX.Element {
               Settings
             </h1>
             <p className="mt-2 max-w-2xl text-sm leading-relaxed sm:text-[15px]" style={{ color: colors.mutedForeground }}>
-              Manage your account, business profile, billing, and security.
+              Manage your account, business profile, billing, integrations, and security.
             </p>
           </header>
 
@@ -1000,6 +1001,11 @@ export default function SettingsPage(): JSX.Element {
             </TabsContent>
 
             {/* Security & Policy */}
+            {/* Integrations */}
+            <TabsContent value="integrations" className="mt-0 space-y-5" style={{ background: "transparent" }}>
+              {tab === "integrations" ? <MetaIntegrationCard /> : null}
+            </TabsContent>
+
             <TabsContent value="security" className="mt-0 space-y-5" style={{ background: "transparent" }}>
               <SettingsCard>
                 <SettingsSectionHeader

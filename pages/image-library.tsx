@@ -17,6 +17,14 @@ import { toast } from "sonner";
 import { Sparkles, Image as ImageIcon, Camera, Orbit, Megaphone, Clapperboard, Play } from "lucide-react";
 import { authFetch } from "@/lib/utils";
 import { SkeletonImageGrid } from "@/app/web/src/components/ui/skeletons";
+import FeedPreview from "@/app/web/src/components/ad-studio/FeedPreview";
+
+/** Closest ad shape for an image, from its pixel size. */
+function nearestAspect(w: number, h: number): string {
+  const r = w / h;
+  const shapes: [string, number][] = [["4:5", 0.8], ["1:1", 1], ["9:16", 0.5625], ["1.91:1", 1.91]];
+  return shapes.reduce((best, cur) => (Math.abs(cur[1] - r) < Math.abs(best[1] - r) ? cur : best))[0];
+}
 
 /** Where a creative was made — shown on every card and filterable. */
 type CreativeSource = "photo" | "brand" | "ad" | "campaign";
@@ -65,6 +73,8 @@ export default function ImageLibraryPage(): JSX.Element {
 
   // publish panel state (copied/adapted from create-campaign)
   const [showPublishPanel, setShowPublishPanel] = React.useState(false);
+  const [previewing, setPreviewing] = React.useState<{ imageUrl: string; aspect: string } | null>(null);
+  const [brand, setBrand] = React.useState<{ name: string; logo: string | null } | null>(null);
   const [publishMode, setPublishMode] = React.useState<"post" | "ad">("post");
 
   const [postFormData, setPostFormData] = React.useState<any>({
@@ -374,6 +384,25 @@ export default function ImageLibraryPage(): JSX.Element {
     [libraryItems, tab, sourceFilter]
   );
 
+  // PREVIEW: show the poster in an Instagram / Facebook mock-up, shaped by its real size.
+  const handlePreview = () => {
+    if (!selectedImage) return;
+    const imageUrl = selectedImage.imageUrl;
+    const img = new Image();
+    img.onload = () => setPreviewing({ imageUrl, aspect: nearestAspect(img.naturalWidth, img.naturalHeight) });
+    img.onerror = () => setPreviewing({ imageUrl, aspect: "4:5" });
+    img.src = imageUrl;
+    if (!brand) {
+      authFetch("/api/brand/snapshot")
+        .then((r) => r.json())
+        .then((d) => {
+          const b = d?.brandSnapshot;
+          setBrand({ name: b?.name || "Your brand", logo: b?.logo || b?.logoUrl || null });
+        })
+        .catch(() => setBrand({ name: "Your brand", logo: null }));
+    }
+  };
+
   // DELETE flow with confirmation
   const handleDelete = () => {
     if (!selectedImage) return;
@@ -384,10 +413,22 @@ export default function ImageLibraryPage(): JSX.Element {
     if (!selectedImage) return;
     setDeleting(true);
     try {
-      const { error } = await supabase
-        .from("user_generated_image")
-        .delete()
-        .eq("id", selectedImage.id);
+      // Studio posters live on their studio sessions; only campaign uploads are rows here.
+      const { error } =
+        selectedImage.source === "campaign"
+          ? await supabase.from("user_generated_image").delete().eq("id", selectedImage.id)
+          : await authFetch("/api/library/delete", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                source: selectedImage.source,
+                id: selectedImage.id,
+                imageUrl: selectedImage.imageUrl,
+                sessionId: selectedImage.sessionId,
+              }),
+            })
+              .then(async (r) => (r.ok ? { error: null } : { error: (await r.json().catch(() => ({})))?.error || "failed" }))
+              .catch((e) => ({ error: String(e) }));
 
       if (error) {
         toast.error("Failed to delete image");
@@ -1017,49 +1058,53 @@ export default function ImageLibraryPage(): JSX.Element {
       {/* FULL SCREEN VIEWER */}
       {selectedImage && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="bg-white rounded-xl max-w-4xl w-full mx-4 p-4 md:p-6 shadow-xl relative">
+          <div className="rounded-xl max-w-4xl w-full mx-4 p-4 md:p-6 shadow-xl relative max-h-[92vh] overflow-y-auto" style={{ backgroundColor: colors.card, border: `1px solid ${colors.border}` }}>
             <button
               type="button"
               onClick={() => setSelectedImage(null)}
-              className="absolute left-4 top-4 px-3 py-1 rounded-full border hover:bg-slate-100"
+              className="absolute left-4 top-4 px-3 py-1 rounded-full border z-10 hover:opacity-80"
+              style={{ borderColor: colors.border, color: colors.foreground, backgroundColor: colors.muted }}
             >
               ← Back
             </button>
 
-            <div className="mt-8 grid gap-4 md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] items-start">
+            <div className="mt-10 grid gap-4 md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] items-start">
               <div className="w-full">
-                <div className="overflow-hidden rounded-lg border">
+                <div className="overflow-hidden rounded-lg border" style={{ borderColor: colors.border, backgroundColor: colors.muted }}>
                   <img
                     src={selectedImage.imageUrl}
                     alt="selected"
-                    className="w-full max-h-[70vh] object-contain bg-slate-100"
+                    className="w-full max-h-[70vh] object-contain"
                   />
                 </div>
-                <p className="text-xs text-slate-500 mt-2">
+                <p className="text-xs mt-2" style={{ color: colors.mutedForeground }}>
                   Created at: {new Date(selectedImage.createdAt).toLocaleString()}
                 </p>
               </div>
 
               <div className="flex flex-col gap-2">
-                <h3 className="text-base font-semibold mb-1">Actions</h3>
+                <h3 className="text-base font-semibold mb-1" style={{ color: colors.foreground }}>Actions</h3>
 
                 <button
                   onClick={handleDownload}
-                  className="w-full px-4 py-2 rounded-md border hover:bg-slate-50"
+                  className="w-full px-4 py-2 rounded-md border hover:opacity-80"
+                  style={{ borderColor: colors.border, color: colors.foreground }}
                 >
                   Download
                 </button>
 
                 <button
-                  onClick={handlePost}
-                  className="w-full px-4 py-2 rounded-md border hover:bg-slate-50"
+                  onClick={handlePreview}
+                  className="w-full px-4 py-2 rounded-md border hover:opacity-80"
+                  style={{ borderColor: colors.border, color: colors.foreground }}
                 >
-                  Post
+                  Preview
                 </button>
 
                 <button
                   onClick={handleDelete}
-                  className="w-full px-4 py-2 rounded-md border border-red-500 text-red-600 hover:bg-red-50"
+                  className="w-full px-4 py-2 rounded-md border hover:opacity-80"
+                  style={{ borderColor: colors.destructive, color: colors.destructive }}
                 >
                   Delete
                 </button>
@@ -1069,12 +1114,24 @@ export default function ImageLibraryPage(): JSX.Element {
         </div>
       )}
 
+      {previewing && (
+        <FeedPreview
+          imageUrl={previewing.imageUrl}
+          aspect={previewing.aspect}
+          brandName={brand?.name || "Your brand"}
+          avatarUrl={brand?.logo ?? null}
+          caption=""
+          note="A mock-up of how this would look in a feed or story."
+          onClose={() => setPreviewing(null)}
+        />
+      )}
+
       {/* DELETE CONFIRMATION MODAL */}
       {showDeleteConfirm && selectedImage && (
         <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full shadow-lg">
-            <h3 className="text-lg font-semibold mb-2">Delete image?</h3>
-            <p className="text-sm text-slate-600 mb-4">
+          <div className="rounded-lg p-6 max-w-md w-full shadow-lg" style={{ backgroundColor: colors.card, border: `1px solid ${colors.border}` }}>
+            <h3 className="text-lg font-semibold mb-2" style={{ color: colors.foreground }}>Delete image?</h3>
+            <p className="text-sm mb-4" style={{ color: colors.mutedForeground }}>
               Are you sure you want to permanently delete this image? This
               cannot be undone.
             </p>

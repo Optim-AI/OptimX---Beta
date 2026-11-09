@@ -11,6 +11,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { ArcSpinner } from '@/app/web/src/components/ui/loaders';
+import AuditGlance from '@/app/web/src/components/audit/AuditGlance';
 import { DrawnCheck, Kicker, OnboardingStage, OrbitVisual, StatusList } from '@/app/web/src/components/onboarding/ob-ui';
 import { supabase } from '@/auth/supabase/client';
 import { authFetch } from '@/lib/utils';
@@ -328,6 +329,8 @@ export default function AuditPage() {
                 <p className="badge warnbadge"><Info size={14} /> Partial results — see limitations below</p>
               )}
             </section>
+
+            <AuditGlance audit={audit} />
 
             <section className="grid2 ob-enter" style={enterDelay(120)}>
               <div className="card">

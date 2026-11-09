@@ -4,6 +4,7 @@ import { getSafeNextPath } from '@/lib/routing/safe-next';
 import { POST_AUTH_WORKSPACE_PATH } from '@/lib/auth/post-auth-decision';
 
 export type AuditFunnelEvent =
+  | 'audit_form_step2'
   | 'audit_started'
   | 'audit_completed'
   | 'audit_results_viewed'

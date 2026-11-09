@@ -167,13 +167,35 @@ Return ONLY JSON:
 Only include what you found. Empty lists are fine.`;
 }
 
+/** Optional steering for the Ad Studio poster flow (goal, offer, the owner's own words, angles to skip). */
+export type StrategyFocus = {
+  goal?: string | null;
+  offer?: string | null;
+  direction?: string | null;
+  avoidAngles?: string[];
+};
+
+function focusBlock(focus: StrategyFocus | null | undefined): string {
+  if (!focus) return "";
+  const lines = [
+    focus.goal && `- The owner's goal for these ads: ${focus.goal}. Every angle must serve this goal.`,
+    focus.offer && `- The real offer to feature (use exactly as given, never invent other discounts): ${focus.offer}`,
+    focus.direction && `- What the owner asked for, in their words: "${focus.direction.slice(0, 600)}". Respect it unless it would mean inventing facts.`,
+    focus.avoidAngles?.length && `- Already shown to the owner — give DIFFERENT angles than these: ${focus.avoidAngles.slice(0, 24).join("; ")}`,
+  ].filter(Boolean);
+  return lines.length ? `\n=== OWNER'S BRIEF FOR THIS BATCH ===\n${lines.join("\n")}\n` : "";
+}
+
 function strategyPrompt(input: {
   product: StrategyProductInput;
   brand: StrategyBrandInput;
   productResearch: unknown;
   brandResearch: BrandResearch | null;
+  angleCount?: number;
+  focus?: StrategyFocus | null;
 }): string {
   const { product, brand, productResearch, brandResearch } = input;
+  const angleCount = input.angleCount ?? 5;
   const digest = researchDigest(brandResearch);
   const canonical = brandResearch
     ? `
@@ -193,14 +215,14 @@ ${productResearch ? JSON.stringify(productResearch) : "(unavailable — insights
 
 === BRAND RESEARCH (earlier; site + web) ===
 ${digest || "(none)"}
-${canonical}
+${canonical}${focusBlock(input.focus)}
 
 Work through it in order, then return JSON:
 1. Situation — market sophistication stage and what it means for the message; the buyer's dominant awareness level and what it means; the competitive frame (what they compare against, including non-obvious alternatives).
 2. Core insight — one human truth about the buyer and the tension current options leave unresolved, with the evidence it rests on.
 3. Positioning — "For [specific buyer] who [need], [product] is the [frame of reference] that [benefit], because [reason to believe]. Unlike [named alternative], it [difference]."
 4. Big idea — a campaign platform: a name and one line that every ad can ladder up to.
-5. Angles — exactly 5. Each from a DIFFERENT finding. At least two from what buyers say, one from a named competitor's weakness, one that uses proof the brand already has. Cover the funnel (awareness, consideration, conversion).
+5. Angles — exactly ${angleCount}. Each from a DIFFERENT finding. At least two from what buyers say, one from a named competitor's weakness, one that uses proof the brand already has. Cover the funnel (awareness, consideration, conversion).
 6. Objections — the 3 real reasons people don't buy, with the answer and the proof to show.
 7. Avoid — claims and tropes that would make this look like every other ad in the category, and why.
 8. Campaign plan — 6 posts over 2 weeks, sequenced by funnel, each using one of the angles (refer to it by its "angle" name) and saying why it sits there.
@@ -283,6 +305,8 @@ export function normalizeStrategy(
     research: StrategyBrief["research"];
     alternatives: StrategyBrief["alternatives"];
     alignedWithBrandResearch?: boolean;
+    /** Upper bound for angles kept (default 6). */
+    maxAngles?: number;
   }
 ): ProductStrategy {
   const angles: StrategyAngle[] = (Array.isArray(raw?.angles) ? raw.angles : [])
@@ -307,7 +331,7 @@ export function normalizeStrategy(
       };
     })
     .filter((a: StrategyAngle) => a.title && !BANNED.test(a.title))
-    .slice(0, 6);
+    .slice(0, Math.max(6, ctx.maxAngles ?? 6));
 
   const campaign_plan: StrategyPlanItem[] = (Array.isArray(raw?.campaign_plan) ? raw.campaign_plan : [])
     .map((p: any, i: number) => ({
@@ -383,6 +407,9 @@ export async function buildProductStrategy(input: {
   product: StrategyProductInput;
   brand: StrategyBrandInput;
   brandResearch?: BrandResearch | null;
+  /** Default 5 (Ad Studio's angle list). The poster flow asks for 8. */
+  angleCount?: number;
+  focus?: StrategyFocus | null;
 }): Promise<{ strategy: ProductStrategy; timings: Record<string, number> }> {
   const timings: Record<string, number> = {};
   const { product, brand } = input;
@@ -409,7 +436,7 @@ export async function buildProductStrategy(input: {
 
   t = Date.now();
   const raw = await generateResearchJson<any>(
-    strategyPrompt({ product, brand, productResearch, brandResearch }),
+    strategyPrompt({ product, brand, productResearch, brandResearch, angleCount: input.angleCount, focus: input.focus }),
     { system: STRATEGIST_SYSTEM, temperature: 0.6, label: "product-strategy", timeoutMs: 90_000 }
   );
   timings.strategy = Date.now() - t;
@@ -419,6 +446,7 @@ export async function buildProductStrategy(input: {
     research: productResearch ? "web" : brandResearch ? "brand_research" : "product_only",
     alternatives,
     alignedWithBrandResearch: Boolean(brandResearch),
+    maxAngles: input.angleCount,
   });
   if (!strategy.angles.length) throw new Error("Strategy came back without usable angles");
   return { strategy, timings };

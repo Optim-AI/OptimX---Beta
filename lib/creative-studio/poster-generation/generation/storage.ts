@@ -35,6 +35,11 @@ export async function storePosterGeneratedImage(options: {
     throw new Error(`Storage upload failed: ${error.message}`);
   }
 
+  // Lets Meta Intelligence tag ads that use this exact image as "Made by SkalX". Non-blocking, never throws.
+  void import("@/lib/meta-sync/asset-hash").then(({ registerSkalxAssetHash }) =>
+    registerSkalxAssetHash({ userId: options.userId, buffer: options.buffer, source: "poster", storagePath })
+  );
+
   const { data } = supabaseAdmin.storage.from(BUCKET).getPublicUrl(storagePath);
   const publicUrl = (data as { publicUrl?: string })?.publicUrl;
   if (!publicUrl) {

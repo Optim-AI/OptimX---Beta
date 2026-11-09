@@ -8,6 +8,7 @@ export const SETTINGS_TABS = [
   { value: 'profile', label: 'Profile' },
   { value: 'business', label: 'Business' },
   { value: 'billing', label: 'Billing' },
+  { value: 'integrations', label: 'Integrations' },
   { value: 'security', label: 'Security & Policy' },
 ] as const;
 

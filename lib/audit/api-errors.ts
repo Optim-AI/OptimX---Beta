@@ -33,6 +33,9 @@ const CLIENT_MESSAGES: Record<string, string> = {
   private_address: 'That address points to a private or internal network.',
   dns: "We couldn't find that website. Check the spelling and try again.",
   rate_limited: "You've run several audits recently. Please try again later.",
+  invalid_email: 'Enter a valid email address.',
+  email_used:
+    'This email has already used its free audit. Start free to keep going, or log in if you have an account.',
   not_found: 'Audit not found.',
   audit_storage_unavailable:
     'Audit storage is temporarily unavailable. Please try again in a few minutes.',

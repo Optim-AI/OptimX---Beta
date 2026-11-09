@@ -10,6 +10,7 @@ import {
   newAuditRequestId,
 } from '@/lib/audit/api-errors';
 import { AUDIT_LIMITS, decideAuditRateLimit, getClientIp, hashClientIp } from '@/lib/audit/rate-limit';
+import { cleanLeadCategory, findLeadByEmail, normalizeLeadEmail, recordLead } from '@/lib/audit/leads';
 import { countRecentAudits, createOrReuseAudit } from '@/lib/audit/store';
 import { assertPublicHost, normalizeAuditUrl, UnsafeUrlError } from '@/lib/audit/url-safety';
 
@@ -18,7 +19,12 @@ const HOST_MESSAGES: Record<string, string> = {
   dns: clientMessageForCode('dns'),
 };
 
-/** POST /api/audit — start (or resume) a free audit for a website. */
+/**
+ * POST /api/audit — start (or resume) a free audit for a website.
+ * Guests must give an email (body.email) and may give a category; each email gets one free
+ * audit (audit_leads). A repeat email returns its existing audit when the same browser owns it,
+ * otherwise 409 email_used. Signed-in users may omit the email.
+ */
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const requestId = newAuditRequestId();
   res.setHeader('x-audit-request-id', requestId);
@@ -54,8 +60,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
   }
 
+  const rawEmail = typeof req.body?.email === 'string' ? req.body.email : '';
+  const emailNormalized = rawEmail ? normalizeLeadEmail(rawEmail) : null;
+  const category = cleanLeadCategory(req.body?.category);
+  if (rawEmail && !emailNormalized) {
+    return res.status(400).json({ ok: false, code: 'invalid_email', requestId, error: clientMessageForCode('invalid_email') });
+  }
+
   try {
     const authUserId = await getUserIdFromRequest(req);
+    if (!authUserId && !emailNormalized) {
+      return res.status(400).json({ ok: false, code: 'invalid_email', requestId, error: clientMessageForCode('invalid_email') });
+    }
     let actorId: string;
     let guestProfileId: string | null = null;
     if (authUserId) {
@@ -87,9 +103,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     const ipHash = hashClientIp(getClientIp(req));
+    const ownerIds = [actorId, guestProfileId].filter((v): v is string => Boolean(v));
+
+    // One free audit per email.
+    if (emailNormalized) {
+      const prior = await findLeadByEmail(emailNormalized);
+      if (prior) {
+        if (prior.audit && (ownerIds.includes(prior.audit.userId) || prior.audit.userId === authUserId)) {
+          return res.status(200).json({
+            ok: true,
+            reused: true,
+            requestId,
+            audit: toPublicAudit(prior.audit, { authUserId, guestProfileId }),
+          });
+        }
+        return res.status(409).json({ ok: false, code: 'email_used', requestId, error: clientMessageForCode('email_used') });
+      }
+    }
+
     let retryAfter = 0;
     const result = await createOrReuseAudit({
-      ownerIds: [actorId, guestProfileId].filter((v): v is string => Boolean(v)),
+      ownerIds,
       actorId,
       websiteUrl: check.url,
       host: check.host,
@@ -108,6 +142,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         code: 'rate_limited',
         requestId,
         error: clientMessageForCode('rate_limited'),
+      });
+    }
+
+    if (emailNormalized) {
+      await recordLead({
+        email: rawEmail,
+        emailNormalized,
+        category,
+        websiteUrl: check.url,
+        host: check.host,
+        auditId: result.row.id,
+        ipHash,
       });
     }
 

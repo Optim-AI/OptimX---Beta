@@ -286,3 +286,178 @@ export async function generateAdStudioPosters(params: {
     .map((o) => o.asset.imageUrl as string);
   return { sessionId: session.id, images, creditsCharged: result.creditsCharged, failed: result.failedVariants };
 }
+
+export type FormatPosterResult = { ok: true; imageUrl: string; sessionId: string } | { ok: false; error: string; sessionId: string | null };
+
+export type PosterPairResult = { feed: FormatPosterResult; story: FormatPosterResult; creditsCharged: number };
+
+/**
+ * Test packs: one angle → one concept, rendered twice — feed (4:5) and story (9:16) —
+ * from the same strategy and concept, so the two variants differ only by format.
+ * 1 image credit per successful poster (charged by the normal pipeline).
+ */
+export async function generateAdStudioPosterPair(params: {
+  userId: string;
+  product: Product;
+  angle: AdStudioAngle;
+  campaign?: AdStudioCampaignContext | null;
+  /** false = feed only (no story render, no story credit). Default true. */
+  includeStory?: boolean;
+}): Promise<PosterPairResult> {
+  const { userId, product, angle, campaign } = params;
+  assertProductImage(product);
+  const brand = await loadBrand(userId, null);
+  const sessionService = createPosterGenerationSessionService();
+  let creditsCharged = 0;
+
+  const errorText = (err: unknown) => {
+    const pub = (err as { toPublicJSON?: () => { message?: string } })?.toPublicJSON?.();
+    return pub?.message || (err as Error)?.message || "Poster generation failed";
+  };
+
+  // Feed: full pipeline with one concept.
+  let feedSessionId: string | null = null;
+  let feed: FormatPosterResult;
+  try {
+    const session = await sessionService.createSession({ userId });
+    feedSessionId = session.id;
+    const brief = buildAdStudioBrief({ brand, product, angle, campaign });
+    brief.variantCount = 1;
+    brief.aspectRatio = "4:5";
+    await sessionService.updateBrief(session.id, userId, brief);
+    await runMarketingStrategyForSession({ sessionId: session.id, userId, sessionService });
+    await applyArtDirection(sessionService, session.id, userId, brand, product, angle);
+    const { concepts } = await runCreativeConceptsForSession({ sessionId: session.id, userId, conceptCount: 1, sessionService });
+    if (!concepts.length) throw new AdStudioPosterError("Couldn't plan the poster. Please try again.");
+    await selectConceptForSession({ sessionId: session.id, userId, conceptIds: concepts[0].id, sessionService });
+    const result = await generatePostersForSession({ sessionId: session.id, userId, variantCount: 1, sessionService });
+    creditsCharged += result.creditsCharged;
+    const url = result.outcomes.find((o) => o.success && o.asset?.imageUrl)?.asset.imageUrl as string | undefined;
+    feed = url ? { ok: true, imageUrl: url, sessionId: session.id } : { ok: false, error: "The feed poster didn't come out right.", sessionId: session.id };
+  } catch (err) {
+    return {
+      feed: { ok: false, error: errorText(err), sessionId: feedSessionId },
+      story: { ok: false, error: "Skipped because the feed poster could not be planned.", sessionId: null },
+      creditsCharged,
+    };
+  }
+
+  if (params.includeStory === false) {
+    return { feed, story: { ok: false, error: "Not requested", sessionId: null }, creditsCharged };
+  }
+
+  // Story: same brief (9:16), same strategy and concept → only the format changes.
+  let story: FormatPosterResult;
+  let storySessionId: string | null = null;
+  try {
+    const planned = await sessionService.getSession(feed.sessionId!, userId);
+    if (!planned.brief || !planned.strategy || !planned.concepts.length) throw new Error("Feed plan is incomplete");
+    const s = await sessionService.createSession({ userId });
+    storySessionId = s.id;
+    await sessionService.updateBrief(s.id, userId, { ...planned.brief, id: `${planned.brief.id}_story`, aspectRatio: "9:16", variantCount: 1 });
+    await sessionService.updateStrategy(s.id, userId, planned.strategy);
+    await sessionService.setConcepts(s.id, userId, planned.concepts, planned.dnaByConceptId);
+    await selectConceptForSession({ sessionId: s.id, userId, conceptIds: planned.concepts[0].id, sessionService });
+    const result = await generatePostersForSession({ sessionId: s.id, userId, variantCount: 1, sessionService });
+    creditsCharged += result.creditsCharged;
+    const url = result.outcomes.find((o) => o.success && o.asset?.imageUrl)?.asset.imageUrl as string | undefined;
+    story = url ? { ok: true, imageUrl: url, sessionId: s.id } : { ok: false, error: "The story poster didn't come out right.", sessionId: s.id };
+  } catch (err) {
+    story = { ok: false, error: errorText(err), sessionId: storySessionId };
+  }
+  return { feed, story, creditsCharged };
+}
+
+export type DraftRenderResult = { ok: true; sessionId: string; storagePath: string } | { ok: false; sessionId: string | null; error: string };
+
+/**
+ * Ad Studio poster flow: one researched angle → one DRAFT poster in the chosen format.
+ * Never charges (the owner pays only for drafts they keep) and stores through `storeImage`
+ * (the private draft bucket). Everything else is the normal poster pipeline.
+ */
+export async function renderAdStudioDraft(params: {
+  userId: string;
+  product: Product;
+  angle: AdStudioAngle;
+  adGoal: PosterAdGoal;
+  aspectRatio: "4:5" | "1:1" | "9:16" | "1.91:1";
+  extraInstruction?: string | null;
+  storeImage: NonNullable<Parameters<typeof generatePostersForSession>[0]["storeImage"]>;
+}): Promise<DraftRenderResult> {
+  const { userId, product, angle } = params;
+  let sessionId: string | null = null;
+  try {
+    assertProductImage(product);
+    const brand = await loadBrand(userId, null);
+    const sessionService = createPosterGenerationSessionService();
+    const session = await sessionService.createSession({ userId });
+    sessionId = session.id;
+    const brief = buildAdStudioBrief({ brand, product, angle });
+    brief.variantCount = 1;
+    brief.aspectRatio = params.aspectRatio;
+    brief.adGoal = params.adGoal;
+    if (params.extraInstruction) brief.userInstruction = `${brief.userInstruction}\n${clip(params.extraInstruction, 700)}`;
+    await sessionService.updateBrief(session.id, userId, brief);
+    await runMarketingStrategyForSession({ sessionId: session.id, userId, sessionService });
+    await applyArtDirection(sessionService, session.id, userId, brand, product, angle);
+    const { concepts } = await runCreativeConceptsForSession({ sessionId: session.id, userId, conceptCount: 1, sessionService });
+    if (!concepts.length) throw new AdStudioPosterError("Couldn't plan this poster.");
+    await selectConceptForSession({ sessionId: session.id, userId, conceptIds: concepts[0].id, sessionService });
+    const result = await generatePostersForSession({
+      sessionId: session.id,
+      userId,
+      variantCount: 1,
+      sessionService,
+      storeImage: params.storeImage,
+      // Drafts are free: the charge happens when the owner keeps the poster.
+      credits: { getBalance: async () => 1, deduct: async () => true },
+    });
+    const asset = result.outcomes.find((o) => o.success && o.asset?.storagePath)?.asset;
+    return asset?.storagePath
+      ? { ok: true, sessionId: session.id, storagePath: asset.storagePath as string }
+      : { ok: false, sessionId: session.id, error: "This poster didn't come out right." };
+  } catch (err) {
+    const pub = (err as { toPublicJSON?: () => { message?: string } })?.toPublicJSON?.();
+    return { ok: false, sessionId, error: pub?.message || (err as Error)?.message || "Poster generation failed" };
+  }
+}
+
+/**
+ * Re-draw a planned poster in another format: copies the brief (new aspect), strategy and
+ * concept from an existing session into a new one, then renders once. Never charges here —
+ * the caller decides (Ad Studio charges 1 credit when the owner asked for the extra size).
+ */
+export async function renderDraftInFormat(params: {
+  userId: string;
+  sourceSessionId: string;
+  aspectRatio: "4:5" | "1:1" | "9:16" | "1.91:1";
+  storeImage: NonNullable<Parameters<typeof generatePostersForSession>[0]["storeImage"]>;
+}): Promise<DraftRenderResult> {
+  const { userId } = params;
+  const sessionService = createPosterGenerationSessionService();
+  let sessionId: string | null = null;
+  try {
+    const planned = await sessionService.getSession(params.sourceSessionId, userId);
+    if (!planned.brief || !planned.strategy || !planned.concepts.length) throw new Error("The original poster plan is incomplete");
+    const s = await sessionService.createSession({ userId });
+    sessionId = s.id;
+    const briefId = `${planned.brief.id}_${params.aspectRatio.replace(/[:.]/g, "x")}`;
+    await sessionService.updateBrief(s.id, userId, { ...planned.brief, id: briefId, aspectRatio: params.aspectRatio, variantCount: 1 });
+    // The copied strategy and concepts must point at the new brief, or generation rejects them as stale.
+    await sessionService.updateStrategy(s.id, userId, { ...planned.strategy, briefId });
+    await sessionService.setConcepts(s.id, userId, planned.concepts.map((c) => ({ ...c, briefId })), planned.dnaByConceptId);
+    const conceptId = planned.selectedConceptIds[0] ?? planned.concepts[0].id;
+    await selectConceptForSession({ sessionId: s.id, userId, conceptIds: conceptId, sessionService });
+    const result = await generatePostersForSession({
+      sessionId: s.id, userId, variantCount: 1, sessionService, storeImage: params.storeImage,
+      credits: { getBalance: async () => 1, deduct: async () => true },
+    });
+    const asset = result.outcomes.find((o) => o.success && o.asset?.storagePath)?.asset;
+    return asset?.storagePath
+      ? { ok: true, sessionId: s.id, storagePath: asset.storagePath as string }
+      : { ok: false, sessionId: s.id, error: "This size didn't come out right." };
+  } catch (err) {
+    const pub = (err as { toPublicJSON?: () => { message?: string } })?.toPublicJSON?.();
+    return { ok: false, sessionId, error: pub?.message || (err as Error)?.message || "Poster generation failed" };
+  }
+}
