@@ -117,7 +117,12 @@ async function main() {
   await test("prompt block: talking speaks to the lens, voice-over keeps lips still, reference order stated", () => {
     const talk = ugcToPromptBlock(ugc({ delivery: "talk_to_camera", speech: "native" }), { hasProductPhotos: true });
     assert.ok(talk.includes("SPEAKS the lines"));
-    assert.ok(talk.includes("comes after the product reference image"));
+    // People are described in words (Runway refuses real faces as references)…
+    assert.ok(!talk.includes("creator reference image"));
+    assert.ok(talk.includes("always the same Tamil woman, 35"));
+    // …animals and mascots still send their photo, after the products.
+    const dog = ugcToPromptBlock(ugc({ creator: { kind: "animal", description: "beagle", image: creatorImg } }), { hasProductPhotos: true });
+    assert.ok(dog.includes("comes after the product reference image"));
     const vo = ugcToPromptBlock(ugc());
     assert.ok(vo.includes("does NOT speak"));
     assert.ok(ugcToPromptBlock(ugc({ creator: { kind: "animal", description: "golden retriever" } })).includes("lovable character"));
@@ -143,12 +148,16 @@ async function main() {
     assert.equal(plain.voiceover?.voice, undefined);
   });
 
-  await test("creator photo joins the references after the products", () => {
-    const brief = makeValidBrief({ ugc: ugc() });
+  await test("realistic people never go to Runway as a reference; animal photos join after the products", () => {
+    const person = mergeProductAssets(makeValidBrief({ ugc: ugc() }), {
+      productImages: [{ id: "p1", kind: "product_image", url: "https://example.com/p.png", mimeType: "image/png" }],
+    });
+    assert.equal(person.characterReferences, undefined);
+    const brief = makeValidBrief({ ugc: ugc({ creator: { kind: "animal", description: "beagle", image: creatorImg } }) });
     const merged = mergeProductAssets(brief, { productImages: [{ id: "p1", kind: "product_image", url: "https://example.com/p.png", mimeType: "image/png" }] });
     assert.deepEqual(merged.characterReferences?.map((c) => c.id), ["ugc-creator"]);
     const input = make15sCompileInput();
-    const spec = compileCampaignGeneration({ ...input, availableAssets: { ...input.availableAssets, ...merged }, ugc: ugc() });
+    const spec = compileCampaignGeneration({ ...input, availableAssets: { ...input.availableAssets, ...merged }, ugc: ugc({ creator: { kind: "animal", image: creatorImg } }) });
     const order = spec.referenceAssets.map((r) => r.purpose);
     assert.ok(order.indexOf("product") < order.indexOf("character"));
     assert.ok(spec.campaignPrompt.includes("UGC CREATOR VIDEO"));
@@ -207,7 +216,11 @@ async function main() {
   });
 
   await test("uploaded photo check blocks famous people, children and unclear photos", () => {
-    assert.deepEqual(parseCreatorPhotoCheck('{"subject":"person","famous":false,"child":false,"clear":true}'), { ok: true, kind: "person" });
+    assert.deepEqual(parseCreatorPhotoCheck('{"subject":"person","famous":false,"child":false,"clear":true}'), { ok: true, kind: "person", description: undefined });
+    assert.equal(
+      parseCreatorPhotoCheck('{"subject":"person","famous":false,"child":false,"clear":true,"description":" Woman in her 30s, curly hair "}').description,
+      "Woman in her 30s, curly hair"
+    );
     assert.equal(parseCreatorPhotoCheck('{"subject":"person","famous":true,"child":false,"clear":true}').ok, false);
     assert.equal(parseCreatorPhotoCheck('{"subject":"person","famous":false,"child":true,"clear":true}').ok, false);
     assert.equal(parseCreatorPhotoCheck('{"subject":"animal","famous":false,"child":false,"clear":false}').ok, false);

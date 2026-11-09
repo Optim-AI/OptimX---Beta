@@ -64,7 +64,7 @@ const NAV_SECTIONS: NavSection[] = [
       { href: '/photo-studio', label: 'Photoshoot Studio', Icon: Camera, betaBadge: true },
       { href: '/brand-studio', label: 'Brand Studio', Icon: Orbit },
       { href: '/content-studio', label: 'Ad Studio', Icon: ImageIcon, betaBadge: true },
-      { href: '/ugc-studio', label: 'UGC Studio', Icon: Smartphone, betaBadge: true },
+      { href: '/ugc-studio', label: 'UGC Studio', Icon: Smartphone, comingSoon: true },
       { href: '/create-campaign', label: 'Create Campaign', Icon: PlusCircle, featureKey: 'create_campaigns' },
     ],
   },

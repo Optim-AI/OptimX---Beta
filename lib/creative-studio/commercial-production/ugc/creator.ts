@@ -7,6 +7,8 @@ import sharp from "sharp";
 import { generateGeminiImage } from "@/lib/creative-studio/nano-banana";
 import { getGeminiApiKey, GEMINI_REST_BASE } from "@/lib/gemini-config";
 import type { UgcCreatorKind } from "../campaign/ugc";
+import type { StoredAssetRef } from "../assets";
+import { loadImageInline } from "../product-understanding/analyze-product";
 
 export const CREATOR_PORTRAIT_SIZE = 768;
 const CHECK_MODEL = "gemini-3.8-flash";
@@ -50,6 +52,8 @@ export interface CreatorPhotoCheck {
   /** Plain message for the owner when the photo can't be used. */
   reason?: string;
   kind?: UgcCreatorKind;
+  /** What they look like, in words — the video model gets this, not the face. */
+  description?: string;
 }
 
 export function parseCreatorPhotoCheck(raw: string): CreatorPhotoCheck {
@@ -59,6 +63,7 @@ export function parseCreatorPhotoCheck(raw: string): CreatorPhotoCheck {
       famous?: boolean;
       child?: boolean;
       clear?: boolean;
+      description?: string;
     };
     const kind: UgcCreatorKind | undefined =
       parsed.subject === "animal" ? "animal" : parsed.subject === "cartoon" ? "mascot" : parsed.subject === "person" ? "person" : undefined;
@@ -66,10 +71,35 @@ export function parseCreatorPhotoCheck(raw: string): CreatorPhotoCheck {
     if (parsed.famous) return { ok: false, reason: "This looks like a well-known person. Please use a photo of someone who has given you permission." };
     if (parsed.child) return { ok: false, reason: "Photos of children can't be used as the creator. Please choose an adult, an animal or a mascot." };
     if (parsed.clear === false) return { ok: false, reason: "The face isn't clear enough. Please use a well-lit photo looking at the camera.", kind };
-    return { ok: true, kind };
+    const description = typeof parsed.description === "string" ? parsed.description.trim().slice(0, 300) || undefined : undefined;
+    return { ok: true, kind, description };
   } catch {
     return { ok: false, reason: "We couldn't check this photo right now. Please try again." };
   }
+}
+
+const DESCRIBE_INSTRUCTION =
+  "one line describing how the main subject looks, for someone recreating a similar look: apparent age range, gender presentation, skin tone, face shape, hair (length, colour, style), glasses or accessories, clothing and colours. No names, no guesses about identity.";
+
+/** Words for a creator's look, from their photo (used when the face itself can't be sent). */
+export async function describeCreatorPhoto(ref: StoredAssetRef): Promise<string | undefined> {
+  const image = await loadImageInline(ref);
+  if (!image) return undefined;
+  const apiKey = getGeminiApiKey();
+  if (!apiKey) return undefined;
+  const res = await fetch(`${GEMINI_REST_BASE}/models/${CHECK_MODEL}:generateContent`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+    signal: AbortSignal.timeout(CHECK_TIMEOUT_MS),
+    body: JSON.stringify({
+      contents: [{ role: "user", parts: [{ inline_data: { mime_type: image.mimeType, data: image.data } }, { text: `Write ${DESCRIBE_INSTRUCTION} Reply with the line only.` }] }],
+      generationConfig: { temperature: 0 },
+    }),
+  });
+  if (!res.ok) throw new Error(`Describing the creator failed (HTTP ${res.status})`);
+  const json = (await res.json()) as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
+  const text = json.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join("").trim();
+  return text ? text.slice(0, 300) : undefined;
 }
 
 /** Gemini vision check: what is in the photo, and is it safe and usable as a creator? */
@@ -88,11 +118,12 @@ export async function checkCreatorPhoto(image: { mimeType: string; data: string 
             { inline_data: { mime_type: image.mimeType, data: image.data } },
             {
               text: `This photo will be the on-screen creator in a short ad video. Answer as JSON only:
-{"subject": "person" | "animal" | "cartoon" | "none", "famous": boolean, "child": boolean, "clear": boolean}
+{"subject": "person" | "animal" | "cartoon" | "none", "famous": boolean, "child": boolean, "clear": boolean, "description": string}
 - subject: the main subject.
 - famous: true only if the person is clearly a celebrity, politician or other widely recognised public figure.
 - child: true if the main person looks under 18.
-- clear: true if the main face (or animal/character) is visible and reasonably sharp.`,
+- clear: true if the main face (or animal/character) is visible and reasonably sharp.
+- description: ${DESCRIBE_INSTRUCTION}`,
             },
           ],
         },

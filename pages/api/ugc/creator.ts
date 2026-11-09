@@ -57,7 +57,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         });
       }
       console.log("[api/ugc/creator] checked", { userId, ok: check.ok, kind: check.kind });
-      return res.status(200).json({ ok: check.ok, kind: check.kind, error: check.reason });
+      return res.status(200).json({ ok: check.ok, kind: check.kind, description: check.description, error: check.reason });
     }
 
     return res.status(400).json({ ok: false, error: "Unknown mode" });

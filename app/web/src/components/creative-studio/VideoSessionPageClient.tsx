@@ -1768,10 +1768,14 @@ export default function VideoSessionPage({ studio = 'brand' }: { studio?: 'brand
       setProductionStatus('failed');
       const message =
         error instanceof Error ? error.message : 'Something went wrong';
+      // Provider moderation codes are diagnostics, not something an owner can act on.
+      const blocked = /content moderation|SAFETY\./i.test(message);
       showError(
-        message.includes('Failed to generate')
-          ? message
-          : `We couldn't generate this commercial. ${message}`
+        blocked
+          ? "The video service's safety check stopped this video, so no credits were used. Try a different creator, product photo or description, then generate again."
+          : message.includes('Failed to generate')
+            ? message
+            : `We couldn't generate this commercial. ${message}`
       );
       await loadCredits();
     } finally {

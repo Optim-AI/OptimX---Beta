@@ -171,6 +171,15 @@ const UGC_SPEECH_DIRECTION: Record<UgcSpeech, string> = {
     "The creator does NOT speak — mouth closed or smiling, no lip movement. They show, use and react to the product while an unseen voice is added later.",
 };
 
+/**
+ * Runway's Seedance refuses realistic human faces as reference images
+ * (INPUT_PREPROCESSING.SAFETY.THIRD_PARTY), so people are described in words;
+ * animals and mascots still send their photo.
+ */
+export function creatorPhotoGoesToVideo(creator: UgcCreator | undefined): boolean {
+  return Boolean(creator?.image?.url) && creator?.kind !== "person";
+}
+
 function creatorLabel(creator: UgcCreator): string {
   const what =
     creator.kind === "animal" ? "an animal" : creator.kind === "mascot" ? "a cartoon mascot character" : "a real person";
@@ -184,9 +193,9 @@ export function ugcToPromptBlock(ugc: CampaignUgcInput | undefined, opts: { hasP
   const { creator } = ugc;
   const lines = [
     `UGC CREATOR VIDEO (CRITICAL): a user-generated-content style ad starring ONE creator: ${creatorLabel(creator)}.`,
-    creator.image
+    creatorPhotoGoesToVideo(creator)
       ? `The creator reference image${opts.hasProductPhotos ? " comes after the product reference image(s)" : ""} — keep the creator's face, body, colouring and look exactly the same as that photo in every moment. Do not swap or add other main characters.`
-      : "Keep the creator's look identical from start to end. Do not swap or add other main characters.",
+      : `Keep the creator's look identical from start to end${creator.description ? ` — always the same ${creator.description}` : ""}. Do not swap or add other main characters.`,
     `Format: ${UGC_FORMATS[ugc.format].prompt}`,
     "Shot like a real creator's phone video: vertical, handheld or propped-up phone, front-camera framing, natural room or outdoor light, the product close to the lens and clearly readable.",
   ];

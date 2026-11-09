@@ -1,5 +1,6 @@
 import dynamic from 'next/dynamic';
 import type { GetServerSideProps } from 'next';
+import { UGC_STUDIO_LIVE } from '@/lib/creative-studio/commercial-production/campaign/ugc-presets';
 
 /**
  * Named page component (not `export default dynamic(...)`) so Fast Refresh can
@@ -28,7 +29,9 @@ const VideoSessionPageClient = dynamic(
 );
 
 /** Keep the page dynamic so `?id=` is available via router on first paint. */
-export const getServerSideProps: GetServerSideProps = async () => ({ props: {} });
+export const getServerSideProps: GetServerSideProps = async () =>
+  // Paused: send anyone with an old link back to the "Coming soon" page.
+  UGC_STUDIO_LIVE ? { props: {} } : { redirect: { destination: '/ugc-studio', permanent: false } };
 
 export default function UgcStudioVideoPage() {
   return <VideoSessionPageClient studio="ugc" />;

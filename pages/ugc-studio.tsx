@@ -10,7 +10,11 @@ import { showError } from '@/app/web/src/components/ui/alert-modal-api';
 import colors from '@/lib/ui/colors';
 import { authFetch } from '@/lib/utils';
 import { formatTimestamp, type BrandSnapshot } from '@/app/web/src/components/creative-studio';
-import { UGC_CREATOR_PRESETS, ugcPresetImagePath } from '@/lib/creative-studio/commercial-production/campaign/ugc-presets';
+import {
+  UGC_CREATOR_PRESETS,
+  UGC_STUDIO_LIVE,
+  ugcPresetImagePath,
+} from '@/lib/creative-studio/commercial-production/campaign/ugc-presets';
 import { VOICEOVER_LANGUAGES, VOICEOVER_LANGUAGE_LABELS } from '@/lib/creative-studio/commercial-production/audio/voiceover-languages';
 
 type UgcSessionItem = {
@@ -19,6 +23,55 @@ type UgcSessionItem = {
   updatedAt: string;
   cover?: string | null;
 };
+
+/** Shown over the page while UGC Studio is paused; the page behind can't be used. */
+function ComingSoonOverlay({ onBack }: { onBack: () => void }) {
+  return (
+    <div className="absolute inset-0 z-20 flex items-center justify-center p-6" style={{ background: 'rgba(11, 11, 15, 0.55)' }}>
+      <div
+        role="dialog"
+        aria-labelledby="ugc-soon-title"
+        className="w-full max-w-md rounded-2xl p-7 text-center"
+        style={{ background: '#16161C', border: `1px solid ${colors.border}`, boxShadow: '0 24px 60px rgba(0,0,0,0.45)' }}
+      >
+        <div className="mx-auto flex -space-x-3 justify-center">
+          {['meera', 'jordan', 'bruno', 'yuki'].map((id) => (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              key={id}
+              src={ugcPresetImagePath(id)}
+              alt=""
+              className="h-12 w-12 rounded-full object-cover"
+              style={{ border: '2px solid #16161C' }}
+            />
+          ))}
+        </div>
+        <span
+          className="mt-5 inline-block rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em]"
+          style={{ color: '#f5b942', background: 'rgba(245, 185, 66, 0.14)' }}
+        >
+          Coming soon
+        </span>
+        <h2 id="ugc-soon-title" className="mt-3 text-xl font-semibold" style={{ color: colors.foreground }}>
+          UGC Studio is on its way
+        </h2>
+        <p className="mt-2 text-[15px] leading-relaxed" style={{ color: colors.mutedForeground }}>
+          Real-looking creator videos for your product — a person, a pet or a mascot, in your customers&apos; language.
+          We&apos;ll let you know as soon as it&apos;s ready.
+        </p>
+        <button
+          type="button"
+          onClick={onBack}
+          className="mt-6 inline-flex items-center gap-2 rounded-xl px-5 py-3 text-[15px] font-semibold text-white"
+          style={{ background: '#A855F7' }}
+        >
+          Make a video in Brand Studio
+          <ArrowRight className="h-4 w-4" />
+        </button>
+      </div>
+    </div>
+  );
+}
 
 /** A few faces for the hero strip — people, an animal and a mascot. */
 const HERO_FACES = ['meera', 'jordan', 'yuki', 'amara', 'luca', 'bruno', 'priya', 'pip'];
@@ -109,8 +162,13 @@ export default function UgcStudioLanding() {
         <Sidebar showChatHistory={false} />
       </div>
 
-      <div className="flex-1 flex flex-col h-full overflow-hidden" style={{ backgroundColor: colors.background }}>
-        <div className="flex-1 overflow-y-auto">
+      <div className="relative flex-1 flex flex-col h-full overflow-hidden" style={{ backgroundColor: colors.background }}>
+        {!UGC_STUDIO_LIVE && <ComingSoonOverlay onBack={() => router.push('/brand-studio')} />}
+        <div
+          className={`flex-1 overflow-y-auto ${UGC_STUDIO_LIVE ? '' : 'pointer-events-none select-none blur-[6px] opacity-60'}`}
+          aria-hidden={!UGC_STUDIO_LIVE}
+          inert={!UGC_STUDIO_LIVE || undefined}
+        >
           <div className="mx-auto max-w-6xl px-6 py-8">
             <header className="flex flex-wrap items-end justify-between gap-4">
               <div>

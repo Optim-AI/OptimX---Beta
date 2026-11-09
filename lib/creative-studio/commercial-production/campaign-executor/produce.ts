@@ -38,7 +38,8 @@ import {
   attachGeminiVoiceoverIfNeeded,
   VoiceoverPipelineError,
 } from "../audio/attach-gemini-voiceover";
-import { usesExternalVoiceover } from "../campaign/ugc";
+import { creatorPhotoGoesToVideo, usesExternalVoiceover } from "../campaign/ugc";
+import { describeCreatorPhoto } from "../ugc/creator";
 
 function defaultLog(event: string, payload: Record<string, unknown>): void {
   console.log(`[campaign-executor] ${event}`, payload);
@@ -115,8 +116,9 @@ export function mergeProductAssets(
     seen.add(img.url);
     return true;
   });
-  // UGC: the creator photo rides along as a character reference, after the products.
-  const creator = brief.ugc?.creator.image;
+  // UGC animals / mascots: the photo rides along as a character reference, after the products.
+  // Realistic people are described in words instead (Runway refuses real faces).
+  const creator = creatorPhotoGoesToVideo(brief.ugc?.creator) ? brief.ugc?.creator.image : undefined;
   const characterReferences = [
     ...(creator?.url ? [creator] : []),
     ...(available?.characterReferences || []),
@@ -173,6 +175,22 @@ export async function produceFinalCommercial(
     options.productAnalyzer === undefined ? analyzeProductPhysicalProfile : options.productAnalyzer;
   if (analyzer) {
     brief = await withProductHandling(brief, analyzer, log);
+  }
+
+  // A person from an uploaded photo has no description yet — write one so the
+  // video can show them without sending the face itself.
+  const creator = brief.ugc?.creator;
+  if (creator?.kind === "person" && creator.image && !creator.description) {
+    const describe = options.creatorDescriber === undefined ? describeCreatorPhoto : options.creatorDescriber;
+    if (describe) {
+      try {
+        const description = await describe(creator.image);
+        if (description) brief = { ...brief, ugc: { ...brief.ugc!, creator: { ...creator, description } } };
+        log("produce.creator_described", { campaignId: brief.campaignId, described: Boolean(description) });
+      } catch (err) {
+        log("produce.creator_describe_failed", { campaignId: brief.campaignId, message: err instanceof Error ? err.message : String(err) });
+      }
+    }
   }
 
   let blueprint = input.blueprint;

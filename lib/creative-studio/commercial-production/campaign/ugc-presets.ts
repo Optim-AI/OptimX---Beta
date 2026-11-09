@@ -112,3 +112,6 @@ export function ugcPresetImagePath(id: string): string {
 export function getUgcPreset(id: string | undefined): UgcCreatorPreset | undefined {
   return id ? UGC_CREATOR_PRESETS.find((p) => p.id === id) : undefined;
 }
+
+/** UGC Studio is paused: the pages show "Coming soon" and can't be used. Flip to true to launch. */
+export const UGC_STUDIO_LIVE = false;

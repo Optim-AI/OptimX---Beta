@@ -133,9 +133,14 @@ function CreatorPicker({ ugc, onChange }: { ugc: UgcSetupData; onChange: (next: 
         method: 'POST',
         body: JSON.stringify({ mode: 'check', image: pending, consent }),
       });
-      const data = (await res.json().catch(() => null)) as { ok?: boolean; kind?: UgcCreatorKind; error?: string } | null;
+      const data = (await res.json().catch(() => null)) as {
+        ok?: boolean;
+        kind?: UgcCreatorKind;
+        description?: string;
+        error?: string;
+      } | null;
       if (!data?.ok) throw new Error(data?.error || 'We could not use this photo. Please try another.');
-      setCreator({ kind: data.kind || 'person', name: 'Your creator', image: pending });
+      setCreator({ kind: data.kind || 'person', name: 'Your creator', description: data.description, image: pending });
       setPending(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'We could not use this photo.');

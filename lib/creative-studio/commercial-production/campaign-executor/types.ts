@@ -160,6 +160,8 @@ export interface CampaignExecutorOptions {
    * (skipped without an API key). Pass null to disable.
    */
   productAnalyzer?: import("../product-understanding/analyze-product").ProductAnalyzer | null;
+  /** Describes a UGC person from their photo (null skips; tests). */
+  creatorDescriber?: ((image: import("../assets").StoredAssetRef) => Promise<string | undefined>) | null;
   /** Override the end-card finishing step (tests). Default: ffmpeg overlay + storage upload. */
   endCardAttacher?: typeof import("../finishing/attach-end-card").attachEndCardIfNeeded;
   log?: (event: string, payload: Record<string, unknown>) => void;
