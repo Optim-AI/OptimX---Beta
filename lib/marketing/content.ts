@@ -7,6 +7,7 @@
  * scheduling, performance analytics).
  */
 import { MARKETING_SUBSCRIPTION_PLANS, formatPricePlusGst } from '@/lib/billing/marketing-plans';
+import { LINKS } from '@/content/site';
 import { SITE_SUPPORT_EMAIL } from '@/lib/seo/site';
 
 /** e.g. "₹3,999 + GST" — always derived from the live plan catalog. */
@@ -126,7 +127,7 @@ export const FOUNDER = {
 } as const;
 
 /** Primary CTA: the website box at the top of the homepage (research → ideas → sign-up → pricing). */
-export const START_HREF = '/#start';
+export const START_HREF = '/#get-started';
 /** New accounts continue into /try; existing accounts still go to their workspace. */
 export const SIGNUP_HREF = '/auth/signup?next=/try';
 export const LOGIN_HREF = '/auth/signin?next=/try';
@@ -137,6 +138,6 @@ export const LOGIN_HREF = '/auth/signin?next=/try';
  */
 export const HERO_DEMO_VIDEO = '';
 
-// TODO: a booking link (e.g. Cal.com / Calendly). Until then "Book a 15-min call" opens an email.
-export const BOOKING_URL = '';
+/** Booking link lives in content/site.ts. */
+export const BOOKING_URL: string = LINKS.bookDemo;
 export const bookingHref = BOOKING_URL || `mailto:${SITE_SUPPORT_EMAIL}?subject=${encodeURIComponent('Book a 15-min call — SkalX')}`;

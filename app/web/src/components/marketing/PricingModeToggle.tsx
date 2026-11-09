@@ -13,8 +13,8 @@ import DoneForYouForm from './DoneForYouForm';
 export type PricingMode = 'diy' | 'dfy';
 
 const MODES: { id: PricingMode; label: string }[] = [
-  { id: 'diy', label: 'Do it yourself' },
-  { id: 'dfy', label: 'Done for you' },
+  { id: 'diy', label: 'Self-serve' },
+  { id: 'dfy', label: 'Done-for-you' },
 ];
 
 export const DFY_COPY = {

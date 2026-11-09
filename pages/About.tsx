@@ -111,7 +111,7 @@ export default function About() {
             See it before you pay.
           </h2>
           <p className="mt-4 text-xl text-paper/80">Paste your website and get free market research and 3 ad ideas for your brand.</p>
-          <ButtonLink href="/#start" variant="onInk" className="mt-10" arrow>
+          <ButtonLink href="/#get-started" variant="onInk" className="mt-10" arrow>
             Get a free ad
           </ButtonLink>
         </div>

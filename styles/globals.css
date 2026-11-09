@@ -59,6 +59,26 @@
   --color-accent-on-ink: #9db8ff;
   --color-danger: #b42318;
 
+  /* Marketing type scale (text-display, text-h2, text-h3, text-lead). Fluid, mobile first. */
+  --text-display: clamp(2.5rem, 7.2vw, 5.25rem);
+  --text-display--line-height: 1;
+  --text-display--letter-spacing: -0.04em;
+  --text-h2: clamp(2rem, 4.4vw, 3.4rem);
+  --text-h2--line-height: 1.04;
+  --text-h2--letter-spacing: -0.03em;
+  --text-h3: clamp(1.25rem, 2vw, 1.5rem);
+  --text-h3--line-height: 1.2;
+  --text-h3--letter-spacing: -0.015em;
+  --text-lead: clamp(1.0625rem, 1.6vw, 1.25rem);
+  --text-lead--line-height: 1.55;
+
+  /* Radius and shadow tokens (rounded-card, shadow-card…). */
+  --radius-card: 20px;
+  --radius-panel: 28px;
+  --shadow-card: 0 1px 0 rgba(23, 20, 15, 0.04), 0 18px 40px -28px rgba(23, 20, 15, 0.45);
+  --shadow-lift: 0 28px 50px -30px rgba(23, 20, 15, 0.55);
+  --shadow-frame: 0 40px 80px -48px rgba(23, 20, 15, 0.55);
+
   --font-display: "Montserrat", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-body: "Poppins", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 }

@@ -1,5 +1,6 @@
 import React from 'react';
 import Head from 'next/head';
+import AnnouncementBar from './AnnouncementBar';
 import SiteNav from './SiteNav';
 import SiteFooter from './SiteFooter';
 
@@ -29,6 +30,7 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
       >
         Skip to content
       </a>
+      <AnnouncementBar />
       <SiteNav />
       <div id="content">{children}</div>
       <SiteFooter />

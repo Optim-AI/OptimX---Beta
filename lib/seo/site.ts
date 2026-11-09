@@ -14,11 +14,12 @@ export const SITE_TAGLINE = "Market research to ready-to-post creatives";
 export const DEFAULT_TITLE = "SkalX — Market research to ready-to-post ad creatives";
 
 export const DEFAULT_DESCRIPTION =
-  "SkalX reads what customers say about your brand and competitors, turns it into a marketing plan, and helps you create the ads and videos to match. Plans from ₹3,999/month + GST.";
+  "SkalX understands your brand, competitors and customers, builds your marketing strategy, and turns it into ready-to-use posters, videos and UGC-style ads. Plans from ₹3,999/month + GST.";
 
 /** Absolute asset used in Open Graph / Organization schema (existing public logo). */
 export const SITE_LOGO_URL = `${SITE_ORIGIN}/images/SkalX_Logo.png`;
-export const SITE_OG_IMAGE_URL = `${SITE_ORIGIN}/icon-512.png`;
+/** Generated social card (app/og/route.tsx); pages can pass ?title= for their own. */
+export const SITE_OG_IMAGE_URL = `${SITE_ORIGIN}/og`;
 
 /** Public support email for SkalX AI (marketing/contact surfaces). */
 export const SITE_SUPPORT_EMAIL = "info@skalxai.app";
@@ -36,6 +37,15 @@ export const SITE_SAME_AS = [
 export const INDEXABLE_PATHS = [
   "/",
   "/pricing",
+  "/demo",
+  "/done-for-you",
+  "/solutions/d2c",
+  "/solutions/agencies",
+  "/ai-ad-maker/skincare-brands",
+  "/ai-ad-maker/food-and-spice-brands",
+  "/ai-ad-maker/instagram-ads",
+  "/ai-ad-maker/product-video-ads",
+  "/ai-ad-maker/diwali-ads",
   "/ai-ad-generator",
   "/About",
   "/Contact",

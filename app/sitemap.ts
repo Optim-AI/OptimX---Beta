@@ -24,9 +24,11 @@ export default function sitemap(): MetadataRoute.Sitemap {
       lastModified,
       changeFrequency: "monthly",
       priority:
-        path === "/ai-ad-generator" || path === "/About" || path === "/Contact"
+        path === "/pricing" || path.startsWith("/ai-ad-maker/") || path.startsWith("/solutions/")
           ? 0.8
-          : 0.6,
+          : path === "/ai-ad-generator" || path === "/About" || path === "/Contact" || path === "/done-for-you" || path === "/demo"
+            ? 0.7
+            : 0.5,
     };
   });
 

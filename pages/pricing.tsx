@@ -16,6 +16,10 @@ import { PLAN_COMPARISON_ROWS, type ComparisonCell } from '@/lib/onboarding/plan
 import { WORKSPACE_PATH } from '@/lib/onboarding/try-onboarding';
 import { auditPricingPath } from '@/lib/audit/analytics';
 import MarketingLayout from '@/app/web/src/components/marketing/MarketingLayout';
+import { FAQAccordion, faqJsonLd } from '@/app/web/src/components/marketing/kit/FAQAccordion';
+import { Section, SectionHeading } from '@/app/web/src/components/marketing/kit/Section';
+import { getHomeFaqs } from '@/app/web/src/components/marketing/home/EndSections';
+import { LINKS } from '@/content/site';
 import PlanCards from '@/app/web/src/components/marketing/PlanCards';
 import { ButtonLink, Eyebrow } from '@/app/web/src/components/marketing/ui';
 import {
@@ -50,6 +54,19 @@ function Cell({ value }: { value: ComparisonCell }) {
  * Public marketing plans. A free audit does not stay here — `?from=audit` continues
  * into the onboarding pricing step. Nothing here grants access.
  */
+/** Pricing-relevant questions, same answers as the homepage FAQ. */
+const PRICING_FAQ_QUESTIONS = new Set([
+  'What are credits?',
+  'Is there a free trial?',
+  'How do I cancel?',
+  "What's the done-for-you studio?",
+  'Can I use the ads commercially?',
+]);
+const PRICING_FAQS = [
+  ...getHomeFaqs().filter((f) => PRICING_FAQ_QUESTIONS.has(f.q)),
+  { q: 'Is GST included?', a: 'No. All prices are + 18% GST. Your invoice shows the GST separately.' },
+];
+
 export default function PricingPage() {
   const router = useRouter();
   const fromAudit = router.isReady && router.query.from === 'audit';
@@ -121,6 +138,7 @@ export default function PricingPage() {
         title="Pricing"
         description="SkalX plans from ₹3,999/month + GST: market research, strategy and ad creatives in one place. Monthly, cancel anytime."
         path="/pricing"
+        jsonLd={faqJsonLd(PRICING_FAQS)}
       />
       <section aria-labelledby="pricing-heading" className="relative isolate">
         <div aria-hidden className="sx-grid-bg pointer-events-none absolute inset-0 -z-10" />
@@ -264,14 +282,20 @@ export default function PricingPage() {
 
             <p className="mt-10 text-ink-soft">
               Not sure yet?{' '}
-              <Link href="/#start" className="sx-link font-medium text-ink">
-                Get a free ad for your brand
+              <Link href={LINKS.freeAudit} className="sx-link font-medium text-ink">
+                Get your free brand audit
               </Link>{' '}
               first.
             </p>
           </div>
         </section>
       ) : null}
+      <Section id="pricing-faq" labelledBy="pricing-faq-title" tone="paper" innerClassName="grid gap-10 md:grid-cols-12">
+        <div className="md:col-span-4">
+          <SectionHeading id="pricing-faq-title" eyebrow="FAQ" title="Pricing questions." />
+        </div>
+        <FAQAccordion items={PRICING_FAQS} className="md:col-span-8" />
+      </Section>
     </MarketingLayout>
   );
 }

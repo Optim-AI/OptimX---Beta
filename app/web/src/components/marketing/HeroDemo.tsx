@@ -5,42 +5,29 @@ import { Check, Pause, Play } from 'lucide-react';
 import { HERO_DEMO_VIDEO } from '@/lib/marketing/content';
 
 /**
- * Hero demo: a short looping "video" of SkalX working for a fictional D2C brand —
- * website → research → strategy → finished ads. Built in code (no video file) so it stays
- * sharp and light. Set HERO_DEMO_VIDEO in lib/marketing/content.ts to play a real screen
+ * Hero demo: a short looping walkthrough of SkalX working for a fictional D2C brand —
+ * website → research → angle → finished ads. The ads in the last step are real SkalX output
+ * (poster, product video, UGC video) for that brand. Set HERO_DEMO_VIDEO in lib/marketing/content.ts to play a real screen
  * recording here instead.
  *
  * Fictional brand only (site rule: no real client or third-party brand work).
  * Autoplay pauses off-screen; with prefers-reduced-motion it starts paused on the last scene.
  */
 
-const BRAND = 'Kaapi & Co.';
-const SITE = 'kaapiandco.in';
+const BRAND = 'Saffra Skin';
+const SITE = 'saffraskin.in';
+/** Real SkalX output for this fictional brand (scripts/generate-showcase.ts). */
+const ASSETS = '/showcase/saffra-skin';
 const SCENE_MS = 3600;
+/** The Ads step stays on screen long enough to watch the videos. */
+const sceneMs = (i: number) => ('ms' in SCENES[i] ? (SCENES[i] as { ms: number }).ms : SCENE_MS);
 
 const SCENES = [
   { id: 'website', label: 'Website' },
   { id: 'research', label: 'Research' },
-  { id: 'strategy', label: 'Strategy' },
-  { id: 'create', label: 'Create' },
+  { id: 'angle', label: 'Angle' },
+  { id: 'ads', label: 'Ads', ms: 8000 },
 ] as const;
-
-/** Cold-brew bottle used in the example ads. */
-function Bottle({ className = '', tone = 'light' }: { className?: string; tone?: 'light' | 'dark' }) {
-  return (
-    <svg viewBox="0 0 60 120" className={className} aria-hidden>
-      <rect x="22" y="2" width="16" height="12" rx="3" fill={tone === 'light' ? '#2b1d14' : '#f3e7d3'} />
-      <path d="M20 14h20v10c8 4 12 10 12 18v66a10 10 0 0 1-10 10H18A10 10 0 0 1 8 108V42c0-8 4-14 12-18z" fill="#4a2c1a" />
-      <rect x="12" y="52" width="36" height="38" rx="4" fill="#f3e7d3" />
-      <text x="30" y="68" textAnchor="middle" fontSize="7" fontWeight="700" fill="#4a2c1a" fontFamily="Montserrat, sans-serif">
-        KAAPI
-      </text>
-      <text x="30" y="78" textAnchor="middle" fontSize="5" fill="#8a5a3b" fontFamily="Poppins, sans-serif">
-        cold brew
-      </text>
-    </svg>
-  );
-}
 
 function SceneWebsite({ active }: { active: boolean }) {
   const [typed, setTyped] = useState(active ? 0 : SITE.length);
@@ -58,26 +45,26 @@ function SceneWebsite({ active }: { active: boolean }) {
   const done = typed >= SITE.length;
   return (
     <div className="flex h-full flex-col items-center justify-center px-6 text-center">
-      <p className="hx-in font-display text-[clamp(1.1rem,2.2vw,1.45rem)] font-semibold tracking-[-0.02em]">
+      <p className="hx-in font-display text-[clamp(1.1rem,2.4vw,2rem)] font-semibold tracking-[-0.02em]">
         Paste your website.
       </p>
-      <p className="hx-in mt-1 text-[13px] text-white/55" style={{ '--d': '120ms' } as React.CSSProperties}>
+      <p className="hx-in mt-1 text-[13px] text-white/55 lg:text-[15px]" style={{ '--d': '120ms' } as React.CSSProperties}>
         SkalX does the rest.
       </p>
       <div
-        className="hx-in mt-6 flex w-full max-w-sm items-center gap-2 rounded-full border border-white/15 bg-white/[0.04] p-1.5 pl-4"
+        className="hx-in mt-6 flex w-full max-w-sm items-center lg:mt-8 lg:max-w-xl lg:p-2 lg:pl-5 gap-2 rounded-full border border-white/15 bg-white/[0.04] p-1.5 pl-4"
         style={{ '--d': '220ms' } as React.CSSProperties}
       >
-        <span className="flex-1 truncate text-left font-mono text-[13px] text-white/90">
+        <span className="flex-1 truncate text-left font-mono text-[13px] text-white/90 lg:text-[16px]">
           {SITE.slice(0, typed)}
           <span className="hx-caret ml-px inline-block h-4 w-px translate-y-[3px] bg-white/80" />
         </span>
         <span
-          className={`rounded-full px-4 py-2 text-[12px] font-semibold transition-all duration-300 ${
+          className={`rounded-full px-4 py-2 text-[12px] font-semibold transition-all lg:px-5 lg:py-2.5 lg:text-[14px] duration-300 ${
             done ? 'scale-95 bg-white text-[#111]' : 'bg-white/90 text-[#111]'
           }`}
         >
-          Get a free ad
+          Get my audit
         </span>
       </div>
     </div>
@@ -88,22 +75,22 @@ function SceneResearch() {
   const cards = [
     {
       title: 'Customers love',
-      lines: ['“Smooth, never bitter”', '“Keeps me going till lunch”'],
+      lines: ['“Light, never sticky”', '“Survives Chennai heat”'],
       dot: 'bg-[#7ee2a8]',
     },
     {
-      title: 'Customers complain',
-      lines: ['“Most cold brews are too sweet”', '“Bottle leaks in my bag”'],
+      title: 'Customers ask',
+      lines: ['“Will it feel greasy on oily skin?”'],
       dot: 'bg-[#ffb08a]',
     },
     {
       title: 'Competitors running now',
-      lines: ['4 discount ads', '1 founder-story video'],
+      lines: ['Ingredient lists, no proof', 'Flat white packshots'],
       dot: 'bg-[#9db8ff]',
     },
   ];
   return (
-    <div className="flex h-full flex-col justify-center gap-2.5 px-5 sm:px-7">
+    <div className="mx-auto flex h-full w-full max-w-2xl flex-col justify-center gap-2.5 px-5 sm:px-7 lg:gap-3.5">
       <p className="hx-in text-[11px] font-semibold uppercase tracking-[0.16em] text-[#9db8ff]">Research · {SITE}</p>
       {cards.map((c, i) => (
         <div
@@ -115,22 +102,22 @@ function SceneResearch() {
             <span className={`h-1.5 w-1.5 rounded-full ${c.dot}`} />
             {c.title}
           </p>
-          <p className="mt-1 text-[13px] leading-snug text-white/90">{c.lines.join('  ·  ')}</p>
+          <p className="mt-1 text-[13px] leading-snug text-white/90 lg:text-[15.5px]">{c.lines.join('  ·  ')}</p>
         </div>
       ))}
     </div>
   );
 }
 
-function SceneStrategy() {
+function SceneAngle() {
   const angles = [
-    { name: 'Smooth, not sweet', why: 'Answers the #1 complaint', pick: true },
-    { name: 'Leak-proof, bag-ready', why: 'Fixes a real annoyance', pick: false },
-    { name: 'Your 9 a.m. ritual', why: 'Competitors only push discounts', pick: false },
+    { name: 'Oily skin? Still never greasy.', why: 'Answers the #1 question', pick: true },
+    { name: 'Weightless, even in May', why: 'What reviewers praise most', pick: false },
+    { name: 'A real oily-skin review', why: 'Buyers trust peers over ads', pick: false },
   ];
   return (
-    <div className="flex h-full flex-col justify-center gap-2.5 px-5 sm:px-7">
-      <p className="hx-in text-[11px] font-semibold uppercase tracking-[0.16em] text-[#9db8ff]">Strategy · 3 ad angles</p>
+    <div className="mx-auto flex h-full w-full max-w-2xl flex-col justify-center gap-2.5 px-5 sm:px-7 lg:gap-3.5">
+      <p className="hx-in text-[11px] font-semibold uppercase tracking-[0.16em] text-[#9db8ff]">Angle · 3 worth testing</p>
       {angles.map((a, i) => (
         <div
           key={a.name}
@@ -140,7 +127,7 @@ function SceneStrategy() {
           style={{ '--d': `${150 + i * 220}ms` } as React.CSSProperties}
         >
           <div>
-            <p className="text-[14px] font-medium text-white">{a.name}</p>
+            <p className="text-[14px] font-medium text-white lg:text-[16.5px]">{a.name}</p>
             <p className="text-[12px] text-white/55">{a.why}</p>
           </div>
           {a.pick ? (
@@ -154,48 +141,40 @@ function SceneStrategy() {
   );
 }
 
-function SceneCreate() {
+function SceneAds({ active }: { active: boolean }) {
+  const motion = active && typeof window !== 'undefined' && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  const Clip = ({ name, label }: { name: string; label: string }) => (
+    <div className="relative aspect-[9/16] overflow-hidden rounded-xl bg-[#1a1a1a]">
+      {motion ? (
+        <video autoPlay muted loop playsInline poster={`${ASSETS}/${name}-poster.webp`} aria-label={label} className="absolute inset-0 h-full w-full object-cover">
+          <source src={`${ASSETS}/${name}.webm`} type="video/webm" />
+          <source src={`${ASSETS}/${name}.mp4`} type="video/mp4" />
+        </video>
+      ) : (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={`${ASSETS}/${name}-poster.webp`} alt={label} className="absolute inset-0 h-full w-full object-cover" />
+      )}
+      <span className="absolute bottom-2 left-2 inline-flex items-center gap-1 rounded-full bg-black/55 px-1.5 py-0.5 text-[9px] font-medium lg:text-[11px]">
+        <Play className="h-2.5 w-2.5 fill-current" /> 0:08
+      </span>
+    </div>
+  );
   return (
-    <div className="flex h-full items-end justify-center gap-2.5 px-4 pb-5 sm:gap-3.5">
-      {/* Feed 4:5 */}
-      <figure className="hx-in m-0 w-[40%] max-w-[190px]" style={{ '--d': '100ms' } as React.CSSProperties}>
-        <div className="relative aspect-[4/5] overflow-hidden rounded-xl bg-[#f3e7d3] p-3 text-[#2b1d14]">
-          <p className="font-display text-[clamp(0.85rem,1.6vw,1.05rem)] font-bold leading-[1.05] tracking-[-0.02em]">
-            Smooth,
-            <br />
-            not sweet.
-          </p>
-          <p className="mt-1 text-[9px] text-[#6b4a35]">Zero added sugar cold brew</p>
-          <Bottle className="absolute bottom-2 right-3 h-[58%] w-auto" />
-          <span className="absolute bottom-3 left-3 rounded-full bg-[#2b1d14] px-2.5 py-1 text-[9px] font-semibold text-[#f3e7d3]">
-            Shop now
-          </span>
+    <div className="flex h-full items-end justify-center gap-2.5 px-4 pb-5 sm:gap-3.5 lg:gap-6 lg:pb-7">
+      <figure className="hx-in m-0 w-[38%] max-w-[190px] lg:max-w-[260px]" style={{ '--d': '100ms' } as React.CSSProperties}>
+        <div className="relative aspect-[4/5] overflow-hidden rounded-xl bg-[#1a1a1a]">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={`${ASSETS}/poster-1.webp`} alt="Saffra Skin feed poster: Oily skin? Still never greasy." className="absolute inset-0 h-full w-full object-cover" />
         </div>
-        <figcaption className="mt-1.5 text-center text-[10px] uppercase tracking-[0.12em] text-white/50">Feed 4:5</figcaption>
+        <figcaption className="mt-1.5 text-center text-[10px] uppercase tracking-[0.12em] text-white/50 lg:text-[11px]">Poster</figcaption>
       </figure>
-      {/* Story 9:16 */}
-      <figure className="hx-in m-0 w-[24%] max-w-[118px]" style={{ '--d': '350ms' } as React.CSSProperties}>
-        <div className="relative aspect-[9/16] overflow-hidden rounded-xl bg-[#a8623a] p-2.5 text-[#fff7ec]">
-          <p className="font-display text-[11px] font-bold leading-tight">Leaks? Not this bottle.</p>
-          <Bottle className="absolute bottom-7 left-1/2 h-[46%] w-auto -translate-x-1/2" tone="dark" />
-          <span className="absolute bottom-2 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-[#f3e7d3] px-2 py-0.5 text-[8px] font-semibold text-[#2b1d14]">
-            Swipe up
-          </span>
-        </div>
-        <figcaption className="mt-1.5 text-center text-[10px] uppercase tracking-[0.12em] text-white/50">Story</figcaption>
+      <figure className="hx-in m-0 w-[24%] max-w-[118px] lg:max-w-[160px]" style={{ '--d': '350ms' } as React.CSSProperties}>
+        <Clip name="product-video" label="Saffra Skin product video: the gel melting into skin" />
+        <figcaption className="mt-1.5 text-center text-[10px] uppercase tracking-[0.12em] text-white/50 lg:text-[11px]">Video</figcaption>
       </figure>
-      {/* Video 9:16 */}
-      <figure className="hx-in m-0 w-[24%] max-w-[118px]" style={{ '--d': '600ms' } as React.CSSProperties}>
-        <div className="relative aspect-[9/16] overflow-hidden rounded-xl bg-[#1d4ed8] text-white">
-          <div className="hx-zoom absolute inset-0 flex items-center justify-center">
-            <Bottle className="h-[52%] w-auto" />
-          </div>
-          <p className="absolute inset-x-2.5 top-2.5 font-display text-[11px] font-bold leading-tight">Your 9 a.m. ritual.</p>
-          <span className="absolute bottom-2 left-2 inline-flex items-center gap-1 rounded-full bg-black/55 px-1.5 py-0.5 text-[9px] font-medium">
-            <Play className="h-2.5 w-2.5 fill-current" /> 0:15
-          </span>
-        </div>
-        <figcaption className="mt-1.5 text-center text-[10px] uppercase tracking-[0.12em] text-white/50">Video</figcaption>
+      <figure className="hx-in m-0 w-[24%] max-w-[118px] lg:max-w-[160px]" style={{ '--d': '600ms' } as React.CSSProperties}>
+        <Clip name="ugc" label="Saffra Skin UGC video: a creator with oily skin reviews the gel" />
+        <figcaption className="mt-1.5 text-center text-[10px] uppercase tracking-[0.12em] text-white/50 lg:text-[11px]">UGC</figcaption>
       </figure>
     </div>
   );
@@ -227,7 +206,7 @@ export default function HeroDemo() {
   const playing = !paused && visible;
   useEffect(() => {
     if (!playing) return;
-    const t = window.setTimeout(() => setScene((s) => (s + 1) % SCENES.length), SCENE_MS);
+    const t = window.setTimeout(() => setScene((s) => (s + 1) % SCENES.length), sceneMs(scene));
     return () => window.clearTimeout(t);
   }, [playing, scene]);
 
@@ -280,16 +259,16 @@ export default function HeroDemo() {
         </div>
 
         {/* Stage */}
-        <div className="relative h-[300px] sm:h-[340px]" aria-live="off">
+        <div className="relative h-[300px] sm:h-[340px] lg:h-[440px]" aria-live="off">
           <div key={scene} className="absolute inset-0" role="group" aria-roledescription="slide" aria-label={SCENES[scene].label}>
             {scene === 0 ? (
               <SceneWebsite active={playing} />
             ) : scene === 1 ? (
               <SceneResearch />
             ) : scene === 2 ? (
-              <SceneStrategy />
+              <SceneAngle />
             ) : (
-              <SceneCreate />
+              <SceneAds active={playing} />
             )}
           </div>
         </div>
@@ -310,11 +289,11 @@ export default function HeroDemo() {
                   className={`block h-full rounded-full bg-[#9db8ff] ${
                     i < scene ? 'w-full' : i === scene ? (playing ? 'hx-fill' : 'w-full opacity-60') : 'w-0'
                   }`}
-                  style={{ '--dur': `${SCENE_MS}ms` } as React.CSSProperties}
+                  style={{ '--dur': `${sceneMs(i)}ms` } as React.CSSProperties}
                 />
               </span>
               <span
-                className={`mt-1.5 block text-[10.5px] font-medium uppercase tracking-[0.12em] transition-colors ${
+                className={`mt-1.5 block text-[10.5px] font-medium uppercase lg:text-[12px] tracking-[0.12em] transition-colors ${
                   i === scene ? 'text-white' : 'text-white/45 group-hover:text-white/75'
                 }`}
               >

@@ -32,3 +32,7 @@ supabase/.temp/
 
 # Local token stores and SQLite files (never commit)
 data/
+
+# Showcase generation (scripts/generate-showcase.ts): raw model output and local review sheet
+.showcase-cache/
+showcase-review/

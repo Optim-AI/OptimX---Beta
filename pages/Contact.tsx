@@ -62,7 +62,7 @@ export default function Contact() {
             </dl>
             <p className="mt-10 text-ink-soft">
               Want to see our work first?{" "}
-              <Link href="/#start" className="sx-link font-medium text-ink">
+              <Link href="/#get-started" className="sx-link font-medium text-ink">
                 Get a free ad for your brand
               </Link>
               .

@@ -1,73 +1,97 @@
 import React from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { Facebook } from 'lucide-react';
-import { SITE_SUPPORT_EMAIL } from '@/lib/seo/site';
+import { Facebook, Instagram, Linkedin, Twitter, Youtube, type LucideIcon } from 'lucide-react';
+import { FEATURES } from '@/content/features';
+import { FOOTER, type NavLink } from '@/content/nav';
+import { COMPANY, SOCIALS, type Social } from '@/content/site';
 
-// Same destinations as the legacy footer; section links point at the new homepage sections.
-const FOOTER_LINKS: Record<string, { name: string; href: string }[]> = {
-  Product: [
-    { name: 'What SkalX does', href: '/#what-you-get' },
-    { name: 'AI Ad Generator', href: '/ai-ad-generator' },
-    { name: 'How It Works', href: '/#how-it-works' },
-    { name: 'Pricing', href: '/pricing' },
-    { name: 'Get a free ad', href: '/#start' },
-  ],
-  Company: [
-    { name: 'About SkalX AI', href: '/About' },
-    { name: 'Contact', href: '/Contact' },
-    { name: 'FAQ', href: '/#faq' },
-  ],
-  Legal: [
-    { name: 'Privacy', href: '/privacy-policy' },
-    { name: 'Terms', href: '/terms-and-conditions' },
-    { name: 'Cookies', href: '/cpolicy' },
-    { name: 'AI Disclosure', href: '/ai-disclosure' },
-  ],
-  Support: [
-    { name: 'Contact', href: '/Contact' },
-    { name: 'Help Center', href: '/help-center' },
-  ],
+const SOCIAL_ICONS: Record<Social['icon'], LucideIcon> = {
+  facebook: Facebook,
+  instagram: Instagram,
+  linkedin: Linkedin,
+  youtube: Youtube,
+  x: Twitter,
 };
 
+/** Live and beta features first in the Product column; "soon" features are left out. */
+const productLinks: NavLink[] = FEATURES.filter((f) => f.status !== 'soon' && f.href).map((f) => ({ label: f.name, href: f.href }));
+
+function FooterLink({ link }: { link: NavLink }) {
+  const cls = 'sx-link sx-link-grow text-ink-soft transition-colors hover:text-ink';
+  if (link.external || /^https?:/.test(link.href)) {
+    return (
+      <a href={link.href} target="_blank" rel="noopener noreferrer" className={cls}>
+        {link.label}
+      </a>
+    );
+  }
+  return (
+    <Link href={link.href} className={cls}>
+      {link.label}
+    </Link>
+  );
+}
+
 export default function SiteFooter() {
+  const groups = FOOTER.groups.map((g) => (g.title === 'Product' ? { ...g, links: [...productLinks, ...g.links] } : g));
   return (
     <footer className="sx-sheet relative overflow-hidden bg-paper-deep text-ink">
       <div className="mx-auto max-w-6xl px-4 pb-8 pt-16 sm:px-6 md:pt-20">
-        <div className="grid grid-cols-2 gap-10 md:grid-cols-12">
-          <div className="col-span-2 md:col-span-4">
+        <div className="grid grid-cols-2 gap-x-6 gap-y-10 md:grid-cols-12">
+          <div className="col-span-2 md:col-span-12 lg:col-span-2">
             <Image src="/images/SkalX_Logo.png" alt="SkalX" width={99} height={28} className="h-7 w-auto" />
-            <p className="mt-4 max-w-xs text-ink-soft">Market research to ready-to-post creatives, for D2C brands. Built in Chennai.</p>
-            <a href={`mailto:${SITE_SUPPORT_EMAIL}`} className="sx-link mt-3 inline-block text-ink">
-              {SITE_SUPPORT_EMAIL}
+            <p className="mt-4 max-w-xs text-ink-soft">{FOOTER.tagline}</p>
+            <a href={`mailto:${COMPANY.supportEmail}`} className="sx-link mt-3 inline-block text-ink">
+              {COMPANY.supportEmail}
             </a>
+            {SOCIALS.length ? (
+              <ul className="mt-5 flex gap-2">
+                {SOCIALS.map((s) => {
+                  const Icon = SOCIAL_ICONS[s.icon];
+                  return (
+                    <li key={s.href}>
+                      <a
+                        href={s.href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label={s.label}
+                        className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-ink/20 text-ink transition-colors hover:border-ink hover:bg-ink hover:text-paper"
+                      >
+                        <Icon className="h-4 w-4" aria-hidden />
+                      </a>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : null}
           </div>
-          {Object.entries(FOOTER_LINKS).map(([group, links]) => (
-            <div key={group} className="md:col-span-2">
-              <h2 className="mb-4 text-sm font-semibold uppercase tracking-[0.14em] text-ink-mute">{group}</h2>
+          {groups.map((group) => (
+            <nav key={group.title} aria-label={group.title} className="md:col-span-4 lg:col-span-2">
+              <h2 className="mb-4 text-sm font-semibold uppercase tracking-[0.14em] text-ink-mute">{group.title}</h2>
               <ul className="space-y-2.5">
-                {links.map((link) => (
-                  <li key={`${group}-${link.name}`}>
-                    <Link href={link.href} className="sx-link sx-link-grow text-ink-soft transition-colors hover:text-ink">
-                      {link.name}
-                    </Link>
+                {group.links.map((link) => (
+                  <li key={`${group.title}-${link.label}`}>
+                    <FooterLink link={link} />
                   </li>
                 ))}
               </ul>
-            </div>
+            </nav>
           ))}
         </div>
-        <div className="mt-12 flex flex-col-reverse items-start justify-between gap-4 border-t border-line pt-6 sm:flex-row sm:items-center">
-          <p className="text-sm text-ink-mute">© {new Date().getFullYear()} SkalX AI. All rights reserved.</p>
-          <a
-            href="https://www.facebook.com/share/1BNxZDcfRe/?mibextid=wwXIfr"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="SkalX on Facebook"
-            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-ink/20 text-ink transition-colors hover:border-ink hover:bg-ink hover:text-paper"
-          >
-            <Facebook className="h-4 w-4" aria-hidden />
-          </a>
+
+        <div className="mt-12 flex flex-col gap-3 border-t border-line pt-6 text-sm text-ink-mute md:flex-row md:items-start md:justify-between">
+          <div className="space-y-1">
+            <p className="font-medium text-ink-soft">{COMPANY.madeIn}</p>
+            <p>
+              © {new Date().getFullYear()} {COMPANY.legalName}. All rights reserved.
+            </p>
+          </div>
+          <p className="md:text-right">
+            GSTIN {COMPANY.gstin}
+            <br />
+            Prices exclude 18% GST unless stated.
+          </p>
         </div>
       </div>
       {/* Oversized wordmark, cropped by the page edge. Decorative. */}

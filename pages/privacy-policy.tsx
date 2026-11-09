@@ -418,6 +418,33 @@ const PrivacyPolicy: React.FC = () => {
                   <li>Display analytics within your account</li>
                 </ul>
                 <p className="text-[15px] font-medium mb-2" style={{ color: colors.foreground }}>
+                  Meta data we read when you connect (read-only)
+                </p>
+                <ul className="list-disc pl-5 space-y-1 text-[15px] leading-[1.7] mb-4">
+                  <li>Your name and Meta user ID, and the business you connect</li>
+                  <li>The ad accounts, Facebook Page and Instagram business account you choose to link, including currency and time zone</li>
+                  <li>Campaigns, ad sets, ads and ad creatives (text, headlines, images) in those ad accounts</li>
+                  <li>Ad performance results such as spend, impressions, reach, clicks, purchases and purchase value</li>
+                  <li>Your Page and Instagram posts and their insights (for example views, reach, likes, comments, saves and shares)</li>
+                </ul>
+                <p className="text-[15px] leading-[1.7] mb-4" style={{ color: colors.foreground }}>
+                  We use this only to show your results in SkalX, explain what is and isn&apos;t working, and suggest new ads for you to test.
+                  AI analysis is performed by our AI providers under contract solely to produce your insights; it is never used to train AI models.
+                  We do not change your ads, publish anything, or read private messages through this connection.
+                </p>
+                <p className="text-[15px] font-medium mb-2" style={{ color: colors.foreground }}>
+                  Retention and deletion
+                </p>
+                <ul className="list-disc pl-5 space-y-1 text-[15px] leading-[1.7] mb-4">
+                  <li>Meta data is kept only while your account is connected</li>
+                  <li>Disconnecting in Settings → Integrations permanently deletes your Meta tokens and all synced Meta data straight away</li>
+                  <li>
+                    Removing SkalX AI in your Facebook settings also triggers automatic deletion; you can check the status at{" "}
+                    <a href="/meta-data-deletion" style={{ color: colors.primary }}>skalxai.app/meta-data-deletion</a>
+                  </li>
+                  <li>Deletion requests by email are completed within 30 days</li>
+                </ul>
+                <p className="text-[15px] font-medium mb-2" style={{ color: colors.foreground }}>
                   We do NOT:
                 </p>
                 <ul className="list-disc pl-5 space-y-1 text-[15px] leading-[1.7] mb-4">
@@ -431,7 +458,7 @@ const PrivacyPolicy: React.FC = () => {
                   Token Handling
                 </p>
                 <ul className="list-disc pl-5 space-y-1 text-[15px] leading-[1.7] mb-2">
-                  <li>Access tokens are encrypted at rest</li>
+                  <li>Access tokens are encrypted at rest (AES-256-GCM) and never sent to your browser</li>
                   <li>Tokens are never shared with unauthorized third parties</li>
                   <li>Tokens are deleted immediately upon revocation</li>
                   <li>Tokens are used only to enable requested features</li>
