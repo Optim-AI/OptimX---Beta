@@ -21,6 +21,7 @@ import {
   ChevronsUpDown,
   Palette,
   ScanSearch,
+  TrendingUp,
   Camera,
   Smartphone,
   type LucideIcon,
@@ -69,6 +70,7 @@ const NAV_SECTIONS: NavSection[] = [
     label: 'Intelligence',
     items: [
       { href: '/brand-research', label: 'Brand Research', Icon: ScanSearch },
+      { href: '/meta-intelligence', label: 'Ad Performance', Icon: TrendingUp },
       { href: '/analytics', label: 'Analytics', Icon: ChartColumn, featureKey: 'basic_analytics' },
     ],
   },

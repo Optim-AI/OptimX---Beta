@@ -1,4 +1,4 @@
-import { pgTable, timestamp, text, integer, boolean, index, uniqueIndex, jsonb, uuid, unique } from "drizzle-orm/pg-core"
+import { pgTable, timestamp, text, integer, boolean, index, uniqueIndex, jsonb, uuid, unique, numeric, bigint, date } from "drizzle-orm/pg-core"
 import { sql } from "drizzle-orm"
 
 // ============================================================
@@ -906,6 +906,32 @@ export const marketingAudits = pgTable("marketing_audits", {
 ]);
 
 /**
+ * Free brand audit leads: one free audit per email (unique email_normalized), with the
+ * category and website sales follows up on. Server-only.
+ */
+export const auditLeads = pgTable("audit_leads", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	email: text().notNull(),
+	emailNormalized: text("email_normalized").notNull(),
+	category: text(),
+	websiteUrl: text("website_url").notNull(),
+	normalizedHost: text("normalized_host").notNull(),
+	auditId: uuid("audit_id"),
+	clientIpHash: text("client_ip_hash"),
+	sampleAdStatus: text("sample_ad_status"),
+	sampleAdUrl: text("sample_ad_url"),
+	sampleAdError: text("sample_ad_error"),
+	sampleAdStartedAt: timestamp("sample_ad_started_at", { withTimezone: true, mode: "string" }),
+	sampleAdCreatedAt: timestamp("sample_ad_created_at", { withTimezone: true, mode: "string" }),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).defaultNow(),
+}, (table) => [
+	index("idx_audit_leads_audit").using("btree", table.auditId.asc().nullsLast()),
+	index("idx_audit_leads_sample_created").using("btree", table.sampleAdCreatedAt.desc().nullsLast()),
+	uniqueIndex("uq_audit_leads_email_normalized").using("btree", table.emailNormalized.asc().nullsLast()),
+	index("idx_audit_leads_created").using("btree", table.createdAt.desc().nullsLast()),
+]);
+
+/**
  * Manual free-trial access requests. Pending rows never grant product access;
  * an authorized operator must approve and provision entitlements separately.
  */
@@ -931,3 +957,386 @@ export const trialAccessRequests = pgTable("trial_access_requests", {
 	index("idx_trial_access_requests_status_created").using("btree", table.status.asc().nullsLast(), table.createdAt.desc().nullsLast()),
 	index("idx_trial_access_requests_ip_created").using("btree", table.clientIpHash.asc().nullsLast(), table.createdAt.desc().nullsLast()),
 ]);
+
+// ============================================================
+// Meta Intelligence (migration 20261108120000_add_meta_intelligence_connect.sql)
+// ============================================================
+
+/** One read-only Meta connection per user. token_enc is AES-256-GCM (lib/meta/crypto.ts). */
+export const metaConnections = pgTable("meta_connections", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	userId: uuid("user_id").notNull(),
+	brandKitId: uuid("brand_kit_id"),
+	metaUserId: text("meta_user_id"),
+	metaUserName: text("meta_user_name"),
+	businessId: text("business_id"),
+	businessName: text("business_name"),
+	tokenEnc: text("token_enc").notNull(),
+	tokenType: text("token_type").notNull().default("user"),
+	scopes: text().array().notNull().default(sql`'{}'::text[]`),
+	tokenExpiresAt: timestamp("token_expires_at", { withTimezone: true, mode: "string" }),
+	dataAccessExpiresAt: timestamp("data_access_expires_at", { withTimezone: true, mode: "string" }),
+	status: text().notNull().default("pending"),
+	lastError: text("last_error"),
+	lastCheckedAt: timestamp("last_checked_at", { withTimezone: true, mode: "string" }),
+	lastSyncAt: timestamp("last_sync_at", { withTimezone: true, mode: "string" }),
+	capabilities: jsonb().notNull().default({}),
+	briefEmailEnabled: boolean("brief_email_enabled").notNull().default(true),
+	connectedAt: timestamp("connected_at", { withTimezone: true, mode: "string" }).notNull().defaultNow(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).notNull().defaultNow(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }).notNull().defaultNow(),
+}, (table) => [
+	unique("meta_connections_user_id_key").on(table.userId),
+	index("idx_meta_connections_meta_user_id").using("btree", table.metaUserId.asc().nullsLast()),
+	index("idx_meta_connections_status").using("btree", table.status.asc().nullsLast()),
+]);
+
+/** Ad accounts, Pages and IG accounts visible to a connection; `selected` = linked to the brand. */
+export const metaAssets = pgTable("meta_assets", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	connectionId: uuid("connection_id").notNull().references(() => metaConnections.id, { onDelete: "cascade" }),
+	userId: uuid("user_id").notNull(),
+	kind: text().notNull(),
+	metaId: text("meta_id").notNull(),
+	name: text(),
+	parentMetaId: text("parent_meta_id"),
+	currency: text(),
+	timezoneName: text("timezone_name"),
+	accountStatus: integer("account_status"),
+	pageTokenEnc: text("page_token_enc"),
+	selected: boolean().notNull().default(false),
+	metadata: jsonb().notNull().default({}),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).notNull().defaultNow(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }).notNull().defaultNow(),
+}, (table) => [
+	unique("meta_assets_connection_kind_meta_id_key").on(table.connectionId, table.kind, table.metaId),
+	index("idx_meta_assets_user_id").using("btree", table.userId.asc().nullsLast()),
+]);
+
+/** Audit trail for Meta data deletion / deauthorize callbacks and in-app Disconnect. */
+export const metaDeletionRequests = pgTable("meta_deletion_requests", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	confirmationCode: text("confirmation_code").notNull(),
+	source: text().notNull(),
+	metaUserId: text("meta_user_id"),
+	userId: uuid("user_id"),
+	status: text().notNull().default("received"),
+	details: jsonb().notNull().default({}),
+	requestedAt: timestamp("requested_at", { withTimezone: true, mode: "string" }).notNull().defaultNow(),
+	completedAt: timestamp("completed_at", { withTimezone: true, mode: "string" }),
+}, (table) => [
+	unique("meta_deletion_requests_code_key").on(table.confirmationCode),
+]);
+
+// ---- Meta Intelligence sync (migration 20261108130000_add_meta_intelligence_sync.sql) ----
+const ts = (name: string) => timestamp(name, { withTimezone: true, mode: "string" });
+const connRef = () => uuid("connection_id").notNull().references(() => metaConnections.id, { onDelete: "cascade" });
+
+export const metaCampaigns = pgTable("meta_campaigns", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	connectionId: connRef(),
+	adAccountId: text("ad_account_id").notNull(),
+	metaId: text("meta_id").notNull(),
+	name: text(),
+	objective: text(),
+	status: text(),
+	effectiveStatus: text("effective_status"),
+	dailyBudget: numeric("daily_budget"),
+	lifetimeBudget: numeric("lifetime_budget"),
+	startTime: ts("start_time"),
+	stopTime: ts("stop_time"),
+	createdTime: ts("created_time"),
+	updatedTime: ts("updated_time"),
+	raw: jsonb().notNull().default({}),
+	syncedAt: ts("synced_at").notNull().defaultNow(),
+}, (t) => [unique("meta_campaigns_conn_meta_id_key").on(t.connectionId, t.metaId)]);
+
+export const metaAdsets = pgTable("meta_adsets", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	connectionId: connRef(),
+	adAccountId: text("ad_account_id").notNull(),
+	metaId: text("meta_id").notNull(),
+	campaignMetaId: text("campaign_meta_id"),
+	name: text(),
+	status: text(),
+	effectiveStatus: text("effective_status"),
+	optimizationGoal: text("optimization_goal"),
+	billingEvent: text("billing_event"),
+	dailyBudget: numeric("daily_budget"),
+	lifetimeBudget: numeric("lifetime_budget"),
+	createdTime: ts("created_time"),
+	updatedTime: ts("updated_time"),
+	raw: jsonb().notNull().default({}),
+	syncedAt: ts("synced_at").notNull().defaultNow(),
+}, (t) => [unique("meta_adsets_conn_meta_id_key").on(t.connectionId, t.metaId)]);
+
+export const metaCreatives = pgTable("meta_creatives", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	connectionId: connRef(),
+	adAccountId: text("ad_account_id").notNull(),
+	metaId: text("meta_id").notNull(),
+	name: text(),
+	objectType: text("object_type"),
+	title: text(),
+	body: text(),
+	callToActionType: text("call_to_action_type"),
+	imageHash: text("image_hash"),
+	videoId: text("video_id"),
+	sourceImageUrl: text("source_image_url"),
+	storedPath: text("stored_path"),
+	storedMd5: text("stored_md5"),
+	imageStoredAt: ts("image_stored_at"),
+	raw: jsonb().notNull().default({}),
+	syncedAt: ts("synced_at").notNull().defaultNow(),
+}, (t) => [unique("meta_creatives_conn_meta_id_key").on(t.connectionId, t.metaId)]);
+
+export const metaAds = pgTable("meta_ads", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	connectionId: connRef(),
+	adAccountId: text("ad_account_id").notNull(),
+	metaId: text("meta_id").notNull(),
+	adsetMetaId: text("adset_meta_id"),
+	campaignMetaId: text("campaign_meta_id"),
+	creativeMetaId: text("creative_meta_id"),
+	name: text(),
+	status: text(),
+	effectiveStatus: text("effective_status"),
+	createdTime: ts("created_time"),
+	updatedTime: ts("updated_time"),
+	madeBySkalx: boolean("made_by_skalx").notNull().default(false),
+	skxReason: text("skx_reason"),
+	raw: jsonb().notNull().default({}),
+	syncedAt: ts("synced_at").notNull().defaultNow(),
+}, (t) => [unique("meta_ads_conn_meta_id_key").on(t.connectionId, t.metaId)]);
+
+export const metaAdInsightsDaily = pgTable("meta_ad_insights_daily", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	connectionId: connRef(),
+	adAccountId: text("ad_account_id").notNull(),
+	adMetaId: text("ad_meta_id").notNull(),
+	adsetMetaId: text("adset_meta_id"),
+	campaignMetaId: text("campaign_meta_id"),
+	date: date().notNull(),
+	currency: text(),
+	spend: numeric().notNull().default("0"),
+	impressions: bigint({ mode: "number" }).notNull().default(0),
+	reach: bigint({ mode: "number" }),
+	frequency: numeric(),
+	clicks: bigint({ mode: "number" }),
+	linkClicks: bigint("link_clicks", { mode: "number" }),
+	ctr: numeric(),
+	cpc: numeric(),
+	cpm: numeric(),
+	purchases: numeric(),
+	revenue: numeric(),
+	roas: numeric(),
+	cpa: numeric(),
+	purchaseSource: text("purchase_source"),
+	roasSource: text("roas_source"),
+	actions: jsonb().notNull().default([]),
+	actionValues: jsonb("action_values").notNull().default([]),
+	syncedAt: ts("synced_at").notNull().defaultNow(),
+}, (t) => [
+	unique("meta_ad_insights_daily_conn_ad_date_key").on(t.connectionId, t.adMetaId, t.date),
+	index("idx_meta_ad_insights_conn_date").using("btree", t.connectionId.asc().nullsLast(), t.date.asc().nullsLast()),
+]);
+
+export const metaOrganicPosts = pgTable("meta_organic_posts", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	connectionId: connRef(),
+	platform: text().notNull(),
+	accountMetaId: text("account_meta_id").notNull(),
+	metaId: text("meta_id").notNull(),
+	mediaType: text("media_type"),
+	caption: text(),
+	permalink: text(),
+	thumbnailUrl: text("thumbnail_url"),
+	postedAt: ts("posted_at"),
+	raw: jsonb().notNull().default({}),
+	syncedAt: ts("synced_at").notNull().defaultNow(),
+}, (t) => [unique("meta_organic_posts_conn_meta_id_key").on(t.connectionId, t.metaId)]);
+
+export const metaOrganicPostInsightsDaily = pgTable("meta_organic_post_insights_daily", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	connectionId: connRef(),
+	postMetaId: text("post_meta_id").notNull(),
+	date: date().notNull(),
+	views: bigint({ mode: "number" }),
+	reach: bigint({ mode: "number" }),
+	likes: bigint({ mode: "number" }),
+	comments: bigint({ mode: "number" }),
+	saves: bigint({ mode: "number" }),
+	shares: bigint({ mode: "number" }),
+	interactions: bigint({ mode: "number" }),
+	metrics: jsonb().notNull().default({}),
+	syncedAt: ts("synced_at").notNull().defaultNow(),
+}, (t) => [unique("meta_organic_post_insights_daily_conn_post_date_key").on(t.connectionId, t.postMetaId, t.date)]);
+
+export const syncRuns = pgTable("sync_runs", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	connectionId: connRef(),
+	userId: uuid("user_id").notNull(),
+	kind: text().notNull(),
+	trigger: text().notNull(),
+	status: text().notNull().default("queued"),
+	rangeSince: date("range_since"),
+	rangeUntil: date("range_until"),
+	counts: jsonb().notNull().default({}),
+	errors: jsonb().notNull().default([]),
+	dataChanged: boolean("data_changed").notNull().default(false),
+	externalRunId: text("external_run_id"),
+	createdAt: ts("created_at").notNull().defaultNow(),
+	startedAt: ts("started_at"),
+	finishedAt: ts("finished_at"),
+}, (t) => [index("idx_sync_runs_conn_created").using("btree", t.connectionId.asc().nullsLast(), t.createdAt.desc().nullsLast())]);
+
+export const skalxAssetHashes = pgTable("skalx_asset_hashes", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	userId: uuid("user_id").notNull(),
+	md5: text().notNull(),
+	source: text().notNull(),
+	storagePath: text("storage_path"),
+	createdAt: ts("created_at").notNull().defaultNow(),
+}, (t) => [unique("skalx_asset_hashes_user_md5_key").on(t.userId, t.md5)]);
+
+// ---- Meta Intelligence AI insights (migration 20261108140000_add_meta_ai_insights.sql) ----
+export const aiInsights = pgTable("ai_insights", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	connectionId: connRef(),
+	userId: uuid("user_id").notNull(),
+	trigger: text().notNull(),
+	status: text().notNull().default("running"),
+	rangeDays: integer("range_days").notNull(),
+	periodSince: date("period_since"),
+	periodUntil: date("period_until"),
+	inputHash: text("input_hash"),
+	input: jsonb(),
+	output: jsonb(),
+	dropped: jsonb().notNull().default([]),
+	model: text(),
+	attempts: integer().notNull().default(0),
+	usage: jsonb().notNull().default({}),
+	error: text(),
+	createdAt: ts("created_at").notNull().defaultNow(),
+	finishedAt: ts("finished_at"),
+}, (t) => [index("idx_ai_insights_conn_created").using("btree", t.connectionId.asc().nullsLast(), t.createdAt.desc().nullsLast())]);
+
+// ---- Ad Studio test packs (migration 20261108150000_add_test_packs.sql) ----
+export const testPacks = pgTable("test_packs", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	userId: uuid("user_id").notNull(),
+	connectionId: uuid("connection_id").references(() => metaConnections.id, { onDelete: "set null" }),
+	source: text().notNull(),
+	sourceAdMetaId: text("source_ad_meta_id"),
+	sourceAdSnapshot: jsonb("source_ad_snapshot"),
+	product: jsonb().notNull(),
+	productSlug: text("product_slug").notNull(),
+	angles: jsonb().notNull().default([]),
+	formats: text().array().notNull().default(sql`'{feed,story}'::text[]`),
+	status: text().notNull().default("draft"),
+	creditsEstimated: integer("credits_estimated").notNull().default(0),
+	creditsCharged: integer("credits_charged").notNull().default(0),
+	testPlan: jsonb("test_plan"),
+	zipPath: text("zip_path"),
+	zipBuiltAt: ts("zip_built_at"),
+	error: text(),
+	createdAt: ts("created_at").notNull().defaultNow(),
+	updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [index("idx_test_packs_user_created").using("btree", t.userId.asc().nullsLast(), t.createdAt.desc().nullsLast())]);
+
+export const testPackVariants = pgTable("test_pack_variants", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	packId: uuid("pack_id").notNull().references(() => testPacks.id, { onDelete: "cascade" }),
+	userId: uuid("user_id").notNull(),
+	position: integer().notNull(),
+	angleIndex: integer("angle_index").notNull(),
+	format: text().notNull(),
+	adName: text("ad_name").notNull(),
+	hook: text(),
+	primaryText: text("primary_text"),
+	headline: text(),
+	whatItTests: text("what_it_tests"),
+	whyItMightWork: text("why_it_might_work"),
+	testFirst: boolean("test_first").notNull().default(false),
+	status: text().notNull().default("pending"),
+	imageUrl: text("image_url"),
+	storagePath: text("storage_path"),
+	imageMd5: text("image_md5"),
+	sessionId: uuid("session_id"),
+	error: text(),
+	matchedAdMetaId: text("matched_ad_meta_id"),
+	matchedBy: text("matched_by"),
+	matchedAt: ts("matched_at"),
+	createdAt: ts("created_at").notNull().defaultNow(),
+	updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [unique("test_pack_variants_pack_angle_format_key").on(t.packId, t.angleIndex, t.format)]);
+
+// ---- Monday brief (migration 20261108160000_add_weekly_briefs.sql) ----
+export const weeklyBriefs = pgTable("weekly_briefs", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	connectionId: connRef(),
+	userId: uuid("user_id").notNull(),
+	weekStart: date("week_start").notNull(),
+	weekEnd: date("week_end").notNull(),
+	status: text().notNull().default("building"),
+	trigger: text().notNull().default("schedule"),
+	content: jsonb(),
+	packId: uuid("pack_id").references(() => testPacks.id, { onDelete: "set null" }),
+	posterProjectId: uuid("poster_project_id"),
+	delivery: jsonb().notNull().default({}),
+	error: text(),
+	createdAt: ts("created_at").notNull().defaultNow(),
+	updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [unique("weekly_briefs_conn_week_key").on(t.connectionId, t.weekStart)]);
+
+// ---- Ad Studio drafts (migration 20261108170000_add_ad_studio_drafts.sql) ----
+export const adStudioProjects = pgTable("ad_studio_projects", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	userId: uuid("user_id").notNull(),
+	scanId: uuid("scan_id"),
+	product: jsonb().notNull(),
+	productSlug: text("product_slug").notNull(),
+	goal: text().notNull(),
+	offerDetails: text("offer_details"),
+	formats: text().array().notNull().default(sql`'{feed_4x5}'::text[]`),
+	direction: text(),
+	source: text().notNull().default("ad_studio"),
+	sourceAdMetaId: text("source_ad_meta_id"),
+	research: jsonb(),
+	status: text().notNull().default("researching"),
+	rounds: integer().notNull().default(0),
+	error: text(),
+	createdAt: ts("created_at").notNull().defaultNow(),
+	updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [index("idx_ad_studio_projects_user").using("btree", t.userId.asc().nullsLast(), t.createdAt.desc().nullsLast())]);
+
+export const adStudioDrafts = pgTable("ad_studio_drafts", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	projectId: uuid("project_id").notNull().references(() => adStudioProjects.id, { onDelete: "cascade" }),
+	userId: uuid("user_id").notNull(),
+	round: integer().notNull(),
+	position: integer().notNull(),
+	format: text().notNull(),
+	angle: jsonb().notNull(),
+	parentDraftId: uuid("parent_draft_id"),
+	kind: text().notNull().default("original"),
+	status: text().notNull().default("pending"),
+	sessionId: uuid("session_id"),
+	storagePath: text("storage_path"),
+	previewPath: text("preview_path"),
+	error: text(),
+	kept: boolean().notNull().default(false),
+	keptAt: ts("kept_at"),
+	creditsCharged: integer("credits_charged").notNull().default(0),
+	finalUrl: text("final_url"),
+	finalPath: text("final_path"),
+	adName: text("ad_name"),
+	primaryText: text("primary_text"),
+	headline: text(),
+	imageMd5: text("image_md5"),
+	matchedAdMetaId: text("matched_ad_meta_id"),
+	matchedBy: text("matched_by"),
+	matchedAt: ts("matched_at"),
+	createdAt: ts("created_at").notNull().defaultNow(),
+	updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [index("idx_ad_studio_drafts_project").using("btree", t.projectId.asc().nullsLast(), t.round.asc().nullsLast(), t.position.asc().nullsLast())]);
