@@ -440,7 +440,7 @@ const PrivacyPolicy: React.FC = () => {
                   <li>Disconnecting in Settings → Integrations permanently deletes your Meta tokens and all synced Meta data straight away</li>
                   <li>
                     Removing SkalX AI in your Facebook settings also triggers automatic deletion; you can check the status at{" "}
-                    <a href="/meta-data-deletion" style={{ color: colors.primary }}>skalxai.app/meta-data-deletion</a>
+                    <Link href="/meta-data-deletion" style={{ color: colors.primary }}>skalxai.app/meta-data-deletion</Link>
                   </li>
                   <li>Deletion requests by email are completed within 30 days</li>
                 </ul>
