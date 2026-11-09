@@ -1,4 +1,4 @@
-// /content-studio/posters/new[?scan=<scanId>&product=<name>] — product → goal → where it runs → (optional note) → 8 draft posters.
+// /content-studio/posters/new[?scan=<scanId>&product=<name>&from_ad=<id>&idea=<text>] — product → goal → where it runs → (optional note) → 8 draft posters.
 import React, { useEffect, useMemo, useState } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
@@ -67,6 +67,9 @@ export default function NewPostersPage() {
           ?? list.find((p) => name && p.name.toLowerCase() === name);
         setProductId(match?.id ?? body.suggested ?? (list.length === 1 ? list[0].id : null));
         if (fromAd) setGoal((g) => g ?? 'sell_more');
+        // From Trends: the idea arrives as a ready note the owner can edit.
+        const idea = typeof router.query.idea === 'string' ? router.query.idea.slice(0, 1000) : '';
+        if (idea) setNote((n) => n || idea);
       } catch {
         setProducts([]);
       }

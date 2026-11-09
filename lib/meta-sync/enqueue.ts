@@ -30,7 +30,15 @@ export async function enqueueSync(input: {
 
   if (!process.env.TRIGGER_SECRET_KEY) {
     // Local dev only: fire and forget in this process.
-    void runQueuedSync(run.id).catch((err) => metaLog.error('inline_sync_failed', { runId: run.id, message: (err as Error).message }));
+    void runQueuedSync(run.id)
+      .then(async (result) => {
+        // Same as the Trigger.dev task: re-analyse when the numbers changed.
+        if (result.dataChanged && result.status !== 'failed' && result.userId) {
+          const { enqueueAnalysis } = await import('@/lib/meta-intel/enqueue-analysis');
+          await enqueueAnalysis({ userId: result.userId, trigger: 'sync' });
+        }
+      })
+      .catch((err) => metaLog.error('inline_sync_failed', { runId: run.id, message: (err as Error).message }));
     return { runId: run.id, queued: true };
   }
 

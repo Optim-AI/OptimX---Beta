@@ -1,9 +1,10 @@
 import React, { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ArrowDown, ArrowUp, ImageOff, Sparkles, Trophy, TrendingDown, BatteryLow, Hourglass, Wand2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, ImageOff, Sparkles, Trophy, TrendingDown, BatteryLow, Hourglass, Wand2, LayoutGrid, Table2 } from 'lucide-react';
 import colors from '@/lib/ui/colors';
 import type { LeaderboardAd } from '@/lib/meta-intel/summary';
 import { money, count, ratio, pct, deliveryBadge, GOOD, BAD } from './format';
+import CompareBar, { compareTone } from './CompareBar';
 
 type SortKey = 'spend' | 'revenue' | 'roas' | 'cpa' | 'purchases' | 'ctr' | 'frequency';
 const COLS: { key: SortKey; label: string }[] = [
@@ -77,7 +78,57 @@ function Badges({ ad }: { ad: LeaderboardAd }) {
   );
 }
 
+/** One plain line per ad, from its own numbers. */
+function plainLine(ad: LeaderboardAd, currency: string | null): string {
+  const parts: string[] = [`${money(ad.spend, currency)} spent`];
+  if (ad.purchases) parts.push(`${count(ad.purchases)} ${ad.purchases === 1 ? 'sale' : 'sales'}`);
+  if (ad.cpa !== null) parts.push(`${money(ad.cpa, currency)} per sale`);
+  else if (ad.ctr !== null) parts.push(`${ad.ctr.toFixed(1)} clicks per 100 views`);
+  return parts.join(' · ');
+}
+
+/** How this ad compares with the account average. */
+function VsAverage({ ad }: { ad: LeaderboardAd }) {
+  const byCpa = ad.score.cpaVsAvgPct !== null;
+  const raw = byCpa ? ad.score.cpaVsAvgPct : ad.score.roasVsAvgPct;
+  if (raw === null) return null;
+  const tone = compareTone(raw, !byCpa);
+  const n = Math.abs(raw).toFixed(0);
+  const text = tone === 'same'
+    ? 'About your average'
+    : byCpa
+      ? `Sales ${n}% ${tone === 'good' ? 'cheaper' : 'more expensive'} than your average`
+      : `${n}% ${tone === 'good' ? 'more' : 'less'} sales for the money than your average`;
+  return <div className="mt-2"><CompareBar pct={raw} higherIsBetter={!byCpa} text={text} /></div>;
+}
+
+const STATUS_ORDER = { winner: 0, steady: 1, losing: 2, not_enough_data: 3 } as const;
+
+function AdCard({ ad, currency }: { ad: LeaderboardAd; currency: string | null }) {
+  const [broken, setBroken] = useState(false);
+  return (
+    <div className="flex flex-col overflow-hidden rounded-xl" style={{ background: colors.secondary, border: `1px solid ${colors.border}` }}>
+      <div className="aspect-square w-full" style={{ background: colors.muted }}>
+        {ad.thumbnailUrl && !broken
+          // eslint-disable-next-line @next/next/no-img-element
+          ? <img src={ad.thumbnailUrl} alt={ad.name ?? 'Ad image'} onError={() => setBroken(true)} className="h-full w-full object-cover" />
+          : <div className="flex h-full w-full items-center justify-center" style={{ color: colors.mutedForeground }}><ImageOff size={22} aria-hidden /></div>}
+      </div>
+      <div className="flex flex-1 flex-col p-3">
+        <p className="truncate text-sm font-semibold" style={{ color: colors.foreground }} title={ad.name ?? ''}>{ad.name || ad.adId}</p>
+        <Badges ad={ad} />
+        <p className="mt-2 text-xs tabular-nums" style={{ color: colors.secondaryForeground }}>{plainLine(ad, currency)}</p>
+        <VsAverage ad={ad} />
+      </div>
+    </div>
+  );
+}
+
+const CARD_LIMIT = 8;
+
 export default function AdsLeaderboard({ ads, currency }: { ads: LeaderboardAd[]; currency: string | null }) {
+  const [view, setView] = useState<'cards' | 'table'>('cards');
+  const [showAll, setShowAll] = useState(false);
   const [sort, setSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' }>({ key: 'spend', dir: 'desc' });
   const [onlySkx, setOnlySkx] = useState(false);
   const skxCount = ads.filter((a) => a.madeBySkalx).length;
@@ -94,6 +145,11 @@ export default function AdsLeaderboard({ ads, currency }: { ads: LeaderboardAd[]
     });
   }, [ads, sort, onlySkx]);
 
+  const cards = useMemo(() => {
+    const list = onlySkx ? ads.filter((a) => a.madeBySkalx) : ads;
+    return [...list].sort((a, b) => STATUS_ORDER[a.score.status] - STATUS_ORDER[b.score.status] || b.spend - a.spend);
+  }, [ads, onlySkx]);
+
   const toggle = (key: SortKey) =>
     setSort((s) => (s.key === key ? { key, dir: s.dir === 'desc' ? 'asc' : 'desc' } : { key, dir: key === 'cpa' ? 'asc' : 'desc' }));
 
@@ -102,9 +158,19 @@ export default function AdsLeaderboard({ ads, currency }: { ads: LeaderboardAd[]
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-base font-semibold" style={{ color: colors.foreground }}>Your ads</h2>
-          <p className="text-xs" style={{ color: colors.mutedForeground }}>{ads.length} ads with results in this period</p>
+          <p className="text-xs" style={{ color: colors.mutedForeground }}>{ads.length} ads with results in this period · best first</p>
         </div>
-        <div className="inline-flex rounded-lg p-1" role="tablist" style={{ background: colors.muted }}>
+        <div className="flex flex-wrap items-center gap-2">
+        <div className="inline-flex rounded-lg p-1" role="tablist" aria-label="View" style={{ background: colors.muted }}>
+          {([{ v: 'cards', l: 'Pictures', I: LayoutGrid }, { v: 'table', l: 'All numbers', I: Table2 }] as const).map((o) => (
+            <button key={o.v} type="button" role="tab" aria-selected={view === o.v} onClick={() => setView(o.v)}
+              className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium"
+              style={{ background: view === o.v ? colors.primary : 'transparent', color: view === o.v ? colors.primaryForeground : colors.mutedForeground }}>
+              <o.I size={13} aria-hidden /> {o.l}
+            </button>
+          ))}
+        </div>
+        <div className="inline-flex rounded-lg p-1" role="tablist" aria-label="Which ads" style={{ background: colors.muted }}>
           {[{ v: false, l: 'All ads' }, { v: true, l: `Made by SkalX (${skxCount})` }].map((o) => (
             <button key={String(o.v)} type="button" role="tab" aria-selected={onlySkx === o.v} onClick={() => setOnlySkx(o.v)}
               className="rounded-md px-3 py-1.5 text-xs font-medium"
@@ -113,12 +179,25 @@ export default function AdsLeaderboard({ ads, currency }: { ads: LeaderboardAd[]
             </button>
           ))}
         </div>
+        </div>
       </div>
 
       {sorted.length === 0 ? (
         <p className="py-8 text-center text-sm" style={{ color: colors.mutedForeground }}>
           {onlySkx ? 'No ads made with SkalX have run in this period yet. Name your ads starting with SKX- so SkalX can find them.' : 'No ads ran in this period.'}
         </p>
+      ) : view === 'cards' ? (
+        <>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {(showAll ? cards : cards.slice(0, CARD_LIMIT)).map((ad) => <AdCard key={ad.adId} ad={ad} currency={currency} />)}
+          </div>
+          {cards.length > CARD_LIMIT ? (
+            <button type="button" onClick={() => setShowAll((v) => !v)} className="mt-3 w-full rounded-lg py-2 text-xs font-medium"
+              style={{ background: colors.muted, color: colors.foreground }}>
+              {showAll ? 'Show fewer' : `Show all ${cards.length} ads`}
+            </button>
+          ) : null}
+        </>
       ) : (
         <>
           {/* Desktop table */}

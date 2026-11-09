@@ -90,7 +90,10 @@ export async function syncInstagram(ctx: SyncContext, igId: string, today: strin
       recordError(ctx, 'ig_insights', err);
     }
   }
-  bump(ctx, 'ig_insight_rows', await store.upsertOrganicInsights(ctx.connectionId, rows));
+  const igWritten = await store.upsertOrganicInsights(ctx.connectionId, rows);
+  bump(ctx, 'ig_insight_rows', igWritten);
+  // Post stats feed the post-only analysis (brands without ad spend); it skips itself when nothing changed.
+  if (igWritten > 0) ctx.dataChanged = true;
 }
 
 export async function syncPage(ctx: SyncContext, pageId: string, pageTokenEnc: string | null, today: string) {
@@ -133,5 +136,8 @@ export async function syncPage(ctx: SyncContext, pageId: string, pageTokenEnc: s
       recordError(ctx, 'fb_post_insights', err);
     }
   }
-  bump(ctx, 'fb_insight_rows', await store.upsertOrganicInsights(ctx.connectionId, rows));
+  const fbWritten = await store.upsertOrganicInsights(ctx.connectionId, rows);
+  bump(ctx, 'fb_insight_rows', fbWritten);
+  // Post stats feed the post-only analysis (brands without ad spend); it skips itself when nothing changed.
+  if (fbWritten > 0) ctx.dataChanged = true;
 }

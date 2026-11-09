@@ -3,7 +3,6 @@
   "version": "0.2.0",
   "description": "A sample package.json",
   "dependencies": {
-    "@anthropic-ai/sdk": "0.134.0",
     "@aws-sdk/client-s3": "^3.948.0",
     "@google/genai": "^1.39.0",
     "@heroicons/react": "^2.2.0",
@@ -100,6 +99,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.12",
+    "@trigger.dev/build": "4.7.7",
     "@types/jsdom": "^21.1.7",
     "@types/next": "^8.0.7",
     "@types/node": "^24.7.1",
@@ -141,7 +141,7 @@
     "test:test-packs": "npx --yes tsx lib/test-packs/test-packs.test.ts",
     "test:weekly-brief": "npx --yes tsx lib/weekly-brief/weekly-brief.test.ts",
     "test:ad-studio": "npx --yes tsx lib/ad-studio/ad-studio.test.ts",
-    "test:meta": "npm run test:meta-connect && npm run test:meta-sync && npm run test:meta-dashboard && npm run test:meta-scoring && npm run test:test-packs && npm run test:weekly-brief",
+    "test:meta": "npm run test:meta-connect && npm run test:meta-sync && npm run test:meta-dashboard && npm run test:meta-scoring && npm run test:test-packs && npm run test:weekly-brief && npm run test:meta-ig",
     "trigger:dev": "npx trigger.dev@4.7.7 dev",
     "trigger:deploy": "npx trigger.dev@4.7.7 deploy",
     "test:product-name": "npx --yes tsx lib/creative-studio/product-name.test.ts",
@@ -160,7 +160,11 @@
     "db:reset:production": "./scripts/db-reset.sh production",
     "supabase:status": "supabase status",
     "supabase:migrate-local": "chmod +x ./scripts/migrate-supabase-to-local.sh && ./scripts/migrate-supabase-to-local.sh",
-    "setup": "chmod +x ./scripts/setup-supabase.sh && ./scripts/setup-supabase.sh"
+    "setup": "chmod +x ./scripts/setup-supabase.sh && ./scripts/setup-supabase.sh",
+    "meta:preflight": "tsx scripts/meta-preflight.ts",
+    "test:trends": "npx --yes tsx lib/trends/trends.test.ts",
+    "test:research-verify": "npx --yes tsx lib/research/verify.test.ts",
+    "test:meta-ig": "npx --yes tsx lib/meta-ig/meta-ig.test.ts"
   },
   "license": "MIT"
 }

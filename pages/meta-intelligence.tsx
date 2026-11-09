@@ -3,8 +3,10 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { AlertTriangle, Loader2, RefreshCw } from 'lucide-react';
+import { AlertTriangle, Loader2, RefreshCw, TrendingUp } from 'lucide-react';
 import Sidebar from '../app/web/src/components/Sidebar';
+import ComingSoonGate from '@/app/web/src/components/ui/ComingSoonGate';
+import { AD_PERFORMANCE_LIVE } from '@/lib/launch-flags';
 import colors from '@/lib/ui/colors';
 import { authFetch } from '@/lib/utils';
 import { showError } from '@/app/web/src/components/ui/alert-modal-api';
@@ -17,6 +19,9 @@ import TopPosts from '@/app/web/src/components/meta-intel/dashboard/TopPosts';
 import InsightsPanel from '@/app/web/src/components/meta-intel/dashboard/InsightsPanel';
 import EmptyState from '@/app/web/src/components/meta-intel/dashboard/EmptyState';
 import BriefCard from '@/app/web/src/components/meta-intel/dashboard/BriefCard';
+import ConnectedStrip from '@/app/web/src/components/meta-intel/dashboard/ConnectedStrip';
+import PostCharts from '@/app/web/src/components/meta-intel/dashboard/PostCharts';
+import { InstagramTrendsTab, CompetitorsTab } from '@/app/web/src/components/meta-intel/instagram/InstagramTabs';
 import { money, shortDate } from '@/app/web/src/components/meta-intel/dashboard/format';
 import type { DashboardPayload } from '@/lib/meta-intel/summary';
 
@@ -32,12 +37,21 @@ function Banner({ tone, children }: { tone: 'warn' | 'info'; children: React.Rea
   );
 }
 
+type Tab = 'results' | 'instagram' | 'competitors';
+const TABS: { id: Tab; label: string }[] = [
+  { id: 'results', label: 'Your results' },
+  { id: 'instagram', label: 'Instagram trends' },
+  { id: 'competitors', label: 'Competitors' },
+];
+
 export default function MetaIntelligencePage() {
   const router = useRouter();
   const [range, setRange] = useState<(typeof RANGES)[number]>(30);
   const [data, setData] = useState<DashboardPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const tab: Tab = router.query.tab === 'instagram' || router.query.tab === 'competitors' ? router.query.tab : 'results';
+  const chooseTab = (t: Tab) => { void router.replace({ query: { ...router.query, tab: t === 'results' ? undefined : t } }, undefined, { shallow: true }); };
 
   useEffect(() => {
     const q = Number(router.query.range);
@@ -96,7 +110,9 @@ export default function MetaIntelligencePage() {
     <div className="h-screen flex overflow-hidden app-page" style={{ background: colors.background }}>
       <Head><title>Ad Performance | SkalX AI</title></Head>
       <Sidebar />
-      <main className="min-w-0 flex-1 overflow-y-auto">
+      <div className="relative min-w-0 flex-1 overflow-hidden">
+      {!AD_PERFORMANCE_LIVE && <ComingSoonGate Icon={TrendingUp} title="Ad Performance is on its way" body="See what your Facebook and Instagram ads and posts are really doing, in plain words, with what to do next. We’ll let you know as soon as it’s ready." onBack={() => router.push('/brand-studio')} />}
+      <main className={`h-full min-w-0 overflow-y-auto ${AD_PERFORMANCE_LIVE ? '' : 'pointer-events-none select-none blur-[6px] opacity-60'}`} aria-hidden={!AD_PERFORMANCE_LIVE} inert={!AD_PERFORMANCE_LIVE || undefined}>
         <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8">
           <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
@@ -107,7 +123,7 @@ export default function MetaIntelligencePage() {
                   : 'Real spend, sales and your best ads from Facebook and Instagram.'}
               </p>
             </div>
-            {ready ? (
+            {ready && tab === 'results' ? (
               <div className="flex items-center gap-2">
                 <div className="inline-flex rounded-lg p-1" role="tablist" aria-label="Date range" style={{ background: colors.muted, border: `1px solid ${colors.border}` }}>
                   {RANGES.map((r) => (
@@ -125,6 +141,22 @@ export default function MetaIntelligencePage() {
               </div>
             ) : null}
           </header>
+
+          {ready ? <ConnectedStrip /> : null}
+
+          {ready ? (
+            <div className="mt-5 flex gap-1 overflow-x-auto border-b" role="tablist" aria-label="Ad Performance sections" style={{ borderColor: colors.border }}>
+              {TABS.map((t) => (
+                <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} onClick={() => chooseTab(t.id)}
+                  className="-mb-px whitespace-nowrap border-b-2 px-4 py-2.5 text-sm font-medium"
+                  style={{ borderColor: tab === t.id ? colors.primary : 'transparent', color: tab === t.id ? colors.foreground : colors.mutedForeground }}>
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          ) : null}
+
+          {ready && tab === 'instagram' ? <InstagramTrendsTab /> : ready && tab === 'competitors' ? <CompetitorsTab /> : (<>
 
           {loading && !data ? (
             <div className="mt-10 flex items-center gap-2" style={{ color: colors.mutedForeground }}>
@@ -151,10 +183,13 @@ export default function MetaIntelligencePage() {
               {data.mixedCurrency ? (
                 <Banner tone="warn">Showing only ad accounts in {data.currency}. Not included: {data.excludedAccounts.join(', ')}.</Banner>
               ) : null}
-              {!data.hasAdAccounts ? (
-                <Banner tone="warn">No ad account is linked, so only organic posts are shown. <Link className="font-semibold underline" href="/integrations/meta-intel/select">Link an ad account</Link></Banner>
-              ) : data.dataState === 'empty' ? (
-                <EmptyState kind="empty" />
+              {!data.hasAdAccounts || data.dataState === 'empty' ? (
+                <>
+                  {!data.hasAdAccounts
+                    ? <Banner tone="warn">No ad account is linked, so only organic posts are shown. <Link className="font-semibold underline" href="/integrations/meta-intel/select">Link an ad account</Link></Banner>
+                    : <EmptyState kind="empty" />}
+                  {data.hasOrganicAccounts ? <InsightsPanel dataState={data.dataState} ads={data.ads} postsOnly /> : null}
+                </>
               ) : (
                 <>
                   {data.dataState === 'limited' ? (
@@ -170,11 +205,14 @@ export default function MetaIntelligencePage() {
                   <SkalxComparison data={data} />
                 </>
               )}
+              {data.hasOrganicAccounts ? <PostCharts /> : null}
               <TopPosts posts={data.organic} hasOrganicAccounts={data.hasOrganicAccounts} />
             </div>
           )}
+          </>)}
         </div>
       </main>
+      </div>
     </div>
   );
 }

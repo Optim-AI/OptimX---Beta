@@ -1,15 +1,13 @@
 /**
  * Kept posters, ready to run: an SKX- ad name (so Meta results can be matched back) and
- * copy-ready headline + primary text. Copy comes from one small Claude call per keep, checked
- * for invented numbers; if Claude is unavailable or fails, it falls back to the poster's own
+ * copy-ready headline + primary text. Copy comes from one small AI call per keep, checked
+ * for invented numbers; if the AI is unavailable or fails, it falls back to the poster's own
  * hook and message (never blank, never invented).
  */
-import Anthropic from '@anthropic-ai/sdk';
-import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod';
 import * as z from 'zod/v4';
+import { geminiStructured, aiConfigured, type StructuredClient } from '@/lib/ai/structured';
 import { slugPart } from '@/lib/test-packs/naming';
 import { collectNumbers, unsupportedNumbers } from '@/lib/meta-intel/number-guard';
-import { INSIGHTS_MODEL } from '@/lib/meta-intel/analyze';
 import { metaLog } from '@/lib/meta/log';
 import type { Product } from '@/app/web/src/components/creative-studio/types';
 import type { AdFormat } from './options';
@@ -35,7 +33,7 @@ const clip = (s: string, n: number) => {
 };
 
 export type CopyItem = { id: string; angle: DraftAngle; format: string };
-export type CopyResult = { headline: string; primaryText: string; source: 'claude' | 'fallback' };
+export type CopyResult = { headline: string; primaryText: string; source: 'ai' | 'fallback' };
 
 /** Never blank, never invented: the poster's own hook and message. */
 export function fallbackCopy(a: DraftAngle): CopyResult {
@@ -55,18 +53,16 @@ const COPY_SYSTEM = `You write Meta ad copy for small Indian D2C brands. For eac
 - Never invent prices, discounts, ratings, awards, ingredients or numbers. Any number must appear in the input. If an offer is given, use it exactly.
 - Return one item per poster id, in any order.`;
 
-type ClaudeClient = Pick<Anthropic, 'beta'>;
-
 export async function writeCopy(params: {
   product: Product;
   offer: string | null;
   brandName: string | null;
   items: CopyItem[];
-  deps?: { client?: ClaudeClient };
+  deps?: { client?: StructuredClient };
 }): Promise<Map<string, CopyResult>> {
   const out = new Map(params.items.map((i) => [i.id, fallbackCopy(i.angle)]));
   if (!params.items.length) return out;
-  if (!params.deps?.client && !process.env.ANTHROPIC_API_KEY?.trim()) return out;
+  if (!params.deps?.client && !aiConfigured()) return out;
 
   const input = {
     brand: params.brandName,
@@ -75,25 +71,20 @@ export async function writeCopy(params: {
     posters: params.items.map((i) => ({ id: i.id, format: i.format, angle: i.angle.angle, hook: i.angle.title, message: i.angle.message, audience: i.angle.audience })),
   };
   try {
-    const client = params.deps?.client ?? new Anthropic({ timeout: 60_000 });
-    const res = await client.beta.messages.parse({
-      model: INSIGHTS_MODEL,
-      max_tokens: 4000,
+    const client = params.deps?.client ?? geminiStructured;
+    const res = await client.generate({
       system: COPY_SYSTEM,
-      thinking: { type: 'adaptive' },
-      output_config: { effort: 'low', format: betaZodOutputFormat(CopySchema) },
-      betas: ['server-side-fallback-2026-07-01'],
-      fallbacks: 'default',
-      messages: [{ role: 'user', content: `Write copy for these posters (JSON):\n${JSON.stringify(input)}` }],
+      messages: [{ role: 'user', parts: [{ text: `Write copy for these posters (JSON):\n${JSON.stringify(input)}` }] }],
+      schema: CopySchema, effort: 'low', maxTokens: 4000, timeoutMs: 60_000, label: 'ad-studio-copy',
     });
-    const parsed = res.stop_reason === 'refusal' ? null : (res.parsed_output as z.infer<typeof CopySchema> | null);
+    const parsed = res.data;
     const pool = collectNumbers(input);
     for (const it of parsed?.items ?? []) {
       if (!out.has(it.id)) continue;
       const headline = clip(it.headline, HEADLINE_MAX);
       const primaryText = clip(it.primary_text, PRIMARY_MAX);
       if (!headline || !primaryText || unsupportedNumbers(`${headline} ${primaryText}`, pool).length) continue; // keep the fallback
-      out.set(it.id, { headline, primaryText, source: 'claude' });
+      out.set(it.id, { headline, primaryText, source: 'ai' });
     }
   } catch (err) {
     metaLog.warn('ad_studio_copy_failed', { message: (err as Error).message });

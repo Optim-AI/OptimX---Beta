@@ -1,4 +1,4 @@
-/** Zod schema for Claude's structured output (server-only). Kept in sync with insights-types.ts. */
+/** Zod schema for the AI structured output (server-only). Kept in sync with insights-types.ts. */
 import * as z from 'zod/v4';
 import type { Insights } from './insights-types';
 

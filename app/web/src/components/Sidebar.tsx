@@ -3,10 +3,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
+import { AD_PERFORMANCE_LIVE, TRENDS_LIVE } from '@/lib/launch-flags';
 import {
   Orbit,
   Image as ImageIcon,
-  ChartColumn,
   Folder,
   Library,
   FileText,
@@ -22,6 +22,7 @@ import {
   Palette,
   ScanSearch,
   TrendingUp,
+  Flame,
   Camera,
   Smartphone,
   type LucideIcon,
@@ -36,6 +37,8 @@ type NavItem = {
   Icon: LucideIcon;
   featureKey?: string;
   betaBadge?: boolean;
+  /** Shows a "Soon" badge; the page itself explains it is coming. */
+  comingSoon?: boolean;
 };
 
 type NavSection = {
@@ -70,8 +73,8 @@ const NAV_SECTIONS: NavSection[] = [
     label: 'Intelligence',
     items: [
       { href: '/brand-research', label: 'Brand Research', Icon: ScanSearch },
-      { href: '/meta-intelligence', label: 'Ad Performance', Icon: TrendingUp },
-      { href: '/analytics', label: 'Analytics', Icon: ChartColumn, featureKey: 'basic_analytics' },
+      { href: '/meta-intelligence', label: 'Ad Performance', Icon: TrendingUp, comingSoon: !AD_PERFORMANCE_LIVE },
+      { href: '/trends', label: 'Trends', Icon: Flame, comingSoon: !TRENDS_LIVE },
     ],
   },
   {
@@ -255,7 +258,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     }
 
     const active = isRouteActive(pathname, item.href);
-    const comingSoon = Boolean(item.featureKey && featureAccess[item.featureKey]?.comingSoon);
+    const comingSoon = Boolean(item.comingSoon || (item.featureKey && featureAccess[item.featureKey]?.comingSoon));
     const isReport = item.href === REPORT_ITEM.href;
 
     return (

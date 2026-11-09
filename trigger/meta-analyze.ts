@@ -1,4 +1,4 @@
-/** Trigger.dev task: AI analysis of a brand's Meta data (Claude). */
+/** Trigger.dev task: AI analysis of a brand's Meta data (Gemini). */
 import { logger, queue, task } from '@trigger.dev/sdk';
 import { runAnalysis } from '@/lib/meta-intel/analyze';
 

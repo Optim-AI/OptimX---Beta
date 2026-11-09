@@ -8,11 +8,15 @@ import { enqueueAnalysis } from '@/lib/meta-intel/enqueue-analysis';
 import { SyncNotConfiguredError } from '@/lib/meta-sync/enqueue';
 import { metaLog } from '@/lib/meta/log';
 import type { Insights } from '@/lib/meta-intel/insights-types';
+import { refsFromInput, type InsightRef } from '@/lib/meta-intel/insight-refs';
+import { and, eq, inArray } from 'drizzle-orm';
+import { db } from '@/database/client';
+import { metaOrganicPosts } from '@/database/schema';
 
 export const MANUAL_RUNS_PER_DAY = 5;
 
 export type InsightsResponse = {
-  insight: { id: string; output: Insights; createdAt: string; periodSince: string | null; periodUntil: string | null } | null;
+  insight: { id: string; output: Insights; createdAt: string; periodSince: string | null; periodUntil: string | null; rangeDays: number; mode: 'ads' | 'posts'; refs: Record<string, InsightRef> } | null;
   running: boolean;
   lastError: string | null;
 };
@@ -29,7 +33,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (req.method === 'GET') {
       const [ok, running, latest] = await Promise.all([latestInsight(conn.id, 'succeeded'), runningInsight(conn.id), latestInsight(conn.id)]);
       const body: InsightsResponse = {
-        insight: ok ? { id: ok.id, output: ok.output as Insights, createdAt: ok.createdAt, periodSince: ok.periodSince, periodUntil: ok.periodUntil } : null,
+        insight: ok ? {
+          id: ok.id, output: ok.output as Insights, createdAt: ok.createdAt, periodSince: ok.periodSince, periodUntil: ok.periodUntil,
+          rangeDays: ok.rangeDays, mode: (ok.input as { analysis?: string } | null)?.analysis === 'posts' ? 'posts' : 'ads',
+          refs: ok ? await withPostThumbnails(conn.id, refsFromInput(ok.input)) : {},
+        } : null,
         running: !!running,
         lastError: latest?.status === 'failed' ? 'The last analysis did not finish.' : null,
       };
@@ -55,4 +63,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     metaLog.error('insights_api_failed', { userId, message: (err as Error).message });
     return res.status(500).json({ error: 'insights_failed' });
   }
+}
+
+/** Post pictures for the insight cards (ads get theirs from the dashboard's ad list). */
+async function withPostThumbnails(connectionId: string, refs: Record<string, InsightRef>): Promise<Record<string, InsightRef>> {
+  const ids = Object.entries(refs).filter(([, r]) => r.kind === 'post').map(([id]) => id);
+  if (!ids.length) return refs;
+  const rows = await db.select({ id: metaOrganicPosts.metaId, url: metaOrganicPosts.thumbnailUrl }).from(metaOrganicPosts)
+    .where(and(eq(metaOrganicPosts.connectionId, connectionId), inArray(metaOrganicPosts.metaId, ids)));
+  for (const r of rows) if (refs[r.id]) refs[r.id] = { ...refs[r.id], thumbnailUrl: r.url ?? null };
+  return refs;
 }

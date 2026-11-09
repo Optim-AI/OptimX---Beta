@@ -9,10 +9,12 @@
  *   3. synthesizeResearch   the strategist's read, every point tagged with its basis
  *
  * Web steps degrade gracefully: if search fails the report is built from the
- * site alone and says so in evidence.notes. Numbers are never invented.
+ * site alone and says so in evidence.notes. A fact check (verify.ts) removes any number SkalX
+ * couldn't find in what it read, and any cited source that wasn't a real search result.
  */
 
 import { crawlSite, formatSiteEvidence, type SiteEvidence } from "./site-crawl";
+import { verifyResearch } from "./verify";
 import { researchCompetitorAds, type CompetitorAdsReport } from "./competitor-ads";
 import {
   generateResearchJson,
@@ -448,7 +450,7 @@ export function normalizeResearch(
           .filter((o: { title: string }) => o.title)
           .slice(0, 3)
       : [],
-    sources: ctx.sources.slice(0, 20),
+    sources: ctx.sources.slice(0, 40),
     evidence: {
       pages_read: ctx.site.pages.length,
       products_found: ctx.site.products.length,
@@ -514,7 +516,7 @@ export async function researchBrand(
   const customersOk = Boolean(customers?.data);
   if (!marketOk) notes.push("Competitor and reputation search was unavailable; those sections are limited.");
   if (!customersOk) notes.push("Customer-voice search was unavailable; customer insights are inferred from the site.");
-  if (!site.products.length) notes.push("No product catalogue or prices could be read from the site.");
+  if (!site.products.length) notes.push("SkalX couldn’t read products or prices from your site’s pages directly; any prices shown come from web search results.");
   const webStatus: BrandResearch["evidence"]["web_research"] =
     marketOk && customersOk ? "ok" : marketOk || customersOk ? "partial" : "unavailable";
 
@@ -534,7 +536,11 @@ export async function researchBrand(
         { system: ANALYST_SYSTEM, temperature: 0.35, label: "brand-synthesis", timeoutMs: 90_000 }
       )
     );
-    research = normalizeResearch(raw, { site, sources, webStatus, notes });
+    // Fact check: numbers must come from what SkalX read; cited sources must be real.
+    research = verifyResearch(normalizeResearch(raw, { site, sources, webStatus, notes }), {
+      evidenceTexts: [formatSiteEvidence(site), market?.data ? JSON.stringify(market.data) : "", customers?.data ? JSON.stringify(customers.data) : ""],
+      sources,
+    }).research;
   } catch (e) {
     console.warn("[brandResearch] synthesis failed", (e as Error)?.message);
   }

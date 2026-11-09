@@ -1,5 +1,5 @@
 /**
- * "Never invent metrics" guard. Every number Claude writes must match a number in the input
+ * "Never invent metrics" guard. Every number the AI model writes must match a number in the input
  * (allowing for rounding). Bullets with unsupported numbers are dropped; the caller retries
  * once if the headline fails or too much was dropped.
  */

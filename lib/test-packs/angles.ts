@@ -1,16 +1,14 @@
 /**
- * Proposes test-pack angles with Claude. Each angle names its source (a past winner,
+ * Proposes test-pack angles with Gemini. Each angle names its source (a past winner,
  * customer voice or a competitor gap) and comes with copy-ready primary text and a
  * headline for both formats. Numbers in the copy must exist in the input (same guard
  * as AI insights). No predicted metrics.
  */
-import Anthropic from '@anthropic-ai/sdk';
-import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod';
 import * as z from 'zod/v4';
+import { geminiStructured, type AiMessage, type AiPart, type StructuredClient } from '@/lib/ai/structured';
 import { getUserBrand } from '@/lib/brand-kit/server';
 import { getBrandResearch } from '@/lib/research/store';
 import { collectNumbers, unsupportedNumbers } from '@/lib/meta-intel/number-guard';
-import { INSIGHTS_MODEL } from '@/lib/meta-intel/analyze';
 import { metaLog } from '@/lib/meta/log';
 import type { Product } from '@/app/web/src/components/creative-studio/types';
 import type { PackAngle } from './types';
@@ -45,8 +43,6 @@ Rules:
 - Never invent facts about the product: no prices, discounts, ratings, awards, certifications, ingredients or numbers that are not in the input. Any number you write must appear in the input.
 - Never predict results (no "will double sales", no expected CTR or ROAS).
 - what_it_tests is the question the test answers; why_it_might_work points to the evidence in the input.`;
-
-type ClaudeClient = Pick<Anthropic, 'beta'>;
 
 export type WinnerContext = {
   adId: string;
@@ -118,44 +114,36 @@ export async function proposeAngles(params: {
   insightAngles: unknown[] | null;
   count: number;
   avoid: string[];
-  deps?: { client?: ClaudeClient };
+  deps?: { client?: StructuredClient };
 }): Promise<PackAngle[]> {
   const input = await buildAngleInput(params.userId, params.product, params.winner, params.insightAngles);
   const sources = availableSources(input);
   if (!sources.length) {
     throw new NoAngleSourcesError('SkalX needs something real to build angles on: run Brand Research (for customer quotes and competitors), or connect Meta so it can learn from your winning ads.');
   }
-  const client = params.deps?.client ?? new Anthropic({ timeout: 3 * 60 * 1000 });
-  const content: Anthropic.Beta.BetaContentBlockParam[] = [];
+  const client = params.deps?.client ?? geminiStructured;
+  const content: AiPart[] = [];
   if (params.winner?.image) {
-    content.push({ type: 'text', text: `Image of the winning ad (ad_id ${params.winner.adId}):` });
-    content.push({ type: 'image', source: { type: 'base64', media_type: params.winner.image.mediaType, data: params.winner.image.data } });
+    content.push({ text: `Image of the winning ad (ad_id ${params.winner.adId}):` });
+    content.push({ image: { mediaType: params.winner.image.mediaType, data: params.winner.image.data } });
   }
   content.push({
-    type: 'text',
     text: `Propose ${params.count} angle${params.count > 1 ? 's' : ''} to test for this product. Source types you can use: ${sources.join(', ')}.${params.avoid.length ? `\nAvoid these angles (already chosen): ${params.avoid.join('; ')}` : ''}\n\nInput (JSON):\n${JSON.stringify(input)}`,
   });
-  const messages: Anthropic.Beta.BetaMessageParam[] = [{ role: 'user', content }];
+  const messages: AiMessage[] = [{ role: 'user', parts: content }];
 
   for (let attempt = 1; attempt <= 2; attempt++) {
-    const res = await client.beta.messages.parse({
-      model: INSIGHTS_MODEL,
-      max_tokens: 16000,
-      system: ANGLE_SYSTEM_PROMPT,
-      thinking: { type: 'adaptive' },
-      output_config: { effort: 'medium', format: betaZodOutputFormat(ProposalSchema) },
-      betas: ['server-side-fallback-2026-07-01'],
-      fallbacks: 'default',
-      messages,
+    const res = await client.generate({
+      system: ANGLE_SYSTEM_PROMPT, messages, schema: ProposalSchema, effort: 'medium', maxTokens: 16000, timeoutMs: 3 * 60 * 1000, label: 'test-pack-angles',
     });
-    if (res.stop_reason === 'refusal') throw new Error('Claude declined to propose angles');
-    const angles = ((res.parsed_output as { angles: PackAngle[] } | null)?.angles ?? []).slice(0, params.count);
+    if (res.stop === 'refusal') throw new Error('The AI model declined to propose angles');
+    const angles = ((res.data as { angles: PackAngle[] } | null)?.angles ?? []).slice(0, params.count);
     const problems = angles.length < params.count ? [`Only ${angles.length} of ${params.count} angles were returned.`] : checkAngles(angles, input);
     metaLog.info('angles_proposed', { userId: params.userId, attempt, problems: problems.length, usage: res.usage });
     if (!problems.length) return angles;
     if (attempt === 2) throw new Error(`Angle proposal failed checks: ${problems.join(' ')}`);
-    messages.push({ role: 'assistant', content: res.content as unknown as Anthropic.Beta.BetaContentBlockParam[] });
-    messages.push({ role: 'user', content: `Please fix these problems and answer again:\n${problems.map((p) => `- ${p}`).join('\n')}` });
+    messages.push({ role: 'model', parts: [{ text: res.text || '{}' }] });
+    messages.push({ role: 'user', parts: [{ text: `Please fix these problems and answer again:\n${problems.map((p) => `- ${p}`).join('\n')}` }] });
   }
   throw new Error('unreachable');
 }

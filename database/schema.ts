@@ -1340,3 +1340,68 @@ export const adStudioDrafts = pgTable("ad_studio_drafts", {
 	createdAt: ts("created_at").notNull().defaultNow(),
 	updatedAt: ts("updated_at").notNull().defaultNow(),
 }, (t) => [index("idx_ad_studio_drafts_project").using("btree", t.projectId.asc().nullsLast(), t.round.asc().nullsLast(), t.position.asc().nullsLast())]);
+
+// ---- Trends (migration 20261109120000_add_trends.sql) ----
+export const trendSnapshots = pgTable("trend_snapshots", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	categoryKey: text("category_key").notNull(),
+	categoryLabel: text("category_label").notNull(),
+	region: text().notNull().default("IN"),
+	day: date().notNull(),
+	status: text().notNull().default("running"),
+	trends: jsonb().notNull().default([]),
+	queries: jsonb().notNull().default([]),
+	model: text(),
+	usage: jsonb().notNull().default({}),
+	error: text(),
+	createdAt: ts("created_at").notNull().defaultNow(),
+	finishedAt: ts("finished_at"),
+}, (t) => [uniqueIndex("trend_snapshots_category_day_key").using("btree", t.categoryKey.asc().nullsLast(), t.region.asc().nullsLast(), t.day.asc().nullsLast())]);
+
+export const brandTrendIdeas = pgTable("brand_trend_ideas", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	userId: uuid("user_id").notNull(),
+	snapshotId: uuid("snapshot_id").references(() => trendSnapshots.id, { onDelete: "set null" }),
+	trigger: text().notNull().default("manual"),
+	status: text().notNull().default("running"),
+	categoryLabel: text("category_label"),
+	output: jsonb(),
+	model: text(),
+	usage: jsonb().notNull().default({}),
+	error: text(),
+	createdAt: ts("created_at").notNull().defaultNow(),
+	finishedAt: ts("finished_at"),
+}, (t) => [index("idx_brand_trend_ideas_user_created").using("btree", t.userId.asc().nullsLast(), t.createdAt.desc().nullsLast())]);
+
+// ---- Instagram watch (migration 20261109130000_add_instagram_watch.sql) ----
+export const igWatchItems = pgTable("ig_watch_items", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	connectionId: connRef(),
+	userId: uuid("user_id").notNull(),
+	kind: text().notNull(),
+	value: text().notNull(),
+	data: jsonb(),
+	lastFetchedAt: ts("last_fetched_at"),
+	lastError: text("last_error"),
+	createdAt: ts("created_at").notNull().defaultNow(),
+}, (t) => [uniqueIndex("ig_watch_items_conn_kind_value_key").using("btree", t.connectionId.asc().nullsLast(), t.kind.asc().nullsLast(), t.value.asc().nullsLast())]);
+
+export const igHashtagQueries = pgTable("ig_hashtag_queries", {
+	connectionId: connRef(),
+	igUserId: text("ig_user_id").notNull(),
+	hashtag: text().notNull(),
+	windowStartedAt: ts("window_started_at").notNull().defaultNow(),
+}, (t) => [uniqueIndex("ig_hashtag_queries_pkey").using("btree", t.igUserId.asc().nullsLast(), t.hashtag.asc().nullsLast())]);
+
+export const igStyleReads = pgTable("ig_style_reads", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	connectionId: connRef(),
+	userId: uuid("user_id").notNull(),
+	status: text().notNull().default("succeeded"),
+	output: jsonb(),
+	dropped: jsonb().notNull().default([]),
+	model: text(),
+	usage: jsonb().notNull().default({}),
+	error: text(),
+	createdAt: ts("created_at").notNull().defaultNow(),
+}, (t) => [index("idx_ig_style_reads_conn_created").using("btree", t.connectionId.asc().nullsLast(), t.createdAt.desc().nullsLast())]);

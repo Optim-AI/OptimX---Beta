@@ -19,6 +19,15 @@ export function money(v: number | null | undefined, currency: string | null, opt
   }
 }
 
+/** "₹2.90" for a per-₹1 amount: always two decimals, in the account's currency. */
+export function perUnit(v: number, currency: string | null): string {
+  try {
+    return new Intl.NumberFormat(locale, { style: 'currency', currency: currency || 'INR', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
+  } catch {
+    return v.toFixed(2);
+  }
+}
+
 export function count(v: number | null | undefined, opts: { compact?: boolean } = {}): string {
   if (v === null || v === undefined || !Number.isFinite(v)) return '—';
   return new Intl.NumberFormat(locale, { maximumFractionDigits: 0, notation: opts.compact ? 'compact' : 'standard' }).format(v);

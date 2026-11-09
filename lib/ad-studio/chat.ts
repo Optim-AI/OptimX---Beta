@@ -3,11 +3,9 @@
  * direction for the next round (which then re-runs the research with it). Stateless: the
  * browser sends the conversation; the server adds the project context.
  */
-import Anthropic from '@anthropic-ai/sdk';
-import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod';
 import * as z from 'zod/v4';
+import { geminiStructured, aiConfigured, type StructuredClient } from '@/lib/ai/structured';
 import { getUserBrand } from '@/lib/brand-kit/server';
-import { INSIGHTS_MODEL } from '@/lib/meta-intel/analyze';
 import { metaLog } from '@/lib/meta/log';
 import type { Product } from '@/app/web/src/components/creative-studio/types';
 import { AD_FORMATS, AD_GOALS, type AdFormat, type AdGoal } from './options';
@@ -33,8 +31,6 @@ export const CHAT_SYSTEM = `You are SkalX's friendly creative assistant inside A
 - You can't change posters directly; the owner presses "Make posters with this" to get new ones.
 - If the owner asks for something unsafe, misleading or about a different product, say so kindly and steer back.`;
 
-type ClaudeClient = Pick<Anthropic, 'beta'>;
-
 function sanitize(messages: unknown): ChatMessage[] {
   if (!Array.isArray(messages)) return [];
   return messages
@@ -42,7 +38,7 @@ function sanitize(messages: unknown): ChatMessage[] {
     .map((m) => ({ role: m.role, content: m.content.slice(0, 1200) }));
 }
 
-export async function chatTurn(userId: string, projectId: string, rawMessages: unknown, deps: { client?: ClaudeClient } = {}): Promise<ChatReply> {
+export async function chatTurn(userId: string, projectId: string, rawMessages: unknown, deps: { client?: StructuredClient } = {}): Promise<ChatReply> {
   const messages = sanitize(rawMessages);
   if (!messages.length || messages[messages.length - 1].role !== 'user') throw new AdStudioError('Type a message first.');
   // Count the whole conversation before anything is trimmed, so the cap can't be bypassed.
@@ -63,24 +59,19 @@ export async function chatTurn(userId: string, projectId: string, rawMessages: u
     posters_already_shown: drafts.filter((d) => d.kind === 'original').map((d) => ({ angle: (d.angle as DraftAngle).angle, kept: d.kept })).slice(-24),
   };
 
-  if (!deps.client && !process.env.ANTHROPIC_API_KEY?.trim()) {
+  if (!deps.client && !aiConfigured()) {
     throw new AdStudioError('The SkalX assistant isn’t set up yet. You can still type what you want in “None of these quite right?” below.', 503, 'NOT_CONFIGURED');
   }
-  const client = deps.client ?? new Anthropic({ timeout: 60_000 });
-  const res = await client.beta.messages.parse({
-    model: INSIGHTS_MODEL,
-    max_tokens: 4000,
+  const client = deps.client ?? geminiStructured;
+  const res = await client.generate({
     system: `${CHAT_SYSTEM}\n\nContext (JSON):\n${JSON.stringify(context)}`,
-    thinking: { type: 'adaptive' },
-    output_config: { effort: 'low', format: betaZodOutputFormat(ChatReplySchema) },
-    betas: ['server-side-fallback-2026-07-01'],
-    fallbacks: 'default',
-    messages,
+    messages: messages.map((m) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] })),
+    schema: ChatReplySchema, effort: 'low', maxTokens: 4000, timeoutMs: 60_000, label: 'ad-studio-chat',
   });
-  if (res.stop_reason === 'refusal') {
+  if (res.stop === 'refusal') {
     return { reply: 'Sorry, I can’t help with that one. Tell me more about how you’d like the posters to look?', direction: '', ready: false };
   }
-  const out = res.parsed_output as ChatReply | null;
+  const out = res.data;
   if (!out) throw new Error('Chat reply was not valid');
   metaLog.info('ad_studio_chat', { projectId, turns: messages.length, ready: out.ready, usage: res.usage });
   return { reply: out.reply.slice(0, 800), direction: out.direction.slice(0, 1000), ready: out.ready };
