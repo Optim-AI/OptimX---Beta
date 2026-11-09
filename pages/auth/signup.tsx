@@ -81,9 +81,13 @@ export default function SignUpPage(): React.ReactElement {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === "SIGNED_IN" && session?.user) {
-        await routeAfterAuth();
+        // Don't await Supabase calls inside this callback (it runs under Supabase's auth lock and
+        // would deadlock); route right after it returns instead.
+        setTimeout(() => {
+          routeAfterAuth().catch((e) => console.error("post-auth routing failed on SIGNED_IN:", e));
+        }, 0);
       }
     });
 

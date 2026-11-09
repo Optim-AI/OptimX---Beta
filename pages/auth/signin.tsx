@@ -61,14 +61,17 @@ export default function SignInPage(): React.ReactElement {
   useEffect(() => {
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === "SIGNED_IN" && session?.user) {
-        try {
-          await routeAfterAuth();
-        } catch (e) {
-          console.error("post-auth routing failed on SIGNED_IN:", e);
-          setError("Could not determine where to send you. Please try again.");
-        }
+        // Never await Supabase calls inside this callback: Supabase holds its auth lock while it
+        // runs (e.g. when it reads a session from an email-verification link), so a getSession()
+        // here waits forever and every later sign-in hangs on "Signing in...". Run it after.
+        setTimeout(() => {
+          routeAfterAuth().catch((e) => {
+            console.error("post-auth routing failed on SIGNED_IN:", e);
+            setError("Could not determine where to send you. Please try again.");
+          });
+        }, 0);
       }
     });
 
