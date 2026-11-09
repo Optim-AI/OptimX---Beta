@@ -41,7 +41,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   } catch (err) {
     if (err instanceof MetaConfigError) {
       metaLog.error('connect_not_configured', { message: err.message });
-      return res.status(503).json({ error: 'not_configured', message: 'Meta connection is not set up yet. Please contact support.' });
+      // Names of the missing settings only (never values), so the cause is visible without digging through logs.
+      const missing = err.message.split('missing ')[1] ?? '';
+      return res.status(503).json({ error: 'not_configured', missing, message: 'Meta connection is not set up yet. Please contact support.' });
     }
     metaLog.error('connect_failed', { message: (err as Error).message });
     return res.status(500).json({ error: 'connect_failed' });
