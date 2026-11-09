@@ -83,7 +83,7 @@ async function handleGetSessions(
   const includeMediaData = includeMedia === "1" || includeMedia === "true";
 
   try {
-    const sessionType = (type === "poster" || type === "video" || type === "photo") ? type : undefined;
+    const sessionType = (type === "poster" || type === "video" || type === "photo" || type === "ugc") ? type : undefined;
 
     const data = await CreativeStudioSessionDAO.listByUser(userId, {
       sessionType,
@@ -163,8 +163,8 @@ async function handleCreateSession(
     return res.status(400).json({ ok: false, error: "Missing session name" });
   }
 
-  if (!sessionType || (sessionType !== "poster" && sessionType !== "video")) {
-    return res.status(400).json({ ok: false, error: "Invalid session type. Must be 'poster' or 'video'" });
+  if (!sessionType || (sessionType !== "poster" && sessionType !== "video" && sessionType !== "ugc")) {
+    return res.status(400).json({ ok: false, error: "Invalid session type. Must be 'poster', 'video' or 'ugc'" });
   }
 
   if (!brandSnapshot) {
@@ -201,8 +201,8 @@ async function handleCreateSession(
       if (generatedPosters) payload.generatedPosters = generatedPosters;
     }
 
-    // Add video-specific fields
-    if (sessionType === "video") {
+    // Add video-specific fields (UGC Studio sessions are videos too)
+    if (sessionType === "video" || sessionType === "ugc") {
       if (adBuilderData) payload.adBuilderData = adBuilderData;
       if (generatedVideos) payload.generatedVideos = generatedVideos;
     }
@@ -435,8 +435,8 @@ async function handleUpdateSession(
       if (generatedPosters !== undefined) payload.generatedPosters = generatedPosters;
     }
 
-    // Video-specific fields
-    if (existingSession.sessionType === "video") {
+    // Video-specific fields (UGC Studio sessions are videos too)
+    if (existingSession.sessionType === "video" || existingSession.sessionType === "ugc") {
       if (adBuilderData !== undefined) payload.adBuilderData = adBuilderData;
       if (generatedVideos !== undefined) payload.generatedVideos = generatedVideos;
     }

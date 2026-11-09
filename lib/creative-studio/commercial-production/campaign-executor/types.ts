@@ -95,6 +95,8 @@ export interface FinalCommercial {
   audioTracks?: AudioTrackReference[];
   manifest?: ProductionManifest;
   nativeResult?: CampaignVideoResult;
+  /** The video before voice-over and end card — reused to re-voice in another language. */
+  baseVideoUrl?: string;
   /** Phase 8 Commercial QC report (accept | regenerate | manual_review). No quality score. */
   commercialQC?: import("../commercial-qc/types").CommercialQCReport;
   /** Phase 9: frontend-safe creative plan (from Commercial Director blueprint). */

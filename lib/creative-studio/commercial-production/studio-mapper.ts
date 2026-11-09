@@ -14,6 +14,7 @@ import { normalizeVoiceoverLanguage } from "./audio/voiceover-languages";
 import { normalizeCreativeStyle } from "./campaign/creative-style";
 import { getAdTypePlaybook, normalizeAdType } from "./campaign/ad-type";
 import { normalizeAdDirection, viewerActionCta } from "./campaign/ad-direction";
+import { normalizeUgc, ugcVoiceFor } from "./campaign/ugc";
 
 /** Most extra products sent to the video model (Seedance takes 8 references total). */
 export const MAX_ADDITIONAL_PRODUCTS = 3;
@@ -96,6 +97,19 @@ export interface StudioFormInput {
   approvedConcept?: CampaignBrief["approvedConcept"];
   /** "Help me write it" answers (who is on screen, feeling, where, what viewers should do). */
   adDirection?: unknown;
+  /** UGC Studio: creator (photo URL in `creator.image`), format and delivery. */
+  ugc?: {
+    creator?: {
+      kind?: string;
+      name?: string;
+      description?: string;
+      image?: string | null;
+      presetId?: string;
+      voiceGender?: string;
+    };
+    format?: string;
+    delivery?: string;
+  };
 }
 
 export interface StudioNativeRequestInvariant {
@@ -212,6 +226,8 @@ export function mapStudioFormToCampaignBrief(input: StudioFormInput): CampaignBr
   }
   const adType = normalizeAdType(input.adType);
   const adDirection = normalizeAdDirection(input.adDirection);
+  const ugcImage = input.ugc?.creator?.image ? urlToAsset(input.ugc.creator.image, "ugc-creator", "creative_reference") : null;
+  const ugc = normalizeUgc(input.ugc, input.voiceover?.language, ugcImage);
   // Brand films, shop/service and festival greetings can run without a product.
   const productOptional = getAdTypePlaybook(adType).productPhotoOptional;
   if (!input.product?.product_name?.trim() && !productOptional) {
@@ -300,13 +316,14 @@ export function mapStudioFormToCampaignBrief(input: StudioFormInput): CampaignBr
         : undefined,
     creativeStrategy: input.creativeStrategy,
     selectedConcept: input.selectedConcept,
-    creativeStyle: normalizeCreativeStyle(input.adSetup.creativeFormat),
+    creativeStyle: ugc ? "ugc" : normalizeCreativeStyle(input.adSetup.creativeFormat),
     adType,
     additionalProducts: mapExtraProducts(input.extraProducts),
     occasion: input.occasion?.trim() || undefined,
     shopDetails: input.shopDetails?.trim() || undefined,
     approvedConcept: input.approvedConcept,
     adDirection,
+    ugc,
     endCard: input.endCard?.enabled
       ? {
           enabled: true,
@@ -330,6 +347,7 @@ export function mapStudioFormToCampaignBrief(input: StudioFormInput): CampaignBr
         undefined,
       ctaEnabled: input.voiceover?.ctaEnabled !== false,
       script: input.voiceover?.script?.trim() || undefined,
+      voice: ugc ? ugcVoiceFor(ugc.creator) : undefined,
     },
   };
 

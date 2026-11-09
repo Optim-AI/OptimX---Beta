@@ -38,6 +38,7 @@ import {
   attachGeminiVoiceoverIfNeeded,
   VoiceoverPipelineError,
 } from "../audio/attach-gemini-voiceover";
+import { usesExternalVoiceover } from "../campaign/ugc";
 
 function defaultLog(event: string, payload: Record<string, unknown>): void {
   console.log(`[campaign-executor] ${event}`, payload);
@@ -114,7 +115,13 @@ export function mergeProductAssets(
     seen.add(img.url);
     return true;
   });
-  return { ...available, productImages };
+  // UGC: the creator photo rides along as a character reference, after the products.
+  const creator = brief.ugc?.creator.image;
+  const characterReferences = [
+    ...(creator?.url ? [creator] : []),
+    ...(available?.characterReferences || []),
+  ];
+  return { ...available, productImages, characterReferences: characterReferences.length ? characterReferences : undefined };
 }
 
 
@@ -197,7 +204,7 @@ export async function produceFinalCommercial(
     shotPlan = plan;
   }
 
-  const suppressSpokenVoiceover = usesGeminiTts(brief.voiceover?.language);
+  const suppressSpokenVoiceover = usesExternalVoiceover(brief);
 
   const availableAssets = mergeProductAssets(brief, input.availableAssets);
   const hasProductPhotos = Boolean(availableAssets.productImages?.length);
@@ -216,6 +223,7 @@ export async function produceFinalCommercial(
     occasion: brief.occasion,
     shopDetails: brief.shopDetails,
     adDirection: brief.adDirection,
+    ugc: brief.ugc,
     // Brand / shop / festival ads may have no product photo at all.
     requireProductReference: hasProductPhotos || !getAdTypePlaybook(brief.adType).productPhotoOptional,
   });
@@ -273,6 +281,8 @@ export async function produceFinalCommercial(
     compositionStatus: "completed",
     audioTracks: [],
     nativeResult: native,
+    // Silent / pre-voice video, kept so a voice-over ad can be re-voiced in another language.
+    baseVideoUrl: native.videoUrl,
     creativePlan: buildCreativePlanSummary(blueprint),
     createdAt: new Date().toISOString(),
   };

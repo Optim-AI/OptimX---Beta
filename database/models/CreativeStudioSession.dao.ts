@@ -62,7 +62,7 @@ export class CreativeStudioSessionDAO {
   static async listByUser(
     userId: string,
     options?: {
-      sessionType?: 'poster' | 'video' | 'photo';
+      sessionType?: 'poster' | 'video' | 'photo' | 'ugc';
       limit?: number;
     }
   ): Promise<CreativeStudioSession[]> {
@@ -99,7 +99,7 @@ export class CreativeStudioSessionDAO {
   static async existsByNameAndType(
     userId: string,
     name: string,
-    sessionType: 'poster' | 'video'
+    sessionType: 'poster' | 'video' | 'ugc'
   ): Promise<boolean> {
     const result = await db
       .select({ id: creativeStudioSessions.id })
@@ -197,7 +197,7 @@ export class CreativeStudioSessionDAO {
    */
   static async getByTypeAndUserId(
     userId: string,
-    sessionType: 'poster' | 'video',
+    sessionType: 'poster' | 'video' | 'ugc',
     limit: number = 50
   ): Promise<CreativeStudioSession[]> {
     return db

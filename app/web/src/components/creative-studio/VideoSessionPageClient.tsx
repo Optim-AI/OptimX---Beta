@@ -38,6 +38,8 @@ import {
 } from '@/lib/creative-studio/commercial-production/studio-mapper';
 import { getAdTypePlaybook, normalizeAdType } from '@/lib/creative-studio/commercial-production/campaign/ad-type';
 import { normalizeAdDirection, type AdDirection } from '@/lib/creative-studio/commercial-production/campaign/ad-direction';
+import { ugcSpeechFor } from '@/lib/creative-studio/commercial-production/campaign/ugc';
+import { DEFAULT_UGC_SETUP } from './UgcSetup';
 import type { ConceptCard } from '@/lib/creative-studio/commercial-production/concepts/generate-concepts';
 import { isCampaignDurationSeconds } from '@/lib/creative-studio/commercial-production/campaign/campaign-duration';
 import { getVideoCreditsForDuration } from '@/lib/billing/video-credits';
@@ -246,6 +248,26 @@ async function prepareVideoGenerateImages(args: {
 }
 
 /** Compress extra-product photos the same way as the primary reference. */
+/** UGC creator photo as a small data URL (preset faces are site paths the video API can't reach). */
+async function prepareUgcForRequest(ugc: AdBuilderData['ugc']) {
+  const creator = ugc?.creator;
+  if (!ugc || !creator?.image) return undefined;
+  let image = creator.image;
+  if (!image.startsWith('data:')) {
+    const blob = await fetch(image).then((r) => {
+      if (!r.ok) throw new Error('Could not load the creator photo.');
+      return r.blob();
+    });
+    image = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(new Error('Could not read the creator photo.'));
+      reader.readAsDataURL(blob);
+    });
+  }
+  return { ...ugc, creator: { ...creator, image: await compressDataUrlForVideoApi(image, { maxDim: 768 }) } };
+}
+
 async function prepareExtraProducts(
   extras: AdBuilderData['extraProducts']
 ): Promise<Array<{ name: string; image?: string }> | undefined> {
@@ -324,7 +346,12 @@ type ProductData = {
 
 // ============== Page Component ==============
 
-export default function VideoSessionPage() {
+export default function VideoSessionPage({ studio = 'brand' }: { studio?: 'brand' | 'ugc' } = {}) {
+  const isUgc = studio === 'ugc';
+  /** UGC Studio keeps its own sessions and pages. */
+  const sessionKind: 'video' | 'ugc' = isUgc ? 'ugc' : 'video';
+  const studioHome = isUgc ? '/ugc-studio' : '/brand-studio';
+  const studioName = isUgc ? 'UGC Studio' : 'Brand Studio';
   const router = useRouter();
   const { id: sessionId, autoGenerate } = router.query;
 
@@ -465,6 +492,9 @@ export default function VideoSessionPage() {
     voiceoverLanguage: adBuilderData.voiceover?.language,
     voiceoverEnabled: adBuilderData.voiceover?.enabled,
     endCardEnabled: adBuilderData.endCard?.enabled ?? true,
+    ugcSpeech: isUgc
+      ? ugcSpeechFor(adBuilderData.ugc?.delivery ?? 'voiceover', adBuilderData.voiceover?.language)
+      : undefined,
   });
   const generationStepStatus = generationStepList[
     generationProgress(generationStepList, generationElapsed).index
@@ -592,6 +622,12 @@ export default function VideoSessionPage() {
             ...DEFAULT_AD_BUILDER_DATA.onScreenText,
             ...(savedAdBuilderData.onScreenText || {}),
           };
+          if (isUgc) {
+            savedAdBuilderData.ugc = savedAdBuilderData.ugc ?? DEFAULT_UGC_SETUP;
+            if (!(loadedSession.adBuilderData as AdBuilderData).ugc) {
+              savedAdBuilderData.adSetup = { ...savedAdBuilderData.adSetup, aspect_ratio: '9:16', creativeFormat: 'ugc' as AdBuilderData['adSetup']['creativeFormat'] };
+            }
+          }
           setAdBuilderData(savedAdBuilderData);
           const savedStep = (savedAdBuilderData as any).step;
           const stepMap: Record<number, AdBuilderStep> = { 1: 1, 2: 1, 3: 2, 4: 3 };
@@ -644,7 +680,7 @@ export default function VideoSessionPage() {
 
     async function loadVideoSessions() {
       try {
-        const response = await authFetch('/api/creative-studio/sessions?type=video');
+        const response = await authFetch(`/api/creative-studio/sessions?type=${sessionKind}`);
         const data = await response.json();
 
         if (data.ok) {
@@ -1330,6 +1366,7 @@ export default function VideoSessionPage() {
       shopDetails: adBuilderData.shopDetails,
       approvedConcept: adBuilderData.approvedConcept,
       adDirection: adBuilderData.adDirection,
+      ugc: isUgc ? await prepareUgcForRequest(adBuilderData.ugc) : undefined,
       creativeStrategy: adBuilderData.creativeStrategy as never,
       selectedConcept: (() => {
         const c =
@@ -1397,12 +1434,49 @@ export default function VideoSessionPage() {
     return data.text.trim();
   }
 
+  /** UGC voice-over: same video, new language — no Video Credits. */
+  async function handleRevoice(video: GeneratedVideo, language: string): Promise<void> {
+    const campaignId = session?.id;
+    if (!campaignId || !video.baseVideoUrl) throw new Error('This video cannot be re-voiced.');
+    const { brief } = await buildStudioRequest(campaignId);
+    const response = await authFetch('/api/ugc/revoice', {
+      method: 'POST',
+      body: JSON.stringify({
+        campaign: {
+          ...brief,
+          campaignDuration: video.duration ?? brief.campaignDuration,
+          voiceover: { ...brief.voiceover, language, script: undefined },
+        },
+        baseVideoUrl: video.baseVideoUrl,
+      }),
+    });
+    const data = await safeResponseJson<{ ok?: boolean; videoUrl?: string; error?: string }>(response);
+    if (!response.ok || !data?.ok || !data.videoUrl) {
+      throw new Error(data?.error || 'Could not make that language right now. Please try again.');
+    }
+    const revoiced: GeneratedVideo = {
+      ...video,
+      id: `video_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`,
+      url: data.videoUrl,
+      language,
+      timestamp: Date.now(),
+      sourceKey: undefined,
+      fix: undefined,
+    };
+    setGeneratedVideos((prev) => [revoiced, ...prev]);
+    setSelectedVideoId(revoiced.id);
+  }
+
   async function handleGenerateVideo(options?: {
     forceRegenerate?: boolean;
     generationVersion?: string;
   }) {
     if (!adBuilderData.product && !productOptional) {
       showError('Add a product before generating your commercial.');
+      return;
+    }
+    if (isUgc && !adBuilderData.ugc?.creator?.image) {
+      showError('Pick who is in your video first.');
       return;
     }
 
@@ -1555,6 +1629,8 @@ export default function VideoSessionPage() {
           aspectRatio: string;
           videoUrl: string;
           videoAssetId: string;
+          /** Pre-voice video, kept for UGC re-voicing. */
+          baseVideoUrl?: string;
           model?: string;
           productionMode?: string;
           creativePlan?: CreativePlanSummary;
@@ -1630,9 +1706,16 @@ export default function VideoSessionPage() {
       }
 
       const videoId = `video_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const ugcDelivery = isUgc ? adBuilderData.ugc?.delivery ?? 'voiceover' : undefined;
+      // Presenter and voice-over videos keep their silent base so they can be re-voiced.
+      const revoiceable =
+        ugcDelivery !== undefined && ugcSpeechFor(ugcDelivery, adBuilderData.voiceover.language) !== 'native';
       const newVideo: GeneratedVideo = {
         id: videoId,
         url: videoUrl,
+        language: adBuilderData.voiceover.language ?? 'english',
+        ugcDelivery,
+        baseVideoUrl: revoiceable ? fc.baseVideoUrl : undefined,
         prompt: getCommercialBrief(adBuilderData),
         timestamp: Date.now(),
         generationVersion: fc.generationVersion,
@@ -1927,7 +2010,7 @@ export default function VideoSessionPage() {
         }
       }
       
-      router.push(`/brand-studio/video?id=${selectedSessionId}`);
+      router.push(`${studioHome}/video?id=${selectedSessionId}`);
     }
   }
 
@@ -1947,7 +2030,7 @@ export default function VideoSessionPage() {
         method: 'POST',
         body: JSON.stringify({
           name,
-          sessionType: 'video',
+          sessionType: sessionKind,
           brandSnapshot: brand,
         }),
       });
@@ -1959,14 +2042,14 @@ export default function VideoSessionPage() {
         const newSession: SessionListItem = {
           id: data.session.id,
           name: data.session.name,
-          sessionType: 'video',
+          sessionType: sessionKind,
           createdAt: data.session.createdAt || new Date().toISOString(),
           updatedAt: data.session.updatedAt || new Date().toISOString(),
         };
         setVideoSessions(prev => [newSession, ...prev]);
 
         setShowNewSessionModal(false);
-        router.push(`/brand-studio/video?id=${data.session.id}`);
+        router.push(`${studioHome}/video?id=${data.session.id}`);
       } else {
         showError('Failed to create session: ' + (data.error || 'Unknown error'));
       }
@@ -1997,7 +2080,7 @@ export default function VideoSessionPage() {
         setVideoSessions((prev) => prev.filter((s) => s.id !== deleteSessionId));
 
         if (deleteSessionId === sessionId) {
-          router.push('/brand-studio');
+          router.push(studioHome);
         }
       } else {
         showError('Failed to delete session: ' + (data.error || 'Unknown error'));
@@ -2034,11 +2117,11 @@ export default function VideoSessionPage() {
         <div className="text-center">
           <p className="mb-4" style={{ color: colors.destructive }}>{error}</p>
           <button
-            onClick={() => router.push('/brand-studio')}
+            onClick={() => router.push(studioHome)}
             className="px-4 py-2 text-white rounded-lg"
             style={{ backgroundColor: colors.primary }}
           >
-            Back to Brand Studio
+            Back to {studioName}
           </button>
         </div>
       </div>
@@ -2083,6 +2166,8 @@ export default function VideoSessionPage() {
             onAdBuilderChange={setAdBuilderData}
             onRequestConcepts={handleRequestConcepts}
             onRequestWrite={handleRequestWrite}
+            studio={studio}
+            onRevoice={isUgc ? handleRevoice : undefined}
             generatedVideos={generatedVideos}
             selectedVideoId={selectedVideoId}
             onSelectVideo={setSelectedVideoId}

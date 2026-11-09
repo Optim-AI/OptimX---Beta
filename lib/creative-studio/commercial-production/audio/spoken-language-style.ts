@@ -50,6 +50,7 @@ export function defaultSpokenLanguageStyle(
   switch (normalized) {
     case "tamil":
       return "natural_spoken";
+    case "telugu":
     case "hindi":
     case "malayalam":
     case "kannada":

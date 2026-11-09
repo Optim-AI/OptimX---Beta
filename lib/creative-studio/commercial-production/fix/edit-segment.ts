@@ -17,7 +17,7 @@ import { uploadVideoBuffer } from "@/lib/creative-studio/video-delivery";
 import { probeMediaBuffer } from "../audio/mux-voiceover";
 import { applyStoredEndCard } from "../finishing/attach-end-card";
 import type { StoredEndCard } from "../campaign-executor/types";
-import { animateFrameWithGemini, type FrameAnimator } from "./animate-frame";
+import { animateFrameWithRunway, type FrameAnimator } from "./animate-frame";
 import { fixFrameWithGemini, type FrameFixer } from "./fix-frame";
 import { planFixWithGemini, type FixInstructions, type FixPlanner } from "./plan-fix";
 import { extractFrame, MAX_CLIP_STRETCH } from "./shots";
@@ -217,7 +217,7 @@ export async function runFix(
 
   const { master } = input;
   const probe = await probeMediaBuffer(master, "mp4");
-  const clip = await (options.animator ?? animateFrameWithGemini)({
+  const clip = await (options.animator ?? animateFrameWithRunway)({
     frame: input.fixedFrame,
     motionPrompt: input.motionPrompt,
     seconds: endSeconds - startSeconds,

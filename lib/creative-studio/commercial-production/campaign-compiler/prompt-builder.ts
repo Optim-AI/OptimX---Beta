@@ -15,6 +15,7 @@ import {
 } from "../campaign/creative-style";
 import { adTypeToPromptBlock, getAdTypePlaybook, type AdTypeId } from "../campaign/ad-type";
 import { adDirectionToPromptBlock, type AdDirection } from "../campaign/ad-direction";
+import { UGC_PRESENTER_GREETING, ugcToPromptBlock, type CampaignUgcInput } from "../campaign/ugc";
 
 function clean(parts: Array<string | undefined | null | false>): string {
   return parts
@@ -82,6 +83,7 @@ export function buildCampaignPrompt(input: {
   occasion?: string;
   shopDetails?: string;
   adDirection?: AdDirection;
+  ugc?: CampaignUgcInput;
 }): { campaignPrompt: string; negativePrompt: string } {
   const { blueprint, shotPlan } = input;
   const silent = Boolean(input.suppressSpokenVoiceover);
@@ -162,11 +164,17 @@ export function buildCampaignPrompt(input: {
 
   // Positive description of silent acting: video models act out what they read,
   // so "no talking" alone still produces moving lips.
-  const silentPerformance = silent
+  // UGC presenter: one English hello on camera, then the same closed-mouth acting.
+  const presenter = silent && input.ugc?.speech === "presenter";
+  const silentPerformance = presenter
+    ? `PERFORMANCE (CRITICAL): The creator faces the camera like a vlogger and says only "${UGC_PRESENTER_GREETING}" in English in the first 1–2 seconds. After that nobody speaks on camera — closed-mouth smiles, nods, raised eyebrows, showing and pointing at the product, a thumbs-up — while still facing the lens.`
+    : silent
     ? `PERFORMANCE (CRITICAL): Nobody speaks on camera at any moment — this is a narrated commercial and the narrator is never seen. People act without words: closed-mouth smiles, nods, eyes closing while savouring, chewing with lips closed, glances at the product. Never frame a character addressing or talking to the camera.`
     : undefined;
 
-  const audioDirective = silent
+  const audioDirective = presenter
+    ? `AUDIO: Only the short English hello "${UGC_PRESENTER_GREETING}" at the very start; after that, instrumental music and soft ambient sound only, no other voices.`
+    : silent
     ? `AUDIO: Instrumental music bed and subtle ambient sound effects only (packaging sounds, room tone). No human voices in the audio.`
     : `AUDIO: Include a clear native English commercial voiceover that sells the product — hook, brand+product, benefit, CTA. Music ducked under speech.`;
 
@@ -190,6 +198,7 @@ export function buildCampaignPrompt(input: {
       ? `The product reference images are in the same order as the product list — each product must match its own reference exactly.`
       : undefined,
     adDirectionToPromptBlock(input.adDirection) || undefined,
+    ugcToPromptBlock(input.ugc, { hasProductPhotos: (input.productNames?.length ?? 0) > 0 }) || undefined,
     silentPerformance,
     productHandling,
     concept
@@ -243,7 +252,7 @@ export function buildCampaignPrompt(input: {
     "generic stock-ad look, random camera whip, inconsistent wardrobe",
     "glowing light rays, sparkles, magical aura from the product",
     "invented packaging, wrong brand colors",
-    silent ? "spoken dialogue, human voices in the audio" : undefined,
+    presenter ? "speech after the opening hello, moving lips after the first 2 seconds" : silent ? "spoken dialogue, human voices in the audio" : undefined,
     artifactAvoid.slice(0, 3).join(", "),
   ]);
 

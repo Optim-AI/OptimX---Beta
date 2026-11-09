@@ -19,6 +19,7 @@ import {
 } from "../campaign/creative-style";
 import { adTypeToPromptBlock, getAdTypePlaybook } from "../campaign/ad-type";
 import { adDirectionToPromptBlock } from "../campaign/ad-direction";
+import { UGC_PRESENTER_GREETING, ugcToPromptBlock, usesExternalVoiceover } from "../campaign/ugc";
 
 export function buildDirectorSystemPrompt(): string {
   return `You are the Commercial Director for SkalX AI Ad Video Production.
@@ -83,7 +84,7 @@ export function buildDirectorUserPrompt(brief: CampaignBrief): string {
       ? "Use 5–7 visual beats spanning 0–30s"
       : "Use 4–6 visual beats spanning 0–15s";
 
-  const externalTts = usesGeminiTts(brief.voiceover?.language);
+  const externalTts = usesExternalVoiceover(brief);
   const voLanguage = voiceoverLanguageDisplayName(brief.voiceover?.language);
   const voiceoverBlock = externalTts
     ? `VOICEOVER ROUTING (CRITICAL):
@@ -91,8 +92,11 @@ language: ${voLanguage}
 provider: Gemini 3.8 Flash TTS (post-production)
 Seedance must NOT invent spoken dialogue or English/native voiceover.
 In soundDesignIntent.voiceover write: "none — external ${voLanguage} TTS added after generation".
-No character may speak on camera in any beat — no testimonials, no talking to camera,
-no dialogue. The ${voLanguage} narrator is never seen, so any moving lips will not match.
+${brief.ugc?.speech === "presenter"
+  ? `The creator faces the camera like a vlogger. They say ONLY "${UGC_PRESENTER_GREETING}" in English at 0–2s; after that nobody speaks on camera —
+the ${voLanguage} voice-over carries the words while they show and react with closed-mouth expressions.`
+  : `No character may speak on camera in any beat — no testimonials, no talking to camera,
+no dialogue. The ${voLanguage} narrator is never seen, so any moving lips will not match.`}
 Show reactions silently (smiles, nods, savouring with lips closed).
 The final beat is a product hero shot with no faces, held for the narrator's closing line.
 Music + ambience only in the video model.
@@ -132,6 +136,8 @@ ${adTypeToPromptBlock(getAdTypePlaybook(brief.adType), {
 })}
 
 ${adDirectionToPromptBlock(brief.adDirection)}
+
+${ugcToPromptBlock(brief.ugc, { hasProductPhotos: Boolean(brief.product.images?.length) })}
 
 BRAND
 name: ${brief.brand.name}

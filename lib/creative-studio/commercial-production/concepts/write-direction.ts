@@ -12,6 +12,7 @@ import type { CampaignBrief } from "../campaign/types";
 import { adTypeToPromptBlock, getAdTypePlaybook } from "../campaign/ad-type";
 import { getCreativeStylePlaybook } from "../campaign/creative-style";
 import { adDirectionToPromptBlock } from "../campaign/ad-direction";
+import { ugcToPromptBlock } from "../campaign/ugc";
 import { loadImageInline } from "../product-understanding/analyze-product";
 import { PHOTO_IS_TRUTH, type ConceptWriter } from "./generate-concepts";
 
@@ -37,6 +38,7 @@ Offer: ${brief.endCard?.offer || brief.offer || "none"}
 What the owner already wrote (keep every idea in it): ${brief.userConcept || "nothing yet"}
 ${adTypeToPromptBlock(getAdTypePlaybook(brief.adType), { productNames: names, occasion: brief.occasion, shopDetails: brief.shopDetails })}
 ${adDirectionToPromptBlock(brief.adDirection)}
+${ugcToPromptBlock(brief.ugc)}
 ${brief.product.images?.length ? PHOTO_IS_TRUTH : ""}
 
 RULES

@@ -15,7 +15,7 @@ import { getFfmpegExecutable } from "@/lib/creative-studio/ffmpeg-server";
 import { probeMediaBuffer } from "../audio/mux-voiceover";
 import { buildSpliceFilter, cutSegment, spliceSegment } from "./edit-segment";
 import { describeFixPrice, fixBillableSeconds, priceFix } from "./fix-pricing";
-import { findOutputVideo } from "./animate-frame";
+import { buildFixMotionPrompt } from "./animate-frame";
 import { parseFixInstructions } from "./plan-fix";
 import { parseShotCuts, snapToShots } from "./shots";
 
@@ -117,17 +117,11 @@ async function main() {
     assert.equal(parseFixInstructions('{"fixable":true,"frameEditInstruction":"x"}').ok, false);
   });
 
-  await test("the generated clip is found in an Interactions response (inline or uri)", () => {
-    const inline = findOutputVideo({
-      steps: [
-        { type: "user_input", content: [{ type: "text", text: "hi" }] },
-        { type: "model_output", content: [{ type: "text" }, { type: "video", mime_type: "video/mp4", data: "AAA" }] },
-      ],
-    });
-    assert.deepEqual(inline, { data: "AAA", uri: undefined });
-    const byUri = findOutputVideo({ steps: [{ type: "model_output", content: [{ type: "video", uri: "files/abc" }] }] });
-    assert.equal(byUri?.uri, "files/abc");
-    assert.equal(findOutputVideo({ steps: [] }), null);
+  await test("the Runway fix prompt continues from the frame and keeps lips closed", () => {
+    const p = buildFixMotionPrompt("She picks up the jar.", 3.2);
+    assert.ok(p.startsWith("She picks up the jar."));
+    assert.ok(p.includes("4-second shot"));
+    assert.ok(p.includes("Nobody speaks"));
   });
 
   await test("a slightly short clip is slowed to fill the shot, at most 1.25x", () => {

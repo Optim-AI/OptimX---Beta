@@ -53,6 +53,8 @@ import {
 import { getAdTypePlaybook, normalizeAdType } from '@/lib/creative-studio/commercial-production/campaign/ad-type';
 import type { ConceptCard } from '@/lib/creative-studio/commercial-production/concepts/generate-concepts';
 import { GuidedAdSetup, IdeaCards, VoiceInputButton, WriteHelper } from './GuidedAdSetup';
+import { RevoiceBar, UgcSetup } from './UgcSetup';
+import { ugcSpeechFor } from '@/lib/creative-studio/commercial-production/campaign/ugc';
 import type { AdDirection } from '@/lib/creative-studio/commercial-production/campaign/ad-direction';
 import { buildGenerationSteps, generationProgress } from './generation-steps';
 
@@ -145,6 +147,10 @@ type VideoStudioWorkspaceProps = {
   onRequestConcepts: () => Promise<ConceptCard[]>;
   /** "Help me write it": AI writes the description from tap-only answers. */
   onRequestWrite: (direction: AdDirection | undefined) => Promise<string>;
+  /** UGC Studio: creator / format / delivery replace the ad-type and style cards. */
+  studio?: 'brand' | 'ugc';
+  /** UGC voice-over videos: make the same video in another language (no new generation). */
+  onRevoice?: (video: GeneratedVideo, language: string) => Promise<void>;
   generatedVideos: GeneratedVideo[];
   selectedVideoId: string | null;
   onSelectVideo: (id: string) => void;
@@ -199,6 +205,8 @@ export default function VideoStudioWorkspace({
   onAdBuilderChange,
   onRequestConcepts,
   onRequestWrite,
+  studio = 'brand',
+  onRevoice,
   generatedVideos,
   selectedVideoId,
   onSelectVideo,
@@ -365,7 +373,12 @@ export default function VideoStudioWorkspace({
   }
   // Brand films, shop/service and festival greetings can run without a product.
   const productOptional = getAdTypePlaybook(normalizeAdType(adBuilderData.adType)).productPhotoOptional;
-  const hasSubject = Boolean(product) || productOptional;
+  const isUgc = studio === 'ugc';
+  const hasSubject = isUgc
+    ? Boolean(product) && Boolean(adBuilderData.ugc?.creator?.image)
+    : Boolean(product) || productOptional;
+  const [revoicing, setRevoicing] = useState<string | null>(null);
+  const [revoiceError, setRevoiceError] = useState<string | null>(null);
   const canGenerate = hasSubject && !isBusy && !hasInsufficientCredits;
   const generateLabel = hasVideo ? 'Regenerate' : 'Generate';
   const durationSeconds = adSetup.duration ?? 15;
@@ -383,6 +396,9 @@ export default function VideoStudioWorkspace({
     voiceoverLanguage: voiceover.language,
     voiceoverEnabled: voiceover.enabled,
     endCardEnabled: adBuilderData.endCard?.enabled ?? true,
+    ugcSpeech: isUgc
+      ? ugcSpeechFor(adBuilderData.ugc?.delivery ?? 'voiceover', adBuilderData.voiceover?.language)
+      : undefined,
   });
   const { index: cappedStep } = generationProgress(generationSteps, generationElapsed);
 
@@ -597,7 +613,11 @@ export default function VideoStudioWorkspace({
       </section>
 
       <section>
-        <GuidedAdSetup data={adBuilderData} onChange={onAdBuilderChange} compact />
+        {isUgc ? (
+          <UgcSetup data={adBuilderData} onChange={onAdBuilderChange} />
+        ) : (
+          <GuidedAdSetup data={adBuilderData} onChange={onAdBuilderChange} compact />
+        )}
       </section>
 
       <section>
@@ -1286,7 +1306,7 @@ export default function VideoStudioWorkspace({
   const needsReview = qcDecision === 'manual_review' || productionStatus === 'manual_review';
   const suggestsRetry = qcDecision === 'regenerate' || Boolean(pendingRegeneration);
   const languageLabel =
-    VOICEOVER_LANGUAGE_LABELS[(voiceover.language || 'english') as VoiceoverLanguage] ?? 'English';
+    VOICEOVER_LANGUAGE_LABELS[(selectedVideo?.language || voiceover.language || 'english') as VoiceoverLanguage] ?? 'English';
   const versionIndex = Math.max(0, generatedVideos.findIndex((v) => v.id === selectedVideo?.id));
   const canFix = Boolean(selectedVideo?.url && onLoadFixTimeline && onPlanFix && onApplyFix);
   const fixedFromVideo = selectedVideo?.fix?.fixedFromId
@@ -1346,6 +1366,32 @@ export default function VideoStudioWorkspace({
           </p>
         )}
       </div>
+
+      {isUgc && onRevoice && selectedVideo.baseVideoUrl && (
+        <div className="space-y-2">
+          <RevoiceBar
+            languages={VOICEOVER_LANGUAGES.map((id) => ({ id, label: VOICEOVER_LANGUAGE_LABELS[id] }))}
+            currentLanguage={selectedVideo.language}
+            busyLanguage={revoicing}
+            onRevoice={async (language) => {
+              setRevoicing(language);
+              setRevoiceError(null);
+              try {
+                await onRevoice(selectedVideo, language);
+              } catch (e) {
+                setRevoiceError(e instanceof Error ? e.message : 'Could not make that language right now.');
+              } finally {
+                setRevoicing(null);
+              }
+            }}
+          />
+          {revoiceError && (
+            <p className="text-[13px]" role="alert" style={{ color: '#FCA5A5' }}>
+              {revoiceError}
+            </p>
+          )}
+        </div>
+      )}
 
       <div className="space-y-2.5">
         <button
@@ -1675,7 +1721,7 @@ export default function VideoStudioWorkspace({
                     className="text-[12px] tracking-[0.2em] uppercase mb-2"
                     style={{ color: '#A78BFA' }}
                   >
-                    Commercial brief
+                    {isUgc ? 'UGC video' : 'Commercial brief'}
                   </p>
                   <h2
                     className="text-[32px] md:text-[40px] font-medium tracking-[-0.03em] leading-[1.05]"
@@ -1684,7 +1730,9 @@ export default function VideoStudioWorkspace({
                     {sessionName || 'New commercial'}
                   </h2>
                   <p className="text-[15px] mt-3 max-w-lg leading-relaxed" style={{ color: MUTED }}>
-                    Lock the product and direction. Hit generate and the studio stage opens beside you.
+                    {isUgc
+                      ? 'Pick your creator and product. Hit generate and your video opens beside you.'
+                      : 'Lock the product and direction. Hit generate and the studio stage opens beside you.'}
                   </p>
                 </div>
               </header>
@@ -1797,7 +1845,11 @@ export default function VideoStudioWorkspace({
                       border: `1px solid ${LINE}`,
                     }}
                   >
-                    <GuidedAdSetup data={adBuilderData} onChange={onAdBuilderChange} />
+                    {isUgc ? (
+                      <UgcSetup data={adBuilderData} onChange={onAdBuilderChange} />
+                    ) : (
+                      <GuidedAdSetup data={adBuilderData} onChange={onAdBuilderChange} />
+                    )}
                   </div>
                   <div
                     className="flex-1 flex flex-col rounded-2xl p-5 md:p-6 min-h-[280px]"

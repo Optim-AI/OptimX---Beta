@@ -79,6 +79,8 @@ export interface CampaignVoiceoverInput {
   ctaEnabled?: boolean;
   /** Optional pre-written script (preferred when already in target language). */
   script?: string;
+  /** Gemini TTS voice override (UGC picks one that suits the creator). */
+  voice?: string;
 }
 
 /**
@@ -119,6 +121,8 @@ export interface CampaignBrief {
   shopDetails?: string;
   /** Owner's tap-only answers: who is on screen, where, the feeling, what viewers should do. */
   adDirection?: import("./ad-direction").AdDirection;
+  /** UGC Studio: one on-screen creator, a UGC format, and how the words are delivered. */
+  ugc?: import("./ugc").CampaignUgcInput;
   /**
    * Concept the user picked from the idea cards. The director must build on it
    * instead of choosing its own direction.

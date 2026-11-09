@@ -24,6 +24,8 @@ export function buildGenerationSteps(input: {
   voiceoverLanguage?: string;
   voiceoverEnabled?: boolean;
   endCardEnabled?: boolean;
+  /** UGC Studio: the voice is added after filming unless the creator speaks English on camera. */
+  ugcSpeech?: 'native' | 'presenter' | 'voiceover';
 }): GenerationStep[] {
   const steps: GenerationStep[] = [
     { label: 'Reading your product photo', status: 'planning', seconds: 15 },
@@ -34,7 +36,10 @@ export function buildGenerationSteps(input: {
       seconds: input.durationSeconds >= 30 ? 420 : 240,
     },
   ];
-  if (input.voiceoverEnabled !== false && usesGeminiTts(input.voiceoverLanguage)) {
+  const voiceAddedLater = input.ugcSpeech
+    ? input.ugcSpeech !== 'native'
+    : usesGeminiTts(input.voiceoverLanguage);
+  if (input.voiceoverEnabled !== false && voiceAddedLater) {
     const language = VOICEOVER_LANGUAGE_LABELS[normalizeVoiceoverLanguage(input.voiceoverLanguage)];
     steps.push({ label: `Adding your ${language} voice`, status: 'generating', seconds: 40 });
   }

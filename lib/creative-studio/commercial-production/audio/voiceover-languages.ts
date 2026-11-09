@@ -2,12 +2,13 @@
  * Commercial voiceover language routing.
  *
  * English → Seedance native spoken audio
- * Tamil / Hindi / Malayalam / Kannada → silent Seedance + Gemini 3.8 Flash TTS
+ * Tamil / Telugu / Hindi / Malayalam / Kannada → silent Seedance + Gemini 3.8 Flash TTS
  */
 
 export const VOICEOVER_LANGUAGES = [
   "english",
   "tamil",
+  "telugu",
   "hindi",
   "malayalam",
   "kannada",
@@ -18,6 +19,7 @@ export type VoiceoverLanguage = (typeof VOICEOVER_LANGUAGES)[number];
 /** Languages that use Gemini TTS instead of Seedance spoken audio. */
 export const GEMINI_TTS_LANGUAGES = [
   "tamil",
+  "telugu",
   "hindi",
   "malayalam",
   "kannada",
@@ -28,6 +30,7 @@ export type GeminiTtsLanguage = (typeof GEMINI_TTS_LANGUAGES)[number];
 export const VOICEOVER_LANGUAGE_LABELS: Record<VoiceoverLanguage, string> = {
   english: "English",
   tamil: "Tamil",
+  telugu: "Telugu",
   hindi: "Hindi",
   malayalam: "Malayalam",
   kannada: "Kannada",
@@ -88,6 +91,7 @@ export function defaultTtsVoiceForLanguage(
   const normalized = normalizeVoiceoverLanguage(language);
   switch (normalized) {
     case "tamil":
+    case "telugu":
     case "malayalam":
     case "kannada":
       return "Kore";

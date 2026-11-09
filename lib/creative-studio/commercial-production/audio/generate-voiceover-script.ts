@@ -61,6 +61,7 @@ function looksLikeTargetScript(script: string, language: VoiceoverLanguage): boo
   if (language === "tamil") return /[\u0B80-\u0BFF]/.test(trimmed);
   if (language === "malayalam") return /[\u0D00-\u0D7F]/.test(trimmed);
   if (language === "kannada") return /[\u0C80-\u0CFF]/.test(trimmed);
+  if (language === "telugu") return /[\u0C00-\u0C7F]/.test(trimmed);
   if (language === "hindi") return /[\u0900-\u097F]/.test(trimmed);
   return false;
 }

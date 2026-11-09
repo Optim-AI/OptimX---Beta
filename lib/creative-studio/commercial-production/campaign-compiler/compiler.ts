@@ -81,6 +81,7 @@ export function compileCampaignGeneration(
     occasion: input.occasion,
     shopDetails: input.shopDetails,
     adDirection: input.adDirection,
+    ugc: input.ugc,
   });
 
   const concept = blueprint.selectedConcept;

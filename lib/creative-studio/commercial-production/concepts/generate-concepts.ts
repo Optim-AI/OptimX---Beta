@@ -17,6 +17,7 @@ import { adTypeToPromptBlock, getAdTypePlaybook } from "../campaign/ad-type";
 import { creativeStyleToPromptBlock, getCreativeStylePlaybook, REALISM_RULE } from "../campaign/creative-style";
 import { loadImageInline } from "../product-understanding/analyze-product";
 import { adDirectionToPromptBlock, castLine } from "../campaign/ad-direction";
+import { ugcToPromptBlock } from "../campaign/ugc";
 
 export const CONCEPTS_MODEL = "gemini-3.8-flash";
 const CONCEPT_COUNT = 3;
@@ -47,6 +48,8 @@ interface DraftConcept {
 export type StoryboardRenderer = (input: {
   prompt: string;
   productImages: string[];
+  /** UGC creator photo — the same face / animal must appear in every panel. */
+  creatorImage?: string;
 }) => Promise<Buffer>;
 
 export type ConceptWriter = (input: {
@@ -77,6 +80,7 @@ Offer: ${brief.endCard?.offer || brief.offer || "none"}
 ${adTypeToPromptBlock(adType, { productNames: productNames(brief), occasion: brief.occasion, shopDetails: brief.shopDetails })}
 ${creativeStyleToPromptBlock(style, brief.campaignDuration)}
 ${adDirectionToPromptBlock(brief.adDirection)}
+${ugcToPromptBlock(brief.ugc)}
 ${brief.product.images?.length ? PHOTO_IS_TRUTH : ""}
 ${REALISM_RULE}
 
@@ -98,6 +102,7 @@ Panel 2: ${panels[1] || draft.beats?.[1] || ""}
 Panel 3: ${panels[2] || draft.beats?.[2] || ""}
 Style: polished colour storyboard illustration, cinematic framing, consistent characters and setting across panels.
 ${castLine(brief.adDirection) ? `People: ${castLine(brief.adDirection)}.` : ""}
+${brief.ugc?.creator.image ? "The main character must look exactly like the attached creator photo in every panel." : ""}
 ${brief.product.images?.length ? "The product must look exactly like the attached product photo (same packaging, label colours, label artwork and shape). If a panel description names a different flavour or variant than the photo shows, draw what the photo shows." : ""}
 No text, captions, letters, numbers or speech bubbles anywhere.`;
 }
@@ -140,14 +145,19 @@ const liveConceptWriter: ConceptWriter = async ({ prompt, images }) => {
   return json.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join("") || "";
 };
 
-const liveStoryboardRenderer: StoryboardRenderer = async ({ prompt, productImages }) => {
+const liveStoryboardRenderer: StoryboardRenderer = async ({ prompt, productImages, creatorImage }) => {
   const result = await generateGeminiImage({
     prompt,
     aspectRatio: "16:9",
-    references: productImages.slice(0, 3).map((src, i) => ({
-      dataUrlOrHttp: src,
-      instruction: `Product reference ${i + 1}: match this packaging exactly.`,
-    })),
+    references: [
+      ...productImages.slice(0, 3).map((src, i) => ({
+        dataUrlOrHttp: src,
+        instruction: `Product reference ${i + 1}: match this packaging exactly.`,
+      })),
+      ...(creatorImage
+        ? [{ dataUrlOrHttp: creatorImage, instruction: "Creator reference: this exact person or animal is the main character." }]
+        : []),
+    ],
     operationLabel: "commercial-concept-storyboard",
     maxRetries: 2,
   });
@@ -195,12 +205,15 @@ export async function generateConceptCards(
   }
 
   const productImages = inline.map((img) => `data:${img.mimeType};base64,${img.data}`);
+  const creatorRef = brief.ugc?.creator.image;
+  const creatorInline = creatorRef ? await loadImageInline(creatorRef).catch(() => null) : null;
+  const creatorImage = creatorInline ? `data:${creatorInline.mimeType};base64,${creatorInline.data}` : undefined;
   return Promise.all(
     drafts.map(async (draft, i): Promise<ConceptCard> => {
       let storyboardImage: string | null = null;
       try {
         storyboardImage = await toJpegDataUrl(
-          await renderer({ prompt: buildStoryboardPrompt(brief, draft), productImages })
+          await renderer({ prompt: buildStoryboardPrompt(brief, draft), productImages, creatorImage })
         );
       } catch (err) {
         console.warn("[concepts] storyboard failed", err instanceof Error ? err.message : err);

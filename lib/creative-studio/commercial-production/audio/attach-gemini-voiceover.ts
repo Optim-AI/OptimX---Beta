@@ -18,6 +18,7 @@ import {
   type VoiceoverLanguage,
 } from "./voiceover-languages";
 import { MOODS, VIEWER_ACTIONS } from "../campaign/ad-direction";
+import { ugcVoiceoverContext, usesExternalVoiceover, withPresenterGreeting } from "../campaign/ugc";
 
 export type VoiceoverPipelinePhase =
   | "SCRIPT_GENERATION"
@@ -42,6 +43,8 @@ export class VoiceoverPipelineError extends Error {
 /** One line telling the script writer what kind of ad this is. */
 export function voiceoverAdContext(brief: CampaignBrief): string | undefined {
   const parts: string[] = [];
+  const ugc = ugcVoiceoverContext(brief.ugc);
+  if (ugc) parts.push(ugc);
   if (brief.adType && brief.adType !== "product") {
     parts.push(`${getAdTypePlaybook(brief.adType).label} — ${getAdTypePlaybook(brief.adType).job}`);
   }
@@ -109,7 +112,7 @@ export async function attachGeminiVoiceoverIfNeeded(
   options: { log?: (event: string, payload: Record<string, unknown>) => void } = {}
 ): Promise<AttachGeminiVoiceoverResult | null> {
   const language = normalizeVoiceoverLanguage(brief.voiceover?.language);
-  if (!usesGeminiTts(language)) return null;
+  if (!usesExternalVoiceover(brief)) return null;
   if (brief.voiceover?.enabled === false) return null;
 
   const log = options.log ?? ((event, payload) => console.log(`[gemini-vo] ${event}`, payload));
@@ -148,10 +151,11 @@ export async function attachGeminiVoiceoverIfNeeded(
     let result: Awaited<ReturnType<typeof generateGeminiTtsVoiceover>>;
     try {
       result = await generateGeminiTtsVoiceover({
-        script: text,
+        script: withPresenterGreeting(text, brief.ugc),
         language,
         tone: brief.voiceover?.tone,
         ctaEnabled: brief.voiceover?.ctaEnabled !== false,
+        voice: brief.voiceover?.voice,
       });
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);

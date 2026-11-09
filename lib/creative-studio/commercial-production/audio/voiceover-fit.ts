@@ -25,6 +25,7 @@ const WORD_BUDGET_FACTOR: Record<VoiceoverLanguage, number> = {
   hindi: 0.9,
   tamil: 0.85,
   kannada: 0.8,
+  telugu: 0.8,
   malayalam: 0.75,
 };
 
