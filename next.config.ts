@@ -12,6 +12,11 @@ const nextConfig = {
       { source: '/free-ad', destination: '/#start', permanent: false },
     ];
   },
+  // public/aj/index.html is a static file. Next does not serve a folder's
+  // index.html at the folder URL, so /aj would 404 without this rewrite.
+  async rewrites() {
+    return [{ source: '/aj', destination: '/aj/index.html' }];
+  },
   // Middleware clones request bodies (default 10MB). Video session PUTs can
   // exceed that when brand images / inline media are included; match the
   // pages/api/creative-studio/sessions bodyParser sizeLimit (50mb).
