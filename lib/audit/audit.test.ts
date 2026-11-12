@@ -613,7 +613,8 @@ async function main() {
     const auditPage = readFileSync(join(root, 'pages/audit/[id].tsx'), 'utf8');
     assert.ok(callback.includes('resolvePostAuthPath(decision.path, next)'));
     assert.ok(callback.includes('clearAuthContinuation()'));
-    assert.ok(signup.includes('emailRedirectTo: getOAuthCallbackUrl(nextPath)'));
+    assert.ok(signup.includes('rememberAuthContinuation(router.query.next, "/try")'));
+    assert.ok(signup.includes('/api/auth/register'));
     assert.ok(signin.includes('resolvePostAuthPath(decision.path, next)'));
     assert.ok(auditPage.includes('auditPricingPath()'));
     assert.ok(auditPage.includes('/auth/signup?next='));

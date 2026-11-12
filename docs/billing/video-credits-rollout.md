@@ -15,13 +15,21 @@ Provider tokens / Runway cost stay internal.
 
 `new_video_credits = old_video_seconds × 20`
 
-Do **not** run balance migration until generation billing is verified on staging.
+Status (2026-11-03, after staging generation billing verified):
+
+| Env | Result |
+|-----|--------|
+| Local (`localhost:54322`) | `--execute` run; **0** `migrate_legacy_seconds` (1 already migrated, rest skip) |
+| Staging | Classified in DB; **0** to convert (only zero video balances) |
+| Live | Classified in DB; **0** to convert (zeros / already credits / ambiguous — no ×20) |
+
+Script is still LOCAL-only (`assertLocal`). Staging/Live were reviewed with the same classifier rules; no wallet had positive legacy-seconds evidence.
 
 ```bash
 # Dry run
 npx tsx scripts/migrate-video-seconds-to-credits.ts --dry-run
 
-# Apply once (idempotent per user via credit_history)
+# Apply once (idempotent per user via credit_history) — LOCAL DATABASE_URL only
 npx tsx scripts/migrate-video-seconds-to-credits.ts --execute
 ```
 

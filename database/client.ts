@@ -33,6 +33,9 @@ function getPool(): Pool {
   const pool = new Pool({
     connectionString,
     max: 10,
+    // Fail waiters instead of deadlocking forever when every client is checked out
+    // (Ad Studio used to hang 8 poster pipelines on this pool).
+    connectionTimeoutMillis: 15_000,
   });
   pool.on('error', (err) => {
     console.error('[DB] Pool error:', err.message, '| code:', (err as any).code);

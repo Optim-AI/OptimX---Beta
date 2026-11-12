@@ -23,15 +23,14 @@ import { draftWhy, toDraftAngle, type DraftAngle } from './why';
 import { storeDraftImage, previewPathFor, signedPreviewUrls, publishKeptDraft } from './storage';
 import * as store from './store';
 import { skxAdName, writeCopy, fallbackCopy } from './kept';
+import { DRAFT_TIMEOUT_MS, RENDER_CONCURRENCY, isOpenDraftStatus, roundNeedsResume, withTimeout } from './round-state';
+export { roundNeedsResume };
 
 export class AdStudioError extends Error {
   constructor(message: string, readonly status = 400, readonly code?: string) {
     super(message);
   }
 }
-
-// All 8 drafts at once so a round (research + drawing) fits in one 5-minute Vercel function.
-const RENDER_CONCURRENCY = 8;
 
 /** "Make more like this": what the winning ad said and how it did, for the research step. */
 async function winnerBrief(userId: string, adId: string): Promise<string | null> {
@@ -131,7 +130,22 @@ async function mapLimit<T>(items: T[], limit: number, fn: (item: T) => Promise<v
   }));
 }
 
-/** Background job: research this round's angles, then draw one draft per angle (no charge). */
+async function finalizeRound(projectId: string, round: number) {
+  const fresh = (await store.listDrafts(projectId)).filter((d) => d.round === round);
+  const ready = fresh.filter((d) => d.status === 'ready').length;
+  const open = fresh.filter((d) => isOpenDraftStatus(d.status)).length;
+  if (open) {
+    await store.updateProject(projectId, { status: 'drawing' });
+    return { ready, total: fresh.length, open };
+  }
+  await store.updateProject(projectId, {
+    status: ready ? 'ready' : 'failed',
+    error: ready ? null : 'None of the posters came out right. Try again — nothing was charged.',
+  });
+  return { ready, total: fresh.length, open: 0 };
+}
+
+/** Background job: research this round's angles, then draw one draft per angle (no charge). Safe to re-run: unfinished drafts are picked up instead of inserting another 8. */
 export async function runRound(params: {
   projectId: string;
   round: number;
@@ -147,62 +161,90 @@ export async function runRound(params: {
   const previous = await store.listDrafts(project.id);
 
   try {
-    const [{ snapshot }, scan] = await Promise.all([
-      getUserBrand(project.userId).catch(() => ({ snapshot: null })),
-      project.scanId ? ContentStudioScanDAO.getByIdAndUser(project.scanId, project.userId).catch(() => null) : Promise.resolve(null),
-    ]);
-    const brandResearch = await getBrandResearch(project.userId, scan?.url ?? null).catch(() => null);
-    const winner = project.sourceAdMetaId ? await winnerBrief(project.userId, project.sourceAdMetaId) : null;
-    const direction = [project.direction, params.feedback].filter(Boolean).join(' | ');
-    const research = await (params.deps?.research ?? defaultResearch)({
-      product: product as StrategyProductInput,
-      brand: { name: snapshot?.name, tone: snapshot?.brand_tone?.join(', ') || snapshot?.tone, industry: snapshot?.industry, targetAudience: snapshot?.audience, website: scan?.url ?? undefined },
-      brandResearch,
-      angleCount: params.size,
-      focus: {
-        goal: goal.focus,
-        offer: project.offerDetails,
-        direction: [direction, winner].filter(Boolean).join(' | ') || null,
-        avoidAngles: [...new Set(previous.map((d) => (d.angle as DraftAngle).angle).filter(Boolean))],
-      },
-    });
-    const angles = research.angles.slice(0, params.size).map((a) => toDraftAngle(a as unknown as Record<string, unknown>));
-    if (!angles.length) throw new Error('Research returned no angles');
+    const already = previous.filter((d) => d.round === params.round);
+    let drafts = already.filter((d) => isOpenDraftStatus(d.status));
 
-    await store.updateProject(project.id, { status: 'drawing', research: research.brief as object });
-    const drafts = await store.insertDrafts(angles.map((angle, i) => ({
-      projectId: project.id, userId: project.userId, round: params.round, position: i,
-      format: project.formats[0] ?? 'feed_4x5', angle, status: 'pending',
-    })));
-
+    const asked = [project.direction, params.feedback].filter(Boolean).join(' | ');
     const extra = [
       project.offerDetails && `The offer to feature, exactly as given: ${project.offerDetails}.`,
-      direction && `The owner asked for: ${direction}`,
+      asked && `The owner asked for: ${asked}`,
     ].filter(Boolean).join('\n');
-    await mapLimit(drafts, RENDER_CONCURRENCY, async (d) => {
-      const a = d.angle as DraftAngle;
-      await store.updateDraft(d.id, { status: 'drawing' });
-      const out = await (params.deps?.render ?? renderAdStudioDraft)({
-        userId: project.userId,
-        product,
-        angle: { title: a.title, angle: a.angle, message: a.message, insight: a.insight, proof: a.proof, audience: a.audience, funnel: a.funnel },
-        adGoal: goal.engineGoal,
-        aspectRatio: primary.aspect,
-        extraInstruction: extra || null,
-        storeImage: storeDraftImage,
+
+    if (!already.length) {
+      const [{ snapshot }, scan] = await Promise.all([
+        getUserBrand(project.userId).catch(() => ({ snapshot: null })),
+        project.scanId ? ContentStudioScanDAO.getByIdAndUser(project.scanId, project.userId).catch(() => null) : Promise.resolve(null),
+      ]);
+      const brandResearch = await getBrandResearch(project.userId, scan?.url ?? null).catch(() => null);
+      const winner = project.sourceAdMetaId ? await winnerBrief(project.userId, project.sourceAdMetaId) : null;
+      const direction = [project.direction, params.feedback].filter(Boolean).join(' | ');
+      const research = await (params.deps?.research ?? defaultResearch)({
+        product: product as StrategyProductInput,
+        brand: { name: snapshot?.name, tone: snapshot?.brand_tone?.join(', ') || snapshot?.tone, industry: snapshot?.industry, targetAudience: snapshot?.audience, website: scan?.url ?? undefined },
+        brandResearch,
+        angleCount: params.size,
+        focus: {
+          goal: goal.focus,
+          offer: project.offerDetails,
+          direction: [direction, winner].filter(Boolean).join(' | ') || null,
+          avoidAngles: [...new Set(previous.map((d) => (d.angle as DraftAngle).angle).filter(Boolean))],
+        },
       });
-      await store.updateDraft(d.id, out.ok
-        ? { status: 'ready', sessionId: out.sessionId, storagePath: out.storagePath, previewPath: previewPathFor(out.storagePath), error: null }
-        : { status: 'failed', sessionId: out.sessionId, error: out.error.slice(0, 300) });
+      const angles = research.angles.slice(0, params.size).map((a) => toDraftAngle(a as unknown as Record<string, unknown>));
+      if (!angles.length) throw new Error('Research returned no angles');
+
+      await store.updateProject(project.id, { status: 'drawing', research: research.brief as object });
+      drafts = await store.insertDrafts(angles.map((angle, i) => ({
+        projectId: project.id, userId: project.userId, round: params.round, position: i,
+        format: project.formats[0] ?? 'feed_4x5', angle, status: 'pending',
+      })));
+    } else if (!drafts.length) {
+      const done = await finalizeRound(project.id, params.round);
+      return { ready: done.ready, total: done.total };
+    } else {
+      await store.updateProject(project.id, { status: 'drawing', error: null });
+    }
+
+    await mapLimit(drafts, RENDER_CONCURRENCY, async (d) => {
+      const claimed = await store.claimDraftForRender(d.id);
+      if (!claimed) return;
+      await store.updateProject(project.id, { status: 'drawing' });
+      const a = claimed.angle as DraftAngle;
+      try {
+        const out = await withTimeout(
+          (params.deps?.render ?? renderAdStudioDraft)({
+            userId: project.userId,
+            product,
+            angle: { title: a.title, angle: a.angle, message: a.message, insight: a.insight, proof: a.proof, audience: a.audience, funnel: a.funnel },
+            adGoal: goal.engineGoal,
+            aspectRatio: primary.aspect,
+            extraInstruction: extra || null,
+            storeImage: storeDraftImage,
+          }),
+          DRAFT_TIMEOUT_MS,
+          'This poster took too long to draw.',
+        );
+        await store.updateDraft(claimed.id, out.ok
+          ? { status: 'ready', sessionId: out.sessionId, storagePath: out.storagePath, previewPath: previewPathFor(out.storagePath), error: null }
+          : { status: 'failed', sessionId: out.sessionId, error: out.error.slice(0, 300) });
+      } catch (err) {
+        await store.updateDraft(claimed.id, { status: 'failed', error: ((err as Error).message || 'This one didn’t come out right.').slice(0, 300) });
+      }
     });
 
-    const fresh = (await store.listDrafts(project.id)).filter((d) => d.round === params.round);
-    const ready = fresh.filter((d) => d.status === 'ready').length;
-    await store.updateProject(project.id, { status: ready ? 'ready' : 'failed', error: ready ? null : 'None of the posters came out right. Try again — nothing was charged.' });
-    metaLog.info('ad_studio_round_done', { projectId: project.id, round: params.round, ready, of: fresh.length });
-    return { ready, total: fresh.length };
+    const done = await finalizeRound(project.id, params.round);
+    metaLog.info('ad_studio_round_done', { projectId: project.id, round: params.round, ready: done.ready, of: done.total, open: done.open });
+    return { ready: done.ready, total: done.total };
   } catch (err) {
-    await store.updateProject(project.id, { status: 'failed', error: 'We couldn’t finish the research for this round. Try again — nothing was charged.' });
+    const fresh = (await store.listDrafts(project.id)).filter((d) => d.round === params.round);
+    if (!fresh.length) {
+      await store.updateProject(project.id, { status: 'failed', error: 'We couldn’t finish the research for this round. Try again — nothing was charged.' });
+    } else {
+      for (const d of fresh.filter((row) => isOpenDraftStatus(row.status))) {
+        await store.updateDraft(d.id, { status: 'failed', error: 'This one didn’t finish. Try another round — nothing was charged.' });
+      }
+      await finalizeRound(project.id, params.round);
+    }
     metaLog.error('ad_studio_round_failed', { projectId: project.id, message: (err as Error).message });
     return { ready: 0, total: 0, error: (err as Error).message };
   }
@@ -308,5 +350,6 @@ export async function projectView(userId: string, projectId: string) {
     testPlan,
     draftsLeftToday: draftsLeftToday(used),
     nextRoundSize: nextRoundSize(used),
+    resume: roundNeedsResume(project, drafts),
   };
 }

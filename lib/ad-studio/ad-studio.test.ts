@@ -11,6 +11,7 @@ import { makePreview, PREVIEW_MAX_SIDE } from './preview';
 import { POSTER_ASPECT_RATIOS, POSTER_AD_GOALS } from '@/lib/creative-studio/poster-generation/types';
 import { skxAdName, fallbackCopy, HEADLINE_MAX, PRIMARY_MAX } from './kept';
 import { SKX_PREFIX } from '@/lib/meta-sync/skx';
+import { roundNeedsResume, ROUND_STALE_MS, withTimeout } from './round-state';
 
 let failures = 0;
 async function run(name: string, fn: () => void | Promise<void>) {
@@ -79,6 +80,32 @@ async function run(name: string, fn: () => void | Promise<void>) {
     assert.equal(c.source, 'fallback');
     const empty = fallbackCopy({ angle: 'Crunch', title: '', message: '', insight: '', evidence: '', basis: 'web', audience: '', funnel: '', proof: '', why_it_wins: '', test: '' });
     assert.equal(empty.headline, 'Crunch');
+  });
+
+  await run('stuck round: resume after 6 minutes of no progress, not while drawing is fresh', () => {
+    const now = Date.parse('2026-11-09T21:37:00Z');
+    const stale = new Date(now - ROUND_STALE_MS - 1000).toISOString();
+    const fresh = new Date(now - 30_000).toISOString();
+    assert.equal(roundNeedsResume({ status: 'drawing', updatedAt: stale }, [
+      { status: 'drawing', updatedAt: stale },
+      { status: 'pending', updatedAt: stale },
+    ], now), true);
+    assert.equal(roundNeedsResume({ status: 'drawing', updatedAt: fresh }, [
+      { status: 'drawing', updatedAt: fresh },
+      { status: 'pending', updatedAt: stale },
+    ], now), false);
+    assert.equal(roundNeedsResume({ status: 'ready', updatedAt: stale }, [
+      { status: 'ready', updatedAt: stale },
+    ], now), false);
+    assert.equal(roundNeedsResume({ status: 'researching', updatedAt: stale }, [], now), true);
+  });
+
+  await run('withTimeout: rejects hung work so one poster cannot block the round', async () => {
+    await assert.rejects(
+      () => withTimeout(new Promise(() => {}), 20, 'This poster took too long to draw.'),
+      /took too long/,
+    );
+    assert.equal(await withTimeout(Promise.resolve(7), 50, 'nope'), 7);
   });
 
   if (failures) { console.error(`\n${failures} test(s) failed`); process.exit(1); }

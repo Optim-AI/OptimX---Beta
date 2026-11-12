@@ -18,7 +18,7 @@ import {
 import { trackAuditEvent } from "@/lib/audit/analytics";
 import { authNextFrom, clearAuthContinuation, rememberAuthContinuation } from "@/lib/auth/auth-continuation";
 import AuthShell from "@/components/auth/AuthShell";
-import { authErrorMessage, classifyAuthError } from "@/lib/auth/auth-errors";
+import { authErrorMessage } from "@/lib/auth/auth-errors";
 
 export default function SignUpPage(): React.ReactElement {
   const router = useRouter();
@@ -30,7 +30,6 @@ export default function SignUpPage(): React.ReactElement {
   const [agreed, setAgreed] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<React.ReactNode | null>(null);
-  const [info, setInfo] = useState<string | null>(null);
 
   const nextSuffix =
     typeof router.query.next === "string"
@@ -95,7 +94,6 @@ export default function SignUpPage(): React.ReactElement {
 
   const oauthLogin = async (provider: "google") => {
     setError(null);
-    setInfo(null);
     try {
       if (redirectWwwToCanonicalForOAuth()) return;
 
@@ -118,7 +116,6 @@ export default function SignUpPage(): React.ReactElement {
   const handleSignUp = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setError(null);
-    setInfo(null);
 
     if (!email) {
       setError("Please enter an email.");
@@ -149,38 +146,42 @@ export default function SignUpPage(): React.ReactElement {
     try {
       const nextPath = rememberAuthContinuation(router.query.next, "/try");
       const auditNext = auditReturnPath(nextPath);
-      const { data, error: signUpError } = await supabase.auth.signUp({
+      const res = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email,
+          password,
+          businessName: businessName.trim(),
+        }),
+      });
+      const body = (await res.json().catch(() => null)) as {
+        ok?: boolean;
+        code?: string;
+        error?: string;
+      } | null;
+
+      if (!res.ok || !body?.ok) {
+        setError(
+          body?.code === "already_registered"
+            ? alreadyRegistered()
+            : body?.error || "Could not create your account. Please try again."
+        );
+        return;
+      }
+
+      const { data, error: signError } = await supabase.auth.signInWithPassword({
         email,
         password,
-        options: {
-          data: {
-            business_name: businessName.trim(),
-          },
-          emailRedirectTo: getOAuthCallbackUrl(nextPath),
-        },
       });
-
-      if (signUpError) {
-        setError(classifyAuthError(signUpError) === "already_registered" ? alreadyRegistered() : authErrorMessage(signUpError));
-        setLoading(false);
+      if (signError) {
+        setError(authErrorMessage(signError));
         return;
       }
-
-      const user = (data as { user?: { id?: string; identities?: unknown[] } } | null)?.user ?? null;
-      // With email confirmation on, Supabase hides an existing account by returning a
-      // user with no identities and no session.
-      if (user && Array.isArray(user.identities) && user.identities.length === 0) {
-        setError(alreadyRegistered());
-        return;
-      }
-      trackAuditEvent("signup_completed", { method: "email", fromAudit: Boolean(auditNext) });
-      // Only a session means they're signed in; otherwise they must confirm their email first.
-      if (data?.session) {
+      if ((data as { user?: unknown } | null)?.user) {
+        trackAuditEvent("signup_completed", { method: "email", fromAudit: Boolean(auditNext) });
         await routeAfterAuth();
-        return;
       }
-
-      setInfo(`Account created. We sent a confirmation link to ${email} — open it to finish signing up.`);
     } catch (e: unknown) {
       setError(authErrorMessage(e));
     } finally {
@@ -205,7 +206,7 @@ export default function SignUpPage(): React.ReactElement {
       loadingLabel="Creating..."
       loading={loading}
       error={error}
-      info={info}
+      info={null}
       secondary={
         <label className="auth-agree">
           <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} />

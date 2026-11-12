@@ -33,7 +33,7 @@ export function authErrorMessage(error: unknown): string {
     case "already_registered":
       return "You already have an account with this email.";
     case "rate_limited":
-      return "Too many attempts. Wait a minute, then try again.";
+      return "That didn't go through. Please try again.";
     case "weak_password":
       return "Choose a stronger password — at least 6 characters, ideally more.";
     case "network":

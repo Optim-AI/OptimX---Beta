@@ -27,7 +27,34 @@ export async function claimRound(userId: string, id: string): Promise<ProjectRow
   const [row] = await db.update(adStudioProjects)
     .set({ status: 'researching', rounds: sql`${adStudioProjects.rounds} + 1`, error: null, updatedAt: now() })
     .where(and(eq(adStudioProjects.id, id), eq(adStudioProjects.userId, userId),
-      sql`(${adStudioProjects.status} in ('ready', 'failed') or ${adStudioProjects.updatedAt} < now() - interval '40 minutes')`))
+      // 6 minutes matches ROUND_STALE_MS — a killed waitUntil should not block a retry for 40 min.
+      sql`(${adStudioProjects.status} in ('ready', 'failed') or ${adStudioProjects.updatedAt} < now() - interval '6 minutes')`))
+    .returning();
+  return row ?? null;
+}
+
+/** One caller wins: the background job died and this round still has unfinished drafts. */
+export async function claimResume(userId: string, id: string): Promise<ProjectRow | null> {
+  const [row] = await db.update(adStudioProjects)
+    .set({ updatedAt: now() })
+    .where(and(
+      eq(adStudioProjects.id, id),
+      eq(adStudioProjects.userId, userId),
+      sql`${adStudioProjects.status} in ('researching', 'drawing')`,
+      sql`${adStudioProjects.updatedAt} < now() - interval '6 minutes'`,
+    ))
+    .returning();
+  return row ?? null;
+}
+
+/** Take a pending draft, or reclaim one stuck in drawing after the job was killed. */
+export async function claimDraftForRender(id: string): Promise<DraftRow | null> {
+  const [row] = await db.update(adStudioDrafts)
+    .set({ status: 'drawing', error: null, updatedAt: now() })
+    .where(and(
+      eq(adStudioDrafts.id, id),
+      sql`(${adStudioDrafts.status} = 'pending' or (${adStudioDrafts.status} = 'drawing' and ${adStudioDrafts.updatedAt} < now() - interval '5 minutes'))`,
+    ))
     .returning();
   return row ?? null;
 }
