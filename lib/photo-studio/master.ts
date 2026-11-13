@@ -17,11 +17,15 @@ import type { GenerationSpecification, ImageGenerationProvider } from "@/lib/cre
 import type { FidelityChecker } from "./render";
 import type { ProductProfile } from "./types";
 
-/** The master is the base of every shot, so it must match more closely than a single shot. */
-export const MIN_MASTER_FIDELITY = 8;
+/**
+ * The master is the base of every shot. The label check caps any photo with a wrong
+ * readable word at 5, so 7 means: every readable word right, and only small
+ * differences in shape or colour.
+ */
+export const MIN_MASTER_FIDELITY = 7;
 
 export type MasterResult = {
-  /** Clean packshot on white (null when the recreation didn't hold up) */
+  /** Clean packshot on white: the recreation, or the upload's own cut-out on white (null when neither is usable) */
   packshot: Buffer | null;
   /** Background-removed product to composite (null = no usable cut-out) */
   cutout: Buffer | null;
@@ -72,6 +76,16 @@ async function recreate(
   return sharp(result.imageBuffer).png().toBuffer();
 }
 
+/** The cut-out centred on a white square with a margin — the upload's own pixels, nothing redrawn. */
+export async function packshotFromCutout(cutout: Buffer): Promise<Buffer> {
+  const meta = await sharp(cutout).metadata();
+  const side = Math.round(Math.max(meta.width || 1, meta.height || 1) / 0.8);
+  return sharp({ create: { width: side, height: side, channels: 3, background: "#ffffff" } })
+    .composite([{ input: cutout, gravity: "centre" }])
+    .png()
+    .toBuffer();
+}
+
 export async function prepareMaster(input: {
   source: { buffer: Buffer; mimeType: string };
   profile: ProductProfile;
@@ -101,7 +115,8 @@ export async function prepareMaster(input: {
   // The upload's own cut-out is only usable when nothing else is in the product's outline.
   if (!profile.obstructed) {
     const cut = await input.cutout(source.buffer);
-    if (cut) return { packshot: null, cutout: cut, fidelity: null, via: "upload" };
+    // The real product on white: a clean reference for AI-rendered shots (no room, no other brands).
+    if (cut) return { packshot: await packshotFromCutout(cut).catch(() => null), cutout: cut, fidelity: null, via: "upload" };
   }
   return { packshot: null, cutout: null, fidelity: best?.score ?? null, via: "none" };
 }

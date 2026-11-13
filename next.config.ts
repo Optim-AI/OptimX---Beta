@@ -28,7 +28,11 @@ const nextConfig = {
   // not a static import, so Next file tracing omits it and the Vercel function
   // spawns /var/task/node_modules/ffmpeg-static/ffmpeg (ENOENT) during voiceover mux.
   outputFileTracingIncludes: {
-    '/api/commercial/generate': ['./node_modules/ffmpeg-static/ffmpeg'],
+    // Every route that reaches lib/creative-studio/ffmpeg-server.ts needs it:
+    // generate, the Edit-a-part routes (fix/timeline, fix/plan, fix/apply),
+    // end-card-preview and the UGC change-language re-voice.
+    '/api/commercial/**/*': ['./node_modules/ffmpeg-static/ffmpeg'],
+    '/api/ugc/**/*': ['./node_modules/ffmpeg-static/ffmpeg'],
     // Template posters fall back to this font when a brand font can't be fetched
     // (read from disk at runtime, so tracing can't see it). Poster generation is
     // reachable from several API routes, so include it for all of them.

@@ -6,7 +6,9 @@
 
 import assert from "node:assert/strict";
 import { generateCampaignVideo } from "./generate-campaign-video";
-import { produceFinalCommercial } from "./produce";
+import { produceFinalCommercial, isModerationBlock, MODERATION_BLOCK_MESSAGE } from "./produce";
+import { CampaignExecutorError } from "./types";
+import { parseIsolationVerdict, cropRectForBox } from "../product-understanding/isolate-product";
 import { runDeterministicCampaignVideoQc } from "./qc";
 import { clearCampaignVideoCache } from "./storage";
 import {
@@ -149,6 +151,7 @@ async function main() {
     assert.equal(result.status, "failed");
     assert.equal(provider.generateCalls.length, 1);
     assert.ok(result.providerJobId, "failed result keeps providerJobId for recovery");
+    assert.equal(result.error?.code, "PROVIDER_STILL_RUNNING", "a timeout is resumable, not a failure");
   });
 
   await test("transient poll errors are tolerated without resubmitting", async () => {
@@ -553,6 +556,132 @@ async function main() {
     assert.equal(final.productionMode, "native_continuous");
     assert.equal(final.timeline, undefined);
     assert.equal(final.shotVideos, undefined);
+  });
+
+
+  await test("slow provider: produce hands over job id, blueprint and shot plan", async () => {
+    clearCampaignVideoCache();
+    const input = make15sCompileInput();
+    const provider = new MockVideoProvider();
+    provider.timeoutOnce = true;
+    const { options } = makeExecutorTestOptions({ videoProvider: provider, blueprint: input.blueprint, plan: input.shotPlan });
+    const brief = makeValidBrief({ campaignId: input.blueprint.campaignId, campaignDuration: 15 });
+    let caught: unknown;
+    try {
+      await produceFinalCommercial(
+        { brief, generationVersion: "v_slow", generationMode: "native_continuous", availableAssets: makeAvailableAssets(), skipDownload: true, forceRegenerate: true },
+        { ...options, maxWaitMs: 20, pollIntervalMs: 2 }
+      );
+    } catch (e) {
+      caught = e;
+    }
+    assert.ok(caught instanceof CampaignExecutorError);
+    assert.equal(caught.code, "PROVIDER_STILL_RUNNING");
+    const d = caught.details as { providerJobId?: string; blueprint?: unknown; shotPlan?: unknown };
+    assert.ok(d.providerJobId && d.blueprint && d.shotPlan);
+    assert.equal(provider.generateCalls.length, 1);
+  });
+
+  await test("resume waits on the existing job and never submits a new one", async () => {
+    clearCampaignVideoCache();
+    const input = make15sCompileInput();
+    const provider = new MockVideoProvider();
+    const { options } = makeExecutorTestOptions({ videoProvider: provider, blueprint: input.blueprint, plan: input.shotPlan });
+    const brief = makeValidBrief({ campaignId: input.blueprint.campaignId, campaignDuration: 15 });
+    const final = await produceFinalCommercial(
+      {
+        brief,
+        generationVersion: "v_resume",
+        generationMode: "native_continuous",
+        availableAssets: makeAvailableAssets(),
+        blueprint: input.blueprint,
+        shotPlan: input.shotPlan,
+        skipDownload: true,
+        forceRegenerate: true,
+      },
+      { ...options, resumeProviderJobId: "runway-job-from-earlier" }
+    );
+    assert.equal(provider.generateCalls.length, 0, "no second provider charge");
+    assert.ok(provider.getJobCalls.includes("runway-job-from-earlier"));
+    assert.ok(final.videoUrl.includes("runway-job-from-earlier"));
+  });
+
+  await test("provider moderation block becomes a plain CONTENT_BLOCKED message", async () => {
+    clearCampaignVideoCache();
+    class BlockedProvider extends MockVideoProvider {
+      async getJob(providerJobId: string) {
+        return {
+          providerJobId,
+          state: "failed" as const,
+          failureReason: "Your request was blocked by this model provider's content moderation system. SAFETY.OUTPUT.THIRD_PARTY",
+        };
+      }
+    }
+    const input = make15sCompileInput();
+    const provider = new BlockedProvider();
+    const { options } = makeExecutorTestOptions({ videoProvider: provider, blueprint: input.blueprint, plan: input.shotPlan });
+    const brief = makeValidBrief({ campaignId: input.blueprint.campaignId, campaignDuration: 15 });
+    let caught: unknown;
+    try {
+      await produceFinalCommercial(
+        { brief, generationVersion: "v_blocked", generationMode: "native_continuous", availableAssets: makeAvailableAssets(), skipDownload: true, forceRegenerate: true },
+        options
+      );
+    } catch (e) {
+      caught = e;
+    }
+    assert.ok(caught instanceof CampaignExecutorError);
+    assert.equal(caught.code, "CONTENT_BLOCKED");
+    assert.equal(caught.message, MODERATION_BLOCK_MESSAGE);
+    assert.ok(isModerationBlock("SAFETY.INPUT.IMAGE"));
+    assert.ok(!isModerationBlock("Video job timed out after 720s"));
+  });
+
+  await test("product photo with other brands is swapped for the cropped copy", async () => {
+    clearCampaignVideoCache();
+    const input = make15sCompileInput();
+    const { options, videoProvider } = makeExecutorTestOptions({ blueprint: input.blueprint, plan: input.shotPlan });
+    const assets = makeAvailableAssets();
+    const original = assets.productImages![0];
+    const cropped = { ...original, url: "data:image/jpeg;base64,Q1JPUFBFRA==" };
+    const brief = makeValidBrief({ campaignId: input.blueprint.campaignId, campaignDuration: 15 });
+    brief.product = { ...brief.product, images: [original] };
+    const seen: string[] = [];
+    await produceFinalCommercial(
+      {
+        brief,
+        generationVersion: "v_crop",
+        generationMode: "native_continuous",
+        availableAssets: assets,
+        blueprint: input.blueprint,
+        shotPlan: input.shotPlan,
+        skipDownload: true,
+        forceRegenerate: true,
+      },
+      {
+        ...options,
+        productIsolator: async ({ image }) => {
+          seen.push(image.url);
+          return { image: cropped, otherBrands: ["TUMBI"] };
+        },
+      }
+    );
+    assert.deepEqual(seen, [original.url]);
+    const sent = JSON.stringify(videoProvider.generateCalls[0]);
+    assert.ok(sent.includes(cropped.url), "cropped photo reaches the video provider");
+    assert.ok(!sent.includes(original.url), "original busy photo is not sent");
+  });
+
+  await test("isolation verdict parsing and crop maths", () => {
+    const v = parseIsolationVerdict('```json\n{"box_2d":[10,250,920,750],"otherBrandsVisible":true,"otherBrands":["TUMBI"]}\n```');
+    assert.ok(v);
+    assert.equal(v.otherBrandsVisible, true);
+    assert.deepEqual(v.otherBrands, ["TUMBI"]);
+    assert.equal(parseIsolationVerdict('{"box_2d":[0,0,10,10],"otherBrandsVisible":true}'), null, "tiny box rejected");
+    assert.equal(parseIsolationVerdict("not json"), null);
+    const rect = cropRectForBox([10, 250, 920, 750], 1000, 2000);
+    assert.ok(rect.left >= 200 && rect.left < 250);
+    assert.ok(rect.left + rect.width <= 1000 && rect.top >= 0 && rect.top + rect.height <= 2000);
   });
 
   console.log(`\nResults: ${passed} passed, ${failed} failed\n`);

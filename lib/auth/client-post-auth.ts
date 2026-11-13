@@ -12,10 +12,23 @@ export type ClientPostAuthResult =
   | { ok: true; destination: 'workspace' | 'try'; step: string | null; path: string }
   | { ok: false; error: string };
 
+/** Per attempt. The server gives up at 12s, so this only trips on a stuck network. */
+const DESTINATION_TIMEOUT_MS = 15_000;
+
 export async function fetchPostAuthDestination(): Promise<ClientPostAuthResult> {
+  const first = await fetchPostAuthDestinationOnce();
+  if (first.ok) return first;
+  // One retry: a cold serverless start or a briefly busy database often clears.
+  return fetchPostAuthDestinationOnce();
+}
+
+async function fetchPostAuthDestinationOnce(): Promise<ClientPostAuthResult> {
   try {
-    const res = await authFetch('/api/auth/destination', { method: 'POST' });
-    const data = await res.json();
+    const res = await authFetch('/api/auth/destination', {
+      method: 'POST',
+      signal: AbortSignal.timeout(DESTINATION_TIMEOUT_MS),
+    });
+    const data = await res.json().catch(() => null);
     if (!res.ok || !data?.ok) {
       return {
         ok: false,
@@ -39,9 +52,9 @@ export async function fetchPostAuthDestination(): Promise<ClientPostAuthResult> 
     return {
       ok: false,
       error:
-        err instanceof Error
+        err instanceof Error && err.name !== 'TimeoutError' && err.name !== 'AbortError'
           ? err.message
-          : 'Could not determine where to send you. Please try again.',
+          : 'Signing in is taking too long. Please check your internet and try again.',
     };
   }
 }

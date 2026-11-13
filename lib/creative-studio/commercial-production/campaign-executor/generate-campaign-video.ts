@@ -202,7 +202,10 @@ export async function generateCampaignVideo(
         note: "ONE native continuous generation — not split into shot clips",
       });
 
-      const accepted = await provider.generateVideo({
+      // Resuming a job an earlier request started: never submit (and pay) again.
+      const accepted = options.resumeProviderJobId
+        ? { providerJobId: options.resumeProviderJobId, model: VIDEO_EXECUTOR_MODEL }
+        : await provider.generateVideo({
         jobId: `camp_${spec.campaignId}_${spec.generationVersion}_a${attempt}`,
         campaignId: spec.campaignId,
         shotId: `campaign_${spec.duration}s`,
@@ -380,14 +383,17 @@ export async function generateCampaignVideo(
       });
       if (submittedProviderJobId) {
         // Accepted job timed out or polling failed — resubmitting would pay twice.
+        // A plain timeout means the provider is still working: the caller can resume it.
+        const stillRunning = (e as { code?: string })?.code === "VIDEO_JOB_TIMEOUT";
         lastError = new CampaignExecutorError(
-          "NATIVE_GENERATION_FAILED",
+          stillRunning ? "PROVIDER_STILL_RUNNING" : "NATIVE_GENERATION_FAILED",
           mapped.message,
           { providerJobId: submittedProviderJobId, phase: "PROVIDER_POLL", code: mapped.code },
           false
         );
         break;
       }
+      if (options.resumeProviderJobId) break;
       if (!isRetryableProviderError(mapped) || attempt >= maxRetries) break;
     }
   }

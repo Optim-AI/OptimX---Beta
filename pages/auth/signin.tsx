@@ -17,6 +17,21 @@ import { authErrorMessage, classifyAuthError } from "@/lib/auth/auth-errors";
 
 const LAST_EMAIL_KEY = "skalx_last_signin_email";
 
+const SIGN_IN_TIMEOUT_MS = 25_000;
+
+class SignInTimeoutError extends Error {}
+
+/** The button must never spin forever: give up and say so. */
+function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  return Promise.race([
+    work,
+    new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new SignInTimeoutError("sign-in timed out")), ms);
+    }),
+  ]).finally(() => clearTimeout(timer));
+}
+
 export default function SignInPage(): React.ReactElement {
   const router = useRouter();
 
@@ -47,28 +62,41 @@ export default function SignInPage(): React.ReactElement {
       ? `?next=${encodeURIComponent(getSafeNextPath(router.query.next, "/try"))}`
       : "";
 
-  async function routeAfterAuth() {
-    const decision = await fetchPostAuthDestination();
-    if (!decision.ok) {
-      setError(decision.error);
-      return;
-    }
-    const next = authNextFrom(router.query.next);
-    clearAuthContinuation();
-    router.replace(resolvePostAuthPath(decision.path, next));
+  /** One post-sign-in lookup at a time (submit, auth listener and mount can all fire). */
+  const routingRef = React.useRef<Promise<void> | null>(null);
+
+  function routeAfterAuth(): Promise<void> {
+    if (routingRef.current) return routingRef.current;
+    const run = (async () => {
+      const decision = await fetchPostAuthDestination();
+      if (!decision.ok) {
+        setError(decision.error);
+        return;
+      }
+      const next = authNextFrom(router.query.next);
+      clearAuthContinuation();
+      await router.replace(resolvePostAuthPath(decision.path, next));
+    })().finally(() => {
+      routingRef.current = null;
+    });
+    routingRef.current = run;
+    return run;
   }
 
   useEffect(() => {
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      // Supabase runs this callback while holding its auth lock. Awaiting another
+      // Supabase call here (routeAfterAuth reads the session) can deadlock and
+      // leave the page on "Signing in..." forever, so route after the callback returns.
       if (event === "SIGNED_IN" && session?.user) {
-        try {
-          await routeAfterAuth();
-        } catch (e) {
-          console.error("post-auth routing failed on SIGNED_IN:", e);
-          setError("Could not determine where to send you. Please try again.");
-        }
+        window.setTimeout(() => {
+          routeAfterAuth().catch((e) => {
+            console.error("post-auth routing failed on SIGNED_IN:", e);
+            setError("Could not determine where to send you. Please try again.");
+          });
+        }, 0);
       }
     });
 
@@ -102,10 +130,10 @@ export default function SignInPage(): React.ReactElement {
     }
     setLoading(true);
     try {
-      const { data, error: signError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+      const { data, error: signError } = await withTimeout(
+        supabase.auth.signInWithPassword({ email: email.trim(), password }),
+        SIGN_IN_TIMEOUT_MS
+      );
       if (signError) {
         const kind = classifyAuthError(signError);
         if (kind === "invalid_credentials") {
@@ -134,7 +162,11 @@ export default function SignInPage(): React.ReactElement {
         await routeAfterAuth();
       }
     } catch (e: unknown) {
-      setError(authErrorMessage(e));
+      setError(
+        e instanceof SignInTimeoutError
+          ? "Signing in is taking too long. Please check your internet and try again."
+          : authErrorMessage(e)
+      );
     } finally {
       setLoading(false);
     }

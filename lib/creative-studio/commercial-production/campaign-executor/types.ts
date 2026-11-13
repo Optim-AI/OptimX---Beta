@@ -160,11 +160,22 @@ export interface CampaignExecutorOptions {
    * (skipped without an API key). Pass null to disable.
    */
   productAnalyzer?: import("../product-understanding/analyze-product").ProductAnalyzer | null;
+  /**
+   * Crops product photos that show other brands around the product (they get the
+   * video blocked by provider moderation). null disables it; when omitted the live
+   * isolator runs only if productAnalyzer is also left at its default.
+   */
+  productIsolator?: import("../product-understanding/isolate-product").ProductPhotoIsolator | null;
   /** Describes a UGC person from their photo (null skips; tests). */
   creatorDescriber?: ((image: import("../assets").StoredAssetRef) => Promise<string | undefined>) | null;
   /** Override the end-card finishing step (tests). Default: ffmpeg overlay + storage upload. */
   endCardAttacher?: typeof import("../finishing/attach-end-card").attachEndCardIfNeeded;
   log?: (event: string, payload: Record<string, unknown>) => void;
+  /**
+   * Wait for this already-accepted provider job instead of submitting a new one
+   * (a slow job an earlier request handed over). Pair with input.blueprint/shotPlan.
+   */
+  resumeProviderJobId?: string;
   /** Phase 8: inject visual analyzer (tests use mocks; omit for deterministic-only). */
   visualAnalyzer?: import("../commercial-qc/types").CommercialVisualAnalyzer;
   maxAutoRegenerations?: number;
@@ -179,7 +190,11 @@ export type CampaignExecutorErrorCode =
   | "STORAGE_FAILED"
   | "QC_FAILED"
   | "FALLBACK_FAILED"
-  | "UNSUPPORTED_MODE";
+  | "UNSUPPORTED_MODE"
+  /** Provider job accepted but not finished before this request's deadline; resumable. */
+  | "PROVIDER_STILL_RUNNING"
+  /** Provider moderation refused the video. */
+  | "CONTENT_BLOCKED";
 
 export class CampaignExecutorError extends Error {
   constructor(

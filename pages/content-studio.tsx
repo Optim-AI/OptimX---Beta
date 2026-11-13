@@ -1186,7 +1186,6 @@ export default function ContentStudioPage() {
             <div>
               <h1 className="flex items-center gap-2 text-2xl font-semibold" style={{ color: colors.foreground }}>
                 Ad Studio
-                <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold" style={{ background: "rgba(34, 197, 94, 0.18)", color: "#22c55e" }}>Beta</span>
               </h1>
               <p className="mt-0.5 text-sm" style={{ color: colors.mutedForeground }}>
                 Your website → a marketer&apos;s strategy for each product → ready-to-run ads.
@@ -2134,9 +2133,9 @@ export default function ContentStudioPage() {
             </div>
           )}
 
-          {/* Beta note — quiet footnote */}
+          {/* Feedback footnote */}
           <p className="mt-12 pb-6 text-center text-xs" style={{ color: colors.mutedForeground }}>
-            Ad Studio is in beta. Something look off?{" "}
+            Something look off?{" "}
             <Link href="/report" className="underline underline-offset-2" style={{ color: colors.foreground }}>Tell us</Link>
             {" "}— it helps us improve it.
           </p>

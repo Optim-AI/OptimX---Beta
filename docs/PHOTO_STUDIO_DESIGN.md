@@ -83,3 +83,42 @@ The marketplace image is always one photo.
 5. **Review** — gallery grouped by shot, full-screen viewer with feed previews,
    download, reshoot a shot. The shoot is saved (creative_studio_sessions,
    session_type "photo") and appears in Generated Contents.
+
+## Scene writing, poses and the label check (Nov 2026)
+
+A side-by-side test on a real jar showed two gaps: every scene shot had the same upright,
+centred product, and the sets were generic templates. What changed:
+
+- **Art director** (`lib/photo-studio/art-direct.ts`): one text call per shot writes the scene
+  for this product (place, props, angle, pose, light). The shot's template stays the style guide
+  and is the fallback when the call fails. Default lighting leaves the light to the art director;
+  a lighting mood the person picked is passed in and must be kept.
+- **Placement**: in pasted-product shots the brief picks left / centre / right; the second take
+  mirrors it.
+- **Flat lay is a pasted shot** (`pose: "laid"`): the cut-out is rotated and the model builds a
+  top-down set around it, so the label stays exact. AI-drawn flat lays garbled small print.
+- **Redraws**: when the model redraws a pasted shot instead of editing it, the photo is kept only
+  if it passes the label check (reported as `guided`); otherwise retry, then the empty-set fallback.
+- **Label check** (`geminiFidelityChecker`): full-size images, reads every printed word. Any
+  readable wrong word caps the score at 5. Guided shots get up to 3 tries, the last on
+  `PHOTO_STUDIO_PRO_IMAGE_MODEL` (default `gemini-3-pro-image`); a shot whose label is still wrong
+  is not delivered (`LABEL_NOT_ACCURATE`). The master needs 7 on this scale.
+- **Reference when the master is rejected**: the upload's own cut-out on white.
+- **New shots**: close-up detail, on the go, five fashion shots, four beauty shots.
+
+## Keep-to-pay (Nov 2026) — the beta is over
+
+Billing now works exactly like Ad Studio posters (`lib/photo-studio/drafts.ts`, `shoot.ts`):
+
+- **Shooting and editing are free.** Each new photo is a draft: the full file and a watermarked
+  640px preview go to the private `ad-drafts` bucket; the browser only gets a signed preview link.
+- **Keeping costs 1 image credit per photo** (`POST /api/photo-studio/keep`). The charge and the
+  `kept` flag are written in one transaction with the shoot row locked (`withLockedShoot`), so a
+  double click or a race can't charge twice. Then the full file is copied to the public bucket
+  (`photo-studio/{user}/{shoot}/{id}.png`); a failed copy is retried when the shoot is opened.
+- **Limits, since drafts are free:** at least 1 image credit to start or shoot; 24 photos per shoot
+  per day; 60 photos per person per day (`FREE_PHOTOS_PER_SHOOT_PER_DAY`, `FREE_PHOTOS_PER_USER_PER_DAY`).
+- **Photos made during the beta** have no `kept` flag and stay the customer's, free.
+- Generated Contents and the recent-shoots list show kept photos only.
+- Appending photos to a shoot also goes through the row lock, so parallel shots no longer risk
+  overwriting each other's results.

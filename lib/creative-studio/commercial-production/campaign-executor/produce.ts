@@ -31,8 +31,13 @@ import {
   productProfileToHandlingText,
   type ProductAnalyzer,
 } from "../product-understanding/analyze-product";
+import {
+  isolateProductPhoto,
+  type ProductPhotoIsolator,
+} from "../product-understanding/isolate-product";
 import type { CampaignBrief, CampaignProductInput } from "../campaign/types";
 import type { AvailableCampaignAssets } from "../reference-engine/types";
+import type { StoredAssetRef } from "../assets";
 import { getAdTypePlaybook } from "../campaign/ad-type";
 import {
   attachGeminiVoiceoverIfNeeded,
@@ -40,6 +45,14 @@ import {
 } from "../audio/attach-gemini-voiceover";
 import { creatorPhotoGoesToVideo, usesExternalVoiceover } from "../campaign/ugc";
 import { describeCreatorPhoto } from "../ugc/creator";
+
+/** Shown to customers when the video provider's safety check refuses the video. */
+export const MODERATION_BLOCK_MESSAGE =
+  "Our video partner's safety check stopped this video. This usually happens when the product photo also shows other brands' packs, posters or logos. Please use a photo that shows only your product and try again. No Video Credits were used.";
+
+export function isModerationBlock(message: string | undefined): boolean {
+  return /content moderation|SAFETY\.(?:INPUT|OUTPUT)|moderation system/i.test(message || "");
+}
 
 function defaultLog(event: string, payload: Record<string, unknown>): void {
   console.log(`[campaign-executor] ${event}`, payload);
@@ -92,6 +105,52 @@ async function withProductHandling(
     ...brief,
     product: primary,
     additionalProducts: brief.additionalProducts ? additional : undefined,
+  };
+}
+
+/**
+ * Crop each product's first photo to the product when other brands show around it.
+ * Returns the brief and the available assets with the cleaned photos swapped in.
+ */
+async function withIsolatedProductPhotos(
+  brief: CampaignBrief,
+  available: AvailableCampaignAssets | undefined,
+  isolator: ProductPhotoIsolator,
+  log: (event: string, payload: Record<string, unknown>) => void
+): Promise<{ brief: CampaignBrief; availableAssets: AvailableCampaignAssets | undefined }> {
+  const swaps = new Map<string, StoredAssetRef>();
+  const products = await Promise.all(
+    allBriefProducts(brief).map(async (product) => {
+      const first = product.images?.[0];
+      if (!first?.url) return product;
+      try {
+        const result = await isolator({ productName: product.name, image: first });
+        if (!result) return product;
+        swaps.set(first.url, result.image);
+        log("produce.product_photo_cropped", {
+          campaignId: brief.campaignId,
+          product: product.name,
+          otherBrands: result.otherBrands,
+        });
+        return { ...product, images: [result.image, ...product.images.slice(1)] };
+      } catch (err) {
+        log("produce.product_photo_crop_failed", {
+          campaignId: brief.campaignId,
+          product: product.name,
+          message: err instanceof Error ? err.message : String(err),
+        });
+        return product;
+      }
+    })
+  );
+  if (!swaps.size) return { brief, availableAssets: available };
+  const [primary, ...additional] = products;
+  const swap = (img: StoredAssetRef) => swaps.get(img.url) ?? img;
+  return {
+    brief: { ...brief, product: primary, additionalProducts: brief.additionalProducts ? additional : undefined },
+    availableAssets: available
+      ? { ...available, productImages: available.productImages?.map(swap) }
+      : available,
   };
 }
 
@@ -170,6 +229,24 @@ export async function produceFinalCommercial(
   }
 
   // Native continuous path
+  // Strip other brands' packs / posters out of product photos first: the video
+  // model copies them and provider moderation then blocks the whole video.
+  let availableAssetsIn = input.availableAssets;
+  const isolator =
+    options.productIsolator !== undefined
+      ? options.productIsolator
+      : options.productAnalyzer === undefined
+        ? isolateProductPhoto
+        : null;
+  if (isolator) {
+    ({ brief, availableAssets: availableAssetsIn } = await withIsolatedProductPhotos(
+      brief,
+      availableAssetsIn,
+      isolator,
+      log
+    ));
+  }
+
   // Read how the real packaging is handled before anyone plans interactions with it.
   const analyzer =
     options.productAnalyzer === undefined ? analyzeProductPhysicalProfile : options.productAnalyzer;
@@ -224,7 +301,7 @@ export async function produceFinalCommercial(
 
   const suppressSpokenVoiceover = usesExternalVoiceover(brief);
 
-  const availableAssets = mergeProductAssets(brief, input.availableAssets);
+  const availableAssets = mergeProductAssets(brief, availableAssetsIn);
   const hasProductPhotos = Boolean(availableAssets.productImages?.length);
   const spec = compileCampaignGeneration({
     blueprint,
@@ -277,9 +354,26 @@ export async function produceFinalCommercial(
   );
 
   if (native.status !== "completed") {
+    const raw = native.error?.message || "Native campaign generation failed";
+    if (native.error?.code === "PROVIDER_STILL_RUNNING") {
+      throw new CampaignExecutorError(
+        "PROVIDER_STILL_RUNNING",
+        "Your video is taking longer than usual. We're still making it — please keep this page open.",
+        { providerJobId: native.providerJobId || undefined, blueprint, shotPlan },
+        false
+      );
+    }
+    if (isModerationBlock(raw)) {
+      throw new CampaignExecutorError(
+        "CONTENT_BLOCKED",
+        MODERATION_BLOCK_MESSAGE,
+        { error: native.error, providerJobId: native.providerJobId || undefined },
+        false
+      );
+    }
     throw new CampaignExecutorError(
       "NATIVE_GENERATION_FAILED",
-      native.error?.message || "Native campaign generation failed",
+      raw,
       { error: native.error, providerJobId: native.providerJobId || undefined },
       true
     );
@@ -359,7 +453,7 @@ export async function produceFinalCommercial(
         blueprint,
         shotPlan,
         finalCommercial: final,
-        availableAssets: input.availableAssets,
+        availableAssets: availableAssetsIn,
         visualAnalyzer: options.visualAnalyzer,
         maxAutoRegenerations: options.maxAutoRegenerations,
       },

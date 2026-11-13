@@ -127,15 +127,51 @@ export async function renderPackshot(opts: {
  * Where a scene shot places the product (bottom-centre on the set's surface). The
  * second variation sits off-centre (rule of thirds) so the two takes differ.
  */
-export function scenePlacement(aspect: PhotoAspect, cutoutW: number, cutoutH: number, mode: "surface" | "float", variation = 0) {
+export type ScenePlacementSide = "left" | "centre" | "right";
+
+/**
+ * Where the pasted product stands in a scene shot. The scene writer picks a side so
+ * shots of one product don't all share the same centred composition; the second take
+ * mirrors it.
+ */
+export function scenePlacement(
+  aspect: PhotoAspect,
+  cutoutW: number,
+  cutoutH: number,
+  mode: "surface" | "float",
+  variation = 0,
+  side?: ScenePlacementSide
+) {
   const { width, height } = CANVAS[aspect];
+  const second = variation % 2 === 1;
+  // Without a brief: centred first take, off-centre second take (as before).
+  const chosen: ScenePlacementSide = side
+    ? second
+      ? side === "left" ? "right" : side === "right" ? "left" : "right"
+      : side
+    : second ? "right" : "centre";
   // The product is the hero: about half the frame height on a surface.
-  const target = mode === "float" ? 0.5 : variation % 2 ? 0.46 : 0.54;
+  const target = mode === "float" ? 0.5 : chosen === "centre" ? 0.54 : second && !side ? 0.46 : 0.5;
   const scale = Math.min((width * target * 1.2) / cutoutW, (height * target) / cutoutH);
   const w = Math.round(cutoutW * scale);
   const h = Math.round(cutoutH * scale);
-  const centre = variation % 2 ? width * 0.62 : width / 2;
+  const centre = chosen === "left" ? width * 0.36 : chosen === "right" ? (side ? width * 0.64 : width * 0.62) : width / 2;
   const left = Math.max(Math.round(width * 0.07), Math.min(Math.round(centre - w / 2), Math.round(width * 0.93) - w));
   const top = mode === "float" ? Math.round((height - h) / 2) : Math.round(height * 0.8) - h;
   return { left, top, width: w, height: h };
+}
+
+/** Tilt of a product lying flat in a top-down shot (degrees); the second take leans the other way. */
+export function laidAngle(variation = 0): number {
+  return variation % 2 ? 14 : -18;
+}
+
+/** Where the (already rotated) product lies in a top-down flat lay: large and near the centre. */
+export function laidPlacement(aspect: PhotoAspect, rotatedW: number, rotatedH: number, variation = 0) {
+  const { width, height } = CANVAS[aspect];
+  const scale = Math.min((width * 0.62) / rotatedW, (height * 0.62) / rotatedH);
+  const w = Math.round(rotatedW * scale);
+  const h = Math.round(rotatedH * scale);
+  const cx = width * (variation % 2 ? 0.54 : 0.46);
+  return { left: Math.round(cx - w / 2), top: Math.round(height * 0.5 - h / 2), width: w, height: h };
 }

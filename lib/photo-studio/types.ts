@@ -49,7 +49,19 @@ export type ProductProfile = {
   kind?: ProductKind;
   /** A hand or another object touches/overlaps the product in the photo */
   obstructed?: boolean;
+  /** One sentence on how the product looks (container, colours, label), used in prompts */
+  look?: string;
+  /** The main words printed on it, spelled exactly, largest first */
+  labelText?: string[];
   notes: string;
+};
+
+/** A scene written for one shot of one product (see art-direct.ts). */
+export type ShotBrief = {
+  /** The finished photograph in words: setting, props, camera angle, product pose, light */
+  scene: string;
+  /** Where the product stands in pasted-product (scene) shots */
+  placement?: "left" | "centre" | "right";
 };
 
 export type ShotDefinition = {
@@ -64,6 +76,8 @@ export type ShotDefinition = {
   usesModel?: boolean;
   /** Only offered for these product kinds (category shots) */
   kinds?: ProductKind[];
+  /** Scene shots: "laid" = the product lies flat, shot from directly above (flat lay) */
+  pose?: "upright" | "laid";
 };
 
 export type ShotResult = {
@@ -78,4 +92,21 @@ export type ShotResult = {
   editedFrom?: string;
   /** The person's own words for the edit */
   editRequest?: string;
+  /** Stable id of this photo (photos made before keep-to-pay have none) */
+  id?: string;
+  /**
+   * false = a free draft: only a watermarked preview is shown until it is kept (1 image
+   * credit). true = kept and paid for. Missing = made before keep-to-pay, already delivered.
+   */
+  kept?: boolean;
+  keptAt?: string;
+  /** Full-quality file in the private drafts bucket (server only, never sent to the browser) */
+  storagePath?: string;
+  /** Watermarked preview in the private drafts bucket (server only) */
+  previewPath?: string;
+  /** The full file has been copied to the public bucket; `url` is its public address */
+  published?: boolean;
 };
+
+/** A photo as the browser sees it: a preview for drafts, the full file once kept. */
+export type PhotoView = Omit<ShotResult, "storagePath" | "previewPath" | "published"> & { id: string; kept: boolean };

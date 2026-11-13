@@ -4,23 +4,23 @@
  * product photographer's brief (pose, hands, camera, light), the photo is edited with
  * the real product attached, and the same fidelity check as a shoot runs (one
  * corrective retry). The edited photo is added next to the original, never over it.
+ * Like any new photo it is a free draft: 1 image credit only if it is kept.
  */
 
 import { randomUUID } from "crypto";
 import sharp from "sharp";
-import { CreditsDAO } from "@/database/models/Credits.dao";
 import { GEMINI_REST_BASE, getGeminiApiKey } from "@/lib/gemini-config";
 import { fetchWithGeminiRateLimitRetry } from "@/lib/gemini-retry";
 import { parseJsonLoose } from "@/lib/research/gemini";
 import { getDefaultPosterImageProvider } from "@/lib/creative-studio/poster-generation/generation/provider-router";
-import { storePosterGeneratedImage } from "@/lib/creative-studio/poster-generation/generation/storage";
 import { dataUrlToBuffer, detectImageMimeType, fetchUrlToBuffer } from "@/lib/creative-studio/nano-banana";
 import type { GenerationSpecification, ImageGenerationProvider, ImageGenerationRequest } from "@/lib/creative-studio/poster-generation/types";
 import { CANVAS } from "./packshot";
 import { geminiFidelityChecker, MIN_FIDELITY, type FidelityChecker } from "./render";
-import { appendResults, PHOTO_STUDIO_CHARGES, PhotoStudioError, type PhotoShootState } from "./shoot";
+import { appendResults, assertCanShoot, PhotoStudioError, type PhotoShootState, type ShootLimitDeps } from "./shoot";
+import { loadDraftPhoto, photoId, storeDraftPhoto, toPhotoViews } from "./drafts";
 import { getShot } from "./shots";
-import type { ProductProfile, ShotResult } from "./types";
+import type { PhotoView, ProductProfile, ShotResult } from "./types";
 
 export const MAX_EDIT_CHARS = 500;
 
@@ -106,35 +106,39 @@ export type EditPhotoDeps = {
   writeBrief?: BriefWriter;
   checkFidelity?: FidelityChecker;
   loadImage?: (url: string) => Promise<{ buffer: Buffer; mimeType: string }>;
-  store?: (userId: string, sessionId: string, id: string, buffer: Buffer) => Promise<string>;
-  getBalance?: (userId: string) => Promise<number>;
-  deduct?: (userId: string) => Promise<boolean>;
+  /** Full file of a draft photo (private storage) */
+  loadDraft?: (storagePath: string) => Promise<Buffer>;
+  store?: (userId: string, sessionId: string, id: string, buffer: Buffer) => Promise<{ storagePath: string; previewPath: string }>;
   save?: (userId: string, sessionId: string, results: ShotResult[]) => Promise<void>;
-  /** Override PHOTO_STUDIO_CHARGES (tests) */
-  charges?: boolean;
+  view?: (results: ShotResult[]) => Promise<PhotoView[]>;
+  limits?: ShootLimitDeps;
 };
 
 /** Edit one photo of a saved shoot; returns the new photo (added after the others). */
 export async function editPhoto(
-  params: { userId: string; sessionId: string; photoUrl: string; request: string; state: PhotoShootState },
+  params: { userId: string; sessionId: string; /** The photo's id (older photos: its address) */ photoId: string; request: string; state: PhotoShootState },
   deps: EditPhotoDeps = {}
-): Promise<ShotResult> {
+): Promise<PhotoView> {
   const { userId, sessionId, state } = params;
   const request = params.request.trim().slice(0, MAX_EDIT_CHARS);
   if (!request) throw new PhotoStudioError("Say what you'd like to change.", 400, "VALIDATION");
   // Only photos this shoot produced — never an arbitrary URL.
-  const original = state.results.find((r) => r.url === params.photoUrl);
+  const original = state.results.find((r) => photoId(r) === params.photoId);
   if (!original) throw new PhotoStudioError("That photo isn't part of this shoot.", 404, "NOT_FOUND");
 
-  const charges = deps.charges ?? PHOTO_STUDIO_CHARGES;
-  const getBalance = deps.getBalance ?? (async (u) => (await CreditsDAO.getFullBalance(u))?.imageCredits.total ?? 0);
-  if (charges && (await getBalance(userId)) < 1) {
-    throw new PhotoStudioError("This edit needs 1 image credit.", 402, "INSUFFICIENT_CREDITS");
-  }
+  await assertCanShoot(userId, state, 1, deps.limits);
 
   const loadImage = deps.loadImage ?? load;
+  // A draft's full file is private: read it from storage, never from its preview.
+  const loadOriginal = async () => {
+    if (original.storagePath && !original.published) {
+      const buffer = await (deps.loadDraft ?? loadDraftPhoto)(original.storagePath);
+      return { buffer, mimeType: detectImageMimeType(buffer) || "image/png" };
+    }
+    return loadImage(original.url);
+  };
   const [photo, product] = await Promise.all([
-    loadImage(original.url).then(forModel),
+    loadOriginal().then(forModel),
     loadImage(state.masterUrl || state.sourceUrl).then(forModel),
   ]);
   const shotLabel = getShot(original.shotId)?.label || "product";
@@ -198,28 +202,23 @@ export async function editPhoto(
     }
   } catch (e) {
     console.error("[photoStudio] edit failed", { sessionId, error: (e as Error)?.message });
-    throw new PhotoStudioError("This edit didn't come out. No credits were charged — try again.", 502, "GENERATION_FAILED");
+    throw new PhotoStudioError("This edit didn't come out. Try again.", 502, "GENERATION_FAILED");
   }
 
-  const store =
-    deps.store ??
-    (async (u: string, s: string, id: string, b: Buffer) =>
-      (await storePosterGeneratedImage({ userId: u, sessionId: `photo-${s}`, generationId: id, buffer: b, contentType: "image/png" })).publicUrl);
-  const url = await store(userId, sessionId, generationId, buffer);
-  const deduct = deps.deduct ?? (async (u: string) => !!(await CreditsDAO.deductImageCredits(u, 1)).success);
-  if (charges && !(await deduct(userId))) {
-    throw new PhotoStudioError("This edit needs 1 image credit.", 402, "INSUFFICIENT_CREDITS");
-  }
+  const stored = await (deps.store ?? storeDraftPhoto)(userId, sessionId, generationId, buffer);
   const result: ShotResult = {
+    id: generationId,
     shotId: original.shotId,
-    url,
+    url: "",
+    kept: false,
+    ...stored,
     method: "guided",
     aspect,
     fidelity,
     createdAt: new Date().toISOString(),
-    editedFrom: original.url,
+    editedFrom: photoId(original),
     editRequest: request,
   };
   await (deps.save ?? appendResults)(userId, sessionId, [result]);
-  return result;
+  return (await (deps.view ?? toPhotoViews)([result]))[0];
 }

@@ -538,6 +538,8 @@ export type ImageGenerationRequest = {
   mode: "generate" | "edit";
   /** Prior image for edit mode */
   baseImage?: { mimeType: string; base64Data: string } | null;
+  /** Use this image model for this request only (default: the provider's model) */
+  model?: string;
   metadata: {
     sessionId: string;
     generationId: string;

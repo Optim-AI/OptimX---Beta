@@ -14,6 +14,9 @@ export type GenerationJobLock = typeof generationJobLocks.$inferSelect;
  */
 export const STALE_GENERATION_LOCK_MINUTES = 15;
 
+/** A resume request runs at most ~13 min (800s function); after that another may take over. */
+export const RESUME_TAKEOVER_MINUTES = 14;
+
 export class GenerationLocksDAO {
   static async getByKey(lockKey: string): Promise<GenerationJobLock | null> {
     const rows = await db
@@ -205,5 +208,50 @@ export class GenerationLocksDAO {
         updatedAt: new Date().toISOString(),
       })
       .where(eq(generationJobLocks.lockKey, lockKey));
+  }
+
+  /**
+   * The provider is still rendering when the request runs out of time: keep the lock
+   * (and its credit reservation) in progress and record what a later request needs
+   * to finish the same job without paying the provider again.
+   */
+  static async markWaitingOnProvider(
+    lockKey: string,
+    pendingProvider: Record<string, unknown>
+  ): Promise<void> {
+    await db
+      .update(generationJobLocks)
+      .set({
+        resultSummary: { pendingProvider: { ...pendingProvider, handedOverAt: new Date().toISOString() } },
+        updatedAt: new Date().toISOString(),
+      })
+      .where(and(eq(generationJobLocks.lockKey, lockKey), eq(generationJobLocks.status, 'in_progress')));
+  }
+
+  /**
+   * Let exactly one request take over a job waiting on the provider. A takeover
+   * older than RESUME_TAKEOVER_MINUTES belongs to a request that has since died.
+   */
+  static async claimProviderResume(
+    lockKey: string,
+    userId: string
+  ): Promise<GenerationJobLock | null> {
+    const [row] = await db
+      .update(generationJobLocks)
+      .set({
+        resultSummary: sql`jsonb_set(${generationJobLocks.resultSummary}, '{pendingProvider,resumingAt}', to_jsonb(now()::text))`,
+        updatedAt: new Date().toISOString(),
+      })
+      .where(
+        and(
+          eq(generationJobLocks.lockKey, lockKey),
+          eq(generationJobLocks.userId, userId),
+          eq(generationJobLocks.status, 'in_progress'),
+          sql`${generationJobLocks.resultSummary} ? 'pendingProvider'`,
+          sql`coalesce((${generationJobLocks.resultSummary}->'pendingProvider'->>'resumingAt')::timestamptz, 'epoch'::timestamptz) < now() - make_interval(mins => ${RESUME_TAKEOVER_MINUTES})`
+        )
+      )
+      .returning();
+    return row ?? null;
   }
 }

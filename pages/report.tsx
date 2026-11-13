@@ -20,7 +20,7 @@ import { ArcSpinner } from "@/app/web/src/components/ui/loaders";
 import colors from "@/lib/ui/colors";
 
 const MAX_IMAGES = 3;
-const MAX_IMAGE_BYTES = 3 * 1024 * 1024; // 3MB per image
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 10MB per file; each is shrunk before upload
 
 type ReportType = "error" | "feedback";
 
@@ -43,13 +43,43 @@ interface UserReport {
   }[];
 }
 
-function fileToDataUrl(file: File): Promise<string> {
+function readAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result as string);
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
+}
+
+/**
+ * Screenshots are shrunk before upload (longest side 1600px, JPEG): three of them must
+ * fit in one request, and full-size phone screenshots would be rejected by the server.
+ */
+const SCREENSHOT_MAX_SIDE = 1600;
+async function fileToDataUrl(file: File): Promise<string> {
+  const original = await readAsDataUrl(file);
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = () => reject(new Error("unreadable image"));
+      el.src = original;
+    });
+    const scale = Math.min(1, SCREENSHOT_MAX_SIDE / Math.max(img.naturalWidth, img.naturalHeight));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return original;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    const small = canvas.toDataURL("image/jpeg", 0.82);
+    return small.length < original.length ? small : original;
+  } catch {
+    return original;
+  }
 }
 
 function formatDate(dateStr: string | null): string {
@@ -150,7 +180,7 @@ export default function ReportPage() {
     const toAdd = imageFiles.slice(0, remaining);
     for (const f of toAdd) {
       if (f.size > MAX_IMAGE_BYTES) {
-        toast({ title: "Image too large", description: `${f.name} is over 3MB. Use a smaller image.`, variant: "destructive" });
+        toast({ title: "Image too large", description: `${f.name} is over 10MB. Use a smaller image.`, variant: "destructive" });
         continue;
       }
     }
@@ -206,12 +236,16 @@ export default function ReportPage() {
           images: images.length ? images : undefined,
         }),
       });
-      const data = await res.json();
+      // A too-large request comes back as plain text, not JSON.
+      const data = await res.json().catch(() => ({} as { error?: string }));
 
       if (!res.ok) {
         toast({
           title: "Could not submit",
-          description: data.error || "Something went wrong. Please try again.",
+          description:
+            res.status === 413
+              ? "Those screenshots are too large to send. Remove one and try again."
+              : data.error || "Something went wrong. Please try again.",
           variant: "destructive",
         });
         return;
@@ -445,7 +479,7 @@ export default function ReportPage() {
                       )}
                     </div>
                     <p className="mt-2 text-xs" style={{ color: colors.mutedForeground }}>
-                      Upload or paste (Ctrl+V / Cmd+V) up to 3 images. Max 3MB each.
+                      Upload or paste (Ctrl+V / Cmd+V) up to 3 images.
                     </p>
                   </div>
                 </div>

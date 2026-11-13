@@ -50,6 +50,26 @@ const KIND_SHOTS: KindShot[] = [
     dir: () => "A person happily taking a bite of the dish, candid, close-up, café setting softly blurred, natural light." },
   { id: "cafe_takeaway", group: "lifestyle", kinds: ["cafe_food"], label: "Takeaway box", purpose: "Delivery & cloud kitchens", description: "In takeaway packaging, ready to go.", method: "guided", defaultAspect: "4:5",
     dir: () => "The dish in an open takeaway box with a branded-looking plain paper bag and a drink beside it, on a bright counter, ready for delivery." },
+  // Clothing and accessories
+  { id: "fashion_folded", group: "catalogue", kinds: ["fashion"], label: "Folded", purpose: "Product page, catalogue", description: "Neatly folded on a clean backdrop, the way a boutique lays it out.", method: "guided", defaultAspect: "4:5",
+    dir: (_p) => "The garment neatly folded into a tidy rectangle with the collar, placket or main design on top, on a clean seamless backdrop, photographed from slightly above, soft even light with a gentle shadow. Crisp folds, true fabric colour." },
+  { id: "fashion_detail", group: "studio", kinds: ["fashion"], label: "Fabric & print detail", purpose: "Show quality — product page, ads", description: "A close-up of the fabric, print, stitching or buttons.", method: "guided", defaultAspect: "4:5",
+    dir: () => "Macro close-up of the fabric: the weave, print, stitching and a button or trim in sharp focus, raking side light that shows the texture of the cloth, shallow depth of field falling away at the edges." },
+  { id: "fashion_worn", group: "people", kinds: ["fashion"], label: "Worn", purpose: "Fit and drape — ads, social", description: "A model wearing it in a real setting.", method: "guided", defaultAspect: "4:5", usesModel: true,
+    dir: () => "A model wearing the product in a real everyday setting, cropped from shoulders to mid-thigh so the fit and drape are clear, relaxed natural pose, soft daylight, background softly out of focus." },
+  { id: "fashion_flatlay", group: "lifestyle", kinds: ["fashion"], label: "Outfit flat lay", purpose: "Instagram, styling ideas", description: "Laid flat from above with the pieces that complete the look.", method: "guided", defaultAspect: "4:5",
+    dir: () => "Top-down flat lay: the garment laid flat and gently shaped on a textured surface, with two or three accessories that complete the outfit (footwear, a watch or jewellery, a bag) arranged around it with deliberate spacing, soft even daylight." },
+  { id: "fashion_hanger", group: "lifestyle", kinds: ["fashion"], label: "On the hanger", purpose: "Boutique feel — social, product page", description: "Hanging on a wooden hanger by a window or textured wall.", method: "guided", defaultAspect: "4:5",
+    dir: () => "The garment hanging on a wooden hanger from a hook against a textured plaster wall beside a window, natural side light showing how the fabric falls, a plant or stool softly out of focus." },
+  // Skincare, haircare, cosmetics
+  { id: "beauty_ingredients", group: "studio", kinds: ["beauty"], label: "Key ingredients", purpose: "What's inside — ads, product page", description: "Surrounded by the botanicals and ingredients it's made with.", method: "scene", defaultAspect: "4:5",
+    dir: (p) => `On a pale stone slab surrounded by fresh ${props3(p, "botanicals, petals and leaves")} with a few water droplets, clean bright light with soft shadows, fresh and natural.` },
+  { id: "beauty_texture", group: "studio", kinds: ["beauty"], label: "Texture swatch", purpose: "Show the formula — ads, social", description: "The product beside a smear or drop of what's inside.", method: "guided", defaultAspect: "4:5",
+    dir: () => "The product standing beside a generous smear, swirl or drop of its contents on a sheet of glass or smooth stone, shot from a low three-quarter angle, glossy highlights on the texture, clean minimal set." },
+  { id: "beauty_shelf", group: "lifestyle", kinds: ["beauty"], label: "Bathroom shelf", purpose: "Everyday routine — product page, social", description: "On a bathroom shelf or vanity with a towel and a plant.", method: "scene", defaultAspect: "4:5",
+    dir: () => "On a bathroom vanity or stone shelf with a folded cotton towel, a small plant and a ceramic dish softly out of focus, soft morning window light, calm and clean." },
+  { id: "beauty_in_use", group: "people", kinds: ["beauty"], label: "Applying it", purpose: "How it's used — reels, ads", description: "A hand dispensing or applying the product, close-up.", method: "guided", defaultAspect: "4:5", usesModel: true,
+    dir: () => "Close-up of a hand dispensing the product onto fingertips, the pack held in the other hand with its label facing the camera, healthy natural skin, bathroom softly blurred behind, soft daylight." },
 ];
 
 type CreativeSet = { id: string; label: string; purpose: string; description: string; set: (p: ProductProfile) => string };
@@ -150,7 +170,8 @@ export const SHOTS: ShotDefinition[] = [
     label: "Flat lay",
     purpose: "Instagram, bundles, 'what's inside'",
     description: "Top-down arrangement of the product with its props on a textured surface.",
-    method: "guided",
+    method: "scene",
+    pose: "laid",
     defaultAspect: "4:5",
   },
   {
@@ -183,6 +204,25 @@ export const SHOTS: ShotDefinition[] = [
     defaultAspect: "4:5",
     usesModel: true,
   },
+  {
+    id: "detail_macro",
+    group: "studio",
+    label: "Close-up detail",
+    purpose: "Show quality and texture — product page, ads",
+    description: "A tight close-up of the material, texture or what's inside.",
+    method: "guided",
+    defaultAspect: "4:5",
+  },
+  {
+    id: "on_the_go",
+    group: "people",
+    label: "On the go",
+    purpose: "Everyday life — social, ads",
+    description: "The product out and about: in the car, at a desk, in a bag, on a commute.",
+    method: "guided",
+    defaultAspect: "4:5",
+    usesModel: true,
+  },
   // Category shots: offered only for their product kind, shown first.
   ...KIND_SHOTS.map(({ dir: _dir, ...def }) => def),
   // Creative sets: themed scenes built around the real product (like seasonal templates).
@@ -207,6 +247,8 @@ export function recommendShots(profile: ProductProfile): string[] {
   if (kind === "packaged_food") return ["marketplace_white", "food_ingredients", "food_served", "food_scoop", "food_kitchen", "theme_festive"];
   if (kind === "beverage") return ["marketplace_white", "bev_ice_cold", "bev_pour", "bev_fruit_burst", "bev_cafe_table", "in_hand"];
   if (kind === "cafe_food") return ["cafe_delivery", "cafe_hero", "cafe_spread", "cafe_steam", "cafe_bite"];
+  if (kind === "fashion") return ["marketplace_white", "fashion_folded", "fashion_worn", "fashion_detail", "fashion_flatlay", "fashion_hanger"];
+  if (kind === "beauty") return ["marketplace_white", "beauty_ingredients", "beauty_texture", "beauty_shelf", "beauty_in_use", "in_hand"];
   const ids = ["marketplace_white", "color_sweep", "styled_still_life", "lifestyle_context", "in_hand"];
   if (/glossy|glass|metal|chrome|premium|luxury/i.test(`${profile.finish} ${profile.notes}`)) ids.push("acrylic_reflection");
   if (profile.isFood || profile.storyProps.length >= 2) ids.push("levitation");
@@ -227,7 +269,7 @@ export function lightingFor(mood: LightingMood): string {
   return LIGHTING[mood] ?? LIGHTING.studio_soft;
 }
 
-function modelDescription(settings: ShootSettings): string {
+export function modelDescription(settings: ShootSettings): string {
   const m = settings.model || {};
   const who = m.gender === "woman" ? "a woman" : m.gender === "man" ? "a man" : "a person";
   const age = m.age && m.age !== "any" ? ` aged ${m.age}` : "";
@@ -260,7 +302,11 @@ export function shotDirection(shotId: string, p: ProductProfile, s: ShootSetting
     case "lifestyle_context":
       return `A real ${contextFor(p)}, photographed for a lifestyle catalogue: ${around ? "the product standing on the surface in the foreground" : "an empty spot on the surface in the centre foreground"}, with a few everyday objects and ${props(p)} nearby, out of focus. Lighting: ${light}. Feels lived-in and authentic, not staged.`;
     case "flat_lay":
-      return `A top-down flat lay on a textured surface (linen, stone or wood) in tones that suit ${s.backdrop}: the product in the centre with ${props(p)} arranged around it with deliberate spacing. Lighting: ${light}.`;
+      return `A top-down flat lay photographed from directly overhead on a textured surface (linen, stone or wood) in tones that suit ${s.backdrop}: the product lying flat with its label facing the camera, turned at a slight angle, with ${props(p)} arranged around it with deliberate spacing. Lighting: ${light}.`;
+    case "detail_macro":
+      return `A macro close-up of the product's most telling detail — its material, surface texture, cap or closure, or the contents seen through the pack — filling the frame, raking side light that brings out texture, very shallow depth of field. Frame it so the label's printed text is outside the picture or far out of focus. Lighting: ${light}.`;
+    case "on_the_go":
+      return `A candid everyday moment away from home: ${modelDescription(s)} holding or using the product ${p.isWearable ? "while out in the city" : "in a car, at an office desk or on a commute"}, the label facing the camera, natural daylight, shallow depth of field, real and unposed.`;
     case "in_hand":
       return `A close-up of a hand${s.model?.gender && s.model.gender !== "any" ? ` (${s.model.gender === "woman" ? "a woman's" : "a man's"} hand)` : ""} holding the product naturally in ${contextFor(p)}, showing its real size. Natural skin, relaxed grip that doesn't cover the label. Lighting: ${light}. Shallow depth of field.`;
     case "on_model":

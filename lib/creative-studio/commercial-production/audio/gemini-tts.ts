@@ -14,6 +14,8 @@ import {
 
 export const GEMINI_TTS_MODEL = "gemini-3.8-flash-tts";
 
+const TTS_REQUEST_TIMEOUT_MS = 90_000;
+
 export interface GenerateGeminiTtsInput {
   script: string;
   language: VoiceoverLanguage | string;
@@ -121,6 +123,7 @@ async function generateViaRest(input: {
       "Content-Type": "application/json",
       "x-goog-api-key": input.apiKey,
     },
+    signal: AbortSignal.timeout(TTS_REQUEST_TIMEOUT_MS),
     body: JSON.stringify({
       model: GEMINI_TTS_MODEL,
       input: [
@@ -147,7 +150,14 @@ async function generateViaRest(input: {
     }),
   });
 
-  const json = (await res.json()) as {
+  const text = await res.text();
+  let parsed: unknown = {};
+  try {
+    parsed = text ? JSON.parse(text) : {};
+  } catch {
+    throw new Error(`Gemini TTS HTTP ${res.status}: non-JSON response`);
+  }
+  const json = parsed as {
     error?: { message?: string };
     output_audio?: { data?: string; mime_type?: string };
     outputs?: Array<{ type?: string; data?: string; mime_type?: string }>;
@@ -205,15 +215,24 @@ export async function generateGeminiTtsVoiceover(
   const voice = input.voice || defaultTtsVoiceForLanguage(language);
   const style = styleForTone(input.tone, input.ctaEnabled);
 
+  // REST first: the @google/genai 1.x SDK path is rejected by the API
+  // ("legacy Interactions API"), so trying it first only adds latency.
+  // One retry covers transient 5xx / timeouts; the SDK stays as a last resort.
   let audioBuffer: Buffer;
   try {
-    audioBuffer = await generateViaSdk({ script, style, voice, apiKey });
-  } catch (sdkErr) {
-    console.warn(
-      "[gemini-tts] SDK path failed, trying REST:",
-      sdkErr instanceof Error ? sdkErr.message : sdkErr
-    );
     audioBuffer = await generateViaRest({ script, style, voice, apiKey });
+  } catch (firstErr) {
+    console.warn("[gemini-tts] REST attempt 1 failed, retrying:", firstErr instanceof Error ? firstErr.message : firstErr);
+    try {
+      audioBuffer = await generateViaRest({ script, style, voice, apiKey });
+    } catch (restErr) {
+      console.warn("[gemini-tts] REST attempt 2 failed, trying SDK:", restErr instanceof Error ? restErr.message : restErr);
+      try {
+        audioBuffer = await generateViaSdk({ script, style, voice, apiKey });
+      } catch {
+        throw restErr;
+      }
+    }
   }
 
   if (!audioBuffer.length) {

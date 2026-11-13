@@ -22,10 +22,13 @@ Return JSON:
   "viewAngle": "front|three_quarter|top_down|side|unknown",
   "plainBackground": true,
   "obstructed": false,
+  "look": "one sentence a photographer could use to describe it to someone who can't see it: container or garment type, material, colours, what the label looks like",
+  "labelText": ["the main words printed on the product, copied letter by letter exactly as printed, largest first, at most 8 short entries"],
   "kind": "packaged_food|beverage|cafe_food|beauty|fashion|other  (packaged_food = pickles, spices, snacks, sweets, packed staples; cafe_food = a prepared dish, meal, drink in a cup or plate from a café/restaurant)",
   "notes": "anything a photographer should know (reflective, transparent, label details to protect)"
 }
-"obstructed" is true when anything other than the product is touching or in front of it — a hand or fingers holding it, another object overlapping it.`;
+"obstructed" is true when anything other than the product is touching or in front of it — a hand or fingers holding it, another object overlapping it.
+Read the brand and product name letter by letter from the packaging; never correct an unusual spelling to a more common word.`;
 
 function normalize(raw: any): ProductProfile {
   const s = (v: unknown, n = 160) => (typeof v === "string" ? v.trim().slice(0, n) : "");
@@ -47,6 +50,8 @@ function normalize(raw: any): ProductProfile {
     viewAngle: angle,
     plainBackground: raw?.plainBackground !== false,
     obstructed: raw?.obstructed === true,
+    look: s(raw?.look, 300) || undefined,
+    labelText: list(raw?.labelText, 8),
     kind: (["packaged_food", "beverage", "cafe_food", "beauty", "fashion", "other"] as const).find((k) => k === raw?.kind) ??
       (raw?.isFood === true ? "packaged_food" : raw?.isWearable === true ? "fashion" : /beauty|skin|hair|cosmetic|personal care/i.test(String(raw?.category || "")) ? "beauty" : "other"),
     notes: s(raw?.notes, 300),
@@ -57,13 +62,13 @@ export async function analyzeProduct(image: { base64: string; mimeType: string }
   const key = getGeminiApiKey();
   if (!key) throw new Error("GEMINI_API_KEY is not configured");
   const res = await fetchWithGeminiRateLimitRetry(
-    `${GEMINI_REST_BASE}/models/${process.env.PHOTO_STUDIO_VISION_MODEL || "gemini-2.5-flash"}:generateContent?key=${key}`,
+    `${GEMINI_REST_BASE}/models/${process.env.PHOTO_STUDIO_VISION_MODEL || "gemini-3.8-flash"}:generateContent?key=${key}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         contents: [{ role: "user", parts: [{ inline_data: { mime_type: image.mimeType, data: image.base64 } }, { text: PROMPT }] }],
-        generationConfig: { temperature: 0.2, responseMimeType: "application/json", thinkingConfig: { thinkingBudget: 0 } },
+        generationConfig: { temperature: 0.2, responseMimeType: "application/json" },
       }),
       signal: AbortSignal.timeout(45_000),
     },

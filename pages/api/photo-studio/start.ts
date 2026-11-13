@@ -1,13 +1,16 @@
 // pages/api/photo-studio/start.ts
 // Photo Studio step 1: upload a product photo → product read, a clean master packshot
 // (the product alone, recreated and fidelity-checked) and its cut-out, recommended
-// shot list, saved shoot session. No credits.
+// shot list, saved shoot session. Free, but needs at least 1 image credit (photos are
+// paid for when kept).
 
 import type { NextApiRequest, NextApiResponse } from "next";
 import { randomUUID } from "crypto";
 import sharp from "sharp";
 import { assertPublicHost } from "@/lib/audit/url-safety";
 import { getUserIdFromRequest } from "@/auth/request";
+import { CreditsDAO } from "@/database/models/Credits.dao";
+import { FREE_PHOTOS_PER_SHOOT_PER_DAY, MIN_CREDITS_TO_SHOOT } from "@/lib/photo-studio/drafts";
 import { getUserBrand } from "@/lib/brand-kit/server";
 import { getProductCutout } from "@/lib/creative-studio/product-cutouts";
 import { getDefaultPosterImageProvider } from "@/lib/creative-studio/poster-generation/generation/provider-router";
@@ -45,6 +48,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
   const userId = await getUserIdFromRequest(req);
   if (!userId) return res.status(401).json({ ok: false, error: "Authentication required" });
+
+  const credits = (await CreditsDAO.getFullBalance(userId).catch(() => null))?.imageCredits.total ?? 0;
+  if (credits < MIN_CREDITS_TO_SHOOT) {
+    return res.status(402).json({
+      ok: false,
+      code: "INSUFFICIENT_CREDITS",
+      error: "You need at least 1 image credit to start a shoot. Photos are free to make — you only pay 1 credit for each photo you keep.",
+    });
+  }
 
   const image = typeof req.body?.image === "string" ? req.body.image : "";
   const imageUrl = typeof req.body?.imageUrl === "string" ? req.body.imageUrl.trim() : "";
@@ -118,6 +130,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       catalog: SHOTS,
       brandColors: (snapshot?.primaryColors || []).filter((c) => /^#[0-9a-f]{6}$/i.test(c)).slice(0, 5),
       exactAvailable: Boolean(cutoutUrl),
+      credits,
+      photosLeftToday: FREE_PHOTOS_PER_SHOOT_PER_DAY,
     });
   } catch (e) {
     console.error("[photoStudio] start failed", { userId, error: (e as Error)?.message });

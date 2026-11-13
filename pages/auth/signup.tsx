@@ -80,9 +80,13 @@ export default function SignUpPage(): React.ReactElement {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      // Never await Supabase calls inside this callback (it holds the auth lock
+      // and can deadlock); route once it has returned.
       if (event === "SIGNED_IN" && session?.user) {
-        await routeAfterAuth();
+        window.setTimeout(() => {
+          void routeAfterAuth();
+        }, 0);
       }
     });
 

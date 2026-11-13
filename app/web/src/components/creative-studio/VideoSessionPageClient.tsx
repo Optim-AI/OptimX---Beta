@@ -102,7 +102,8 @@ const MAX_PERSISTED_IMAGE_DATA_URL_CHARS = 350_000;
 
 /** After a dropped connection, how often and how long to ask the server for the finished video. */
 const RECOVERY_POLL_MS = 20_000;
-const RECOVERY_MAX_MS = 15 * 60_000;
+/** Covers a slow video partner: up to two server hand-overs of ~13 minutes each. */
+const RECOVERY_MAX_MS = 45 * 60_000;
 
 /** A version label no video in this session uses — reusing one replays that video instead. */
 function unusedGenerationVersion(videos: GeneratedVideo[], preferred?: string): string {
@@ -125,7 +126,8 @@ async function postGenerateWithRecovery(
   let first: Response | null = null;
   try {
     first = await authFetch(url, { method: 'POST', body });
-    if (![502, 503, 504].includes(first.status)) return first;
+    // 202: the video partner is still rendering; keep checking (the check finishes it).
+    if (![202, 502, 503, 504].includes(first.status)) return first;
   } catch {
     // Connection dropped — the server may still be generating.
   }
@@ -135,12 +137,14 @@ async function postGenerateWithRecovery(
     try {
       const res = await authFetch(url, { method: 'POST', body: recoverBody });
       if (res.status === 202) continue;
-      return res.ok ? res : first ?? res;
+      // After a 202 handover, the check's own answer (video or real error) is the result.
+      if (res.ok || !first || first.status === 202) return res;
+      return first;
     } catch {
       // Still offline — keep trying until the deadline.
     }
   }
-  if (first) return first;
+  if (first && first.status !== 202) return first;
   throw new Error('Lost connection to the server. Reopen this session in a few minutes to see your video.');
 }
 

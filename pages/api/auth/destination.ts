@@ -10,6 +10,18 @@ import {
 } from '@/lib/auth/post-auth-destination';
 import { supabaseAdmin } from '@/auth/supabase/admin';
 
+const DESTINATION_TIMEOUT_MS = 12_000;
+
+function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  return Promise.race([
+    work,
+    new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`destination timed out after ${ms}ms`)), ms);
+    }),
+  ]).finally(() => clearTimeout(timer));
+}
+
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
@@ -29,7 +41,7 @@ export default async function handler(
     try {
       const token = getTokenFromReq(req);
       if (token) {
-        const { data } = await supabaseAdmin.auth.getUser(token);
+        const { data } = await withTimeout(supabaseAdmin.auth.getUser(token), 5_000);
         email = data?.user?.email ?? null;
         const meta = (data?.user?.user_metadata ?? {}) as Record<string, unknown>;
         const name =
@@ -42,9 +54,15 @@ export default async function handler(
       /* ensureProfile can still insert with id only */
     }
 
-    await ensureProfile(userId, { email, fullName });
-
-    const decision = await resolvePostAuthDestination(userId);
+    // Never leave the sign-in screen waiting on a slow database: give up at 12s
+    // and let the browser retry once.
+    const decision = await withTimeout(
+      (async () => {
+        await ensureProfile(userId, { email, fullName });
+        return resolvePostAuthDestination(userId);
+      })(),
+      DESTINATION_TIMEOUT_MS
+    );
     if (!decision.ok) {
       return res.status(503).json({
         ok: false,

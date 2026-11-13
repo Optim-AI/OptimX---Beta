@@ -145,7 +145,7 @@ export class NanoBananaImageProvider implements ImageGenerationProvider {
         prompt,
         aspectRatio: request.aspectRatio,
         references,
-        model: this.modelId,
+        model: request.model || this.modelId,
         imageSize: getPosterImageSize(),
         operationLabel: `poster-gen:${request.metadata.generationId}`,
         maxRetries: 4,

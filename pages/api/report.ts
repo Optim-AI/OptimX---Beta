@@ -7,6 +7,11 @@ import { ReportDAO } from "@/database/models/Report.dao";
  * Submit an error report or feedback. Requires auth.
  * Body: { type: 'error' | 'feedback', message: string, pageUrl?: string, images?: string[] } (images as base64 data URLs)
  */
+// Up to 3 screenshots (shrunk in the browser) ride in the JSON body; Vercel caps requests at ~4.5 MB.
+export const config = { api: { bodyParser: { sizeLimit: "4mb" } } };
+
+const MAX_IMAGE_CHARS = 2_000_000;
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
@@ -19,12 +24,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     const { type, message, pageUrl, images: rawImages } = req.body || {};
-    if (!message || typeof message !== "string") {
+    if (!message || typeof message !== "string" || !message.trim()) {
       return res.status(400).json({ error: "Message is required." });
     }
 
     const images = Array.isArray(rawImages)
-      ? rawImages.filter((x): x is string => typeof x === "string").slice(0, 3)
+      ? rawImages
+          .filter((x): x is string => typeof x === "string" && /^data:image\/(png|jpe?g|webp|gif);base64,/i.test(x) && x.length <= MAX_IMAGE_CHARS)
+          .slice(0, 3)
       : [];
 
     const reportType = type === "error" ? "error" : "feedback";

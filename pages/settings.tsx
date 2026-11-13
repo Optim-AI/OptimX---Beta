@@ -19,6 +19,7 @@ import {
 import { SITE_SUPPORT_EMAIL } from "@/lib/seo/site";
 import colors from "@/lib/ui/colors";
 import { authFetch } from "@/lib/utils";
+import { toast } from "sonner";
 import { showError, showConfirm } from "@/app/web/src/components/ui/alert-modal-api";
 import {
   SETTINGS_TABS,
@@ -174,9 +175,12 @@ export default function SettingsPage(): JSX.Element {
   const [subscription, setSubscription] = useState<{
     id?: string;
     status?: string;
-    plan: { name: string; billingCycle: string };
+    plan: { name: string; billingCycle: string; imageCredits?: number; videoCredits?: number };
     nextResetDate: string | null;
+    cancelAtPeriodEnd?: boolean;
+    currentPeriodEnd?: string | null;
   } | null>(null);
+  const [cancelling, setCancelling] = useState(false);
   const [paymentHistory, setPaymentHistory] = useState<
     {
       id: string;
@@ -309,6 +313,8 @@ export default function SettingsPage(): JSX.Element {
             status: subData.subscription.status,
             plan: subData.subscription.plan,
             nextResetDate: subData.subscription.nextResetDate,
+            cancelAtPeriodEnd: Boolean(subData.subscription.cancelAtPeriodEnd),
+            currentPeriodEnd: subData.subscription.currentPeriodEnd ?? null,
           });
         } else if (subData.success) {
           setSubscription(null);
@@ -430,6 +436,39 @@ export default function SettingsPage(): JSX.Element {
       showError("Failed to save changes. Please try again.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  const formatDate = (iso?: string | null) =>
+    iso ? new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" }) : null;
+  const periodEnd = formatDate(subscription?.currentPeriodEnd || subscription?.nextResetDate);
+
+  /** Stop the plan from renewing. It stays active, with its credits, until the paid period ends. */
+  async function handleCancelSubscription() {
+    if (!subscription || cancelling) return;
+    const until = periodEnd ? ` until ${periodEnd}` : " until the end of the period you have paid for";
+    const ok = await showConfirm(
+      `Your ${subscription.plan.name} plan will stay active${until}. After that it will not renew: no payment will be taken and no new credits will be added. Credits you bought separately stay with you.`,
+      { title: "Cancel subscription?", confirmLabel: "Cancel subscription", cancelLabel: "Keep my plan" }
+    );
+    if (!ok) return;
+    setCancelling(true);
+    try {
+      const res = await authFetch("/api/billing/subscriptions/cancel", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) throw new Error(data.error || "We couldn't cancel your subscription. Please try again.");
+      if (data.cancelAtPeriodEnd) {
+        setSubscription((prev) => (prev ? { ...prev, cancelAtPeriodEnd: true, currentPeriodEnd: data.currentPeriodEnd ?? prev.currentPeriodEnd } : prev));
+        const end = formatDate(data.currentPeriodEnd) || periodEnd;
+        toast.success(end ? `Subscription cancelled. Your plan stays active until ${end}.` : "Subscription cancelled. It will not renew.");
+      } else {
+        setSubscription(null);
+        toast.success("Subscription cancelled.");
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "We couldn't cancel your subscription. Please try again.");
+    } finally {
+      setCancelling(false);
     }
   }
 
@@ -872,37 +911,59 @@ export default function SettingsPage(): JSX.Element {
                         <span className="text-base font-semibold" style={{ color: colors.primary }}>
                           {subscription?.plan?.name ?? "Pay-as-you-go"}
                         </span>
-                        {subscription?.status ? (
-                          <span
-                            className="rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide"
-                            style={{
-                              background: "hsl(213 100% 55% / 0.14)",
-                              color: colors.primary,
-                            }}
-                          >
-                            {subscription.status}
-                          </span>
-                        ) : (
-                          <span
-                            className="rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide"
-                            style={{
-                              background: colors.muted,
-                              color: colors.mutedForeground,
-                            }}
-                          >
-                            On demand
-                          </span>
-                        )}
+                        {(() => {
+                          const ending = Boolean(subscription?.cancelAtPeriodEnd);
+                          const label = !subscription ? "On demand" : ending ? "Cancelled" : subscription.status === "past_due" ? "Payment due" : "Active";
+                          const tone = !subscription
+                            ? { background: colors.muted, color: colors.mutedForeground }
+                            : ending || subscription.status === "past_due"
+                              ? { background: "hsl(38 92% 50% / 0.16)", color: "hsl(38 92% 68%)" }
+                              : { background: "hsl(142 70% 45% / 0.16)", color: "hsl(142 70% 62%)" };
+                          return (
+                            <span className="rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide" style={tone}>
+                              {label}
+                            </span>
+                          );
+                        })()}
                       </div>
-                      <p className="mt-2 text-sm" style={{ color: colors.mutedForeground }}>
-                        {subscription?.plan?.billingCycle ?? "Credits purchased on demand"}
-                      </p>
-                      {subscription?.nextResetDate ? (
+
+                      {subscription ? (
+                        <>
+                          <dl className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                            {[
+                              ["Billing", subscription.plan.billingCycle === "yearly" ? "Yearly" : subscription.plan.billingCycle === "monthly" ? "Monthly" : subscription.plan.billingCycle],
+                              [subscription.cancelAtPeriodEnd ? "Ends on" : "Renews on", periodEnd || "—"],
+                              ["Credits each cycle", `${subscription.plan.imageCredits ?? 0} image · ${subscription.plan.videoCredits ?? 0} video`],
+                            ].map(([term, value]) => (
+                              <div key={term}>
+                                <dt className="text-xs" style={{ color: colors.mutedForeground }}>{term}</dt>
+                                <dd className="mt-0.5 text-sm font-medium" style={{ color: colors.foreground }}>{value}</dd>
+                              </div>
+                            ))}
+                          </dl>
+
+                          {subscription.cancelAtPeriodEnd ? (
+                            <p role="status" className="mt-4 rounded-lg px-3.5 py-3 text-sm" style={{ background: "hsl(38 92% 50% / 0.1)", color: colors.foreground }}>
+                              Your subscription is cancelled. You can keep using your plan and its credits
+                              {periodEnd ? ` until ${periodEnd}` : " until the end of this billing period"}. After that it will not renew, no payment will be taken and no new credits will be added.
+                            </p>
+                          ) : (
+                            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t pt-4" style={{ borderColor: colors.border }}>
+                              <p className="max-w-md text-xs" style={{ color: colors.mutedForeground }}>
+                                You can cancel any time. Your plan stays active until the end of the period you have already paid for.
+                              </p>
+                              <Button type="button" variant="outline" disabled={cancelling} onClick={() => void handleCancelSubscription()}
+                                style={{ borderColor: "hsl(0 72% 51% / 0.5)", color: "hsl(0 84% 70%)" }}>
+                                {cancelling ? "Cancelling…" : "Cancel subscription"}
+                              </Button>
+                            </div>
+                          )}
+                        </>
+                      ) : (
                         <p className="mt-2 text-sm" style={{ color: colors.mutedForeground }}>
-                          Credits reset on{" "}
-                          {new Date(subscription.nextResetDate).toLocaleDateString()}
+                          No subscription. You buy credits when you need them.
                         </p>
-                      ) : null}
+                      )}
                     </div>
 
                     <SettingsDivider />

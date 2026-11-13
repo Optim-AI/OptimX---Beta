@@ -2,6 +2,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { JSX } from "react";
 import Head from "next/head";
+import Link from "next/link";
 import { useRouter } from "next/router";
 import { Activity, ArrowLeft, CupSoda, Package, Pencil, Shirt, Soup, UtensilsCrossed, Camera, Check, Cylinder, Download, Flower2, Gem, Hand, House, ImagePlus, Images, LayoutGrid, Lock, Palette, RefreshCw, ShoppingBag, Sparkles, Trash2, Upload, User, Wand2 } from "lucide-react";
 import { ArcSpinner, ShimmerGrid, ShimmerTile, StepProgress } from "@/app/web/src/components/ui/loaders";
@@ -21,7 +22,7 @@ import type {
   ShootSettings,
   ShotDefinition,
   ShotMethod,
-  ShotResult,
+  PhotoView as ShotResult,
 } from "@/lib/photo-studio/types";
 
 type Shoot = {
@@ -134,13 +135,18 @@ export default function PhotoStudioPage(): JSX.Element {
   const [settings, setSettings] = useState<ShootSettings | null>(null);
   const [status, setStatus] = useState<Record<string, ShotStatus>>({});
   const [results, setResults] = useState<ShotResult[]>([]);
+  /** Image credits the person has (photos cost 1 credit each, only when kept) */
+  const [credits, setCredits] = useState(0);
+  /** Draft photos picked to keep */
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [keeping, setKeeping] = useState(false);
   const [running, setRunning] = useState(false);
   const [viewer, setViewer] = useState<number | null>(null);
   /** Index into results of the photo being edited */
   const [editing, setEditing] = useState<number | null>(null);
   const [tab, setTab] = useState<"plan" | "photos">("plan");
   const [kindOverride, setKindOverride] = useState<ProductKind | null>(null);
-  const [recent, setRecent] = useState<Array<{ id: string; name: string; cover: string | null; sourceUrl: string | null; photos: number }>>([]);
+  const [recent, setRecent] = useState<Array<{ id: string; name: string; cover: string | null; sourceUrl: string | null; photos: number; drafts?: number }>>([]);
   const [recentLoading, setRecentLoading] = useState(true);
   const [dragging, setDragging] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -160,6 +166,7 @@ export default function PhotoStudioPage(): JSX.Element {
     setShoot(null);
     setPreview(null);
     setResults([]);
+    setPicked(new Set());
     setStatus({});
     setTab("plan");
     setKindOverride(null);
@@ -227,6 +234,8 @@ export default function PhotoStudioPage(): JSX.Element {
       setPreview(j.shoot.masterUrl || j.shoot.sourceUrl);
       setSelected(Object.fromEntries((j.shoot.shots || []).map((s: string) => [s, 1])));
       setResults(j.shoot.results || []);
+      setCredits(Number(j.shoot.credits) || 0);
+      setPicked(new Set());
       setTab((j.shoot.results || []).length ? "photos" : "plan");
     })();
   }, [router.query.id, shoot?.sessionId]);
@@ -255,6 +264,8 @@ export default function PhotoStudioPage(): JSX.Element {
       const j = await readJson<any>(res);
       if (!res.ok || !j.ok) throw new Error(responseError(res, j, "We couldn't read that photo. Try another one."));
       setShoot(j);
+      setCredits(Number(j.credits) || 0);
+      setPicked(new Set());
       setTab("plan");
       setKindOverride(null);
       if (j.masterUrl) setPreview(j.masterUrl);
@@ -335,20 +346,72 @@ export default function PhotoStudioPage(): JSX.Element {
 
   const viewerItems = results.map((r, i) => {
     const def = shoot?.catalog.find((s) => s.id === r.shotId);
-    return { id: `${i}-${r.url}`, images: [r.url], title: def?.label || r.shotId, caption: shoot?.profile.name, headline: shoot?.profile.name };
+    return { id: `${i}-${r.id}`, images: [r.url], title: `${def?.label || r.shotId}${r.kept ? "" : " · preview"}`, caption: shoot?.profile.name, headline: shoot?.profile.name };
   });
 
-  const editPhoto = useCallback(async (photoUrl: string, request: string) => {
+  const editPhoto = useCallback(async (photoId: string, request: string) => {
     if (!shoot) return;
     const res = await authFetch("/api/photo-studio/edit", {
       method: "POST",
-      body: JSON.stringify({ sessionId: shoot.sessionId, photoUrl, request }),
+      body: JSON.stringify({ sessionId: shoot.sessionId, photoId, request }),
     });
     const j = await readJson<any>(res);
     if (!res.ok || !j.ok || !j.result) throw new Error(responseError(res, j, "This edit didn't come out. Try again."));
     setResults((r) => [...r, j.result as ShotResult]);
-    toast.success("Edited photo added next to the original.");
+    toast.success("Edited photo added next to the original. It's free unless you keep it.");
   }, [shoot]);
+
+  // Preview links for draft photos last about an hour; reload them when one stops loading.
+  const refreshing = useRef(false);
+  const refreshPhotos = useCallback(async () => {
+    if (!shoot || refreshing.current) return;
+    refreshing.current = true;
+    try {
+      const r = await authFetch(`/api/photo-studio/sessions?id=${encodeURIComponent(shoot.sessionId)}`);
+      const j = await r.json().catch(() => null);
+      if (j?.ok) {
+        setResults(j.shoot.results || []);
+        setCredits(Number(j.shoot.credits) || 0);
+      }
+    } catch {
+      /* keep what is on screen */
+    } finally {
+      setTimeout(() => { refreshing.current = false; }, 30_000);
+    }
+  }, [shoot]);
+
+  const togglePick = (id: string) =>
+    setPicked((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  /** Keep photos: 1 image credit each, charged only now; the full-quality files are released. */
+  const keep = useCallback(async (ids: string[]) => {
+    if (!shoot || !ids.length || keeping) return;
+    const n = ids.length;
+    const ok = await showConfirm(
+      `Keep ${n} photo${n > 1 ? "s" : ""} for ${n} image credit${n > 1 ? "s" : ""}? You'll get the full-quality file${n > 1 ? "s" : ""} without the watermark, ready to download.`,
+      { title: "Keep photos", confirmLabel: `Keep ${n} · ${n} credit${n > 1 ? "s" : ""}`, cancelLabel: "Not yet" }
+    );
+    if (!ok) return;
+    setKeeping(true);
+    try {
+      const res = await authFetch("/api/photo-studio/keep", { method: "POST", body: JSON.stringify({ sessionId: shoot.sessionId, photoIds: ids }) });
+      const j = await readJson<any>(res);
+      if (!res.ok || !j.ok) throw new Error(responseError(res, j, "We couldn't keep those photos. Try again."));
+      setResults(j.results || []);
+      setCredits(Number(j.credits) || 0);
+      setPicked(new Set());
+      toast.success(j.charged ? `${j.charged} photo${j.charged > 1 ? "s" : ""} kept. ${j.charged} credit${j.charged > 1 ? "s" : ""} used.` : "Those photos were already kept.");
+    } catch (e) {
+      toast.error(friendlyError(e, "We couldn't keep those photos. Try again."));
+    } finally {
+      setKeeping(false);
+    }
+  }, [shoot, keeping]);
 
   const download = async (url: string, name: string) => {
     try {
@@ -499,7 +562,9 @@ export default function PhotoStudioPage(): JSX.Element {
                       </div>
                       <div className="p-2.5">
                         <p className="truncate text-xs font-medium" style={{ color: colors.foreground }}>{r.name.replace(/^Photo shoot · /, "")}</p>
-                        <p className="text-[11px]" style={{ color: colors.mutedForeground }}>{r.photos} photo{r.photos === 1 ? "" : "s"}</p>
+                        <p className="text-[11px]" style={{ color: colors.mutedForeground }}>
+                          {r.photos} kept{r.drafts ? ` · ${r.drafts} to review` : ""}
+                        </p>
                       </div>
                     </button>
                     <button
@@ -537,8 +602,14 @@ export default function PhotoStudioPage(): JSX.Element {
     k === "packaged_food" ? ["marketplace_white", "food_ingredients", "food_served", "food_scoop", "food_kitchen", "theme_festive"]
     : k === "beverage" ? ["marketplace_white", "bev_ice_cold", "bev_pour", "bev_fruit_burst", "bev_cafe_table", "in_hand"]
     : k === "cafe_food" ? ["cafe_delivery", "cafe_hero", "cafe_spread", "cafe_steam", "cafe_bite"]
+    : k === "fashion" ? ["marketplace_white", "fashion_folded", "fashion_worn", "fashion_detail", "fashion_flatlay", "fashion_hanger"]
+    : k === "beauty" ? ["marketplace_white", "beauty_ingredients", "beauty_texture", "beauty_shelf", "beauty_in_use", "in_hand"]
     : k === (p.kind || "other") ? shoot.recommended || [] : ["marketplace_white", "color_sweep", "styled_still_life", "lifestyle_context", "in_hand"];
   const methodOf = (shot: ShotDefinition): ShotMethod => (shot.method !== "guided" && !shoot.exactAvailable ? "guided" : shot.method);
+  const draftCount = results.filter((r) => !r.kept).length;
+  // Only drafts still on screen can be kept.
+  const pickedIds = results.filter((r) => !r.kept && picked.has(r.id)).map((r) => r.id);
+  const enoughCredits = credits >= pickedIds.length;
   const shotsWithPhotos = shoot.catalog.filter((x) => results.some((r) => r.shotId === x.id) || status[x.id] === "shooting" || status[x.id] === "queued");
   const focusRing = "focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:ring-offset-2 focus-visible:ring-offset-black";
   const segment = (on: boolean): React.CSSProperties =>
@@ -562,7 +633,7 @@ export default function PhotoStudioPage(): JSX.Element {
               </span>
               <div className="min-w-0">
                 <h1 className="truncate text-sm font-semibold" style={{ color: colors.foreground }}>{p.name}</h1>
-                <p className="truncate text-xs" style={{ color: colors.mutedForeground }}>Photoshoot Studio · free during beta</p>
+                <p className="truncate text-xs" style={{ color: colors.mutedForeground }}>Photoshoot Studio · {credits} image credit{credits === 1 ? "" : "s"}</p>
               </div>
             </div>
             <div role="tablist" aria-label="Shoot view" className="inline-flex rounded-lg p-1" style={{ background: colors.secondary }}>
@@ -830,6 +901,12 @@ export default function PhotoStudioPage(): JSX.Element {
                     </button>
                   </div>
                 ) : (
+                  <>
+                  {draftCount > 0 && (
+                    <p role="note" className="mb-4 rounded-lg px-3.5 py-2.5 text-sm" style={{ background: "hsl(213 100% 55% / 0.1)", color: colors.foreground }}>
+                      These are previews with a watermark. Tap <strong>Keep</strong> on the photos you want. You get the full-quality photo, and you only pay for the ones you keep (1 image credit each).
+                    </p>
+                  )}
                   <div className="grid grid-cols-2 gap-x-4 gap-y-5 sm:grid-cols-3 lg:grid-cols-4">
                     {shotsWithPhotos.flatMap((shot) => {
                       const st = status[shot.id] || "idle";
@@ -862,15 +939,43 @@ export default function PhotoStudioPage(): JSX.Element {
                         </div>
                       );
                       return [
-                        ...photos.map(({ r, i }, k) => (
-                          <figure key={r.url} className="min-w-0">
+                        ...photos.map(({ r, i }, k) => {
+                          const isPicked = picked.has(r.id);
+                          return (
+                          <figure key={r.id} className="min-w-0">
                             <button type="button" onClick={() => setViewer(i)} aria-label={`Open ${shot.label} photo`}
-                              className={`group block aspect-[4/5] w-full overflow-hidden rounded-xl ${focusRing}`} style={{ background: colors.secondary }}>
-                              <img src={r.url} alt="" loading="lazy" className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]" />
+                              className={`group relative block aspect-[4/5] w-full overflow-hidden rounded-xl ${focusRing}`}
+                              style={{ background: colors.secondary, outline: r.kept ? "2px solid hsl(142 70% 45%)" : isPicked ? `2px solid ${colors.primary}` : "none", outlineOffset: 2 }}>
+                              {r.url ? (
+                                <img src={r.url} alt="" loading="lazy" onError={() => void refreshPhotos()} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]" />
+                              ) : (
+                                <span className="flex h-full w-full items-center justify-center text-xs" style={{ color: colors.mutedForeground }}>Preview loading…</span>
+                              )}
+                              {r.kept && (
+                                <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium" style={{ background: "hsl(142 70% 30%)", color: "#fff" }}>
+                                  <Check className="h-3 w-3" aria-hidden /> Kept
+                                </span>
+                              )}
                             </button>
-                            <figcaption>{caption(k, photos.length + pending, k === 0, i)}</figcaption>
+                            <figcaption>
+                              {caption(k, photos.length + pending, k === 0, i)}
+                              {r.kept ? (
+                                <button type="button" onClick={() => void download(r.url, `${shot.id.replace(/_/g, "-")}-${k + 1}.png`)}
+                                  className={`mt-2 inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-lg text-sm font-medium ${focusRing}`}
+                                  style={{ border: `1px solid ${colors.border}`, color: colors.foreground }}>
+                                  <Download className="h-4 w-4" aria-hidden /> Download
+                                </button>
+                              ) : (
+                                <button type="button" aria-pressed={isPicked} onClick={() => togglePick(r.id)}
+                                  className={`mt-2 inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-lg text-sm font-medium ${focusRing}`}
+                                  style={isPicked ? { background: colors.primary, color: colors.primaryForeground } : { border: `1px solid ${colors.primary}`, color: colors.foreground }}>
+                                  {isPicked ? <><Check className="h-4 w-4" aria-hidden /> Keeping</> : "Keep"}
+                                </button>
+                              )}
+                            </figcaption>
                           </figure>
-                        )),
+                          );
+                        }),
                         ...Array.from({ length: pending }, (_, k) => (
                           <figure key={`${shot.id}-pending-${k}`} className="min-w-0">
                             <ShimmerTile className="aspect-[4/5]" />
@@ -880,6 +985,7 @@ export default function PhotoStudioPage(): JSX.Element {
                       ];
                     })}
                   </div>
+                  </>
                 )}
               </div>
             )}
@@ -888,10 +994,37 @@ export default function PhotoStudioPage(): JSX.Element {
 
         {/* Action bar */}
         <footer className="flex-shrink-0 border-t" style={{ borderColor: colors.border, background: colors.card }}>
+          {pickedIds.length > 0 && (
+            <div className="border-b" style={{ borderColor: colors.border, background: "hsl(213 100% 55% / 0.08)" }}>
+              <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
+                <p className="text-sm" style={{ color: colors.foreground }} aria-live="polite">
+                  <strong>{pickedIds.length} selected</strong> · {pickedIds.length} image credit{pickedIds.length > 1 ? "s" : ""} · you have {credits}
+                  {!enoughCredits ? " — not enough credits" : ""}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" onClick={() => setPicked(new Set())} className={`rounded-lg px-3 py-2 text-sm ${focusRing}`} style={{ border: `1px solid ${colors.border}`, color: colors.foreground }}>
+                    Clear
+                  </button>
+                  {enoughCredits ? (
+                    <button type="button" disabled={keeping} onClick={() => void keep(pickedIds)}
+                      className={`inline-flex h-11 items-center gap-2 rounded-xl px-6 text-sm font-semibold disabled:opacity-60 ${focusRing}`}
+                      style={{ background: colors.primary, color: colors.primaryForeground }}>
+                      {keeping ? <ArcSpinner className="h-4 w-4" /> : <Check className="h-4 w-4" />}
+                      {keeping ? "Keeping…" : `Keep ${pickedIds.length} · ${pickedIds.length} credit${pickedIds.length > 1 ? "s" : ""}`}
+                    </button>
+                  ) : (
+                    <Link href="/buy-credits" className="inline-flex h-11 items-center rounded-xl px-6 text-sm font-semibold" style={{ background: colors.primary, color: colors.primaryForeground }}>
+                      Get more credits
+                    </Link>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
           <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
             <p className="text-sm" style={{ color: colors.foreground }} aria-live="polite">
               <strong>{selectedIds.length}</strong> shot{selectedIds.length === 1 ? "" : "s"} · <strong>{totalPhotos}</strong> photo{totalPhotos === 1 ? "" : "s"}
-              <span className="ml-2 text-xs" style={{ color: colors.mutedForeground }}>Free during beta</span>
+              <span className="ml-2 text-xs" style={{ color: colors.mutedForeground }}>Free to shoot · 1 credit for each photo you keep</span>
             </p>
             <div className="flex flex-wrap gap-2">
               {results.length > 0 && (
@@ -939,11 +1072,19 @@ export default function PhotoStudioPage(): JSX.Element {
                 style={{ background: colors.primary, color: colors.primaryForeground }}>
                 <Pencil className="h-4 w-4" /> Edit
               </button>
-              <button type="button" onClick={() => void download(item.images[0], `${(results[i]?.shotId || "photo").replace(/_/g, "-")}-${i + 1}.jpg`)}
-                className="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium"
-                style={{ background: colors.card, color: colors.foreground, border: `1px solid ${colors.border}` }}>
-                <Download className="h-4 w-4" /> Download
-              </button>
+              {results[i]?.kept ? (
+                <button type="button" onClick={() => void download(item.images[0], `${(results[i]?.shotId || "photo").replace(/_/g, "-")}-${i + 1}.png`)}
+                  className="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium"
+                  style={{ background: colors.card, color: colors.foreground, border: `1px solid ${colors.border}` }}>
+                  <Download className="h-4 w-4" /> Download
+                </button>
+              ) : results[i] ? (
+                <button type="button" disabled={keeping} onClick={() => void keep([results[i].id])}
+                  className="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-60"
+                  style={{ background: colors.card, color: colors.foreground, border: `1px solid ${colors.border}` }}>
+                  <Check className="h-4 w-4" /> Keep · 1 credit
+                </button>
+              ) : null}
             </>
           )}
         />
@@ -960,7 +1101,7 @@ export default function PhotoStudioPage(): JSX.Element {
             title={`${def?.label || "Photo"}${sameShot.length > 1 ? ` ${n + 1}` : ""}`}
             withPeople={!!def?.usesModel || def?.method === "guided"}
             isFood={!!p.isFood}
-            onSubmit={(request) => editPhoto(r.url, request)}
+            onSubmit={(request) => editPhoto(r.id, request)}
             onClose={() => setEditing(null)}
           />
         );

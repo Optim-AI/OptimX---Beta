@@ -61,9 +61,9 @@ const NAV_SECTIONS: NavSection[] = [
     label: 'Create',
     items: [
       { href: '/brand-kit', label: 'Brand Kit', Icon: Palette },
-      { href: '/photo-studio', label: 'Photoshoot Studio', Icon: Camera, betaBadge: true },
+      { href: '/photo-studio', label: 'Photoshoot Studio', Icon: Camera },
       { href: '/brand-studio', label: 'Brand Studio', Icon: Orbit },
-      { href: '/content-studio', label: 'Ad Studio', Icon: ImageIcon, betaBadge: true },
+      { href: '/content-studio', label: 'Ad Studio', Icon: ImageIcon },
       { href: '/ugc-studio', label: 'UGC Studio', Icon: Smartphone, comingSoon: true },
       { href: '/create-campaign', label: 'Create Campaign', Icon: PlusCircle, featureKey: 'create_campaigns' },
     ],

@@ -1,5 +1,6 @@
 // pages/api/photo-studio/shoot.ts
-// Shoot one shot of a saved Photo Studio session (1 image credit per photo kept).
+// Shoot one shot of a saved Photo Studio session. Free: photos are drafts (watermarked
+// previews) until kept — see /api/photo-studio/keep.
 
 import type { NextApiRequest, NextApiResponse } from "next";
 import { getUserIdFromRequest } from "@/auth/request";
@@ -55,10 +56,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       aspect: settings.aspect,
       state: { ...state, settings },
     });
-    return res.status(200).json({ ok: true, results, creditsCharged: results.length });
+    return res.status(200).json({ ok: true, results });
   } catch (e) {
     if (e instanceof PhotoStudioError) return res.status(e.status).json({ ok: false, error: e.message, code: e.code });
     console.error("[photoStudio] shoot failed", { userId, sessionId, shotId, error: (e as Error)?.message });
-    return res.status(500).json({ ok: false, error: "This shot didn't come out. No credits were charged — try again." });
+    return res.status(500).json({ ok: false, error: "This shot didn't come out. Try again." });
   }
 }

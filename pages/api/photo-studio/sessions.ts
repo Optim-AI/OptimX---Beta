@@ -6,7 +6,9 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { getUserIdFromRequest } from "@/auth/request";
 import { CreativeStudioSessionDAO } from "@/database/models/CreativeStudioSession.dao";
-import { deleteShootSession, getShootSession } from "@/lib/photo-studio/shoot";
+import { deleteShootSession, getShootView } from "@/lib/photo-studio/shoot";
+import { isKept } from "@/lib/photo-studio/drafts";
+import type { ShotResult } from "@/lib/photo-studio/types";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "GET" && req.method !== "DELETE") {
@@ -25,19 +27,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(200).json({ ok: true });
   }
   if (id) {
-    const shoot = await getShootSession(userId, id);
+    const shoot = await getShootView(userId, id);
     return shoot ? res.status(200).json({ ok: true, shoot }) : res.status(404).json({ ok: false, error: "Shoot not found" });
   }
   const rows = await CreativeStudioSessionDAO.listByUser(userId, { sessionType: "photo", limit: 20 });
   return res.status(200).json({
     ok: true,
-    shoots: rows.map((r) => ({
-      id: r.id,
-      name: r.name,
-      updatedAt: r.updatedAt,
-      sourceUrl: (r.productData as any)?.sourceUrl ?? null,
-      photos: Array.isArray(r.generatedPosters) ? (r.generatedPosters as string[]).length : 0,
-      cover: Array.isArray(r.generatedPosters) ? (r.generatedPosters as string[])[0] ?? null : null,
-    })),
+    shoots: rows.map((r) => {
+      const results = ((((r.config as any) || {}).results || []) as ShotResult[]);
+      const kept = Array.isArray(r.generatedPosters) ? (r.generatedPosters as string[]) : [];
+      return {
+        id: r.id,
+        name: r.name,
+        updatedAt: r.updatedAt,
+        sourceUrl: (r.productData as any)?.sourceUrl ?? null,
+        // Kept photos (full files). Drafts are counted separately: their previews are private.
+        photos: kept.length,
+        drafts: results.filter((x) => !isKept(x)).length,
+        cover: kept[0] ?? null,
+      };
+    }),
   });
 }

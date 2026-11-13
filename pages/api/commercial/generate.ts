@@ -38,6 +38,8 @@ import {
 } from "@/lib/billing/video-billing";
 import { isCampaignDurationSeconds } from "@/lib/creative-studio/commercial-production/campaign/campaign-duration";
 import { GenerationLocksDAO } from "@/database/models/GenerationLocks.dao";
+import type { CommercialBlueprintCore } from "@/lib/creative-studio/commercial-production/commercial-director/types";
+import type { ShotPlan } from "@/lib/creative-studio/commercial-production/shot-planner/types";
 
 export const config = {
   api: {
@@ -95,6 +97,131 @@ function isMissingLockTableError(error: unknown): boolean {
     /generation_job_locks/i.test(msg) ||
     /relation .* does not exist/i.test(msg)
   );
+}
+
+type PendingProvider = {
+  providerJobId: string;
+  blueprint: CommercialBlueprintCore;
+  shotPlan: ShotPlan;
+  generationMode: CampaignGenerationMode;
+  resumes?: number;
+};
+
+/** A resumed job may be handed over again this many times before we give up (~40 min total). */
+const MAX_PROVIDER_RESUMES = 2;
+
+function stillRunningHandover(
+  error: unknown,
+  generationMode: CampaignGenerationMode,
+  previousResumes = 0
+): PendingProvider | null {
+  if (!(error instanceof CampaignExecutorError) || error.code !== "PROVIDER_STILL_RUNNING") return null;
+  const d = error.details as Partial<PendingProvider> | undefined;
+  if (!d?.providerJobId || !d.blueprint || !d.shotPlan) return null;
+  if (previousResumes >= MAX_PROVIDER_RESUMES) return null;
+  return {
+    providerJobId: d.providerJobId,
+    blueprint: d.blueprint,
+    shotPlan: d.shotPlan,
+    generationMode,
+    resumes: previousResumes,
+  };
+}
+
+/**
+ * Finish a generation whose provider job outlived the request that started it:
+ * wait for that same job, then run voiceover, end card and QC, and bill once.
+ */
+async function resumeProviderJob(params: {
+  res: NextApiResponse;
+  userId: string;
+  brief: CampaignBrief;
+  lockKey: string;
+  reservationId: string | null;
+  pending: PendingProvider;
+  generationVersion: string;
+  duration: number;
+  availableAssets: unknown;
+  runCommercialQc: boolean;
+}) {
+  const { res, userId, brief, lockKey, reservationId, pending, generationVersion, duration } = params;
+  const startedAt = Date.now();
+  console.log("[api/commercial/generate] resuming provider job", {
+    userId,
+    lockKey,
+    providerJobId: pending.providerJobId,
+    resumes: pending.resumes ?? 0,
+  });
+  try {
+    const finalCommercial = await produceFinalCommercial(
+      {
+        brief,
+        generationVersion,
+        generationMode: pending.generationMode,
+        availableAssets: params.availableAssets as never,
+        blueprint: pending.blueprint,
+        shotPlan: pending.shotPlan,
+        skipDownload: false,
+        skipStorage: false,
+        userId,
+        runCommercialQc: params.runCommercialQc,
+      },
+      {
+        resumeProviderJobId: pending.providerJobId,
+        productIsolator: null,
+        deadlineAt: startedAt + FUNCTION_MAX_DURATION_MS - POST_GENERATION_RESERVE_MS,
+      }
+    );
+
+    if (reservationId) {
+      try {
+        await finalizeVideoReservation({ userId, reservationId, success: true });
+      } catch (billErr) {
+        // The hold may have been released as stale meanwhile; the customer still gets the video.
+        console.error("[api/commercial/generate] resume consume failed", billErr);
+      }
+    }
+    await GenerationLocksDAO.markCompleted(lockKey, {
+      generationVersion,
+      duration,
+      generationMode: pending.generationMode,
+      finalCommercial,
+    });
+    return res.status(200).json({
+      ok: true,
+      referenceId: lockKey,
+      generationMode: pending.generationMode,
+      finalCommercial,
+      commercialQC: finalCommercial.commercialQC,
+    });
+  } catch (error) {
+    const again = stillRunningHandover(error, pending.generationMode, (pending.resumes ?? 0) + 1);
+    if (again) {
+      await GenerationLocksDAO.markWaitingOnProvider(lockKey, again);
+      return res.status(202).json({ ok: false, pending: true, code: "GENERATION_STILL_RENDERING" });
+    }
+    if (reservationId) {
+      try {
+        await finalizeVideoReservation({ userId, reservationId, success: false });
+      } catch (releaseErr) {
+        console.error("[api/commercial/generate] resume release failed", releaseErr);
+      }
+    }
+    await GenerationLocksDAO.markFailed(lockKey, errorSummary(error)).catch((e) =>
+      console.error("[api/commercial/generate] resume markFailed", e)
+    );
+    const message =
+      error instanceof CampaignExecutorError && error.code === "PROVIDER_STILL_RUNNING"
+        ? "Our video partner is very slow right now and this video didn't finish. No Video Credits were used — please try again later."
+        : error instanceof Error
+          ? error.message
+          : "Campaign production failed";
+    return res.status(500).json({
+      ok: false,
+      error: message,
+      code: error instanceof CampaignExecutorError ? error.code : undefined,
+    });
+  }
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -160,6 +287,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return res.status(404).json({ ok: false, error: "No generation found", code: "GENERATION_NOT_FOUND" });
       }
       if (existing.status === "in_progress") {
+        const pending = (existing.resultSummary as { pendingProvider?: PendingProvider } | null)?.pendingProvider;
+        if (pending?.providerJobId) {
+          const takeover = await GenerationLocksDAO.claimProviderResume(referenceId, userId);
+          if (takeover) {
+            return resumeProviderJob({
+              res,
+              userId,
+              brief,
+              lockKey: referenceId,
+              reservationId: existing.reservationId,
+              pending,
+              generationVersion,
+              duration,
+              availableAssets: body.availableAssets,
+              runCommercialQc: body.runCommercialQc !== false,
+            });
+          }
+        }
         return res.status(202).json({ ok: false, pending: true, code: "GENERATION_IN_PROGRESS" });
       }
       const replay = storedResult(existing.resultSummary);
@@ -289,6 +434,29 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           },
         });
       } catch (genError) {
+        // Runway is still rendering at our time limit: keep the credits on hold and
+        // let the browser's next check finish the same job (no second provider charge).
+        const handover = lockClaimed && lockKey ? stillRunningHandover(genError, generationMode) : null;
+        if (handover && lockKey) {
+          try {
+            await GenerationLocksDAO.markWaitingOnProvider(lockKey, handover);
+            reservationId = null;
+            console.warn("[api/commercial/generate] provider still rendering — handed over", {
+              userId,
+              lockKey,
+              providerJobId: handover.providerJobId,
+            });
+            return res.status(202).json({
+              ok: false,
+              pending: true,
+              code: "GENERATION_STILL_RENDERING",
+              referenceId,
+              error: (genError as Error).message,
+            });
+          } catch (handoverErr) {
+            console.error("[api/commercial/generate] handover failed", handoverErr);
+          }
+        }
         await finalizeVideoReservation({
           userId,
           reservationId: reservationId!,
