@@ -1,5 +1,6 @@
 // app/api/translate-prompt/route.ts
 import { NextRequest, NextResponse } from "next/server";
+import { requireUserForAi } from "@/lib/security/app-route-auth";
 import OpenAI from "openai";
 
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -46,6 +47,9 @@ function extractTextFromResponse(response: any): string | null {
 }
 
 export async function POST(req: NextRequest) {
+  const gate = await requireUserForAi(req, "translate-prompt");
+  if ("response" in gate) return gate.response;
+
   try {
     const body = await req.json().catch(() => ({}));
     const { text, purpose = "ad", context = {} } = body ?? {};

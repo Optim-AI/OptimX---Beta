@@ -498,7 +498,7 @@ export default function ImageLibraryPage(): JSX.Element {
         return;
       }
 
-      const resp = await fetch("/api/generateCaption", {
+      const resp = await authFetch("/api/generateCaption", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

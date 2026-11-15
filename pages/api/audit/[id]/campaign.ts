@@ -1,3 +1,4 @@
+import { limitedPagesApi } from "@/lib/security/rate-limit";
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { CreativeStudioSessionDAO } from '@/database/models/CreativeStudioSession.dao';
 import { DEFAULT_AD_BUILDER_DATA } from '@/app/web/src/components/creative-studio/ad-builder-defaults';
@@ -14,6 +15,8 @@ import type { AuditBrand, ContentIdea } from '@/lib/audit/types';
  * Idempotent: repeated calls return the same session.
  */
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (req.method === "POST" && limitedPagesApi(req, res, "audit-campaign", 10, 3600000)) return;
+
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
     return res.status(405).json({ ok: false, error: 'Method not allowed' });

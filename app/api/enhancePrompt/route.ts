@@ -1,5 +1,6 @@
 // app/api/enhancePrompt/route.ts
 import OpenAI from "openai";
+import { requireUserForAi } from "@/lib/security/app-route-auth";
 import { NextResponse } from "next/server";
 
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -83,6 +84,9 @@ function extractTextFromResponse(response: any): string | null {
 }
 
 export async function POST(req: Request) {
+  const gate = await requireUserForAi(req, "enhancePrompt");
+  if ("response" in gate) return gate.response;
+
   try {
     if (!process.env.OPENAI_API_KEY) {
       return NextResponse.json({ error: "OpenAI API key not configured." }, { status: 500 });

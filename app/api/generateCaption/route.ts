@@ -1,5 +1,6 @@
 // app/api/generateCaption/route.ts
 import { NextRequest, NextResponse } from "next/server";
+import { requireUserForAi } from "@/lib/security/app-route-auth";
 import OpenAI from "openai";
 
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -122,6 +123,9 @@ function extractTextFromAnyResponse(response: any): string | null {
 
 /** POST handler */
 export async function POST(req: NextRequest) {
+  const gate = await requireUserForAi(req, "generateCaption");
+  if ("response" in gate) return gate.response;
+
   try {
     const body = await req.json();
     const { prompt } = body ?? {};

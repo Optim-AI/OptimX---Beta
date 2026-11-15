@@ -1,4 +1,5 @@
 // pages/api/billing/jobs/credit-reset.ts
+import { isCronRequest } from '@/lib/jobs/cron-auth';
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { CreditResetJob } from '@/lib/jobs/credit-reset.job';
 
@@ -16,10 +17,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   try {
     // Verify cron secret in production
-    const cronSecret = process.env.CRON_SECRET;
-    const providedSecret = req.headers['x-cron-secret'] || req.query.secret;
-
-    if (cronSecret && providedSecret !== cronSecret) {
+    // Never open: without CRON_SECRET the job refuses to run. The secret goes in a
+    // header (Vercel Cron's "Authorization: Bearer", or x-cron-secret), never in the URL.
+    const cronSecret = process.env.CRON_SECRET?.trim();
+    const headerSecret = req.headers['x-cron-secret'];
+    const providedSecret = Array.isArray(headerSecret) ? headerSecret[0] : headerSecret;
+    if (!cronSecret || !(isCronRequest(req) || providedSecret === cronSecret)) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 

@@ -1,3 +1,4 @@
+import { limitedPagesApi } from "@/lib/security/rate-limit";
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { getClientIp, hashClientIp } from '@/lib/audit/rate-limit';
 import { validateContactRequest } from '@/lib/contact/validate';
@@ -10,6 +11,8 @@ import { SITE_SUPPORT_EMAIL } from '@/lib/seo/site';
  * Emails a /Contact message to the support inbox. Stores nothing.
  */
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (req.method === "POST" && limitedPagesApi(req, res, "contact", 5, 600000)) return;
+
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
     return res.status(405).json({ ok: false, error: 'Method not allowed' });

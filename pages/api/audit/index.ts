@@ -1,3 +1,4 @@
+import { limitedPagesApi } from "@/lib/security/rate-limit";
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { getUserIdFromRequest } from '@/auth/request';
 import { ensureProfile } from '@/lib/auth/ensure-profile';
@@ -26,6 +27,8 @@ const HOST_MESSAGES: Record<string, string> = {
  * otherwise 409 email_used. Signed-in users may omit the email.
  */
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (req.method === "POST" && limitedPagesApi(req, res, "audit-start", 10, 3600000)) return;
+
   const requestId = newAuditRequestId();
   res.setHeader('x-audit-request-id', requestId);
 

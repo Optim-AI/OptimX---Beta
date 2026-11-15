@@ -1,4 +1,5 @@
 // pages/api/admin/login.ts
+import { limitedPagesApi } from "@/lib/security/rate-limit";
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { verifyAdminCredentials, generateAdminToken } from '@/lib/admin-auth';
 
@@ -7,6 +8,8 @@ import { verifyAdminCredentials, generateAdminToken } from '@/lib/admin-auth';
  * Admin login endpoint
  */
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (req.method === "POST" && limitedPagesApi(req, res, "admin-login", 8, 900000)) return;
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }

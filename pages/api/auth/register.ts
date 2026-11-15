@@ -1,3 +1,4 @@
+import { limitedPagesApi } from "@/lib/security/rate-limit";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { supabaseAdmin } from "@/auth/supabase/admin";
 import { ProfileDAO } from "@/database";
@@ -10,6 +11,8 @@ import { isExistingAccountError, validateRegisterInput } from "@/lib/auth/regist
  * registration confirms the address here and does not send that email.
  */
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (req.method === "POST" && limitedPagesApi(req, res, "register", 6, 3600000)) return;
+
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
     return res.status(405).json({ ok: false, error: "Method not allowed" });

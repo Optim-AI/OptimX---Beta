@@ -1,4 +1,5 @@
 // pages/integrationsInstagram.tsx
+import { authFetch } from "@/lib/utils";
 import React, { useEffect, useState } from "react";
 import { supabase } from '@/auth/supabase/client';
 import { apiFetch } from '@/api/fetch';
@@ -267,7 +268,7 @@ export default function IntegrationsInstagram() {
     setGeneratingCaption(true);
     setResult(null);
     try {
-      const res = await fetch("/api/generateCaption", {
+      const res = await authFetch("/api/generateCaption", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt: caption, mode }),

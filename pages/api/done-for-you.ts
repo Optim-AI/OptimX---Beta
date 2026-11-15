@@ -1,3 +1,4 @@
+import { limitedPagesApi } from "@/lib/security/rate-limit";
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { getClientIp, hashClientIp } from '@/lib/audit/rate-limit';
 import { notifyDfyEnquiry, validateDfyRequest } from '@/lib/contact/done-for-you';
@@ -10,6 +11,8 @@ const GENERIC_ERROR = 'Something went wrong. Please try again.';
  * Emails a "Done for you" enquiry to the support inbox (same path as /api/contact). Stores nothing.
  */
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (req.method === "POST" && limitedPagesApi(req, res, "done-for-you", 5, 600000)) return;
+
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
     return res.status(405).json({ ok: false, error: 'Method not allowed' });

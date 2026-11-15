@@ -10,12 +10,6 @@ import { profileClient } from "@/database/client-helpers";
 import type { JSX } from "react";
 import Link from "next/link";
 import { Button } from "../app/web/src/components/ui/button";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "../app/web/src/components/ui/tabs";
 import { SITE_SUPPORT_EMAIL } from "@/lib/seo/site";
 import colors from "@/lib/ui/colors";
 import { authFetch } from "@/lib/utils";
@@ -28,15 +22,13 @@ import {
   type SettingsTabValue,
   SettingsCard,
   SettingsSectionHeader,
-  SettingsDivider,
   ProfileAvatar,
-  PolicyDocumentLink,
   PaymentStatusBadge,
   fieldLabelStyle,
   fieldInputStyle,
   fieldSelectStyle,
 } from "@/app/web/src/components/settings/SettingsUI";
-import { Image as ImageIcon, Video, Shield, KeyRound } from "lucide-react";
+import { Building2, Check, ChevronRight, CreditCard, FileText, Image as ImageIcon, KeyRound, LogOut, Plug, Receipt, ShieldCheck, Trash2, User, Video } from "lucide-react";
 import MetaIntegrationCard from "@/app/web/src/components/meta-intel/MetaIntegrationCard";
 
 type ProfilePayload = {
@@ -154,9 +146,57 @@ function transactionLabel(tx: {
   return tx.paymentType;
 }
 
+/** The five sections, in plain words, with what each one is for. */
+const SECTIONS: Record<SettingsTabValue, { label: string; hint: string; Icon: typeof User }> = {
+  profile: { label: "Your account", hint: "Name, email, sign out", Icon: User },
+  business: { label: "Your business", hint: "Name, location, GST", Icon: Building2 },
+  billing: { label: "Plan & billing", hint: "Credits, plan, payments", Icon: CreditCard },
+  integrations: { label: "Connected accounts", hint: "Facebook & Instagram", Icon: Plug },
+  security: { label: "Security & legal", hint: "Password, policies", Icon: ShieldCheck },
+};
+
+const controlStyle: React.CSSProperties = { ...fieldInputStyle, minHeight: 46, fontSize: 15 };
+const selectStyle: React.CSSProperties = { ...fieldSelectStyle, minHeight: 46, fontSize: 15 };
+
+function Field({ id, label, hint, error, wide, children }: { id: string; label: string; hint?: string; error?: string | null; wide?: boolean; children: React.ReactNode }) {
+  return (
+    <div className={wide ? "md:col-span-2" : undefined}>
+      <label htmlFor={id} style={{ ...fieldLabelStyle, color: colors.foreground, fontSize: 14 }}>
+        {label}
+      </label>
+      {children}
+      {error ? (
+        <p role="alert" className="mt-1.5 text-sm" style={{ color: colors.destructive }}>{error}</p>
+      ) : hint ? (
+        <p className="mt-1.5 text-xs" style={{ color: colors.mutedForeground }}>{hint}</p>
+      ) : null}
+    </div>
+  );
+}
+
+/** A row that opens something: icon, title, one line of help, and an action on the right. */
+function ActionRow({ Icon, title, body, tone = "default", children }: { Icon: typeof User; title: string; body: React.ReactNode; tone?: "default" | "danger"; children?: React.ReactNode }) {
+  const danger = tone === "danger";
+  return (
+    <div className="flex flex-col gap-3 rounded-xl px-4 py-4 sm:flex-row sm:items-center sm:justify-between" style={{ background: colors.background, border: `1px solid ${colors.border}` }}>
+      <div className="flex min-w-0 items-start gap-3">
+        <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg" style={{ background: danger ? "hsl(0 84% 55% / 0.1)" : "hsl(213 100% 55% / 0.12)", color: danger ? colors.destructive : colors.primary }}>
+          <Icon size={16} aria-hidden />
+        </span>
+        <div className="min-w-0">
+          <p className="text-sm font-semibold" style={{ color: colors.foreground }}>{title}</p>
+          <p className="mt-0.5 text-sm leading-relaxed" style={{ color: colors.mutedForeground }}>{body}</p>
+        </div>
+      </div>
+      {children ? <div className="shrink-0">{children}</div> : null}
+    </div>
+  );
+}
+
 export default function SettingsPage(): JSX.Element {
   const router = useRouter();
   const recaptchaContainerRef = useRef<HTMLDivElement | null>(null);
+  const navRef = useRef<HTMLElement | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -212,6 +252,16 @@ export default function SettingsPage(): JSX.Element {
       setTab(queryTab);
     }
   }, [router.isReady, router.query.tab]);
+
+  // On phones the section menu scrolls sideways: keep the open section's button in view.
+  useEffect(() => {
+    if (loading) return;
+    const nav = navRef.current;
+    const item = nav?.querySelector<HTMLElement>('.settings-nav-item[aria-current="page"]');
+    if (!nav || !item || nav.scrollWidth <= nav.clientWidth) return;
+    const left = item.getBoundingClientRect().left - nav.getBoundingClientRect().left + nav.scrollLeft;
+    nav.scrollTo({ left: Math.max(0, left - (nav.clientWidth - item.offsetWidth) / 2) });
+  }, [tab, loading]);
 
   function handleTabChange(next: string) {
     if (!isSettingsTab(next)) return;
@@ -499,661 +549,357 @@ export default function SettingsPage(): JSX.Element {
     return { label: "Manage plan", href: "/buy-credits" };
   }, [subscription]);
 
+  const shell = (content: React.ReactNode) => (
+    <div className="min-h-screen flex app-page" style={{ background: colors.background }}>
+      <Sidebar />
+      <main className="flex-1 overflow-y-auto">
+        <div className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">{content}</div>
+      </main>
+    </div>
+  );
+
   if (loading) {
-    return (
-      <div className="min-h-screen flex app-page" style={{ background: colors.background }}>
-        <Sidebar />
-        <main className="flex-1 flex items-center justify-center p-6">
-          <p style={{ color: colors.mutedForeground, fontSize: 15 }}>Loading settings…</p>
-        </main>
+    return shell(
+      <div aria-busy="true" aria-label="Loading settings">
+        <div className="h-8 w-40 animate-pulse rounded-lg" style={{ background: colors.muted }} />
+        <div className="mt-6 grid gap-6 lg:grid-cols-[230px_minmax(0,1fr)]">
+          <div className="hidden space-y-2 lg:block">
+            {[0, 1, 2, 3, 4].map((i) => <div key={i} className="h-14 animate-pulse rounded-xl" style={{ background: colors.muted }} />)}
+          </div>
+          <div className="h-72 animate-pulse rounded-2xl" style={{ background: colors.muted }} />
+        </div>
       </div>
     );
   }
 
-  return (
-    <div className="min-h-screen flex app-page" style={{ background: colors.background }}>
-      <Sidebar />
+  const saveRow = (
+    <div className="flex flex-col gap-3 pt-5 sm:flex-row sm:items-center" style={{ borderTop: `1px solid ${colors.border}` }}>
+      <Button type="submit" disabled={saving} className="h-11 px-6 text-sm font-semibold">
+        {saving ? "Saving…" : "Save changes"}
+      </Button>
+      <span aria-live="polite" className="text-sm font-medium">
+        {saveSuccess ? (
+          <span className="inline-flex items-center gap-1.5" style={{ color: colors.green600 }}><Check size={15} aria-hidden /> Saved</span>
+        ) : saveError ? (
+          <span style={{ color: colors.destructive }}>{saveError}</span>
+        ) : null}
+      </span>
+    </div>
+  );
+  const onSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await saveProfileAndAi();
+  };
 
-      <main className="flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-4xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
-          <style jsx>{`
-            .settings-tabs button {
-              transition: background-color 0.15s, color 0.15s;
-            }
-            .settings-tabs button[data-state="inactive"]:hover {
-              background-color: hsl(0 0% 22%) !important;
-              color: ${colors.foreground} !important;
-            }
-            .settings-input:focus,
-            .settings-select:focus {
-              border-color: ${colors.primary} !important;
-              box-shadow: 0 0 0 3px hsl(213 100% 55% / 0.16);
-            }
-            .settings-select option {
-              background: ${colors.card};
-              color: ${colors.foreground};
-            }
-            .settings-tabs-scroll {
-              -webkit-overflow-scrolling: touch;
-              scrollbar-width: none;
-            }
-            .settings-tabs-scroll::-webkit-scrollbar {
-              display: none;
-            }
-          `}</style>
+  const subEnding = Boolean(subscription?.cancelAtPeriodEnd);
+  const planStatus = !subscription ? "No plan" : subEnding ? "Cancelled" : subscription.status === "past_due" ? "Payment due" : "Active";
+  const planTone = !subscription
+    ? { background: colors.muted, color: colors.mutedForeground }
+    : subEnding || subscription.status === "past_due"
+      ? { background: "hsl(38 92% 50% / 0.16)", color: "hsl(38 92% 68%)" }
+      : { background: "hsl(142 70% 45% / 0.16)", color: "hsl(142 70% 62%)" };
 
-          <header className="mb-6 sm:mb-8">
-            <h1
-              className="text-2xl font-bold tracking-tight sm:text-3xl"
-              style={{ color: colors.foreground }}
-            >
-              Settings
-            </h1>
-            <p className="mt-2 max-w-2xl text-sm leading-relaxed sm:text-[15px]" style={{ color: colors.mutedForeground }}>
-              Manage your account, business profile, billing, integrations, and security.
-            </p>
-          </header>
+  return shell(
+    <>
+      <style jsx global>{`
+        .settings-input:focus, .settings-select:focus {
+          border-color: ${colors.primary} !important;
+          box-shadow: 0 0 0 3px hsl(213 100% 55% / 0.16);
+        }
+        .settings-select option { background: ${colors.card}; color: ${colors.foreground}; }
+        .settings-nav-scroll { -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+        .settings-nav-scroll::-webkit-scrollbar { display: none; }
+        .settings-nav-item:focus-visible, .settings-link:focus-visible { outline: 2px solid ${colors.primary}; outline-offset: 2px; }
+        .settings-nav-item[aria-current="false"]:hover { background: ${colors.muted}; }
+        .settings-link:hover { border-color: ${colors.primary} !important; }
+      `}</style>
 
-          <Tabs value={tab} onValueChange={handleTabChange}>
-            <div className="settings-tabs-scroll mb-6 overflow-x-auto">
-              <TabsList
-                className="settings-tabs inline-flex min-w-full gap-1 rounded-xl p-1 sm:min-w-0"
-                style={{
-                  backgroundColor: colors.muted,
-                  border: `1px solid ${colors.border}`,
-                  height: "auto",
-                }}
-              >
-                {SETTINGS_TABS.map((item) => {
-                  const active = tab === item.value;
-                  return (
-                    <TabsTrigger
-                      key={item.value}
-                      value={item.value}
-                      className="rounded-lg px-3 py-2.5 text-sm font-medium sm:px-4"
-                      style={{
-                        backgroundColor: active ? colors.primary : "transparent",
-                        color: active ? colors.primaryForeground : colors.mutedForeground,
-                        boxShadow: active ? "0 4px 14px hsl(213 100% 55% / 0.28)" : "none",
-                      }}
-                    >
-                      {item.label}
-                    </TabsTrigger>
-                  );
-                })}
-              </TabsList>
-            </div>
+      {/* Who is signed in */}
+      <header className="mb-6 flex flex-wrap items-center gap-4 sm:mb-8">
+        <ProfileAvatar name={profile?.full_name} email={profile?.email} />
+        <div className="min-w-0 flex-1">
+          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl" style={{ color: colors.foreground }}>Settings</h1>
+          <p className="mt-1 truncate text-sm sm:text-[15px]" style={{ color: colors.mutedForeground }}>
+            {profile?.full_name ? `${profile.full_name} · ` : ""}{profile?.email || "Your SkalX account"}
+          </p>
+        </div>
+      </header>
 
-            {/* Profile */}
-            <TabsContent value="profile" className="mt-0 space-y-5" style={{ background: "transparent" }}>
+      <div className="grid gap-6 lg:grid-cols-[230px_minmax(0,1fr)] lg:gap-8">
+        {/* Section menu: a side list on large screens, a scrolling row on phones */}
+        <nav ref={navRef} aria-label="Settings sections" className="settings-nav-scroll -mx-4 overflow-x-auto px-4 lg:mx-0 lg:overflow-visible lg:px-0">
+          <ul className="flex gap-2 lg:sticky lg:top-6 lg:flex-col lg:gap-1">
+            {SETTINGS_TABS.map((item) => {
+              const active = tab === item.value;
+              const { label, hint, Icon } = SECTIONS[item.value];
+              return (
+                <li key={item.value} className="shrink-0">
+                  <button
+                    type="button"
+                    aria-current={active ? "page" : "false"}
+                    onClick={() => handleTabChange(item.value)}
+                    className="settings-nav-item flex w-full items-center gap-3 rounded-xl px-3.5 py-2.5 text-left transition-colors"
+                    style={{
+                      background: active ? "hsl(213 100% 55% / 0.14)" : "transparent",
+                      border: `1px solid ${active ? "hsl(213 100% 55% / 0.45)" : "transparent"}`,
+                      minHeight: 48,
+                    }}
+                  >
+                    <Icon size={18} aria-hidden style={{ color: active ? colors.primary : colors.mutedForeground }} />
+                    <span className="min-w-0">
+                      <span className="block whitespace-nowrap text-sm font-semibold" style={{ color: active ? colors.foreground : colors.mutedForeground }}>{label}</span>
+                      <span className="hidden text-xs lg:block" style={{ color: colors.mutedForeground }}>{hint}</span>
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </nav>
+
+        <div className="min-w-0 space-y-5">
+          {/* Your account */}
+          {tab === "profile" && (
+            <>
               <SettingsCard>
-                <SettingsSectionHeader
-                  title="Personal Information"
-                  description="Update the details associated with your SkalX account."
-                />
-
-                <div className="mb-6 flex items-center gap-4">
-                  <ProfileAvatar name={profile?.full_name} email={profile?.email} />
-                  <div className="min-w-0">
-                    <p className="truncate text-base font-semibold" style={{ color: colors.foreground }}>
-                      {profile?.full_name || "Your profile"}
-                    </p>
-                    <p className="truncate text-sm" style={{ color: colors.mutedForeground }}>
-                      {profile?.email || "No email on file"}
-                    </p>
-                  </div>
-                </div>
-
-                <form
-                  className="space-y-5"
-                  onSubmit={async (e) => {
-                    e.preventDefault();
-                    await saveProfileAndAi();
-                  }}
-                >
+                <SettingsSectionHeader title="Your details" description="The name we use for you in SkalX." />
+                <form className="space-y-5" onSubmit={onSave}>
                   <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-                    <div>
-                      <label htmlFor="full_name" style={fieldLabelStyle}>
-                        Full name
-                      </label>
+                    <Field id="full_name" label="Full name" error={profileNameError}>
                       <input
                         id="full_name"
                         className="settings-input"
-                        style={fieldInputStyle}
+                        style={controlStyle}
                         value={profile?.full_name ?? ""}
                         onChange={(e) => {
                           setProfileNameError(null);
-                          setProfile({
-                            ...(profile as ProfilePayload),
-                            full_name: e.target.value,
-                          });
+                          setProfile({ ...(profile as ProfilePayload), full_name: e.target.value });
                         }}
                         placeholder="Your full name"
                         autoComplete="name"
                       />
-                      {profileNameError ? (
-                        <p className="mt-1.5 text-xs" style={{ color: colors.destructive }}>
-                          {profileNameError}
-                        </p>
-                      ) : null}
-                    </div>
-
-                    <div>
-                      <label htmlFor="email" style={fieldLabelStyle}>
-                        Email
-                      </label>
+                    </Field>
+                    <Field id="email" label="Email" hint="This is the email you sign in with. It can't be changed here.">
                       <input
                         id="email"
                         type="email"
                         className="settings-input"
-                        style={{
-                          ...fieldInputStyle,
-                          opacity: 0.72,
-                          cursor: "not-allowed",
-                        }}
+                        style={{ ...controlStyle, opacity: 0.72, cursor: "not-allowed" }}
                         value={profile?.email ?? ""}
                         disabled
                         readOnly
-                        placeholder="you@example.com"
                         autoComplete="email"
                       />
-                      <p className="mt-1.5 text-xs" style={{ color: colors.mutedForeground }}>
-                        Email is managed by your sign-in method and can&apos;t be changed here.
-                      </p>
-                    </div>
+                    </Field>
                   </div>
-
-                  <div
-                    className="flex flex-col gap-3 pt-5 sm:flex-row sm:items-center"
-                    style={{ borderTop: `1px solid ${colors.border}` }}
-                  >
-                    <Button type="submit" disabled={saving}>
-                      {saving ? "Saving…" : "Save changes"}
-                    </Button>
-                    {saveSuccess ? (
-                      <span className="text-sm font-medium" style={{ color: colors.green600 }}>
-                        Saved successfully
-                      </span>
-                    ) : null}
-                    {saveError ? (
-                      <span className="text-sm font-medium" style={{ color: colors.destructive }}>
-                        {saveError}
-                      </span>
-                    ) : null}
-                  </div>
+                  {saveRow}
                 </form>
               </SettingsCard>
 
               <SettingsCard>
-                <SettingsSectionHeader
-                  title="Account access"
-                  description="Sign out of SkalX on this device. You can sign back in anytime with your existing credentials."
-                />
-                <Button
-                  variant="outline"
-                  type="button"
-                  onClick={handleSignOut}
-                  style={{
-                    borderColor: "hsl(0 84% 55% / 0.45)",
-                    color: colors.destructive,
-                    background: "hsl(0 84% 55% / 0.08)",
-                  }}
-                >
-                  Sign out
-                </Button>
-              </SettingsCard>
-            </TabsContent>
-
-            {/* Business */}
-            <TabsContent value="business" className="mt-0" style={{ background: "transparent" }}>
-              <SettingsCard>
-                <SettingsSectionHeader
-                  title="Business Details"
-                  description="Information used across Brand Studio and campaign experiences."
-                />
-
-                <form
-                  className="space-y-5"
-                  onSubmit={async (e) => {
-                    e.preventDefault();
-                    await saveProfileAndAi();
-                  }}
-                >
-                  <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-                    <div>
-                      <label htmlFor="business_name" style={fieldLabelStyle}>
-                        Business name
-                      </label>
-                      <input
-                        id="business_name"
-                        className="settings-input"
-                        style={fieldInputStyle}
-                        value={businessName}
-                        onChange={(e) => setBusinessName(e.target.value)}
-                        placeholder="Acme Inc."
-                      />
-                    </div>
-
-                    <div>
-                      <label htmlFor="location" style={fieldLabelStyle}>
-                        Location
-                      </label>
-                      <input
-                        id="location"
-                        className="settings-input"
-                        style={fieldInputStyle}
-                        value={location}
-                        onChange={(e) => setLocation(e.target.value)}
-                        placeholder="City, Country"
-                      />
-                    </div>
-
-                    <div className="md:col-span-2">
-                      <label htmlFor="gst_number" style={fieldLabelStyle}>
-                        GST number
-                      </label>
-                      <input
-                        id="gst_number"
-                        className="settings-input"
-                        style={fieldInputStyle}
-                        value={gstNumber}
-                        onChange={(e) => setGstNumber(e.target.value)}
-                        placeholder="e.g. 27XXXXX1234X1Z5"
-                      />
-                    </div>
-
-                    <div>
-                      <label htmlFor="business_type" style={fieldLabelStyle}>
-                        Business type
-                      </label>
-                      <select
-                        id="business_type"
-                        className="settings-select"
-                        style={fieldSelectStyle}
-                        value={businessType ?? ""}
-                        onChange={(e) => setBusinessType(e.target.value)}
-                      >
-                        {BUSINESS_TYPES.map((item) => (
-                          <option key={item} value={item}>
-                            {item}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label htmlFor="business_size" style={fieldLabelStyle}>
-                        Business size
-                      </label>
-                      <select
-                        id="business_size"
-                        className="settings-select"
-                        style={fieldSelectStyle}
-                        value={businessSize ?? ""}
-                        onChange={(e) => setBusinessSize(e.target.value)}
-                      >
-                        {BUSINESS_SIZES.map((item) => (
-                          <option key={item} value={item}>
-                            {item}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  <div
-                    className="flex flex-col gap-3 pt-5 sm:flex-row sm:items-center"
-                    style={{ borderTop: `1px solid ${colors.border}` }}
-                  >
-                    <Button type="submit" disabled={saving}>
-                      {saving ? "Saving…" : "Save changes"}
-                    </Button>
-                    {saveSuccess ? (
-                      <span className="text-sm font-medium" style={{ color: colors.green600 }}>
-                        Saved successfully
-                      </span>
-                    ) : null}
-                    {saveError ? (
-                      <span className="text-sm font-medium" style={{ color: colors.destructive }}>
-                        {saveError}
-                      </span>
-                    ) : null}
-                  </div>
-                </form>
-              </SettingsCard>
-            </TabsContent>
-
-            {/* Billing */}
-            <TabsContent value="billing" className="mt-0" style={{ background: "transparent" }}>
-              <SettingsCard>
-                {billingLoading ? (
-                  <p className="py-10 text-sm" style={{ color: colors.mutedForeground }}>
-                    Loading billing info…
-                  </p>
-                ) : billingError ? (
-                  <p className="py-10 text-sm" style={{ color: colors.destructive }}>
-                    {billingError}
-                  </p>
-                ) : (
-                  <>
-                    <SettingsSectionHeader
-                      title="Credit balance"
-                      description="Your available credits for image and video generation."
-                      action={
-                        <Button type="button" onClick={() => router.push("/buy-credits")}>
-                          Buy Credits
-                        </Button>
-                      }
-                    />
-
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      <div
-                        className="rounded-xl px-5 py-5"
-                        style={{
-                          background: "hsl(213 100% 55% / 0.12)",
-                          border: "1px solid hsl(213 100% 55% / 0.32)",
-                        }}
-                      >
-                        <div className="mb-3 flex items-center gap-2" style={{ color: "hsl(213 100% 70%)" }}>
-                          <ImageIcon size={16} />
-                          <span className="text-xs font-semibold uppercase tracking-[0.08em]">
-                            Image credits
-                          </span>
-                        </div>
-                        <p className="text-3xl font-bold" style={{ color: "hsl(213 100% 72%)" }}>
-                          {creditBalance?.imageCredits?.total ?? 0}
-                        </p>
-                      </div>
-
-                      <div
-                        className="rounded-xl px-5 py-5"
-                        style={{
-                          background: "hsl(270 80% 55% / 0.12)",
-                          border: "1px solid hsl(270 80% 55% / 0.28)",
-                        }}
-                      >
-                        <div className="mb-3 flex items-center gap-2" style={{ color: "hsl(270 80% 72%)" }}>
-                          <Video size={16} />
-                          <span className="text-xs font-semibold uppercase tracking-[0.08em]">
-                            Video credits
-                          </span>
-                        </div>
-                        <p className="text-3xl font-bold" style={{ color: "hsl(270 80% 72%)" }}>
-                          {creditBalance?.videoCredits?.total ?? 0}
-                        </p>
-                      </div>
-                    </div>
-
-                    <SettingsDivider />
-
-                    <SettingsSectionHeader
-                      title="Subscription plan"
-                      description="Your current plan and billing cycle."
-                      action={
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={() => router.push(planAction.href)}
-                        >
-                          {planAction.label}
-                        </Button>
-                      }
-                    />
-
-                    <div
-                      className="rounded-xl px-5 py-4"
-                      style={{
-                        background: colors.background,
-                        border: `1px solid ${colors.border}`,
-                      }}
-                    >
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-base font-semibold" style={{ color: colors.primary }}>
-                          {subscription?.plan?.name ?? "Pay-as-you-go"}
-                        </span>
-                        {(() => {
-                          const ending = Boolean(subscription?.cancelAtPeriodEnd);
-                          const label = !subscription ? "On demand" : ending ? "Cancelled" : subscription.status === "past_due" ? "Payment due" : "Active";
-                          const tone = !subscription
-                            ? { background: colors.muted, color: colors.mutedForeground }
-                            : ending || subscription.status === "past_due"
-                              ? { background: "hsl(38 92% 50% / 0.16)", color: "hsl(38 92% 68%)" }
-                              : { background: "hsl(142 70% 45% / 0.16)", color: "hsl(142 70% 62%)" };
-                          return (
-                            <span className="rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide" style={tone}>
-                              {label}
-                            </span>
-                          );
-                        })()}
-                      </div>
-
-                      {subscription ? (
-                        <>
-                          <dl className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-                            {[
-                              ["Billing", subscription.plan.billingCycle === "yearly" ? "Yearly" : subscription.plan.billingCycle === "monthly" ? "Monthly" : subscription.plan.billingCycle],
-                              [subscription.cancelAtPeriodEnd ? "Ends on" : "Renews on", periodEnd || "—"],
-                              ["Credits each cycle", `${subscription.plan.imageCredits ?? 0} image · ${subscription.plan.videoCredits ?? 0} video`],
-                            ].map(([term, value]) => (
-                              <div key={term}>
-                                <dt className="text-xs" style={{ color: colors.mutedForeground }}>{term}</dt>
-                                <dd className="mt-0.5 text-sm font-medium" style={{ color: colors.foreground }}>{value}</dd>
-                              </div>
-                            ))}
-                          </dl>
-
-                          {subscription.cancelAtPeriodEnd ? (
-                            <p role="status" className="mt-4 rounded-lg px-3.5 py-3 text-sm" style={{ background: "hsl(38 92% 50% / 0.1)", color: colors.foreground }}>
-                              Your subscription is cancelled. You can keep using your plan and its credits
-                              {periodEnd ? ` until ${periodEnd}` : " until the end of this billing period"}. After that it will not renew, no payment will be taken and no new credits will be added.
-                            </p>
-                          ) : (
-                            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t pt-4" style={{ borderColor: colors.border }}>
-                              <p className="max-w-md text-xs" style={{ color: colors.mutedForeground }}>
-                                You can cancel any time. Your plan stays active until the end of the period you have already paid for.
-                              </p>
-                              <Button type="button" variant="outline" disabled={cancelling} onClick={() => void handleCancelSubscription()}
-                                style={{ borderColor: "hsl(0 72% 51% / 0.5)", color: "hsl(0 84% 70%)" }}>
-                                {cancelling ? "Cancelling…" : "Cancel subscription"}
-                              </Button>
-                            </div>
-                          )}
-                        </>
-                      ) : (
-                        <p className="mt-2 text-sm" style={{ color: colors.mutedForeground }}>
-                          No subscription. You buy credits when you need them.
-                        </p>
-                      )}
-                    </div>
-
-                    <SettingsDivider />
-
-                    <SettingsSectionHeader
-                      title="Payment method"
-                      description="All payments are processed securely via Razorpay."
-                    />
-                    <div
-                      className="rounded-xl px-5 py-4 text-sm font-medium"
-                      style={{
-                        background: colors.background,
-                        border: `1px solid ${colors.border}`,
-                        color: colors.foreground,
-                      }}
-                    >
-                      Razorpay · Cards, UPI, Net Banking
-                    </div>
-
-                    <SettingsDivider />
-
-                    <SettingsSectionHeader
-                      title="Latest transactions"
-                      description="Recent purchases and subscription payments."
-                    />
-
-                    {paymentHistory.length > 0 ? (
-                      <div className="overflow-x-auto">
-                        <table className="w-full min-w-[520px] border-collapse text-sm">
-                          <thead>
-                            <tr>
-                              {["Invoice", "Date", "Amount", "Status"].map((heading) => (
-                                <th
-                                  key={heading}
-                                  className="pb-3 text-left text-xs font-semibold uppercase tracking-[0.06em]"
-                                  style={{
-                                    color: colors.mutedForeground,
-                                    borderBottom: `1px solid ${colors.border}`,
-                                  }}
-                                >
-                                  {heading}
-                                </th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {paymentHistory.map((tx) => (
-                              <tr key={tx.id}>
-                                <td
-                                  className="py-3.5 pr-3"
-                                  style={{
-                                    color: colors.foreground,
-                                    borderBottom: `1px solid ${colors.border}`,
-                                  }}
-                                >
-                                  {transactionLabel(tx)}
-                                </td>
-                                <td
-                                  className="py-3.5 pr-3"
-                                  style={{
-                                    color: colors.foreground,
-                                    borderBottom: `1px solid ${colors.border}`,
-                                  }}
-                                >
-                                  {new Date(tx.createdAt).toLocaleDateString()}
-                                </td>
-                                <td
-                                  className="py-3.5 pr-3 font-semibold"
-                                  style={{
-                                    color: colors.foreground,
-                                    borderBottom: `1px solid ${colors.border}`,
-                                  }}
-                                >
-                                  {"\u20B9"}
-                                  {tx.amount}
-                                </td>
-                                <td
-                                  className="py-3.5"
-                                  style={{ borderBottom: `1px solid ${colors.border}` }}
-                                >
-                                  <PaymentStatusBadge status={tx.status} />
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    ) : (
-                      <p className="text-sm" style={{ color: colors.mutedForeground }}>
-                        No transactions yet.
-                      </p>
-                    )}
-                  </>
-                )}
-              </SettingsCard>
-            </TabsContent>
-
-            {/* Security & Policy */}
-            {/* Integrations */}
-            <TabsContent value="integrations" className="mt-0 space-y-5" style={{ background: "transparent" }}>
-              {tab === "integrations" ? <MetaIntegrationCard /> : null}
-            </TabsContent>
-
-            <TabsContent value="security" className="mt-0 space-y-5" style={{ background: "transparent" }}>
-              <SettingsCard>
-                <SettingsSectionHeader
-                  title="Security"
-                  description="Protect your account with the authentication options available for your sign-in method."
-                />
-
-                <div
-                  className="flex flex-col gap-4 rounded-xl px-4 py-4 sm:flex-row sm:items-center sm:justify-between"
-                  style={{
-                    background: colors.background,
-                    border: `1px solid ${colors.border}`,
-                  }}
-                >
-                  <div className="flex items-start gap-3">
-                    <div
-                      className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-lg"
-                      style={{
-                        background: "hsl(213 100% 55% / 0.12)",
-                        color: colors.primary,
-                      }}
-                    >
-                      <KeyRound size={16} />
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold" style={{ color: colors.foreground }}>
-                        Password
-                      </p>
-                      <p className="mt-1 text-sm" style={{ color: colors.mutedForeground }}>
-                        Use the password reset flow to securely update your password.
-                      </p>
-                    </div>
-                  </div>
-                  <Button asChild type="button" variant="outline">
-                    <Link href="/auth/forgot-password">Reset password</Link>
+                <ActionRow Icon={LogOut} title="Sign out" body="Sign out of SkalX on this device. You can sign back in any time." tone="danger">
+                  <Button variant="outline" type="button" onClick={handleSignOut} className="h-11 px-5"
+                    style={{ borderColor: "hsl(0 84% 55% / 0.45)", color: colors.destructive, background: "hsl(0 84% 55% / 0.08)" }}>
+                    Sign out
                   </Button>
+                </ActionRow>
+              </SettingsCard>
+            </>
+          )}
+
+          {/* Your business */}
+          {tab === "business" && (
+            <SettingsCard>
+              <SettingsSectionHeader title="Business details" description="We use these to tailor your ads and to put the right details on your invoices." />
+              <form className="space-y-5" onSubmit={onSave}>
+                <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+                  <Field id="business_name" label="Business name">
+                    <input id="business_name" className="settings-input" style={controlStyle} value={businessName} onChange={(e) => setBusinessName(e.target.value)} placeholder="e.g. Oorgaa Foods" autoComplete="organization" />
+                  </Field>
+                  <Field id="location" label="City">
+                    <input id="location" className="settings-input" style={controlStyle} value={location} onChange={(e) => setLocation(e.target.value)} placeholder="e.g. Chennai, India" />
+                  </Field>
+                  <Field id="business_type" label="What you sell">
+                    <select id="business_type" className="settings-select" style={selectStyle} value={businessType ?? ""} onChange={(e) => setBusinessType(e.target.value)}>
+                      {BUSINESS_TYPES.map((item) => <option key={item} value={item}>{item}</option>)}
+                    </select>
+                  </Field>
+                  <Field id="business_size" label="Team size">
+                    <select id="business_size" className="settings-select" style={selectStyle} value={businessSize ?? ""} onChange={(e) => setBusinessSize(e.target.value)}>
+                      {BUSINESS_SIZES.map((item) => <option key={item} value={item}>{item}</option>)}
+                    </select>
+                  </Field>
+                  <Field id="gst_number" label="GST number (optional)" hint="Add it if you want GST on your invoices." wide>
+                    <input id="gst_number" className="settings-input" style={controlStyle} value={gstNumber} onChange={(e) => setGstNumber(e.target.value.toUpperCase())} placeholder="e.g. 33ABCDE1234F1Z5" autoCapitalize="characters" />
+                  </Field>
                 </div>
+                {saveRow}
+              </form>
+            </SettingsCard>
+          )}
+
+          {/* Plan & billing */}
+          {tab === "billing" && (
+            billingLoading ? (
+              <div aria-busy="true" aria-label="Loading billing" className="space-y-5">
+                <div className="h-32 animate-pulse rounded-2xl" style={{ background: colors.muted }} />
+                <div className="h-48 animate-pulse rounded-2xl" style={{ background: colors.muted }} />
+              </div>
+            ) : billingError ? (
+              <SettingsCard>
+                <p role="alert" className="text-sm" style={{ color: colors.destructive }}>{billingError}</p>
+                <Button type="button" variant="outline" className="mt-4 h-11" onClick={() => router.reload()}>Try again</Button>
+              </SettingsCard>
+            ) : (
+              <>
+                <SettingsCard>
+                  <SettingsSectionHeader
+                    title="Your credits"
+                    description="Image credits make posters and photos. Video credits make video ads."
+                    action={<Button type="button" className="h-11 px-5" onClick={() => router.push("/buy-credits")}>Buy credits</Button>}
+                  />
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    {([
+                      ["Image credits", creditBalance?.imageCredits?.total ?? 0, ImageIcon, "213 100% 55%", "213 100% 72%"],
+                      ["Video credits", creditBalance?.videoCredits?.total ?? 0, Video, "270 80% 55%", "270 80% 74%"],
+                    ] as const).map(([label, value, Icon, base, text]) => (
+                      <div key={label} className="rounded-xl px-5 py-5" style={{ background: `hsl(${base} / 0.12)`, border: `1px solid hsl(${base} / 0.3)` }}>
+                        <div className="mb-2 flex items-center gap-2" style={{ color: `hsl(${text})` }}>
+                          <Icon size={16} aria-hidden />
+                          <span className="text-sm font-semibold">{label}</span>
+                        </div>
+                        <p className="text-3xl font-bold tabular-nums" style={{ color: `hsl(${text})` }}>{value}</p>
+                      </div>
+                    ))}
+                  </div>
+                </SettingsCard>
+
+                <SettingsCard>
+                  <SettingsSectionHeader
+                    title="Your plan"
+                    description={subscription ? "Your monthly plan and when it renews." : "You're not on a monthly plan."}
+                    action={<Button type="button" variant="outline" className="h-11 px-5" onClick={() => router.push(planAction.href)}>{subscription ? "Change plan" : planAction.label}</Button>}
+                  />
+                  <div className="rounded-xl px-5 py-4" style={{ background: colors.background, border: `1px solid ${colors.border}` }}>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-lg font-semibold" style={{ color: colors.foreground }}>{subscription?.plan?.name ?? "Pay as you go"}</span>
+                      <span className="rounded-full px-2.5 py-1 text-xs font-semibold" style={planTone}>{planStatus}</span>
+                    </div>
+
+                    {subscription ? (
+                      <>
+                        <dl className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+                          {[
+                            ["Billed", subscription.plan.billingCycle === "yearly" ? "Every year" : subscription.plan.billingCycle === "monthly" ? "Every month" : subscription.plan.billingCycle],
+                            [subEnding ? "Ends on" : "Renews on", periodEnd || "—"],
+                            ["Credits each cycle", `${subscription.plan.imageCredits ?? 0} image · ${subscription.plan.videoCredits ?? 0} video`],
+                          ].map(([term, value]) => (
+                            <div key={term}>
+                              <dt className="text-xs" style={{ color: colors.mutedForeground }}>{term}</dt>
+                              <dd className="mt-0.5 text-sm font-medium" style={{ color: colors.foreground }}>{value}</dd>
+                            </div>
+                          ))}
+                        </dl>
+
+                        {subEnding ? (
+                          <p role="status" className="mt-4 rounded-lg px-3.5 py-3 text-sm leading-relaxed" style={{ background: "hsl(38 92% 50% / 0.1)", color: colors.foreground }}>
+                            Your subscription is cancelled. You can keep using your plan and its credits
+                            {periodEnd ? ` until ${periodEnd}` : " until the end of this billing period"}. After that it will not renew, no payment will be taken and no new credits will be added.
+                          </p>
+                        ) : (
+                          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t pt-4" style={{ borderColor: colors.border }}>
+                            <p className="max-w-md text-sm" style={{ color: colors.mutedForeground }}>
+                              You can cancel any time. Your plan stays active until the end of the period you have already paid for.
+                            </p>
+                            <Button type="button" variant="outline" disabled={cancelling} onClick={() => void handleCancelSubscription()} className="h-11 px-5"
+                              style={{ borderColor: "hsl(0 72% 51% / 0.5)", color: "hsl(0 84% 70%)" }}>
+                              {cancelling ? "Cancelling…" : "Cancel subscription"}
+                            </Button>
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <p className="mt-2 text-sm" style={{ color: colors.mutedForeground }}>You buy credits when you need them. A monthly plan gives you more credits for less.</p>
+                    )}
+                  </div>
+                  <p className="mt-4 text-xs" style={{ color: colors.mutedForeground }}>Payments are handled securely by Razorpay: cards, UPI and net banking.</p>
+                </SettingsCard>
+
+                <SettingsCard>
+                  <SettingsSectionHeader title="Payment history" description="Your recent purchases and plan payments." />
+                  {paymentHistory.length > 0 ? (
+                    <ul className="-my-1 divide-y" style={{ borderColor: colors.border }}>
+                      {paymentHistory.map((tx) => (
+                        <li key={tx.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 py-3.5" style={{ borderColor: colors.border }}>
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg" style={{ background: colors.muted, color: colors.mutedForeground }}>
+                            <Receipt size={16} aria-hidden />
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-medium" style={{ color: colors.foreground }}>{transactionLabel(tx)}</p>
+                            <p className="text-xs" style={{ color: colors.mutedForeground }}>{formatDate(tx.createdAt)}</p>
+                          </div>
+                          <p className="text-sm font-semibold tabular-nums" style={{ color: colors.foreground }}>{"₹"}{Number(tx.amount).toLocaleString("en-IN")}</p>
+                          <PaymentStatusBadge status={tx.status} />
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-sm" style={{ color: colors.mutedForeground }}>No payments yet. They will show here after your first purchase.</p>
+                  )}
+                </SettingsCard>
+              </>
+            )
+          )}
+
+          {/* Connected accounts */}
+          {tab === "integrations" && <MetaIntegrationCard />}
+
+          {/* Security & legal */}
+          {tab === "security" && (
+            <>
+              <SettingsCard>
+                <SettingsSectionHeader title="Security" description="Keep your account safe." />
+                <ActionRow Icon={KeyRound} title="Password" body="We'll email you a link to set a new password.">
+                  <Button asChild type="button" variant="outline" className="h-11 px-5">
+                    <Link href="/auth/forgot-password">Change password</Link>
+                  </Button>
+                </ActionRow>
               </SettingsCard>
 
               <SettingsCard>
-                <SettingsSectionHeader
-                  title="Policies & Legal"
-                  description="Important legal, security, and data-handling documents."
-                />
-                <div className="grid gap-3 sm:grid-cols-2">
+                <SettingsSectionHeader title="Policies" description="How we handle your data, payments and refunds." />
+                <ul className="grid gap-2 sm:grid-cols-2">
                   {POLICY_LINKS.map((item) => (
-                    <PolicyDocumentLink key={item.href} href={item.href} label={item.label} />
+                    <li key={item.href}>
+                      <Link href={item.href} className="settings-link flex min-h-[48px] items-center justify-between gap-3 rounded-xl px-4 py-3 transition-colors"
+                        style={{ border: `1px solid ${colors.border}`, background: colors.background, color: colors.foreground }}>
+                        <span className="flex min-w-0 items-center gap-2.5 text-sm font-medium">
+                          <FileText size={15} aria-hidden style={{ color: colors.mutedForeground }} />
+                          <span className="truncate">{item.label}</span>
+                        </span>
+                        <ChevronRight size={16} aria-hidden style={{ color: colors.mutedForeground }} />
+                      </Link>
+                    </li>
                   ))}
-                </div>
-
-                <SettingsDivider />
-
-                <div className="flex items-start gap-3">
-                  <div
-                    className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
-                    style={{
-                      background: "hsl(0 84% 55% / 0.1)",
-                      color: colors.destructive,
-                    }}
-                  >
-                    <Shield size={16} />
-                  </div>
-                  <p className="text-sm leading-relaxed" style={{ color: colors.mutedForeground }}>
-                    To remove your data or permanently delete your account, email{" "}
-                    <a
-                      href={`mailto:${SITE_SUPPORT_EMAIL}?subject=Delete%20Account&body=delete%20-%20[reason]`}
-                      className="font-medium underline"
-                      style={{ color: colors.primary }}
-                    >
-                      {SITE_SUPPORT_EMAIL}
-                    </a>{" "}
-                    with the subject{" "}
-                    <span className="font-semibold" style={{ color: colors.foreground }}>
-                      &quot;delete&quot;
-                    </span>{" "}
-                    and a brief reason.
-                  </p>
-                </div>
+                </ul>
               </SettingsCard>
-            </TabsContent>
-          </Tabs>
 
-          <div className="sr-only">
-            <div ref={recaptchaContainerRef} id="recaptcha-container" />
-          </div>
+              <SettingsCard>
+                <ActionRow
+                  Icon={Trash2}
+                  tone="danger"
+                  title="Delete your account"
+                  body={<>To remove your data or permanently delete your account, email us at <a href={`mailto:${SITE_SUPPORT_EMAIL}?subject=Delete%20Account&body=delete%20-%20[reason]`} className="font-medium underline" style={{ color: colors.primary }}>{SITE_SUPPORT_EMAIL}</a>. We&apos;ll confirm before anything is deleted.</>}
+                />
+              </SettingsCard>
+            </>
+          )}
         </div>
-      </main>
-    </div>
+      </div>
+
+      <div className="sr-only">
+        <div ref={recaptchaContainerRef} id="recaptcha-container" />
+      </div>
+    </>
   );
 }

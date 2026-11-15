@@ -1,3 +1,4 @@
+import { limitedPagesApi } from "@/lib/security/rate-limit";
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { canAccessAudit } from '@/lib/audit/access';
 import { ensureSampleAd, getSampleAd } from '@/lib/audit/sample-ad';
@@ -11,6 +12,8 @@ export const config = { maxDuration: 120 };
  * Unknown and foreign ids both 404.
  */
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (req.method === "POST" && limitedPagesApi(req, res, "audit-sample", 10, 3600000)) return;
+
   if (req.method !== 'GET' && req.method !== 'POST') {
     res.setHeader('Allow', 'GET, POST');
     return res.status(405).json({ ok: false, error: 'Method not allowed' });

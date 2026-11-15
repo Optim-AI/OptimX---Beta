@@ -1,3 +1,4 @@
+import { limitedPagesApi } from "@/lib/security/rate-limit";
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { canAccessAudit, toPublicAudit } from '@/lib/audit/access';
 import {
@@ -25,6 +26,8 @@ export const config = { maxDuration: 300 };
  * Concurrent or repeated calls get the current state instead of a second run.
  */
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (req.method === "POST" && limitedPagesApi(req, res, "audit-run", 10, 3600000)) return;
+
   const requestId = newAuditRequestId();
   res.setHeader('x-audit-request-id', requestId);
 

@@ -27,6 +27,27 @@ interface ResetResult {
  * 3. Log skipped calendar entitlement resets (must never grant).
  */
 export class CreditResetJob {
+  /**
+   * Close out subscriptions the customer cancelled once their paid period has ended
+   * (safety net for a missed Razorpay webhook). Changes nothing else: no credits are
+   * granted or removed.
+   */
+  static async finalizePeriodEndCancellations(now: Date = new Date()): Promise<{ finalized: number; failed: number }> {
+    const due = await SubscriptionsDAO.getDueForPeriodEndCancel(now);
+    let finalized = 0;
+    let failed = 0;
+    for (const sub of due) {
+      try {
+        await SubscriptionsDAO.updateStatus(sub.id, 'cancelled');
+        finalized++;
+      } catch (error) {
+        failed++;
+        console.error(`[CreditResetJob] Failed period-end cancel ${sub.id}:`, error);
+      }
+    }
+    return { finalized, failed };
+  }
+
   static async run(): Promise<ResetResult> {
     const result: ResetResult = {
       totalProcessed: 0,
