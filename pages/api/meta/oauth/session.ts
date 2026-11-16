@@ -1,6 +1,7 @@
 // pages/api/meta/oauth/session.ts
 import type { NextApiRequest, NextApiResponse } from "next";
 import { getOAuthSession } from "@/integrations/meta/oauth-session";
+import { getUserIdFromRequest } from "@/auth/request";
 
 /**
  * GET /api/meta/oauth/session?sessionId={id}
@@ -23,9 +24,15 @@ export default async function handler(
       return res.status(400).json({ error: "Missing sessionId parameter" });
     }
 
+    const userId = await getUserIdFromRequest(req);
+    if (!userId) {
+      return res.status(401).json({ error: "unauthorized", message: "Please sign in again." });
+    }
+
     const session = await getOAuthSession(sessionId);
 
-    if (!session) {
+    // Only the user who started the connection can see it
+    if (!session || session.userId !== userId) {
       return res.status(404).json({
         error: "session_not_found",
         message: "Session not found or expired. Please try connecting again.",

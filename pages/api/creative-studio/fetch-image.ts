@@ -4,6 +4,7 @@ import { JSDOM } from "jsdom";
 import sharp from "sharp";
 import { supabaseAdmin } from "@/auth/supabase/admin";
 import { getUserIdFromRequest } from "@/auth/request";
+import { ImageFetchError, safeFetch, safeFetchImage, UnsafeUrlError } from "@/lib/security/safe-image-fetch";
 
 // Helper to convert relative URLs to absolute
 function toAbsolute(base: string, src: string): string {
@@ -17,8 +18,7 @@ function toAbsolute(base: string, src: string): string {
 // Scrape page to find product images
 async function scrapeProductImage(url: string): Promise<string | null> {
   try {
-    const resp = await fetch(url, {
-      redirect: "follow",
+    const resp = await safeFetch(url, {
       headers: { "User-Agent": "Mozilla/5.0 (compatible; SkalX AI/1.0)" },
     });
     
@@ -88,6 +88,8 @@ export default async function handler(
   if (req.method !== "POST") {
     return res.status(405).json({ ok: false, error: "Method not allowed" });
   }
+  const userId = await getUserIdFromRequest(req);
+  if (!userId) return res.status(401).json({ ok: false, error: "Authentication required" });
 
   const { url: rawUrl, directFetch } = req.body ?? {};
   let url = typeof rawUrl === "string" ? rawUrl.trim() : "";
@@ -131,30 +133,14 @@ export default async function handler(
       console.log("Found product image:", imageUrl);
     }
 
-    // Fetch image from URL (server-side, no CORS issues)
-    // Create timeout controller for 30 second timeout
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000);
-
-    const response = await fetch(imageUrl, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (compatible; SkalX AI/1.0)",
-        "Accept": "image/*",
-      },
-      signal: controller.signal,
-    }).finally(() => {
-      clearTimeout(timeoutId);
+    // Fetch image from URL (server-side, no CORS issues); private hosts and huge files are refused
+    const fetched = await safeFetchImage(imageUrl, {
+      timeoutMs: 30_000,
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; SkalX AI/1.0)" },
     });
 
-    if (!response.ok) {
-      return res.status(response.status).json({
-        ok: false,
-        error: `Failed to fetch image: ${response.statusText} (${response.status})`,
-      });
-    }
-
     // Check if it's actually an image
-    const contentType = response.headers.get("content-type") || "";
+    const contentType = fetched.contentType;
     if (!contentType.startsWith("image/")) {
       return res.status(400).json({
         ok: false,
@@ -179,8 +165,7 @@ export default async function handler(
     }
 
     // Get image as buffer
-    const arrayBuffer = await response.arrayBuffer();
-    const rawBuffer = Buffer.from(arrayBuffer);
+    const rawBuffer = fetched.buffer;
 
     // Convert to JPEG for compatibility (Gemini, Veo, etc.)
     let buffer: Buffer;
@@ -199,9 +184,7 @@ export default async function handler(
     let publicUrl: string | null = null;
     let storagePath: string | null = null;
     try {
-      const userId = await getUserIdFromRequest(req);
-      const uid = userId || "anonymous";
-      storagePath = `generated/${uid}/${Date.now()}_product.jpg`;
+      storagePath = `generated/${userId}/${Date.now()}_product.jpg`;
 
       const { error: uploadError } = await supabaseAdmin.storage
         .from("campaign-assets")
@@ -233,6 +216,12 @@ export default async function handler(
     });
   } catch (error: any) {
     console.error("Error fetching image from URL:", error);
+    if (error instanceof UnsafeUrlError) {
+      return res.status(400).json({ ok: false, error: "That link can't be used. Please paste a public web address." });
+    }
+    if (error instanceof ImageFetchError) {
+      return res.status(error.status === 413 ? 413 : 502).json({ ok: false, error: error.message });
+    }
     
     if (error.name === "AbortError" || error.name === "TimeoutError") {
       return res.status(408).json({ ok: false, error: "Request timeout - image took too long to fetch" });
@@ -244,7 +233,7 @@ export default async function handler(
 
     return res.status(500).json({
       ok: false,
-      error: `Failed to fetch image: ${error.message || "Unknown error"}`,
+      error: "Couldn't fetch that image. Please try another link.",
     });
   }
 }

@@ -2,6 +2,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { supabaseAdmin } from "@/auth/supabase/admin";
 import { getUserIdFromRequest } from "@/auth/request";
+import { safeFetchImage } from "@/lib/security/safe-image-fetch";
 import { GeneratedImageDAO } from "@/database/models/GeneratedImage.dao";
 import { randomUUID } from "crypto";
 
@@ -73,11 +74,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     } else if (imageUrl.startsWith("http")) {
       // Try to fetch and re-upload remote image
       try {
-        const response = await fetch(imageUrl);
-        if (response.ok) {
-          const blob = await response.blob();
-          const arrayBuffer = await blob.arrayBuffer();
-          const buffer = Buffer.from(arrayBuffer);
+        const fetched = await safeFetchImage(imageUrl);
+        if (fetched.contentType.startsWith("image/")) {
+          const blob = { type: fetched.contentType.split(";")[0] };
+          const buffer = fetched.buffer;
           const ext = blob.type?.split("/")[1] || "png";
           const safeName = (name || "poster")
             .replace(/[^a-z0-9_\-]/gi, "_")

@@ -252,7 +252,13 @@ Rules:
 - For hook_reference use exactly: "${hook.hookStatement}"`;
 
     const raw = await callGemini(prompt, "Return ONLY valid JSON.");
-    const creatives = JSON.parse(raw || "{}");
+    let creatives: any;
+    try {
+      creatives = JSON.parse(raw || "{}");
+    } catch {
+      console.error("generate-creatives: model returned invalid JSON");
+      return res.status(502).json({ ok: false, error: "The AI response was incomplete. Please try again." });
+    }
 
     // Ensure hook_reference is set
     const hookRef = hook.hookStatement;

@@ -1,10 +1,13 @@
 // pages/api/creative-studio/fetch-logo.ts
 import type { NextApiRequest, NextApiResponse } from "next";
+import { getUserIdFromRequest } from "@/auth/request";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") {
     return res.status(405).json({ ok: false, error: "Method not allowed" });
   }
+  const userId = await getUserIdFromRequest(req);
+  if (!userId) return res.status(401).json({ ok: false, error: "Authentication required" });
 
   try {
     const { domain } = req.body;
@@ -14,7 +17,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     // Clean domain (remove protocol, www, path)
-    const cleanDomain = domain.replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0];
+    const cleanDomain = domain.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").split(/[/?#:]/)[0];
+    if (!/^[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}$/.test(cleanDomain)) {
+      return res.status(400).json({ ok: false, error: "Please enter a valid website domain" });
+    }
 
     // Try Brandfetch API first
     // Note: You'll need to add your Brandfetch API key to environment variables

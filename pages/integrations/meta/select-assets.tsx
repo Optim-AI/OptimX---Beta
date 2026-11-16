@@ -1,5 +1,6 @@
 // pages/integrations/meta/select-assets.tsx
 import { useState, useEffect } from "react";
+import { authFetch } from '@/lib/utils';
 import { useRouter } from "next/router";
 import dynamic from "next/dynamic";
 import { showError } from "@/app/web/src/components/ui/alert-modal-api";
@@ -69,7 +70,7 @@ function SelectMetaAssetsComponent() {
       // ignore
     }
 
-    fetch(`/api/meta/oauth/session?sessionId=${encodeURIComponent(sessionId)}`)
+    authFetch(`/api/meta/oauth/session?sessionId=${encodeURIComponent(sessionId)}`)
       .then((res) => res.json())
       .then((data) => {
         if (cancelled) return;
@@ -112,7 +113,7 @@ function SelectMetaAssetsComponent() {
     if (!canSubmit) return;
     setSubmitting(true);
     try {
-      const res = await fetch("/api/meta/oauth/finalize", {
+      const res = await authFetch("/api/meta/oauth/finalize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

@@ -59,7 +59,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         console.log("profile: refreshed access token, set cookie");
       } catch (e: any) {
         console.error("profile: refresh failed:", e.message);
-        return res.status(500).json({ error: "Token refresh failed: " + e.message });
+        return res.status(500).json({ error: "Your Google Ads connection expired. Please reconnect." });
       }
     }
 

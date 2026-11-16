@@ -8,6 +8,7 @@ import { saveIntegration, setUserStatusForUser } from "@/integrations/store";
 import { AdAccountDAO } from "@/database/models/AdAccount.dao";
 import { META_ADS_SCOPES } from "@/lib/ads/providers/meta/client";
 import { metaAdsProvider } from "@/lib/ads/providers/meta/provider";
+import { getUserIdFromRequest } from "@/auth/request";
 
 const VERSION = process.env.FACEBOOK_API_VERSION || "23.0";
 
@@ -36,8 +37,15 @@ export default async function handler(
       });
     }
 
+    const userId = await getUserIdFromRequest(req);
+    if (!userId) {
+      return res.status(401).json({ error: "unauthorized", message: "Please sign in again." });
+    }
+
     const session = await getOAuthSession(sessionId);
-    if (!session) {
+
+    // Only the user who started the connection can finish it
+    if (!session || session.userId !== userId) {
       return res.status(400).json({
         error: "session_expired",
         message:

@@ -26,7 +26,9 @@ export default async function handler(
     const authKey = req.headers["x-cleanup-key"] || req.query.key;
     const expectedKey = process.env.CLEANUP_SECRET_KEY;
 
-    if (expectedKey && authKey !== expectedKey) {
+    const cronSecret = process.env.CRON_SECRET?.trim();
+    const isCron = !!cronSecret && req.headers.authorization === `Bearer ${cronSecret}`;
+    if (!isCron && !(expectedKey && authKey === expectedKey)) {
       return res.status(401).json({
         error: "unauthorized",
         message: "Invalid cleanup key",
