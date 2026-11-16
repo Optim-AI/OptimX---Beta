@@ -2,6 +2,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { getOAuthSession, clearOAuthSession } from '@/integrations/meta/oauth-session';
 import { saveIntegration, setStatus } from '@/integrations/store';
+import { getUserIdFromRequest } from '@/auth/request';
 
 const VERSION = process.env.FACEBOOK_API_VERSION || "23.0";
 
@@ -31,9 +32,15 @@ export default async function handler(
     }
 
     // Retrieve OAuth session
+    const userId = await getUserIdFromRequest(req);
+    if (!userId) {
+      return res.status(401).json({ error: "unauthorized", message: "Please sign in again." });
+    }
+
     const session = await getOAuthSession(sessionId);
 
-    if (!session) {
+    // Only the user who started the connection can finish it
+    if (!session || session.userId !== userId) {
       return res.status(400).json({
         error: "session_expired",
         message: "Session not found or expired. Please reconnect your Meta account.",

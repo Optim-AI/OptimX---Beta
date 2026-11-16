@@ -1,6 +1,7 @@
 // pages/api/creative-studio/scrape-product.ts
 import { cleanProductName, productNameFromHtml } from "@/lib/creative-studio/product-name";
 import type { NextApiRequest, NextApiResponse } from "next";
+import { safeFetch, safeFetchImage, UnsafeUrlError } from "@/lib/security/safe-image-fetch";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") {
@@ -27,7 +28,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // For now, we'll use a simple scraping approach
     // In production, you might want to use a service like ScraperAPI, Bright Data, or similar
-    const response = await fetch(url, {
+    const response = await safeFetch(url, {
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
       },
@@ -36,7 +37,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!response.ok) {
       return res.status(response.status).json({
         ok: false,
-        error: `Failed to fetch product page: ${response.statusText}`,
+        error: "Couldn't open that product page. Please check the link.",
       });
     }
 
@@ -109,28 +110,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const imageDataUrls: string[] = [];
     for (const imgUrl of uniqueImages.slice(0, 3)) {
       try {
-        // Add timeout to prevent hanging
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
-
-        const imgResponse = await fetch(imgUrl, {
+        const img = await safeFetchImage(imgUrl, {
+          timeoutMs: 10_000,
+          maxBytes: 10 * 1024 * 1024,
           headers: {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
             "Referer": url, // Some sites require referer
           },
-          signal: controller.signal,
         });
-
-        clearTimeout(timeoutId);
-
-        if (imgResponse.ok) {
-          const contentType = imgResponse.headers.get("content-type");
-          if (contentType && contentType.startsWith("image/")) {
-            const imageBuffer = await imgResponse.arrayBuffer();
-            const base64 = Buffer.from(imageBuffer).toString("base64");
-            const dataUrl = `data:${contentType};base64,${base64}`;
-            imageDataUrls.push(dataUrl);
-          }
+        if (img.contentType.startsWith("image/")) {
+          imageDataUrls.push(`data:${img.contentType};base64,${img.buffer.toString("base64")}`);
         }
       } catch (err) {
         console.error(`Failed to fetch image ${imgUrl}:`, err);
@@ -168,9 +157,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
   } catch (error: any) {
     console.error("Product scraping error:", error);
+    if (error instanceof UnsafeUrlError) {
+      return res.status(400).json({ ok: false, error: "That link can't be used. Please paste a public web address." });
+    }
     return res.status(500).json({
       ok: false,
-      error: error.message || "Failed to scrape product information",
+      error: "Couldn't read that product page. Please try another link.",
     });
   }
 }

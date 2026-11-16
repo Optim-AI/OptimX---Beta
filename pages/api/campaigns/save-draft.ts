@@ -31,6 +31,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(200).json({ ok: true, draft: { userId } });
   } catch (err: any) {
     console.error("save-draft error", err);
-    return res.status(500).json({ ok: false, error: err.message ?? String(err) });
+    return res.status(500).json({ ok: false, error: "Couldn't save the draft. Please try again." });
   }
 }

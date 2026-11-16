@@ -65,7 +65,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(200).json({ ok: true, version });
     } catch (err: any) {
       console.error("Failed to save version:", err);
-      return res.status(500).json({ ok: false, error: err.message || "Failed to save version" });
+      return res.status(500).json({ ok: false, error: "Failed to save version" });
     }
   }
 

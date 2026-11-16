@@ -4,7 +4,7 @@
  * (opentype.js), so spelling is always exact and what we measure is what we draw.
  */
 
-import sharp from "sharp";
+import sharp, { type OverlayOptions } from "sharp";
 import type opentype from "opentype.js";
 import type { PosterAspectRatio } from "../poster-generation/types";
 import { contrastRatio, hexToRgb, pickReadable, relativeLuminance } from "./color";
@@ -150,7 +150,7 @@ export async function renderPoster(input: RenderInput): Promise<RenderResult> {
       <stop offset="100%" stop-color="${glow}" stop-opacity="${fillLum > 0.5 ? 0.08 : 0}"/>
     </radialGradient></defs>
     <rect width="100%" height="100%" fill="${fill}"/><rect width="100%" height="100%" fill="url(#g)"/></svg>`;
-  const baseLayers: sharp.OverlayOptions[] = [];
+  const baseLayers: OverlayOptions[] = [];
   const background = sharp(Buffer.from(bgSvg));
 
   if (input.template.background !== "brand_solid") {
@@ -195,7 +195,7 @@ export async function renderPoster(input: RenderInput): Promise<RenderResult> {
     layers.push({ kind: "product", box: { x: left / W, y: top / H, w: pw / W, h: ph / H }, width: pw, height: ph });
   }
 
-  let base = await background.composite(baseLayers).png().toBuffer();
+  let base: Buffer = await background.composite(baseLayers).png().toBuffer();
   let harmonized = false;
   if (input.harmonize && placement) {
     const preserve = layout.panel
@@ -341,7 +341,7 @@ export async function renderPoster(input: RenderInput): Promise<RenderResult> {
   if (layout.badge && input.copy.badge) await drawBadge(layout.badge, input.copy.badge);
   if (layout.cta && input.copy.cta) await drawCta(layout.cta, input.copy.cta);
 
-  const composites: sharp.OverlayOptions[] = [
+  const composites: OverlayOptions[] = [
     { input: Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">${overlay.join("\n")}</svg>`), left: 0, top: 0 },
   ];
 

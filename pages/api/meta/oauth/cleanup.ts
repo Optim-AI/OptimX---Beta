@@ -1,6 +1,7 @@
 // pages/api/meta/oauth/cleanup.ts
 import type { NextApiRequest, NextApiResponse } from "next";
 import { cleanupExpiredSessions } from '@/integrations/meta/oauth-session';
+import { isCronRequest } from '@/lib/jobs/cron-auth';
 
 /**
  * GET /api/meta/oauth/cleanup
@@ -26,7 +27,7 @@ export default async function handler(
     const authKey = req.headers["x-cleanup-key"] || req.query.key;
     const expectedKey = process.env.CLEANUP_SECRET_KEY;
 
-    if (expectedKey && authKey !== expectedKey) {
+    if (!isCronRequest(req) && !(expectedKey && authKey === expectedKey)) {
       return res.status(401).json({
         error: "unauthorized",
         message: "Invalid cleanup key",

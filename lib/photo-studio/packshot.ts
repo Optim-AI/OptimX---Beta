@@ -3,7 +3,7 @@
  * No AI touches the product, so labels and colours are pixel-identical.
  */
 
-import sharp from "sharp";
+import sharp, { type OverlayOptions } from "sharp";
 import type { PhotoAspect } from "./types";
 
 export const CANVAS: Record<PhotoAspect, { width: number; height: number }> = {
@@ -106,7 +106,7 @@ export async function renderPackshot(opts: {
   const top = floorY - ph;
   const bg = await sharp(Buffer.from(sweepSvg(width, height, backdrop, floorY))).png().toBuffer();
   const shadow = await contactShadow(pw, opts.style === "reflection" ? 0.22 : 0.32);
-  const layers: sharp.OverlayOptions[] = [];
+  const layers: OverlayOptions[] = [];
 
   if (opts.style === "reflection") {
     // Mirror image under the product, fading out — like glossy acrylic.

@@ -11,7 +11,7 @@
  *           then a vision fidelity check; one corrective reshoot if the product drifted
  */
 
-import sharp from "sharp";
+import sharp, { type OverlayOptions } from "sharp";
 import { GEMINI_REST_BASE, getGeminiApiKey } from "@/lib/gemini-config";
 import { fetchWithGeminiRateLimitRetry } from "@/lib/gemini-retry";
 import { parseJsonLoose } from "@/lib/research/gemini";
@@ -190,7 +190,7 @@ async function renderScene(input: RenderInput, cutout: Buffer): Promise<Buffer> 
   const float = input.shotId === "levitation";
   const place = scenePlacement(input.aspect, meta.width || 1, meta.height || 1, float ? "float" : "surface", input.variation ?? 0);
   const png = await sharp(cutout).resize(place.width, place.height).png().toBuffer();
-  const layers: sharp.OverlayOptions[] = [];
+  const layers: OverlayOptions[] = [];
   if (!float) {
     const sw = Math.round(place.width * 1.05);
     const sh = Math.max(20, Math.round(place.width * 0.12));

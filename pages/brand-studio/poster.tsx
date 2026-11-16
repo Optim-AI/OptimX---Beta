@@ -1848,7 +1848,7 @@ export default function PosterSessionPage() {
         } else if (logoSource.startsWith('http')) {
           // Fetch logo via proxy (works for direct image URLs)
           try {
-            const logoResponse = await fetch('/api/creative-studio/fetch-image', {
+            const logoResponse = await authFetch('/api/creative-studio/fetch-image', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ url: logoSource, directFetch: true }),
@@ -2530,7 +2530,7 @@ export default function PosterSessionPage() {
         
         setTimeout(async () => {
           try {
-            const response = await fetch('/api/creative-studio/fetch-image', {
+            const response = await authFetch('/api/creative-studio/fetch-image', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ url }),

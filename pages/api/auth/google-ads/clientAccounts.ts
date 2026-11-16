@@ -92,6 +92,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(200).json({ accounts });
   } catch (err: any) {
     console.error("clientAccounts error:", err);
-    return res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: "Couldn't load your Google Ads accounts. Please try again." });
   }
 }
