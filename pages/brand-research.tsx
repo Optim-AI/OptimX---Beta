@@ -11,6 +11,7 @@ import { Download, Globe, Search } from "lucide-react";
 import { ArcSpinner, ShimmerTile } from "@/app/web/src/components/ui/loaders";
 import BrandResearchReport, { ResearchPending } from "@/app/web/src/components/research/BrandResearchReport";
 import type { BrandResearch } from "@/lib/research/brand-research";
+import FocusedResearchPanel from "@/app/web/src/components/research/FocusedResearch";
 
 function toFullUrl(raw: string): string {
   const t = raw.trim();
@@ -24,6 +25,7 @@ export default function BrandResearchPage(): JSX.Element {
   const [running, setRunning] = useState(false);
   const [checkingAds, setCheckingAds] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [tab, setTab] = useState<"brand" | "focused">("brand");
 
   useEffect(() => {
     (async () => {
@@ -32,6 +34,8 @@ export default function BrandResearchPage(): JSX.Element {
         const json = await res.json();
         const snap = json?.brandSnapshot;
         if (snap?.website_url) setWebsite(snap.website_url);
+        // No website: whole-brand research can't run, so start on product & region.
+        else setTab("focused");
         if (snap?.research?.version === 1) setResearch(snap.research);
       } catch {
         /* empty state below */
@@ -115,6 +119,23 @@ export default function BrandResearchPage(): JSX.Element {
             </p>
           </header>
 
+          <div role="tablist" aria-label="Research type" className="mt-6 inline-flex rounded-lg p-1" style={{ background: colors.secondary }}>
+            {([
+              ["brand", "Whole brand"],
+              ["focused", "Product & region"],
+            ] as const).map(([id, label]) => (
+              <button key={id} role="tab" type="button" aria-selected={tab === id} onClick={() => setTab(id)}
+                className="rounded-md px-4 py-1.5 text-sm font-medium"
+                style={tab === id ? { background: colors.card, color: colors.foreground } : { color: colors.mutedForeground }}>
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {tab === "focused" ? (
+            <div className="mt-6"><FocusedResearchPanel /></div>
+          ) : (
+          <>
           <form
             className="mt-6 flex flex-col gap-2 sm:flex-row"
             onSubmit={(e) => {
@@ -180,11 +201,13 @@ export default function BrandResearchPage(): JSX.Element {
               <div className="rounded-xl p-6" style={{ background: colors.card, border: `1px solid ${colors.border}` }}>
                 <p className="text-sm" style={{ color: colors.foreground }}>No research yet.</p>
                 <p className="mt-1 text-sm" style={{ color: colors.mutedForeground }}>
-                  Enter your website above. It takes about a minute.
+                  Enter your website above. It takes about a minute. No website? Use the Product &amp; region tab.
                 </p>
               </div>
             )}
           </div>
+          </>
+          )}
         </div>
       </main>
     </div>

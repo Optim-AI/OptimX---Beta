@@ -23,6 +23,8 @@ export type SerpGoogleOptions = {
   tbs?: string;
   gl?: string;
   hl?: string;
+  /** SerpApi location string ("Chennai, Tamil Nadu, India") so results are local to it. */
+  location?: string;
   timeoutMs?: number;
 };
 
@@ -71,6 +73,7 @@ export async function serpGoogleSearchDetailed(
   if (opts.tbs) params.set('tbs', opts.tbs);
   if (opts.gl) params.set('gl', opts.gl);
   if (opts.hl) params.set('hl', opts.hl);
+  if (opts.location) params.set('location', opts.location);
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? 15_000);
