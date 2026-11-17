@@ -23,9 +23,26 @@ export function cn(...inputs: ClassValue[]): string {
 export async function getAuthToken(): Promise<string | null> {
   try {
     const { data, error } = await supabase.auth.getSession();
-    if (error) return null;
-    return data?.session?.access_token ?? null;
+    const session = data?.session;
+    if (error || !session) return error ? refreshAuthToken() : null;
+    // After sleep or a long idle tab the stored token can be at (or past) expiry:
+    // renew it before sending so the server doesn't answer "Authentication required".
+    const expiresMs = (session.expires_at ?? 0) * 1000;
+    if (expiresMs && expiresMs - Date.now() < 60_000) {
+      return (await refreshAuthToken()) ?? session.access_token;
+    }
+    return session.access_token;
   } catch (e) {
+    return null;
+  }
+}
+
+/** Force a new access token from the refresh token; null when signed out. */
+async function refreshAuthToken(): Promise<string | null> {
+  try {
+    const { data } = await supabase.auth.refreshSession();
+    return data?.session?.access_token ?? null;
+  } catch {
     return null;
   }
 }
@@ -81,8 +98,19 @@ export async function authFetch(url: string, options: RequestInit = {}): Promise
   if (token) {
     headers.set('authorization', `Bearer ${token}`);
   }
-  return fetch(url, {
+  const res = await fetch(url, {
     ...options,
     headers,
   });
+  // A 401 here usually means the token expired in transit (laptop clock, sleep):
+  // the server checks sign-in before doing any work, so retrying once is safe.
+  const replayable = options.body == null || typeof options.body === 'string' || isFormData;
+  if (res.status === 401 && replayable) {
+    const fresh = await refreshAuthToken();
+    if (fresh && fresh !== token) {
+      headers.set('authorization', `Bearer ${fresh}`);
+      return fetch(url, { ...options, headers });
+    }
+  }
+  return res;
 }
