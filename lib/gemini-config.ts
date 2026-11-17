@@ -48,6 +48,23 @@ export function getGeminiTtsApiKey(): string | undefined {
   return undefined;
 }
 
+/**
+ * Every distinct usable key for voiceover, in preference order, with the env
+ * name it came from — so a stale key in one variable doesn't stop voiceovers
+ * while another configured key still works.
+ */
+export function getGeminiTtsApiKeyCandidates(): Array<{ source: string; key: string }> {
+  const names = ["GEMINI_TTS_API_KEY", "GEMINI_API_KEY", "GEMINI_VEO_API_KEY", "NANO_API_KEY"];
+  const out: Array<{ source: string; key: string }> = [];
+  for (const source of names) {
+    const value = process.env[source];
+    if (!isUsableApiKey(value)) continue;
+    const key = value.trim();
+    if (!out.some((c) => c.key === key)) out.push({ source, key });
+  }
+  return out;
+}
+
 export function getGeminiTtsApiKeySource(): string | undefined {
   if (isUsableApiKey(process.env.GEMINI_TTS_API_KEY)) return "GEMINI_TTS_API_KEY";
   return getGeminiApiKeySource();

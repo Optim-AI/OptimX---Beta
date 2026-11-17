@@ -4,7 +4,7 @@
  */
 
 import { GoogleGenAI } from "@google/genai";
-import { getGeminiTtsApiKey, GEMINI_REST_BASE } from "@/lib/gemini-config";
+import { getGeminiTtsApiKeyCandidates, GEMINI_REST_BASE } from "@/lib/gemini-config";
 import {
   defaultTtsVoiceForLanguage,
   normalizeVoiceoverLanguage,
@@ -111,6 +111,21 @@ async function generateViaSdk(input: {
   return Buffer.from(extracted.data, "base64");
 }
 
+/** A non-OK answer from the TTS API, keeping the status so key problems can be told apart. */
+export class GeminiTtsHttpError extends Error {
+  constructor(public readonly status: number, message: string) {
+    super(message);
+    this.name = "GeminiTtsHttpError";
+  }
+}
+
+/** The API refused this key (wrong, expired, restricted or without access to the TTS model). */
+export function isKeyRejected(err: unknown): boolean {
+  if (err instanceof GeminiTtsHttpError && (err.status === 401 || err.status === 403)) return true;
+  const msg = err instanceof Error ? err.message : String(err ?? "");
+  return /api key not valid|api_key_invalid|permission[_ ]denied|unauthenticated|invalid authentication|api key expired/i.test(msg);
+}
+
 async function generateViaRest(input: {
   script: string;
   style: string;
@@ -168,7 +183,7 @@ async function generateViaRest(input: {
   };
 
   if (!res.ok) {
-    throw new Error(json.error?.message || `Gemini TTS HTTP ${res.status}`);
+    throw new GeminiTtsHttpError(res.status, json.error?.message || `Gemini TTS HTTP ${res.status}`);
   }
 
   const fromOutputs = extractAudioFromInteraction(json);
@@ -192,13 +207,38 @@ async function generateViaRest(input: {
 }
 
 /**
+ * One key: REST first (the @google/genai 1.x SDK path is rejected by the API as
+ * "legacy Interactions API"), one retry for transient 5xx / timeouts, SDK last.
+ * A rejected key fails straight away — retrying it can't help.
+ */
+async function generateWithKey(input: { script: string; style: string; voice: string; apiKey: string }): Promise<Buffer> {
+  try {
+    return await generateViaRest(input);
+  } catch (firstErr) {
+    if (isKeyRejected(firstErr)) throw firstErr;
+    console.warn("[gemini-tts] REST attempt 1 failed, retrying:", firstErr instanceof Error ? firstErr.message : firstErr);
+    try {
+      return await generateViaRest(input);
+    } catch (restErr) {
+      if (isKeyRejected(restErr)) throw restErr;
+      console.warn("[gemini-tts] REST attempt 2 failed, trying SDK:", restErr instanceof Error ? restErr.message : restErr);
+      try {
+        return await generateViaSdk(input);
+      } catch {
+        throw restErr;
+      }
+    }
+  }
+}
+
+/**
  * Synthesize voiceover WAV for an Indian-language commercial script.
  */
 export async function generateGeminiTtsVoiceover(
   input: GenerateGeminiTtsInput
 ): Promise<GenerateGeminiTtsResult> {
-  const apiKey = getGeminiTtsApiKey();
-  if (!apiKey) {
+  const keys = getGeminiTtsApiKeyCandidates();
+  if (!keys.length) {
     throw new Error(
       "GEMINI_TTS_API_KEY (or GEMINI_API_KEY) is required for Tamil/Hindi/Malayalam/Kannada voiceover (Gemini 3.8 Flash TTS)."
     );
@@ -215,24 +255,27 @@ export async function generateGeminiTtsVoiceover(
   const voice = input.voice || defaultTtsVoiceForLanguage(language);
   const style = styleForTone(input.tone, input.ctaEnabled);
 
-  // REST first: the @google/genai 1.x SDK path is rejected by the API
-  // ("legacy Interactions API"), so trying it first only adds latency.
-  // One retry covers transient 5xx / timeouts; the SDK stays as a last resort.
-  let audioBuffer: Buffer;
-  try {
-    audioBuffer = await generateViaRest({ script, style, voice, apiKey });
-  } catch (firstErr) {
-    console.warn("[gemini-tts] REST attempt 1 failed, retrying:", firstErr instanceof Error ? firstErr.message : firstErr);
+  // A rejected key (401/403) won't succeed on retry: move to the next configured
+  // key instead, and log which variable failed so it can be fixed in Vercel.
+  let audioBuffer: Buffer | null = null;
+  let lastErr: unknown = null;
+  for (const { source, key } of keys) {
     try {
-      audioBuffer = await generateViaRest({ script, style, voice, apiKey });
-    } catch (restErr) {
-      console.warn("[gemini-tts] REST attempt 2 failed, trying SDK:", restErr instanceof Error ? restErr.message : restErr);
-      try {
-        audioBuffer = await generateViaSdk({ script, style, voice, apiKey });
-      } catch {
-        throw restErr;
+      audioBuffer = await generateWithKey({ script, style, voice, apiKey: key });
+      if (source !== keys[0].source) {
+        console.warn(`[gemini-tts] ${keys[0].source} was rejected; voiceover used ${source}. Update ${keys[0].source} in the environment.`);
       }
+      break;
+    } catch (err) {
+      lastErr = err;
+      if (!isKeyRejected(err)) throw err;
+      console.error(`[gemini-tts] ${source} was rejected by Gemini TTS (${err instanceof Error ? err.message : err}); trying the next key.`);
     }
+  }
+  if (!audioBuffer) {
+    throw new Error(
+      `The voiceover service rejected every configured Gemini key (${keys.map((k) => k.source).join(", ")}). ${lastErr instanceof Error ? lastErr.message : ""}`.trim()
+    );
   }
 
   if (!audioBuffer.length) {
