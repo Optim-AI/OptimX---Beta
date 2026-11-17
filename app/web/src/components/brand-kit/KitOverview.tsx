@@ -93,7 +93,8 @@ export function KitOverview(props: {
         <div className="min-w-0 space-y-5">
           {/* Identity */}
           <section className="rounded-2xl p-5" style={card}>
-            <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
+            {/* Buttons drop below the name until there's room beside it, so they're never covered by the preview column. */}
+            <div className="flex flex-col gap-5 sm:flex-row sm:flex-wrap sm:items-center">
               <div className="flex h-24 w-full shrink-0 items-center justify-center rounded-xl p-3 sm:w-36" style={{ background: "#f4f4f5" }}>
                 {kit.logo?.url ? (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -102,7 +103,7 @@ export function KitOverview(props: {
                   <span className="text-xs text-zinc-500">No logo yet</span>
                 )}
               </div>
-              <div className="min-w-0 flex-1">
+              <div className="min-w-[12rem] flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <h2 className="text-xl font-semibold" style={{ color: colors.foreground, fontFamily: heading ? `"${heading}", system-ui, sans-serif` : undefined }}>{kit.name}</h2>
                   {kit.isDefault && (
@@ -118,14 +119,14 @@ export function KitOverview(props: {
                   </p>
                 )}
               </div>
-              <div className="flex shrink-0 gap-2">
-                <button type="button" onClick={props.onReimport} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs"
-                  style={{ border: `1px solid ${colors.border}`, color: colors.foreground }}>
-                  <RefreshCw className="h-3.5 w-3.5" /> Update from website
-                </button>
+              <div className="flex flex-wrap gap-2">
                 <button type="button" onClick={() => props.onEdit()} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium"
                   style={{ background: colors.primary, color: colors.primaryForeground }}>
                   <Pencil className="h-3.5 w-3.5" /> Edit kit
+                </button>
+                <button type="button" onClick={props.onReimport} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs"
+                  style={{ border: `1px solid ${colors.border}`, color: colors.foreground }}>
+                  <RefreshCw className="h-3.5 w-3.5" /> {kit.websiteUrl ? "Update from website" : "Import from a website"}
                 </button>
               </div>
             </div>
@@ -231,7 +232,7 @@ export function KitOverview(props: {
 /** First-time setup: what to do, step by step. */
 export function SetupGuide(props: { step: 1 | 2 | 3; importing: boolean }) {
   const steps = [
-    { n: 1, title: "Paste your website", body: "We read it to find your logo, colours and fonts, and to learn what you sell and who it's for." },
+    { n: 1, title: "Paste your website", body: "We read it to find your logo, colours and fonts. No website? Skip this and fill in the form below." },
     { n: 2, title: "Check what we found", body: "Swap the logo, give each colour a role, change the fonts, and fix anything about the brand." },
     { n: 3, title: "Save your kit", body: "Photo Studio, Brand Studio and Ad Studio use it for everything you create." },
   ] as const;

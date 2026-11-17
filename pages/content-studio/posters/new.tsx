@@ -126,7 +126,10 @@ export default function NewPostersPage() {
             ) : products.length === 0 ? (
               <div className="text-sm" style={{ color: colors.mutedForeground }}>
                 <p>Scan your website in Ad Studio first so SkalX has your product photos.</p>
-                <Link href="/content-studio" className="mt-3 inline-flex h-11 items-center rounded-xl px-5 font-semibold" style={{ background: colors.primary, color: colors.primaryForeground }}>Open Ad Studio</Link>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Link href="/content-studio" className="inline-flex h-11 items-center rounded-xl px-5 font-semibold" style={{ background: colors.primary, color: colors.primaryForeground }}>Open Ad Studio</Link>
+                  <Link href="/brand-studio" className="inline-flex h-11 items-center rounded-xl px-5 font-semibold" style={{ border: `1px solid ${colors.border}`, color: colors.foreground }}>No website? Use a product photo</Link>
+                </div>
               </div>
             ) : (
               <div className="grid gap-2 sm:grid-cols-2">

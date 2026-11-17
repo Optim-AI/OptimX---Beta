@@ -181,7 +181,7 @@ export function sanitizeBrandKitInput(
   if (v.logo && typeof v.logo === "object") {
     const l = v.logo as Record<string, unknown>;
     const url = cleanAssetUrl(l.url);
-    if (l.url && !url) errors.push("Logo must be an http(s) or image data URL.");
+    if (l.url && !url) errors.push("The logo link isn't a web address. Upload the logo file instead, or remove it.");
     if (url) logo = { url, darkUrl: cleanAssetUrl(l.darkUrl) };
   }
 

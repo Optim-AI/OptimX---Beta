@@ -13,7 +13,7 @@ import { showConfirm } from "@/app/web/src/components/ui/alert-modal-api";
 import { toast } from "sonner";
 import { mapFullAnalyzeToBrandSnapshot } from "@/app/web/src/components/creative-studio/utils";
 import { identityFromSnapshot } from "@/lib/brand-kit/snapshot";
-import { Globe, Plus, Trash2, Star, X } from "lucide-react";
+import { Globe, Pencil, Plus, Trash2, Star, Upload, X } from "lucide-react";
 import { ArcSpinner, ShimmerTile, StepProgress } from "@/app/web/src/components/ui/loaders";
 import { KitOverview, ReviewTips, SetupGuide } from "@/app/web/src/components/brand-kit/KitOverview";
 import {
@@ -76,6 +76,48 @@ function kitToDraft(kit: BrandKit): Draft {
 function draftPayload(d: Draft): BrandKitInput {
   const { id: _id, ...rest } = d;
   return rest;
+}
+
+/** Brand Kit logos are stored inline, capped at 200,000 characters (see cleanAssetUrl). */
+const MAX_LOGO_DATA_URL = 200_000;
+
+/**
+ * Turn an uploaded logo into a small data URL: SVGs as they are, photos and PNGs
+ * scaled down (keeping transparency) until they fit the stored-logo limit.
+ */
+async function logoFileToDataUrl(file: File): Promise<string> {
+  const read = (f: Blob) =>
+    new Promise<string>((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(String(r.result));
+      r.onerror = () => reject(new Error("We couldn't read that file."));
+      r.readAsDataURL(f);
+    });
+  if (file.type === "image/svg+xml") {
+    const svg = await read(file);
+    if (svg.length > MAX_LOGO_DATA_URL) throw new Error("That SVG is too large. Try a PNG or JPG instead.");
+    return svg;
+  }
+  if (!/^image\/(png|jpe?g|webp|gif)$/i.test(file.type)) throw new Error("Please choose a PNG, JPG, WebP or SVG image.");
+  const src = await read(file);
+  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const el = new Image();
+    el.onload = () => resolve(el);
+    el.onerror = () => reject(new Error("We couldn't open that image."));
+    el.src = src;
+  });
+  for (const size of [800, 600, 400, 300]) {
+    const scale = Math.min(1, size / Math.max(img.naturalWidth, img.naturalHeight));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+    canvas.getContext("2d")?.drawImage(img, 0, 0, canvas.width, canvas.height);
+    for (const [type, quality] of [["image/png", undefined], ["image/webp", 0.9], ["image/webp", 0.75]] as const) {
+      const url = canvas.toDataURL(type, quality);
+      if (url.startsWith(`data:${type}`) && url.length <= MAX_LOGO_DATA_URL) return url;
+    }
+  }
+  throw new Error("That image is too large. Try a smaller logo file.");
 }
 
 function linesToList(text: string): string[] {
@@ -631,8 +673,10 @@ export default function BrandKitPage(): JSX.Element {
               {showTips && <ReviewTips onDismiss={() => setShowTips(false)} />}
               <Section
                 id="kit-import"
-                title={draft.id ? "Update from your website" : "Start from your website"}
-                hint="We read your site to learn what your brand is about and to find its logo, colours and fonts. Review everything before saving."
+                title={draft.id ? "Update from your website" : "Set up your Brand Kit"}
+                hint={draft.id
+                  ? "We read your site again to refresh your logo, colours, fonts and what your brand is about."
+                  : "Two ways to start: paste your website and we fill everything in for you, or fill in the details yourself."}
               >
                 <form
                   className="flex flex-col gap-2 sm:flex-row"
@@ -665,6 +709,22 @@ export default function BrandKitPage(): JSX.Element {
                     steps={["Reading your website — logo, colours and fonts…", "Understanding what you sell and who it's for…"]}
                   />
                 )}
+                {!draft.id && !importing && (
+                  <div className="flex flex-wrap items-center gap-3 pt-1">
+                    <span className="text-xs uppercase tracking-wide" style={{ color: colors.mutedForeground }}>No website?</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        document.getElementById("kit-basics")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                        setTimeout(() => document.getElementById("kit-name")?.focus({ preventScroll: true }), 400);
+                      }}
+                      className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium"
+                      style={{ border: `1px solid ${colors.border}`, color: colors.foreground }}
+                    >
+                      <Pencil className="h-4 w-4" /> Fill in the details manually
+                    </button>
+                  </div>
+                )}
                 {extraction?.warnings.length ? (
                   <ul className="list-disc pl-5 text-xs" style={{ color: colors.mutedForeground }}>
                     {extraction.warnings.map((w) => <li key={w}>{w}</li>)}
@@ -672,7 +732,7 @@ export default function BrandKitPage(): JSX.Element {
                 ) : null}
               </Section>
 
-              <Section title="Basics">
+              <Section id="kit-basics" title="Basics">
                 <div>
                   <Label htmlFor="kit-name">Brand name</Label>
                   <input id="kit-name" className={inputClass} style={fieldStyle} value={draft.name}
@@ -757,10 +817,27 @@ export default function BrandKitPage(): JSX.Element {
                     )}
                   </div>
                   <div className="min-w-0 flex-1 space-y-2">
+                    <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium"
+                      style={{ background: colors.primary, color: colors.primaryForeground }}>
+                      <Upload className="h-4 w-4" /> Upload logo
+                      <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,image/gif" className="sr-only"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          e.target.value = "";
+                          if (!file) return;
+                          try {
+                            const url = await logoFileToDataUrl(file);
+                            setDraft((d) => ({ ...d, logo: { url, darkUrl: d.logo?.darkUrl ?? null } }));
+                          } catch (err) {
+                            toast.error(friendlyError(err, "We couldn't use that image. Try a PNG or JPG."));
+                          }
+                        }} />
+                    </label>
                     <div>
-                      <Label htmlFor="logo-url">Logo URL</Label>
-                      <input id="logo-url" className={inputClass} style={fieldStyle} placeholder="https://…/logo.svg"
-                        value={draft.logo?.url?.startsWith("data:") ? "(inline SVG from your site)" : draft.logo?.url || ""}
+                      <Label htmlFor="logo-url">Or paste a link to your logo</Label>
+                      <input id="logo-url" className={inputClass} style={fieldStyle} placeholder="https://…/logo.png"
+                        value={draft.logo?.url?.startsWith("data:") ? "(image file)" : draft.logo?.url || ""}
+                        readOnly={!!draft.logo?.url?.startsWith("data:")}
                         onChange={(e) => setDraft((d) => ({ ...d, logo: e.target.value ? { url: e.target.value, darkUrl: d.logo?.darkUrl ?? null } : null }))} />
                     </div>
                     {draft.logo?.url && (

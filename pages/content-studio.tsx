@@ -1264,6 +1264,12 @@ export default function ContentStudioPage() {
                       <Sparkles className="mr-2 h-4 w-4" /> Find my products
                     </Button>
                   </form>
+                  <p className="mt-3 text-center text-sm" style={{ color: colors.mutedForeground }}>
+                    No website?{" "}
+                    <Link href="/brand-studio" className="font-medium underline underline-offset-2" style={{ color: colors.primary }}>
+                      Make ads from a product photo in Brand Studio
+                    </Link>
+                  </p>
                   <ol className="mt-10 grid w-full max-w-3xl grid-cols-1 gap-3 sm:grid-cols-3">
                     {[
                       ["1", "Paste your website", "We find your products, prices and photos."],
