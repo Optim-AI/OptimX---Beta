@@ -586,7 +586,7 @@ async function run() {
         heading: { family: "Playfair Display", source: "google" },
         body: { family: "Inter", source: "google" },
       },
-      guidelines: { mustInclude: ["Logo in the top-left corner"], dos: ["Lots of white space"], donts: ["Gradients"] },
+      guidelines: { mustInclude: ["Logo in the top-left corner", "@fuelco handle in the footer"], dos: ["Lots of white space"], donts: ["Gradients"] },
       identity: { ...EMPTY_IDENTITY },
       createdAt: "",
       updatedAt: "",
@@ -598,8 +598,12 @@ async function run() {
   assert(kitPrompt.includes("Set the headline in Playfair Display"), "kit heading font");
   assert(kitPrompt.includes("call to action in Inter"), "kit body font");
   assert(kitPrompt.includes("- Must include: Logo in the top-left corner"), "must-include rule");
-  assert(kitPrompt.includes("- Lots of white space"), "do rule");
-  assert(/Avoid gradients;/.test(kitPrompt), "don't rule added to avoid list");
+  assert(kitPrompt.includes("- Do: Lots of white space"), "do rule");
+  assert(kitPrompt.includes("- Never: Gradients"), "don't rule is a hard rule");
+  assert(kitPrompt.includes("follow every one exactly"), "rules are mandatory");
+  assert(/\d\. "@fuelco": required by the brand rules/.test(kitPrompt), "must-include text is one of the printed lines");
+  const editPrompt = compileNanoBananaPrompt(kitSpec, { forIteration: true });
+  assert(editPrompt.includes("=== BRAND RULES ===") && editPrompt.includes("- Never: Gradients"), "edits keep the brand rules");
   assert(!kitPrompt.includes("Restrained, sophisticated palette"), "theme colour guidance replaced by brand palette");
   assert(!kitPrompt.includes("Elegant hierarchy"), "theme typography replaced by brand fonts");
   assert(

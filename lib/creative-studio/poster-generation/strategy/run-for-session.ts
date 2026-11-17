@@ -15,6 +15,7 @@ import type { MarketingStrategistInput } from "./strategy-input";
 import { PosterStrategyError } from "./strategy-errors";
 import { researchDigest } from "@/lib/research/brand-research";
 import { getBrandResearch, researchMatchesBrandName } from "@/lib/research/store";
+import { loadBrandKitForPosters } from "@/lib/brand-kit/for-posters";
 
 export type RunMarketingStrategyOptions = {
   sessionId: string;
@@ -62,6 +63,9 @@ export async function runMarketingStrategyForSession(
   if (research && researchMatchesBrandName(research, input.brand.identity.name?.value)) {
     input.marketResearch = researchDigest(research, 1800);
   }
+  // The owner's Brand Kit rules shape the words too, not only the picture.
+  const kit = await loadBrandKitForPosters(options.userId);
+  if (kit) input.brandRules = kit.guidelines;
   const strategy = await generateMarketingStrategy(input, {
     generator: options.generator,
   });

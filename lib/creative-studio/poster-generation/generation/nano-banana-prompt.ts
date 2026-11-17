@@ -3,6 +3,7 @@
  * Translates only. Does not invent creative decisions.
  */
 
+import { formatBrandRulesForImage, requiredPrintedText } from "@/lib/brand-kit/rules";
 import type {
   GenerationCopySlot,
   GenerationSpecification,
@@ -265,9 +266,17 @@ export function compileArtDirectorBrief(
     }
     return `${i + 1}. "${slot.text}": ${guidance}.`;
   });
+  // Exact text the owner's "must include" rules ask for (a handle, phone, web address…).
+  const inCopy = slots.map((s) => s.text.toLowerCase());
+  const ruleText = requiredPrintedText(kit).filter((t) => !inCopy.some((c) => c.includes(t.toLowerCase())));
+  ruleText.forEach((t, j) => {
+    const rule = kit?.mustInclude.find((r) => r.includes(t));
+    textLines.push(`${slots.length + j + 1}. "${t}": required by the brand rules${rule ? ` (${rule})` : ""}.`);
+  });
+  const lineCount = slots.length + ruleText.length;
   lines.push(
     [
-      `Text — render exactly ${slots.length === 1 ? "this line" : `these ${slots.length} lines`}, spelled exactly as written, each one once, and no other words:`,
+      `Text — render exactly ${lineCount === 1 ? "this line" : `these ${lineCount} lines`}, spelled exactly as written, each one once, and no other words:`,
       ...textLines,
       "No other words anywhere: no extra captions, star ratings, review or customer counts, testimonials, quote boxes, or colour codes (hex values describe colours; never print them).",
       art.hasProductReference
@@ -278,15 +287,8 @@ export function compileArtDirectorBrief(
       .join("\n")
   );
 
-  if (kit && (kit.mustInclude.length || kit.dos.length)) {
-    lines.push(
-      [
-        "Brand rules:",
-        ...kit.mustInclude.map((r) => `- Must include: ${r}`),
-        ...kit.dos.map((r) => `- ${r}`),
-      ].join("\n")
-    );
-  }
+  const rules = formatBrandRulesForImage(kit);
+  if (rules) lines.push(rules);
 
   const extra = (art.additionalRequirements || []).filter((x) => x && x.trim());
   if (extra.length) {
@@ -302,7 +304,6 @@ export function compileArtDirectorBrief(
 
   const avoid = joinDistinct(
     [
-      ...(kit?.donts ?? []).map(lowerFirst),
       ...t.avoid.map(lowerFirst),
       "extra text, prices, URLs or watermarks",
       "clip-art and stock-photo clichés",
@@ -489,6 +490,13 @@ export function compileNanoBananaPrompt(
     sections.push(
       `Allowed factual claims only: ${spec.strategyAlignment.allowedClaims.join("; ")}`
     );
+  }
+
+  // Edits and fallback prompts keep the owner's Brand Kit rules too.
+  const brandRules = formatBrandRulesForImage(spec.artDirection?.brandKit);
+  if (brandRules) {
+    sections.push("\n=== BRAND RULES ===");
+    sections.push(brandRules);
   }
 
   sections.push("\n=== FINAL INSTRUCTION ===");

@@ -3,6 +3,7 @@
  * Decides WHAT the poster should communicate — never HOW it should look.
  */
 
+import { formatBrandRulesForCopy } from "@/lib/brand-kit/rules";
 import { createDefaultStructuredGenerator } from "@/lib/creative-studio/commercial-production/commercial-director/gemini-structured";
 import {
   StructuredGenerationError,
@@ -103,6 +104,12 @@ function buildUserPrompt(input: MarketingStrategistInput): string {
 
   parts.push("\n=== BRAND CONTEXT ===");
   parts.push(formatBrandForStrategist(brand));
+
+  const rules = formatBrandRulesForCopy(input.brandRules);
+  if (rules) {
+    parts.push("\n=== BRAND RULES (from the owner's Brand Kit — must be followed) ===");
+    parts.push(rules);
+  }
 
   if (input.marketResearch) {
     parts.push("\n=== MARKET RESEARCH (insight for framing — NOT allowed claims) ===");

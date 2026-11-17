@@ -3,6 +3,7 @@
  * concepts, produced before any image generation. 0 image credits.
  */
 
+import { formatBrandRulesForCopy } from "@/lib/brand-kit/rules";
 import { createDefaultStructuredGenerator } from "@/lib/creative-studio/commercial-production/commercial-director/gemini-structured";
 import {
   StructuredGenerationError,
@@ -45,6 +46,8 @@ export type CarouselPlannerInput = {
   brand: BrandContext;
   references: ReferenceContext;
   direction: CampaignDirection;
+  /** The owner's Brand Kit rules — slide copy must follow them. */
+  brandRules?: { mustInclude: string[]; dos: string[]; donts: string[] } | null;
 };
 
 export type PlanCarouselStoryOptions = {
@@ -101,6 +104,11 @@ function buildUserPrompt(input: CarouselPlannerInput, repairHint: string): strin
   parts.push(formatProductFactsForStrategist(input.product));
   parts.push("\n=== BRAND ===");
   parts.push(formatBrandForStrategist(input.brand));
+  const rules = formatBrandRulesForCopy(input.brandRules);
+  if (rules) {
+    parts.push("\n=== BRAND RULES (from the owner's Brand Kit — must be followed) ===");
+    parts.push(rules);
+  }
   parts.push("\n=== REFERENCES ===");
   parts.push(formatReferencesForDirector(input.references));
   if (input.direction) {

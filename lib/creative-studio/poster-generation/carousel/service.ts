@@ -307,6 +307,7 @@ export class PosterCarouselService {
         brand: ctx.contexts.brand,
         references: ctx.contexts.references,
         direction,
+        brandRules: ctx.brandKit?.guidelines ?? null,
       },
       { generator: this.deps.generator, now: () => this.iso() }
     );

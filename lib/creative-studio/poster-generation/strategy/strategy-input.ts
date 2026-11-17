@@ -15,6 +15,8 @@ export type MarketingStrategistInput = {
   references: ReferenceContext;
   /** Digest of saved brand research (lib/research) — insight for framing, never product claims. */
   marketResearch?: string;
+  /** The owner's Brand Kit rules (must include / do / don't) — the copy must follow them. */
+  brandRules?: { mustInclude: string[]; dos: string[]; donts: string[] } | null;
 };
 
 /** Explicit copy/intent overrides extracted from user instruction + brief hints */
