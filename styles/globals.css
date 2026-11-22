@@ -1,4 +1,7 @@
 @import "tailwindcss";
+/* Marketing Agent components: listed explicitly so their classes are always generated. */
+@source "../app/web/src/components/agent";
+@source "../pages/marketing-agent";
 
 /*
  * Marketing fonts, self-hosted from /public/fonts (SIL OFL, from @fontsource-variable v5.3.0).

@@ -112,6 +112,8 @@ function safeTrim(value: unknown): string {
 export default function PosterSessionPage() {
   const router = useRouter();
   const { id: sessionId, autoGenerate } = router.query;
+  const agentActionId = typeof router.query.agentAction === 'string' ? router.query.agentAction : '';
+  const agentBriefAppliedRef = useRef(false);
   
   // Session state
   const [session, setSession] = useState<CreativeStudioSession | null>(null);
@@ -269,6 +271,22 @@ export default function PosterSessionPage() {
       subscription.unsubscribe();
     };
   }, []);
+
+  // From Marketing Agent: fill the creative direction once, after the new session has loaded.
+  useEffect(() => {
+    if (!agentActionId || agentBriefAppliedRef.current || isLoading || !session) return;
+    agentBriefAppliedRef.current = true;
+    (async () => {
+      try {
+        const res = await authFetch(`/api/agent/actions?id=${encodeURIComponent(agentActionId)}`);
+        const json = await res.json();
+        const brief = typeof json?.action?.params?.brief === 'string' ? json.action.params.brief : '';
+        if (brief) setPosterPrompt((p) => p || brief);
+      } catch {
+        /* the owner can type the brief themselves */
+      }
+    })();
+  }, [agentActionId, isLoading, session]);
 
   // ============== Load Session ==============
   

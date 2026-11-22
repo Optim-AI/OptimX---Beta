@@ -25,6 +25,7 @@ import {
   Flame,
   Camera,
   Smartphone,
+  Sparkles,
   type LucideIcon,
 } from 'lucide-react';
 import { supabase } from '@/auth/supabase/client';
@@ -56,6 +57,11 @@ const NAV_SECTIONS: NavSection[] = [
   //     { href: '/dashboard', label: 'Dashboard', Icon: LayoutGrid, featureKey: 'dashboard' },
   //   ],
   // },
+  {
+    id: 'agent',
+    label: 'Agent',
+    items: [{ href: '/marketing-agent', label: 'Marketing Agent', Icon: Sparkles }],
+  },
   {
     id: 'create',
     label: 'Create',

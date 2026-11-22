@@ -160,6 +160,28 @@ export default function BrandStudioLanding() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [brandLoaded]);
 
+  // From Marketing Agent: start a poster session with the agent's brief filled in.
+  const agentStartRef = useRef(false);
+  useEffect(() => {
+    if (!router.isReady || !brandLoaded || agentStartRef.current) return;
+    const actionId = typeof router.query.agentAction === 'string' ? router.query.agentAction : '';
+    if (!/^[0-9a-f-]{36}$/i.test(actionId)) return;
+    agentStartRef.current = true;
+    // Drop the query so Back doesn't start a second session.
+    void router.replace('/brand-studio', undefined, { shallow: true });
+    (async () => {
+      try {
+        const res = await authFetch(`/api/agent/actions?id=${encodeURIComponent(actionId)}`);
+        const json = await res.json();
+        if (!json.ok || json.action?.type !== 'brand_posters') return;
+        await handleCreateSession(String(json.action.title || 'Posters from Marketing Agent').slice(0, 60), 'poster', actionId);
+      } catch {
+        /* fall back to the normal Brand Studio page */
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router.isReady, brandLoaded, router.query.agentAction]);
+
   // ============== Session Handlers ==============
 
   /** Brand Studio builds from the Brand Kit, so set that up first. */
@@ -194,7 +216,7 @@ export default function BrandStudioLanding() {
     setShowNameModal(true);
   }
 
-  async function handleCreateSession(name: string, sessionTypeOverride?: 'poster' | 'video') {
+  async function handleCreateSession(name: string, sessionTypeOverride?: 'poster' | 'video', agentActionId?: string) {
     if (!brand) {
       goToBrandKitSetup();
       return;
@@ -219,7 +241,7 @@ export default function BrandStudioLanding() {
       if (data.ok && data.session) {
         setShowNameModal(false);
         if (sessionType === 'poster') {
-          router.push(`/brand-studio/poster?id=${data.session.id}`);
+          router.push(`/brand-studio/poster?id=${data.session.id}${agentActionId ? `&agentAction=${encodeURIComponent(agentActionId)}` : ''}`);
         } else {
           router.push(`/brand-studio/video?id=${data.session.id}`);
         }

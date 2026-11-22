@@ -1405,3 +1405,97 @@ export const igStyleReads = pgTable("ig_style_reads", {
 	error: text(),
 	createdAt: ts("created_at").notNull().defaultNow(),
 }, (t) => [index("idx_ig_style_reads_conn_created").using("btree", t.connectionId.asc().nullsLast(), t.createdAt.desc().nullsLast())]);
+
+// ---- Marketing Agent (migration 20261122120000_marketing_agent.sql) ----
+export const agentSettings = pgTable("agent_settings", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	userId: uuid("user_id").notNull(),
+	brandKitId: uuid("brand_kit_id"),
+	instructions: text().notNull().default(""),
+	tagline: text(),
+	createdAt: ts("created_at").notNull().defaultNow(),
+	updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [uniqueIndex("agent_settings_user_key").using("btree", t.userId.asc().nullsLast())]);
+
+export const agentSessions = pgTable("agent_sessions", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	userId: uuid("user_id").notNull(),
+	brandKitId: uuid("brand_kit_id"),
+	title: text().notNull().default("New chat"),
+	source: text().notNull().default("chat"),
+	taskId: uuid("task_id"),
+	unread: boolean().notNull().default(false),
+	createdAt: ts("created_at").notNull().defaultNow(),
+	updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [index("idx_agent_sessions_user_updated").using("btree", t.userId.asc().nullsLast(), t.updatedAt.desc().nullsLast())]);
+
+export const agentMessages = pgTable("agent_messages", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	sessionId: uuid("session_id").notNull().references(() => agentSessions.id, { onDelete: "cascade" }),
+	userId: uuid("user_id").notNull(),
+	role: text().notNull(),
+	content: text().notNull().default(""),
+	actions: jsonb().notNull().default([]),
+	used: jsonb().notNull().default([]),
+	model: text(),
+	createdAt: ts("created_at").notNull().defaultNow(),
+}, (t) => [index("idx_agent_messages_session_created").using("btree", t.sessionId.asc().nullsLast(), t.createdAt.asc().nullsLast())]);
+
+export const agentContextItems = pgTable("agent_context_items", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	userId: uuid("user_id").notNull(),
+	brandKitId: uuid("brand_kit_id"),
+	kind: text().notNull(),
+	title: text().notNull(),
+	storagePath: text("storage_path"),
+	mime: text(),
+	url: text(),
+	extractedText: text("extracted_text"),
+	summary: text(),
+	status: text().notNull().default("ready"),
+	error: text(),
+	createdAt: ts("created_at").notNull().defaultNow(),
+}, (t) => [index("idx_agent_context_user_created").using("btree", t.userId.asc().nullsLast(), t.createdAt.desc().nullsLast())]);
+
+export const agentMemories = pgTable("agent_memories", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	userId: uuid("user_id").notNull(),
+	brandKitId: uuid("brand_kit_id"),
+	fact: text().notNull(),
+	sourceSessionId: uuid("source_session_id").references(() => agentSessions.id, { onDelete: "set null" }),
+	createdAt: ts("created_at").notNull().defaultNow(),
+	updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [index("idx_agent_memories_user_created").using("btree", t.userId.asc().nullsLast(), t.createdAt.desc().nullsLast())]);
+
+export const agentTasks = pgTable("agent_tasks", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	userId: uuid("user_id").notNull(),
+	brandKitId: uuid("brand_kit_id"),
+	title: text().notNull(),
+	prompt: text().notNull(),
+	cadence: jsonb().notNull(),
+	timezone: text().notNull().default("Asia/Kolkata"),
+	enabled: boolean().notNull().default(true),
+	emailMe: boolean("email_me").notNull().default(false),
+	nextRunAt: ts("next_run_at"),
+	lastRunAt: ts("last_run_at"),
+	lastSessionId: uuid("last_session_id").references(() => agentSessions.id, { onDelete: "set null" }),
+	lastError: text("last_error"),
+	createdAt: ts("created_at").notNull().defaultNow(),
+	updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [index("idx_agent_tasks_user").using("btree", t.userId.asc().nullsLast())]);
+
+export const agentActions = pgTable("agent_actions", {
+	id: uuid().primaryKey().notNull().defaultRandom(),
+	userId: uuid("user_id").notNull(),
+	sessionId: uuid("session_id").references(() => agentSessions.id, { onDelete: "cascade" }),
+	messageId: uuid("message_id").references(() => agentMessages.id, { onDelete: "cascade" }),
+	type: text().notNull(),
+	params: jsonb().notNull().default({}),
+	costCredits: integer("cost_credits").notNull().default(0),
+	status: text().notNull().default("proposed"),
+	result: jsonb(),
+	error: text(),
+	createdAt: ts("created_at").notNull().defaultNow(),
+	updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [index("idx_agent_actions_user_created").using("btree", t.userId.asc().nullsLast(), t.createdAt.desc().nullsLast())]);

@@ -1,4 +1,4 @@
-// /content-studio/posters/new[?scan=<scanId>&product=<name>&from_ad=<id>&idea=<text>] — product → goal → where it runs → (optional note) → 8 draft posters.
+// /content-studio/posters/new[?scan=<scanId>&product=<name>&from_ad=<id>&idea=<text>&goal=<AdGoal>&offer=<text>] — product → goal → where it runs → (optional note) → 8 draft posters.
 import React, { useEffect, useMemo, useState } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
@@ -70,6 +70,11 @@ export default function NewPostersPage() {
         // From Trends: the idea arrives as a ready note the owner can edit.
         const idea = typeof router.query.idea === 'string' ? router.query.idea.slice(0, 1000) : '';
         if (idea) setNote((n) => n || idea);
+        // From Marketing Agent: goal and offer arrive ready too.
+        const qGoal = typeof router.query.goal === 'string' ? router.query.goal : '';
+        if ((AD_GOAL_KEYS as string[]).includes(qGoal)) setGoal((g) => g ?? (qGoal as AdGoal));
+        const qOffer = typeof router.query.offer === 'string' ? router.query.offer.slice(0, 200) : '';
+        if (qOffer) setOffer((o) => o || qOffer);
       } catch {
         setProducts([]);
       }
