@@ -65,6 +65,7 @@ test("research proposals map region names to ids", () => {
 test("a post needs an idea or a headline", () => {
   assert.equal(cleanPost({}), null);
   assert.equal(cleanPost({ headline: "Fresh roast" })?.idea, "Fresh roast");
+  assert.equal(cleanPost({ idea: "x", caption: "Fresh. *Tagline: Strong.* **Ours**" })?.caption, "Fresh. Tagline: Strong. Ours");
 });
 
 test("only our own poster storage can replace a poster", () => {

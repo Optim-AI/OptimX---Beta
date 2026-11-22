@@ -65,10 +65,12 @@ export type PosterJobResult = {
 };
 
 const str = (v: unknown, n: number) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, n) : "");
+/** Plain text for poster copy and captions: no markdown marks (**bold**, _italic_, # headings, `code`). */
+const plain = (v: unknown, n: number) => str(typeof v === "string" ? v.replace(/(\*\*|__|[*_`#])/g, "") : v, n);
 
 export function cleanPost(raw: any): PlannedPost | null {
-  const idea = str(raw?.idea, 300);
-  const headline = str(raw?.headline, 120);
+  const idea = plain(raw?.idea, 300);
+  const headline = plain(raw?.headline, 120);
   if (!idea && !headline) return null;
   const goal = (POSTER_AD_GOALS as readonly string[]).includes(raw?.goal) ? (raw.goal as PosterAdGoal) : "awareness";
   return {
@@ -76,8 +78,8 @@ export function cleanPost(raw: any): PlannedPost | null {
     platform: str(raw?.platform, 60) || "Instagram",
     idea: idea || headline,
     headline,
-    caption: str(raw?.caption, 600),
-    visual: str(raw?.visual, 300),
+    caption: plain(raw?.caption, 600),
+    visual: plain(raw?.visual, 300),
     goal,
   };
 }
@@ -120,6 +122,7 @@ function buildBrief(brand: BrandSnapshot, post: PlannedPost, product: Product | 
     post.visual && `Visual idea: ${post.visual}`,
     product ? "Feature the real product from the product reference; packaging must match it exactly." : "There is no product photo: build the poster around the brand, the idea and the visual, not a made-up product pack.",
     "Do not invent prices, discounts, stats or ratings that are not in this brief. No placeholder or labelled copy (never write 'CTA:' or 'Headline:').",
+    "No badges, seals, stamps or stickers unless this brief gives their exact text.",
   ].filter(Boolean).join("\n");
 
   return {
