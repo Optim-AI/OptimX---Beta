@@ -161,7 +161,8 @@
     "meta:preflight": "tsx scripts/meta-preflight.ts",
     "test:trends": "npx --yes tsx lib/trends/trends.test.ts",
     "test:research-verify": "npx --yes tsx lib/research/verify.test.ts",
-    "test:meta-ig": "npx --yes tsx lib/meta-ig/meta-ig.test.ts"
+    "test:meta-ig": "npx --yes tsx lib/meta-ig/meta-ig.test.ts",
+    "test:agent": "npx --yes tsx lib/agent/agent.test.ts"
   },
   "license": "MIT"
 }

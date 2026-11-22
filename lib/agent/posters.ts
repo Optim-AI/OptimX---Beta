@@ -285,7 +285,7 @@ export function isOwnPosterUrl(url: string): boolean {
   try {
     const base = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || "");
     const u = new URL(url);
-    return u.protocol === "https:" && u.host === base.host && u.pathname.startsWith("/storage/v1/object/public/campaign-assets/");
+    return (u.protocol === "https:" || u.protocol === "http:") && u.protocol === base.protocol && u.host === base.host && u.pathname.startsWith("/storage/v1/object/public/campaign-assets/");
   } catch {
     return false;
   }
