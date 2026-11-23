@@ -88,9 +88,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     send({ type: "done", messageId, used: ctx.used });
     // Remember lasting facts the owner told us (shown with Undo) and offer next-step buttons.
     try {
-      const { learned, actions } = await afterTurn({ userId, sessionId: session.id, messageId, ownerMessage: message, reply, memories: await listMemories(userId) });
+      const { learned, actions, next } = await afterTurn({ userId, sessionId: session.id, messageId, ownerMessage: message, reply, memories: await listMemories(userId) });
       if (learned.length) send({ type: "memory", items: learned.map((m) => ({ id: m.id, fact: m.fact })) });
       if (actions.length) send({ type: "actions", items: actions });
+      else if (next) send({ type: "next", text: next });
     } catch (e) {
       console.warn("[agent/chat] after-turn skipped", { message: (e as Error)?.message?.slice(0, 120) });
     }

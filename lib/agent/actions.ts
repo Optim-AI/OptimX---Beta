@@ -21,7 +21,7 @@ import { researchFocused, type FocusedResearch } from "@/lib/research/focused-re
 import { CITIES, STATES, resolveRegions } from "@/lib/research/regions";
 import { getBrandResearch, saveFocusedResearch } from "@/lib/research/store";
 import { buildAgentContext } from "./context";
-import { MAX_POSTS, cleanPost, settleStale, type PosterJobResult } from "./posters";
+import { MAX_POSTS, cleanPost, settleStale, withFreshPreviews, type PosterJobResult } from "./posters";
 import { agentJson } from "./gemini-json";
 
 /** "brand_posters" and "ad_pack" were studio hand-offs; kept only so older chats still render. */
@@ -147,12 +147,18 @@ export async function saveProposals(userId: string, sessionId: string, messageId
 export async function actionsForSession(userId: string, sessionId: string): Promise<AgentAction[]> {
   const rows = await db.select().from(agentActions)
     .where(and(eq(agentActions.userId, userId), eq(agentActions.sessionId, sessionId))).orderBy(asc(agentActions.createdAt));
-  return rows.map(toAction);
+  return Promise.all(rows.map(toAction).map(freshPreviews));
+}
+
+/** Preview posters live in a private bucket: their links are re-signed on every read. */
+async function freshPreviews(a: AgentAction): Promise<AgentAction> {
+  if (a.type !== "posters" || !(a.result as PosterJobResult | null)?.preview) return a;
+  return { ...a, result: (await withFreshPreviews(a.result as PosterJobResult)) as AgentAction["result"] };
 }
 
 export async function getAction(userId: string, id: string): Promise<AgentAction | null> {
   const [row] = await db.select().from(agentActions).where(and(eq(agentActions.id, id), eq(agentActions.userId, userId)));
-  return row ? toAction(row) : null;
+  return row ? freshPreviews(toAction(row)) : null;
 }
 
 async function setStatus(id: string, status: string, extra: { result?: unknown; error?: string | null } = {}) {
@@ -280,7 +286,7 @@ export function actionGuide(productNames: string[] = []): string {
     ? `The owner's products (use an exact name for "product"): ${productNames.slice(0, 30).join("; ")}.`
     : `The owner has no products with photos yet: use "scope":"brand" unless they name a product.`;
   return `Actions you may offer (0 to 2; usually none). Nothing leaves the chat: posters, research and calendars are all made right here.
-- {"type":"posters","title":"…","params":{"posts":[{"day":"Tuesday","platform":"Instagram feed","idea": one line,"headline": short poster headline (no price or discount unless the owner gave it),"caption": the post caption,"visual": what the image shows,"goal": one of ${POSTER_AD_GOAL_LIST},"scope": "product" when the post sells or shows one product, "brand" for festival wishes, brand story, behind the scenes or the whole range,"product": the product name for a product post, else ""}]}}
+- {"type":"posters","title":"…","params":{"posts":[{"day":"Tuesday","platform":"Instagram feed","idea": one line,"headline": short poster headline (no price or discount unless the owner gave it),"caption": the post caption,"visual": what the image shows,"headlines": [the headline, one alternative headline with a different angle] (each 2-6 words: long poster text gets misspelt),"hashtags": 5-8 hashtags mixing popular and niche ones, e.g. ["#Pongal2027","#KeralaFood"],"bestTime": India time to post, e.g. "Fri 7-9 PM","goal": one of ${POSTER_AD_GOAL_LIST},"scope": "product" when the post sells or shows one product, "brand" for festival wishes, brand story, behind the scenes or the whole range,"product": the product name for a product post, else ""}]}}
   Offer this when the reply is a post plan (one entry per planned post, copied from the reply, max ${MAX_POSTS}) or the owner wants a poster, ad creative or social graphic (one entry). ${products}
 - {"type":"research","title":"…","params":{"product": product name or "","regions": Indian state or city names, e.g. ["Bengaluru","Tamil Nadu"]}}  (always offer it when the owner asks for research, a report, or a competitor/market/regional study; otherwise only when they need facts we don't have yet)
 - {"type":"calendar","title":"…","params":{"weeks":1-4,"focus": theme or occasion}}  (when they want a longer posting plan than this reply gives)`;

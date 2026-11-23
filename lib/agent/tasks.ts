@@ -5,6 +5,7 @@
  * credits: any action they suggest waits for the owner to press its button.
  * Times are India time (IST, no daylight saving).
  */
+import { cleanPost, productChoices, resolveProduct, startPosterJob, type PlannedPost } from "./posters";
 import { and, asc, count, eq, lte } from "drizzle-orm";
 import { db } from "@/database/client";
 import { agentTasks } from "@/database/schema";
@@ -184,7 +185,11 @@ export async function runTask(userId: string, taskId: string, opts: { sendEmail?
     }
     if (!reply.trim()) throw new Error("empty reply");
     const messageId = await addMessage(userId, session.id, { role: "assistant", content: reply, used: ctx.used, model });
-    await afterTurn({ userId, sessionId: session.id, messageId, ownerMessage: row.prompt, reply, memories: [], learn: false }).catch(() => null);
+    const turn = await afterTurn({ userId, sessionId: session.id, messageId, ownerMessage: row.prompt, reply, memories: [], learn: false }).catch(() => null);
+    // Weekly check-in: when the reply is a post plan, make up to 3 free preview posters right away.
+    // The owner keeps the ones they like for 1 credit each (the rest cost nothing).
+    const plan = turn?.actions.find((a) => a.type === "posters");
+    if (plan) await startPreviewPosters(userId, plan).catch((err) => console.warn("[agent/tasks] previews skipped", { message: (err as Error)?.message?.slice(0, 120) }));
     await updateSession(userId, session.id, { touch: true, unread: true });
     await db.update(agentTasks).set({ lastRunAt: new Date().toISOString(), lastSessionId: session.id, lastError: null }).where(eq(agentTasks.id, row.id));
     if (opts.sendEmail ?? row.emailMe) await emailResult(userId, row.title, reply, session.id);
@@ -219,4 +224,20 @@ export async function runDueTasks(budgetMs = 240_000): Promise<{ due: number; ra
     }
   }
   return { due: due.length, ran, failed };
+}
+
+/** Previews for a planned set of posts: each product post gets its named product (if found). */
+async function startPreviewPosters(userId: string, plan: { id: string; params: Record<string, unknown> }) {
+  const posts = ((plan.params.posts ?? []) as unknown[]).map(cleanPost).filter((p): p is PlannedPost => !!p);
+  if (!posts.length) return;
+  const choices = await productChoices(userId).catch(() => [] as Awaited<ReturnType<typeof productChoices>>);
+  const productsByPost: Record<number, Awaited<ReturnType<typeof resolveProduct>>> = {};
+  for (const [i, p] of posts.entries()) {
+    const want = p.product.toLowerCase();
+    const match = p.scope === "product" && want ? choices.find((c) => c.name.toLowerCase() === want) : undefined;
+    productsByPost[i] = match ? await resolveProduct(userId, { ref: match.id }) : null;
+  }
+  await startPosterJob({
+    userId, actionId: plan.id, posts, selected: posts.map((_, i) => i), size: "feed", product: null, productsByPost, preview: true,
+  });
 }

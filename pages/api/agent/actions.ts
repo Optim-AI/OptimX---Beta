@@ -6,13 +6,15 @@
 // POST /api/agent/actions {op:"upload", mime, size} → one-time upload for a product photo
 // POST /api/agent/actions {id, op:"run", posters:{selected:[i], size, product:{ref}|{uploadPath,name}|null, products?:{[i]: {ref}|{uploadPath,name}|null}}}
 //   products = per post (null = brand poster); overrides product
-// POST /api/agent/actions {id, op:"poster-update", index, imageUrl, generationId} → keep an edited poster
+// POST /api/agent/actions {id, op:"poster-update", index, imageUrl, generationId, instruction?} → keep an edited poster
+// POST /api/agent/actions {id, op:"keep", index} → keep a free preview poster (1 image credit)
 import type { NextApiRequest, NextApiResponse } from "next";
 import { getUserIdFromRequest } from "@/auth/request";
 import { randomUUID } from "crypto";
 import { ActionError, dismissAction, getAction, runAction } from "@/lib/agent/actions";
 import { CONTEXT_BUCKET, MAX_FILE_BYTES } from "@/lib/agent/context-items";
-import { POSTER_SIZES, PosterJobError, productChoices, resolveProduct, startPosterJob, updatePosterItem, type PlannedPost, type PosterSize } from "@/lib/agent/posters";
+import { POSTER_SIZES, PosterJobError, keepPreview, productChoices, resolveProduct, startPosterJob, updatePosterItem, type PlannedPost, type PosterSize } from "@/lib/agent/posters";
+import { rememberTaste, tasteFromEdit } from "@/lib/agent/taste";
 import { addMessage, updateSession } from "@/lib/agent/store";
 
 export const config = { maxDuration: 300 }; // poster jobs keep running in the background (lib/jobs/background)
@@ -46,12 +48,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const id = idOf(req.body?.id);
     if (!id) return res.status(400).json({ ok: false, error: "Missing action" });
     if (req.body?.op === "dismiss") return res.status(200).json({ ok: await dismissAction(userId, id) });
+    if (req.body?.op === "keep") {
+      const index = Number(req.body?.index);
+      if (!Number.isInteger(index) || index < 0) return res.status(400).json({ ok: false, error: "Missing poster" });
+      return res.status(200).json({ ok: true, result: await keepPreview(userId, id, index) });
+    }
     if (req.body?.op === "poster-update") {
       const index = Number(req.body?.index);
       const imageUrl = typeof req.body?.imageUrl === "string" ? req.body.imageUrl : "";
       const generationId = typeof req.body?.generationId === "string" && req.body.generationId ? req.body.generationId.slice(0, 120) : null;
       if (!Number.isInteger(index) || index < 0 || !imageUrl) return res.status(400).json({ ok: false, error: "Missing poster" });
       const result = await updatePosterItem(userId, id, index, imageUrl, generationId);
+      // Learn from what the owner changed (shown in Memory, where they can delete it).
+      if (typeof req.body?.instruction === "string") await rememberTaste(userId, tasteFromEdit(req.body.instruction.slice(0, 300)));
       return res.status(200).json({ ok: true, result });
     }
     if (req.body?.op !== "run") return res.status(400).json({ ok: false, error: "Unknown request" });
@@ -80,7 +89,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           productsByPost[i] = resolved;
         }
       }
-      await startPosterJob({ userId, actionId: id, posts, selected, size, product, productsByPost });
+      // Per-post headline picks (checked against each post's own options in startPosterJob).
+      const headlinesByPost: Record<number, string> = {};
+      if (opts.headlines && typeof opts.headlines === "object") {
+        for (const [k, v] of Object.entries(opts.headlines as Record<string, unknown>).slice(0, 12)) {
+          const i = Number(k);
+          if (Number.isInteger(i) && i >= 0 && i < posts.length && typeof v === "string") headlinesByPost[i] = v.slice(0, 120);
+        }
+      }
+      await startPosterJob({ userId, actionId: id, posts, selected, size, product, productsByPost, headlinesByPost });
       return res.status(200).json({ ok: true, action: await getAction(userId, id) });
     }
 

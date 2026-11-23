@@ -23,7 +23,7 @@ const when = (iso: string | null) =>
 
 const PRESETS: Array<{ title: string; prompt: string; cadence: Cadence }> = [
   { title: "Weekly post plan", cadence: { freq: "weekly", weekday: 1, hour: 9 },
-    prompt: "Plan this week's social media posts: 4–5 posts with the day, platform, idea and a caption opening line. Use any festivals or occasions this week." },
+    prompt: "Plan this week's social media posts: 3–5 posts with the day, platform, idea, headline, caption with hashtags and best time. Use any festivals or occasions coming up. Up to 3 free preview posters are made with the plan: I only pay 1 credit for each one I keep." },
   { title: "Weekly ads check", cadence: { freq: "weekly", weekday: 1, hour: 10 },
     prompt: "Review how my Meta ads did last week: what's working, what's wasting money and what I should change this week. If my ads aren't connected, give me 3 low-cost ways to get more customers this week." },
   { title: "Monthly competitor check", cadence: { freq: "monthly", monthday: 1, hour: 10 },

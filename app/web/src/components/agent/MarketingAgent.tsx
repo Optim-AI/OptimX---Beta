@@ -18,7 +18,7 @@ import { ContextPanel, MemoryPanel, type Automatic, type ContextItem, type Memor
 
 type Session = { id: string; title: string; source: string; unread: boolean; createdAt: string; updatedAt: string };
 type Remembered = { id: string; fact: string; undone?: boolean };
-type Message = { id: string; role: "user" | "assistant"; content: string; used: string[]; pending?: boolean; failed?: boolean; remembered?: Remembered[]; actions?: AgentActionUI[] };
+type Message = { id: string; role: "user" | "assistant"; content: string; used: string[]; pending?: boolean; failed?: boolean; remembered?: Remembered[]; actions?: AgentActionUI[]; next?: string };
 type Settings = { instructions: string; tagline: string | null };
 
 const STARTERS = [
@@ -263,7 +263,8 @@ function RecentRow({ s, onOpen, onRename, onDelete }: { s: Session; onOpen: () =
 // ---------- Chat thread ----------
 type ActionHandlers = { running: string | null; balance: number | null; onRun: (a: AgentActionUI) => void; onDismiss: (a: AgentActionUI) => void; onStartPosters: (a: AgentActionUI, o: PosterOptions) => void; onPostersChanged: (actionId: string, result: Record<string, unknown>) => void };
 
-function Thread({ messages, onUndo, actions }: { messages: Message[]; onUndo: (messageId: string, memoryId: string) => void; actions: ActionHandlers }) {
+function Thread({ messages, onUndo, actions, onNext }: { messages: Message[]; onUndo: (messageId: string, memoryId: string) => void; actions: ActionHandlers; onNext?: (text: string) => void }) {
+  const lastId = messages[messages.length - 1]?.id;
   return (
     <div className="space-y-8">
       {messages.map((m) => m.role === "user" ? (
@@ -295,6 +296,13 @@ function Thread({ messages, onUndo, actions }: { messages: Message[]; onUndo: (m
               <ActionCard key={a.id} a={a} running={actions.running === a.id} balance={actions.balance}
                 onRun={() => actions.onRun(a)} onDismiss={() => actions.onDismiss(a)} onStartPosters={actions.onStartPosters} onPostersChanged={actions.onPostersChanged} />
             ))}
+            {m.next && m.id === lastId && onNext && (
+              <button type="button" onClick={() => onNext(m.next!)}
+                className="mt-3 inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[13px] transition-colors hover:bg-white/5"
+                style={{ borderColor: "hsl(213 100% 55% / 0.45)", color: colors.accentForeground }}>
+                {m.next} <span aria-hidden="true">→</span>
+              </button>
+            )}
             {!m.pending && m.used.length > 0 && (
               <div className="mt-3 flex flex-wrap items-center gap-1.5">
                 <span className="text-[11px]" style={{ color: colors.mutedForeground }}>Based on</span>
@@ -444,6 +452,9 @@ export default function MarketingAgent() {
         } else if (ev.type === "done") {
           finalId = ev.messageId;
           setMessages((m) => m.map((x) => (x.id === replyId ? { ...x, id: ev.messageId, used: ev.used || [], pending: false } : x)));
+        } else if (ev.type === "next") {
+          const text: string = ev.text || "";
+          setMessages((m) => m.map((x) => (x.id === finalId ? { ...x, next: text } : x)));
         } else if (ev.type === "actions") {
           const items: AgentActionUI[] = ev.items || [];
           setMessages((m) => m.map((x) => (x.id === finalId ? { ...x, actions: items } : x)));
@@ -612,7 +623,7 @@ export default function MarketingAgent() {
                   {[0, 1, 2].map((i) => <div key={i} className="h-16 animate-pulse rounded-xl" style={{ background: colors.card }} />)}
                 </div>
               ) : (
-                <Thread messages={messages} onUndo={undoMemory} actions={{ running: runningAction, balance: imageCredits, onRun: runAgentAction, onDismiss: dismissAgentAction, onStartPosters: startPosters, onPostersChanged: (id, result) => { patchAction(id, { result }); refreshCredits(); } }} />
+                <Thread messages={messages} onUndo={undoMemory} actions={{ running: runningAction, balance: imageCredits, onRun: runAgentAction, onDismiss: dismissAgentAction, onStartPosters: startPosters, onPostersChanged: (id, result) => { patchAction(id, { result }); refreshCredits(); } }} onNext={(t) => { if (!busy) void send(t); }} />
               )}
               <div ref={bottomRef} />
             </div>

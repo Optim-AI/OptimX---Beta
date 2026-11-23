@@ -5,7 +5,9 @@
 import assert from "node:assert/strict";
 import { cleanCadence, describeCadence, nextRunAfter } from "./tasks";
 import { actionGuide, cleanProposal, costOf } from "./actions";
-import { buildBrief, cleanPost, isOwnPosterUrl, settleStale, type PosterJobResult } from "./posters";
+import { calendarBlock, upcomingDates } from "./calendar";
+import { TASTE_PREFIX, isTaste, tasteFromEdit, tasteFromHeadlinePick, tasteFromKeep } from "./taste";
+import { captionWithHashtags, cleanHashtags, buildBrief, cleanPost, isOwnPosterUrl, settleStale, type PosterJobResult } from "./posters";
 import { cleanArtBrief, formatArtBrief } from "../content-studio/art-brief";
 import { detectUserOverrides } from "../creative-studio/poster-generation/strategy/strategy-input";
 import { wantsWebFacts, iso } from "./store";
@@ -143,6 +145,41 @@ test("each planned post is a brand post or a product post", () => {
   assert.equal(cleanPost({ idea: "Named a product", product: "Jalapeno" })!.scope, "product");
   assert.ok(actionGuide(["Peri Peri Anchovies"]).includes("Peri Peri Anchovies"));
   assert.ok(/scope/.test(actionGuide()));
+});
+
+test("the calendar lists the next 60 days of Indian marketing dates", () => {
+  const from = new Date("2026-11-23T10:00:00+05:30");
+  const names = upcomingDates(from).map((d) => `${d.date} ${d.name}`);
+  assert.ok(names.includes("2026-11-27 Black Friday"));
+  assert.ok(names.includes("2026-12-25 Christmas"));
+  assert.ok(names.includes("2027-01-01 New Year's Day"));
+  assert.ok(names.some((n) => n.startsWith("2027-01-14 Makar Sankranti")));
+  assert.ok(!names.some((n) => n.includes("Diwali"))); // Diwali 2026 has passed
+  assert.ok(!names.some((n) => n.includes("Republic Day"))); // 64 days away
+  assert.ok(/around 14 Jan 2027: Makar Sankranti/.test(calendarBlock(from)));
+  assert.equal(upcomingDates(new Date("2027-05-01T10:00:00+05:30")).find((d) => d.name === "Mother's Day")?.date, "2027-05-09");
+});
+
+test("posts carry hashtags, a best time and two headline options", () => {
+  assert.deepEqual(cleanHashtags(["#Pongal2027", "coastal snacks", "#pongal2027", "", "#Kerala-Food"]), ["#Pongal2027", "#coastalsnacks", "#KeralaFood"]);
+  assert.equal(cleanHashtags(Array.from({ length: 12 }, (_, i) => `#t${i}`)).length, 8);
+  const p = cleanPost({ idea: "x", headline: "Movie night, sorted", headlines: ["Movie night, sorted", "Snack like a hero", "Third"], hashtags: "#a #b", bestTime: "Fri 7-9 PM", caption: "Grab yours." })!;
+  assert.deepEqual(p.headlines, ["Movie night, sorted", "Snack like a hero"]);
+  assert.equal(p.bestTime, "Fri 7-9 PM");
+  assert.equal(captionWithHashtags(p), "Grab yours.\n\n#a #b");
+  assert.deepEqual(cleanPost({ idea: "old plan", headline: "Only one" })!.headlines, ["Only one"]);
+  assert.deepEqual(cleanPost({ idea: "x", headline: "Short one", headlines: ["Short one", "Trade plain chips for coastal peri peri crunch today"] })!.headlines, ["Short one"]);
+});
+
+test("poster taste is learned from picks, edits and kept previews", () => {
+  assert.equal(tasteFromHeadlinePick(["A first", "B second"], "A first"), null); // the agent's first choice teaches nothing
+  assert.equal(tasteFromHeadlinePick(["A first", "B second"], "B second"), 'picked the headline "B second" over "A first".');
+  assert.equal(tasteFromHeadlinePick(["A first"], "Made up"), null);
+  assert.equal(tasteFromEdit("ok"), null);
+  assert.equal(tasteFromEdit("Make the background darker"), 'asked to change a poster: "Make the background darker".');
+  assert.equal(tasteFromKeep("Happy Pongal"), 'kept the preview poster "Happy Pongal".');
+  assert.equal(isTaste({ fact: `${TASTE_PREFIX} the owner kept a preview poster.` }), true);
+  assert.equal(isTaste({ fact: "We sell in Kochi." }), false);
 });
 
 console.log(`\n${passed} passed`);

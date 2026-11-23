@@ -28,7 +28,7 @@ export type AgentActionUI = {
 
 type ProductPick = { ref: string } | { uploadPath: string; name: string } | null;
 /** products: per post (by index) — the product on that poster, or null for a brand poster. */
-export type PosterOptions = { selected: number[]; size: "feed" | "square" | "story"; product: ProductPick; products?: Record<number, ProductPick> };
+export type PosterOptions = { selected: number[]; size: "feed" | "square" | "story"; product: ProductPick; products?: Record<number, ProductPick>; headlines?: Record<number, string> };
 
 const META = {
   posters: { Icon: ImageIcon, button: "Make posters", done: "Posters ready", where: "this chat" },
@@ -100,8 +100,17 @@ export function ActionCard({ a, running, balance, onRun, onDismiss, onStartPoste
 }
 
 // ---------- Posters made in the chat ----------
-type Post = { day: string; platform: string; idea: string; headline: string; caption: string; visual: string; scope?: "brand" | "product"; product?: string };
-type Tile = { index: number; status: "queued" | "running" | "done" | "failed"; imageUrl?: string | null; error?: string | null; engineSessionId?: string | null; generationId?: string | null; edits?: number; productName?: string | null };
+type Post = {
+  day: string; platform: string; idea: string; headline: string; caption: string; visual: string;
+  scope?: "brand" | "product"; product?: string; headlines?: string[]; hashtags?: string[]; bestTime?: string;
+};
+/** The caption as the owner posts it: text, then hashtags. */
+const fullCaption = (p?: Post) => (p ? [p.caption, (p.hashtags ?? []).join(" ")].filter(Boolean).join("\n\n") : "");
+type Tile = {
+  index: number; status: "queued" | "running" | "done" | "failed"; imageUrl?: string | null; error?: string | null; engineSessionId?: string | null;
+  generationId?: string | null; edits?: number; productName?: string | null; headline?: string | null;
+  /** Free preview from a weekly check-in: kept for 1 credit */ preview?: boolean; kept?: boolean; keeping?: boolean;
+};
 type ProductChoice = { id: string; name: string; image: string | null };
 
 const SIZES = [
@@ -115,13 +124,30 @@ function PosterCard({ a, starting, balance, onStart, onDismiss, onChanged }: {
   onChanged: (result: Record<string, unknown>) => void;
 }) {
   const posts = (Array.isArray(a.params.posts) ? a.params.posts : []) as Post[];
-  const job = (a.result ?? null) as { items?: Tile[]; size?: PosterOptions["size"]; productName?: string | null; finishedAt?: string } | null;
+  const job = (a.result ?? null) as { items?: Tile[]; size?: PosterOptions["size"]; productName?: string | null; finishedAt?: string; preview?: boolean; charged?: number } | null;
+  const [keepingAt, setKeepingAt] = useState<number | null>(null);
+  const keep = async (index: number) => {
+    setKeepingAt(index);
+    try {
+      const res = await authFetch("/api/agent/actions", { method: "POST", body: JSON.stringify({ id: a.id, op: "keep", index }) });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.ok) throw new Error(json?.error || "Couldn't keep this poster.");
+      onChanged(json.result);
+      toast.success("Poster kept · 1 image credit used");
+    } catch (e) {
+      toast.error(friendlyError(e));
+    } finally {
+      setKeepingAt(null);
+    }
+  };
   const [picked, setPicked] = useState<Set<number>>(() => new Set(posts.map((_, i) => i)));
   const [size, setSize] = useState<PosterOptions["size"]>("feed");
   const [products, setProducts] = useState<ProductChoice[] | null>(null);
   /** What goes on each poster: "brand", "ref:<product id>" or "upload" (the photo uploaded here). */
   const [onPoster, setOnPoster] = useState<Record<number, string>>({});
   const [uploaded, setUploaded] = useState<{ uploadPath: string; name: string } | null>(null);
+  /** The headline picked for each post (when the agent gave two options). */
+  const [headlinePick, setHeadlinePick] = useState<Record<number, string>>({});
   const [uploadPreview, setUploadPreview] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -187,7 +213,9 @@ function PosterCard({ a, starting, balance, onStart, onDismiss, onChanged }: {
           <span>
             {working
               ? `Making ${job.items.length} poster${job.items.length > 1 ? "s" : ""}… about a minute each. You can keep chatting.`
-              : `${done} of ${job.items.length} poster${job.items.length > 1 ? "s" : ""} ready · ${done} image credit${done === 1 ? "" : "s"} used`}
+              : job.preview
+                ? `${done} free preview${done === 1 ? "" : "s"} ready · keep the ones you like for 1 image credit each`
+                : `${done} of ${job.items.length} poster${job.items.length > 1 ? "s" : ""} ready · ${done} image credit${done === 1 ? "" : "s"} used`}
           </span>
         </div>
         <div className={`grid gap-3 ${job.size === "story" ? "grid-cols-2 sm:grid-cols-3" : "grid-cols-2"}`}>
@@ -201,6 +229,8 @@ function PosterCard({ a, starting, balance, onStart, onDismiss, onChanged }: {
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src={t.imageUrl} alt={post?.headline || post?.idea || "Poster"} className="h-full w-full object-cover transition-transform duration-300 group-hover/tile:scale-[1.02]" />
                       {!!t.edits && <span className="absolute left-2 top-2 rounded-full px-2 py-0.5 text-[10.5px] font-medium" style={{ background: "rgba(0,0,0,0.6)", color: "#fff" }}>Edited</span>}
+                      {t.preview && <span className="absolute left-2 top-2 rounded-full px-2 py-0.5 text-[10.5px] font-medium" style={{ background: "rgba(0,0,0,0.6)", color: "#fff" }}>Free preview</span>}
+                      {t.kept && <span className="absolute left-2 top-2 rounded-full px-2 py-0.5 text-[10.5px] font-medium" style={{ background: "rgba(22,163,74,0.85)", color: "#fff" }}>Kept</span>}
                     </button>
                   ) : t.status === "failed" ? (
                     <div className="flex h-full items-center justify-center p-3 text-center text-[12px]" style={{ color: colors.mutedForeground }}>{t.error || "This one didn't work. You weren't charged."}</div>
@@ -213,17 +243,26 @@ function PosterCard({ a, starting, balance, onStart, onDismiss, onChanged }: {
                 </div>
                 <figcaption className="mt-1.5 px-0.5">
                   <div className="truncate text-[12.5px] font-medium" style={{ color: colors.foreground }}>{[post?.day, post?.platform].filter(Boolean).join(" · ") || `Post ${t.index + 1}`}</div>
+                  {t.status === "done" && t.preview && (
+                    <button type="button" disabled={keepingAt !== null || t.keeping} onClick={() => keep(t.index)}
+                      className="mt-1.5 w-full rounded-lg px-3 py-1.5 text-[12.5px] font-medium disabled:opacity-50"
+                      style={{ background: colors.primary, color: colors.primaryForeground }}>
+                      {keepingAt === t.index || t.keeping ? "Keeping…" : "Keep · 1 credit"}
+                    </button>
+                  )}
                   {t.status === "done" && (
                     <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[12px]">
                       <button type="button" className="flex items-center gap-1 hover:underline" style={{ color: colors.accentForeground }} onClick={() => setPreviewAt(t.index)}>
                         <ImageIcon size={12} /> Preview
                       </button>
-                      <button type="button" className="flex items-center gap-1 hover:underline" style={{ color: colors.accentForeground }} onClick={() => setEditing(t.index)}>
-                        <Pencil size={12} /> Edit
-                      </button>
+                      {!t.preview && (
+                        <button type="button" className="flex items-center gap-1 hover:underline" style={{ color: colors.accentForeground }} onClick={() => setEditing(t.index)}>
+                          <Pencil size={12} /> Edit
+                        </button>
+                      )}
                       {post?.caption && (
                         <button type="button" className="flex items-center gap-1 hover:underline" style={{ color: colors.accentForeground }}
-                          onClick={() => navigator.clipboard?.writeText(post.caption).then(() => toast.success("Caption copied"), () => toast.error("Couldn't copy"))}>
+                          onClick={() => navigator.clipboard?.writeText(fullCaption(post)).then(() => toast.success("Caption copied"), () => toast.error("Couldn't copy"))}>
                           <Copy size={12} /> Copy caption
                         </button>
                       )}
@@ -235,7 +274,13 @@ function PosterCard({ a, starting, balance, onStart, onDismiss, onChanged }: {
             );
           })}
         </div>
-        {!working && <p className="mt-3 text-[11.5px]" style={{ color: colors.mutedForeground }}>Saved to Generated Contents too. Edits cost 1 image credit each.</p>}
+        {!working && (
+          <p className="mt-3 text-[11.5px]" style={{ color: colors.mutedForeground }}>
+            {job.preview
+              ? "Previews you don't keep cost nothing. Kept posters can be downloaded and edited (edits cost 1 image credit each)."
+              : "Saved to Generated Contents too. Edits cost 1 image credit each."}
+          </p>
+        )}
         {previewAt !== null && (
           <PosterPreview
             tiles={job.items.filter((t) => t.status === "done" && t.imageUrl)}
@@ -275,8 +320,32 @@ function PosterCard({ a, starting, balance, onStart, onDismiss, onChanged }: {
                 onChange={() => setPicked((s) => { const n = new Set(s); if (n.has(i)) n.delete(i); else n.add(i); return n; })} />
               <span className="min-w-0 flex-1">
                 <span className="block text-[11.5px] font-medium uppercase tracking-[0.08em]" style={{ color: colors.mutedForeground }}>{[p.day, p.platform].filter(Boolean).join(" · ") || `Post ${i + 1}`}</span>
-                <span className="mt-0.5 block text-[14px]" style={{ color: colors.foreground }}>{p.headline || p.idea}</span>
-                {p.headline && p.idea && <span className="mt-0.5 block text-[12.5px] leading-snug" style={{ color: colors.mutedForeground }}>{p.idea}</span>}
+                {(p.headlines?.length ?? 0) > 1 ? (
+                  <span className="mt-1 flex flex-col gap-1" onClick={(e) => e.preventDefault()}>
+                    <span className="text-[12px]" style={{ color: colors.mutedForeground }}>Pick a headline:</span>
+                    {p.headlines!.map((h) => {
+                      const chosen = (headlinePick[i] ?? p.headlines![0]) === h;
+                      return (
+                        <button key={h} type="button" role="radio" aria-checked={chosen} onClick={() => setHeadlinePick((s) => ({ ...s, [i]: h }))}
+                          className="flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-left text-[14px]"
+                          style={{ borderColor: chosen ? colors.primary : colors.border, color: colors.foreground, background: chosen ? "hsl(213 100% 55% / 0.08)" : "transparent" }}>
+                          <span className="h-3 w-3 shrink-0 rounded-full border" style={{ borderColor: chosen ? colors.primary : colors.mutedForeground, background: chosen ? colors.primary : "transparent" }} />
+                          {h}
+                        </button>
+                      );
+                    })}
+                  </span>
+                ) : (
+                  <span className="mt-0.5 block text-[14px]" style={{ color: colors.foreground }}>{p.headline || p.idea}</span>
+                )}
+                {p.headline && p.idea && <span className="mt-1 block text-[12.5px] leading-snug" style={{ color: colors.mutedForeground }}>{p.idea}</span>}
+                {(p.bestTime || !!p.hashtags?.length) && (
+                  <span className="mt-1 block text-[12px] leading-snug" style={{ color: colors.mutedForeground }}>
+                    {p.bestTime && <>Best time: {p.bestTime}</>}
+                    {p.bestTime && !!p.hashtags?.length && " · "}
+                    {!!p.hashtags?.length && <span style={{ color: colors.accentForeground }}>{p.hashtags.slice(0, 4).join(" ")}{p.hashtags.length > 4 ? " …" : ""}</span>}
+                  </span>
+                )}
                 <span className="mt-2 flex flex-wrap items-center gap-2 text-[12.5px]" onClick={(e) => e.preventDefault()}>
                   <span style={{ color: colors.mutedForeground }}>On the poster:</span>
                   <select value={onPoster[i] ?? "brand"} onChange={(e) => setOnPoster((s) => ({ ...s, [i]: e.target.value }))}
@@ -339,6 +408,7 @@ function PosterCard({ a, starting, balance, onStart, onDismiss, onChanged }: {
                 const v = onPoster[i] ?? "brand";
                 return [i, v === "upload" ? uploaded : v.startsWith("ref:") ? { ref: v.slice(4) } : null];
               })),
+              headlines: Object.fromEntries([...picked].filter((i) => headlinePick[i]).map((i) => [i, headlinePick[i]])),
             })}
             className="rounded-lg px-4 py-2 text-[13px] font-medium disabled:opacity-40" style={{ background: colors.primary, color: colors.primaryForeground }}>
             {starting ? "Starting…" : `Make ${count} poster${count === 1 ? "" : "s"}`}
@@ -480,7 +550,7 @@ function PosterPreview({ tiles, posts, startIndex, onClose, onEdit }: {
           <div className="flex items-start justify-between gap-2">
             <div>
               <div className="text-[11.5px] font-medium uppercase tracking-[0.08em]" style={{ color: colors.mutedForeground }}>{[post?.day, post?.platform].filter(Boolean).join(" · ") || `Post ${tile.index + 1}`}</div>
-              {post?.headline && <div className="mt-1 text-[15px] font-semibold" style={{ color: colors.foreground }}>{post.headline}</div>}
+              {(tile.headline || post?.headline) && <div className="mt-1 text-[15px] font-semibold" style={{ color: colors.foreground }}>{tile.headline || post?.headline}</div>}
             </div>
             <button type="button" aria-label="Close preview" onClick={onClose} className="rounded-md p-1 hover:bg-white/10" style={{ color: colors.mutedForeground }}><X size={18} /></button>
           </div>
@@ -488,17 +558,25 @@ function PosterPreview({ tiles, posts, startIndex, onClose, onEdit }: {
             <div className="mt-4">
               <div className="mb-1 text-[12px]" style={{ color: colors.mutedForeground }}>Caption</div>
               <p className="whitespace-pre-wrap text-[13.5px] leading-relaxed" style={{ color: colors.secondaryForeground }}>{post.caption}</p>
+              {!!post.hashtags?.length && <p className="mt-2 text-[13px] leading-relaxed" style={{ color: colors.accentForeground }}>{post.hashtags.join(" ")}</p>}
             </div>
           )}
+          {post?.bestTime && (
+            <p className="mt-3 text-[12.5px]" style={{ color: colors.mutedForeground }}>Best time to post: <span style={{ color: colors.secondaryForeground }}>{post.bestTime}</span> (a starting point to test)</p>
+          )}
           <div className="mt-5 grid gap-2">
+            {tile.preview ? (
+              <p className="text-[12.5px]" style={{ color: colors.mutedForeground }}>This is a free preview. Keep it (1 credit) to download or edit it.</p>
+            ) : (<>
             <button type="button" onClick={() => onEdit(tile.index)} className="flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-[13px] font-medium" style={{ background: colors.primary, color: colors.primaryForeground }}>
               <Pencil size={14} /> Edit poster
             </button>
             <button type="button" onClick={() => downloadImage(tile.imageUrl!, name)} className="flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-[13px]" style={{ borderColor: colors.border, color: colors.secondaryForeground }}>
               <Download size={14} /> Download
             </button>
+            </>)}
             {post?.caption && (
-              <button type="button" onClick={() => navigator.clipboard?.writeText(post.caption).then(() => toast.success("Caption copied"), () => toast.error("Couldn't copy"))}
+              <button type="button" onClick={() => navigator.clipboard?.writeText(fullCaption(post)).then(() => toast.success("Caption copied"), () => toast.error("Couldn't copy"))}
                 className="flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-[13px]" style={{ borderColor: colors.border, color: colors.secondaryForeground }}>
                 <Copy size={14} /> Copy caption
               </button>
@@ -518,14 +596,17 @@ function PosterPreview({ tiles, posts, startIndex, onClose, onEdit }: {
 function InChatPosterEditor({ actionId, tile, onClose, onSaved }: {
   actionId: string; tile: Tile; onClose: () => void; onSaved: (result: Record<string, unknown>) => void;
 }) {
+  // What the owner asked to change: saved with the edit so the agent learns their taste.
+  const lastAsk = useRef("");
   const save = async (imageUrl: string, generationId: string | null) => {
-    const res = await authFetch("/api/agent/actions", { method: "POST", body: JSON.stringify({ id: actionId, op: "poster-update", index: tile.index, imageUrl, generationId }) });
+    const res = await authFetch("/api/agent/actions", { method: "POST", body: JSON.stringify({ id: actionId, op: "poster-update", index: tile.index, imageUrl, generationId, instruction: lastAsk.current || undefined }) });
     const json = await res.json().catch(() => null);
     if (!res.ok || !json?.ok) throw new Error(json?.error || "Couldn't save the edited poster.");
     onSaved(json.result);
     toast.success("Poster updated · 1 image credit used");
   };
   const areaEdit = async (box: { x: number; y: number; w: number; h: number }, instruction: string) => {
+    lastAsk.current = instruction;
     const res = await authFetch("/api/content-studio/area-edit", { method: "POST", body: JSON.stringify({ image: tile.imageUrl, box, instruction }) });
     const data = await res.json().catch(() => null);
     if (!res.ok || !data?.ok || !data.image) throw new Error(data?.error || "The edit didn't come out. Try again.");
@@ -539,7 +620,7 @@ function InChatPosterEditor({ actionId, tile, onClose, onSaved }: {
       posterIndex={tile.index}
       onClose={onClose}
       onAreaEdit={async (box, instruction) => { await areaEdit(box, instruction); onClose(); }}
-      onPlanChange={engine ? (prompt) => planPosterIterationClient({ engineSessionId: tile.engineSessionId!, generationId: tile.generationId!, request: prompt }) : undefined}
+      onPlanChange={engine ? (prompt) => (lastAsk.current = prompt, planPosterIterationClient({ engineSessionId: tile.engineSessionId!, generationId: tile.generationId!, request: prompt })) : undefined}
       onExecuteChange={engine ? async (iterationId) => {
         const r = await executePosterIterationClient({ engineSessionId: tile.engineSessionId!, iterationId });
         if (!r.imageUrl) throw new Error("The update didn't return a poster. Try again.");

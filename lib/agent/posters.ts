@@ -29,6 +29,9 @@ import { runInBackground } from "@/lib/jobs/background";
 import { CONTEXT_BUCKET } from "./context-items";
 import { artBriefInstruction, formatArtBrief, writeArtBrief, type ArtBrief } from "@/lib/content-studio/art-brief";
 import { withOnboardingArtDirection } from "@/lib/onboarding/demo-poster";
+import { gte } from "drizzle-orm";
+import { previewPathFor, publishKeptDraft, signedPreviewUrls, storeDraftImage } from "@/lib/ad-studio/storage";
+import { rememberTaste, tasteFromHeadlinePick, tasteFromKeep, tasteNotes } from "./taste";
 
 export const POSTER_SIZES = { feed: "4:5", square: "1:1", story: "9:16" } as const;
 export type PosterSize = keyof typeof POSTER_SIZES;
@@ -47,6 +50,12 @@ export type PlannedPost = {
   scope: "brand" | "product";
   /** The product the agent suggests for a product post (one of the owner's product names). */
   product: string;
+  /** Headline options to pick from (the first is `headline`); at most 2. */
+  headlines: string[];
+  /** 5–8 hashtags, each starting with # */
+  hashtags: string[];
+  /** Suggested time to post, India time (e.g. "Fri 7-9 PM") */
+  bestTime: string;
 };
 
 export type PosterItem = {
@@ -61,6 +70,14 @@ export type PosterItem = {
   edits?: number;
   /** The product on this poster (null = brand poster) */
   productName?: string | null;
+  /** The headline the owner picked for this poster */
+  headline?: string | null;
+  /** Free preview (private draft): the owner keeps it for 1 credit, or leaves it. */
+  preview?: boolean;
+  keeping?: boolean;
+  /** Draft file of a preview (private bucket) */
+  storagePath?: string | null;
+  kept?: boolean;
 };
 
 export type PosterJobResult = {
@@ -70,11 +87,33 @@ export type PosterJobResult = {
   startedAt: string;
   finishedAt?: string;
   charged?: number;
+  /** Made as free previews (weekly check-in): keep each for 1 credit. */
+  preview?: boolean;
 };
 
 const str = (v: unknown, n: number) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, n) : "");
 /** Plain text for poster copy and captions: no markdown marks (**bold**, _italic_, # headings, `code`). */
 const plain = (v: unknown, n: number) => str(typeof v === "string" ? v.replace(/(\*\*|__|[*_`#])/g, "") : v, n);
+
+/** "#Pongal2027, coastalsnacks, #  " → ["#Pongal2027", "#coastalsnacks"], at most 8, no duplicates. */
+export function cleanHashtags(raw: unknown): string[] {
+  const list = Array.isArray(raw) ? raw : typeof raw === "string" ? raw.split(/[\s,]+/) : [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const t of list) {
+    const tag = String(t ?? "").replace(/^#+/, "").replace(/[^\p{L}\p{N}_]/gu, "").slice(0, 40);
+    if (!tag || seen.has(tag.toLowerCase())) continue;
+    seen.add(tag.toLowerCase());
+    out.push(`#${tag}`);
+    if (out.length >= 8) break;
+  }
+  return out;
+}
+
+/** The caption as the owner posts it: caption text, then the hashtags. */
+export function captionWithHashtags(post: Pick<PlannedPost, "caption" | "hashtags">): string {
+  return [post.caption, (post.hashtags ?? []).join(" ")].filter(Boolean).join("\n\n");
+}
 
 export function cleanPost(raw: any): PlannedPost | null {
   const idea = plain(raw?.idea, 300);
@@ -91,6 +130,10 @@ export function cleanPost(raw: any): PlannedPost | null {
     goal,
     scope: raw?.scope === "product" || (raw?.scope !== "brand" && plain(raw?.product, 80)) ? "product" : "brand",
     product: plain(raw?.product, 80),
+    // The alternative must be short too: posters misspell long headlines.
+    headlines: [...new Set([headline, ...(Array.isArray(raw?.headlines) ? raw.headlines : [raw?.altHeadline]).map((h: unknown) => plain(h, 120)).filter((h: string) => h.split(/\s+/).length <= 7)].filter(Boolean))].slice(0, 2),
+    hashtags: cleanHashtags(raw?.hashtags),
+    bestTime: plain(raw?.bestTime, 40),
   };
 }
 
@@ -131,12 +174,16 @@ export async function resolveProduct(userId: string, choice: unknown): Promise<P
 }
 
 /** Same art-director brief as Ad Studio: one idea, a style, brand colours, the planned headline kept. */
-export function artBriefFor(brand: BrandSnapshot, post: PlannedPost, product: Product | null, size: PosterSize): Promise<ArtBrief | null> {
+export function artBriefFor(brand: BrandSnapshot, post: PlannedPost, product: Product | null, size: PosterSize, taste: string[] = []): Promise<ArtBrief | null> {
   return writeArtBrief({
     brand,
     product,
     angle: { title: post.headline || post.idea, message: post.idea, angle: post.goal },
-    ownerRequest: [post.visual && `Visual idea from the plan: ${post.visual}`, post.day && `Posting on ${post.day}${post.platform ? ` (${post.platform})` : ""}.`]
+    ownerRequest: [
+      post.visual && `Visual idea from the plan: ${post.visual}`,
+      post.day && `Posting on ${post.day}${post.platform ? ` (${post.platform})` : ""}.`,
+      taste.length && `What the owner liked or changed on earlier posters (lean towards it): ${taste.slice(0, 6).join(" ")}`,
+    ]
       .filter(Boolean)
       .join(" ") || null,
     aspectRatio: POSTER_SIZES[size],
@@ -216,11 +263,16 @@ export function buildBrief(brand: BrandSnapshot, post: PlannedPost, product: Pro
 }
 
 /** One poster through the shared engine. The engine charges 1 credit only on success. */
-async function renderOne(userId: string, brand: BrandSnapshot, post: PlannedPost, product: Product | null, size: PosterSize): Promise<{ ok: true; imageUrl: string; engineSessionId: string; generationId: string | null } | { ok: false; error: string }> {
+type RenderOk = { ok: true; imageUrl: string; engineSessionId: string; generationId: string | null; storagePath?: string };
+
+async function renderOne(
+  userId: string, brand: BrandSnapshot, post: PlannedPost, product: Product | null, size: PosterSize,
+  opts: { preview?: boolean; taste?: string[] } = {}
+): Promise<RenderOk | { ok: false; error: string }> {
   try {
     const sessionService = createPosterGenerationSessionService();
     const session = await sessionService.createSession({ userId });
-    const art = await artBriefFor(brand, post, product, size);
+    const art = await artBriefFor(brand, post, product, size, opts.taste);
     await sessionService.updateBrief(session.id, userId, buildBrief(brand, post, product, size, art));
     await runMarketingStrategyForSession({ sessionId: session.id, userId, sessionService });
     if (art) {
@@ -231,8 +283,16 @@ async function renderOne(userId: string, brand: BrandSnapshot, post: PlannedPost
     const { concepts } = await runCreativeConceptsForSession({ sessionId: session.id, userId, conceptCount: 1, sessionService });
     if (!concepts.length) return { ok: false, error: "Couldn't plan this poster." };
     await selectConceptForSession({ sessionId: session.id, userId, conceptIds: concepts[0].id, sessionService });
-    const result = await generatePostersForSession({ sessionId: session.id, userId, variantCount: 1, sessionService });
+    const result = await generatePostersForSession({
+      sessionId: session.id, userId, variantCount: 1, sessionService,
+      // Previews are free private drafts (like Ad Studio): the owner pays 1 credit only to keep one.
+      ...(opts.preview ? { storeImage: storeDraftImage, credits: { getBalance: async () => 1, deduct: async () => true } } : {}),
+    });
     const asset = result.outcomes.find((o) => o.success && o.asset)?.asset;
+    if (opts.preview && asset?.storagePath) {
+      const url = (await signedPreviewUrls([previewPathFor(asset.storagePath as string)])).values().next().value ?? "";
+      return { ok: true, imageUrl: url, engineSessionId: session.id, generationId: asset.generationId ?? null, storagePath: asset.storagePath as string };
+    }
     if (asset?.imageUrl && /^https?:\/\//.test(asset.imageUrl)) {
       return { ok: true, imageUrl: asset.imageUrl, engineSessionId: session.id, generationId: asset.generationId ?? null };
     }
@@ -266,14 +326,25 @@ export async function startPosterJob(input: {
   userId: string; actionId: string; posts: PlannedPost[]; selected: number[]; size: PosterSize; product: Product | null;
   /** Per post (by index): the product on that poster, or null for a brand poster. Overrides `product`. */
   productsByPost?: Record<number, Product | null>;
+  /** Per post (by index): the headline the owner picked (must be one of the post's options). */
+  headlinesByPost?: Record<number, string>;
+  /** Free preview posters (weekly check-in): no credits now, 1 credit to keep each. */
+  preview?: boolean;
 }): Promise<PosterJobResult> {
+  const headlineFor = (index: number) => {
+    const post = input.posts[index];
+    const picked = input.headlinesByPost?.[index];
+    const options = post?.headlines?.length ? post.headlines : [post?.headline].filter(Boolean);
+    return picked && options.includes(picked) ? picked : post?.headline ?? "";
+  };
   const productFor = (index: number) =>
     input.productsByPost && index in input.productsByPost ? input.productsByPost[index] : input.product;
   const { userId, actionId } = input;
-  const picks = [...new Set(input.selected)].filter((i) => Number.isInteger(i) && i >= 0 && i < input.posts.length).slice(0, MAX_POSTS);
-  if (!picks.length) throw new PosterJobError("Pick at least one post.");
+  let picks = [...new Set(input.selected)].filter((i) => Number.isInteger(i) && i >= 0 && i < input.posts.length).slice(0, MAX_POSTS);
+  if (input.preview) picks = picks.slice(0, Math.max(0, MAX_PREVIEWS_PER_WEEK - (await previewsThisWeek(userId))));
+  if (!picks.length) throw new PosterJobError(input.preview ? "No free previews left this week." : "Pick at least one post.");
 
-  const balance = (await CreditsDAO.getFullBalance(userId))?.imageCredits.total ?? 0;
+  const balance = input.preview ? Infinity : (await CreditsDAO.getFullBalance(userId))?.imageCredits.total ?? 0;
   if (balance < picks.length) {
     throw new PosterJobError(balance > 0
       ? `This needs ${picks.length} image credits and you have ${balance}. Untick some posts, or buy more credits.`
@@ -285,16 +356,24 @@ export async function startPosterJob(input: {
   const brand = snapshot as unknown as BrandSnapshot;
 
   const result: PosterJobResult = {
-    items: picks.map((index) => ({ index, status: "queued", productName: productFor(index)?.product_name ?? null })),
+    items: picks.map((index) => ({ index, status: "queued", productName: productFor(index)?.product_name ?? null, headline: headlineFor(index) || null, ...(input.preview ? { preview: true } : {}) })),
     size: input.size,
     productName: input.product?.product_name ?? null,
     startedAt: new Date().toISOString(),
+    ...(input.preview ? { preview: true } : {}),
   };
   const claimed = await db.update(agentActions)
     .set({ status: "running", result, error: null, updatedAt: new Date().toISOString() })
     .where(and(eq(agentActions.id, actionId), eq(agentActions.userId, userId), eq(agentActions.status, "proposed")))
     .returning({ id: agentActions.id });
   if (!claimed.length) throw new PosterJobError("These posters are already being made.", 409);
+
+  // Learn from headline picks: the owner chose the alternative over the agent's first idea.
+  for (const i of picks) {
+    const post = input.posts[i];
+    await rememberTaste(userId, tasteFromHeadlinePick(post?.headlines ?? [], headlineFor(i)));
+  }
+  const taste = await tasteNotes(userId);
 
   runInBackground("agent-posters", async () => {
     let next = 0;
@@ -303,16 +382,21 @@ export async function startPosterJob(input: {
         const item = result.items[next++];
         item.status = "running";
         await writeResult(actionId, result);
-        const out = await renderOne(userId, brand, input.posts[item.index], productFor(item.index), input.size);
-        if (out.ok) { item.status = "done"; item.imageUrl = out.imageUrl; item.engineSessionId = out.engineSessionId; item.generationId = out.generationId; }
+        const post = { ...input.posts[item.index], headline: headlineFor(item.index) };
+        const out = await renderOne(userId, brand, post, productFor(item.index), input.size, { preview: input.preview, taste });
+        if (out.ok) {
+          item.status = "done"; item.imageUrl = out.imageUrl; item.engineSessionId = out.engineSessionId; item.generationId = out.generationId;
+          if (out.storagePath) item.storagePath = out.storagePath;
+        }
         else { item.status = "failed"; item.error = out.error; }
         await writeResult(actionId, result);
       }
     };
     await Promise.all([work(), work(), work()]); // three at a time
     result.finishedAt = new Date().toISOString();
-    result.charged = result.items.filter((i) => i.status === "done").length;
-    await writeResult(actionId, result, result.charged > 0 ? "done" : "failed");
+    const made = result.items.filter((i) => i.status === "done").length;
+    result.charged = input.preview ? 0 : made;
+    await writeResult(actionId, result, made > 0 ? "done" : "failed");
   });
   return result;
 }
@@ -347,9 +431,83 @@ export async function updatePosterItem(userId: string, actionId: string, index: 
   const result = row.result as PosterJobResult | null;
   const item = result?.items?.find((i) => i.index === index);
   if (!result || !item || item.status !== "done") throw new PosterJobError("That poster isn't ready to edit.", 409);
+  if (item.preview) throw new PosterJobError("Keep this preview first (1 credit), then you can edit it.", 409);
   item.imageUrl = imageUrl;
   item.generationId = generationId;
   item.edits = (item.edits ?? 0) + 1;
   await db.update(agentActions).set({ result, updatedAt: new Date().toISOString() }).where(eq(agentActions.id, actionId));
   return result;
+}
+
+/** Free preview posters per owner per 7 days (weekly check-ins). Keeping one costs 1 credit. */
+export const MAX_PREVIEWS_PER_WEEK = 3;
+
+async function previewsThisWeek(userId: string): Promise<number> {
+  const since = new Date(Date.now() - 7 * 86_400_000).toISOString();
+  const rows = await db.select({ result: agentActions.result }).from(agentActions)
+    .where(and(eq(agentActions.userId, userId), eq(agentActions.type, "posters"), gte(agentActions.createdAt, since)));
+  return rows.reduce((n, r) => n + ((r.result as PosterJobResult | null)?.items?.filter((i) => i.preview || i.kept).length ?? 0), 0);
+}
+
+async function releaseKeep(actionId: string, index: number) {
+  const [fresh] = await db.select().from(agentActions).where(eq(agentActions.id, actionId));
+  const r = fresh?.result as PosterJobResult | null;
+  const it = r?.items?.find((i) => i.index === index);
+  if (!r || !it) return;
+  it.keeping = false;
+  await db.update(agentActions).set({ result: r, updatedAt: new Date().toISOString() }).where(eq(agentActions.id, actionId));
+}
+
+/** Fresh signed links for preview images (they expire after an hour). */
+export async function withFreshPreviews(result: PosterJobResult | null): Promise<PosterJobResult | null> {
+  const paths = result?.items?.filter((i) => i.preview && i.storagePath).map((i) => previewPathFor(i.storagePath!)) ?? [];
+  if (!result || !paths.length) return result;
+  const urls = await signedPreviewUrls(paths).catch(() => new Map<string, string>());
+  return { ...result, items: result.items.map((i) => (i.preview && i.storagePath ? { ...i, imageUrl: urls.get(previewPathFor(i.storagePath)) ?? i.imageUrl } : i)) };
+}
+
+/**
+ * Keep a free preview: 1 image credit, then the full poster is published like any other
+ * and can be downloaded and edited. A second click never charges twice.
+ */
+export async function keepPreview(userId: string, actionId: string, index: number): Promise<PosterJobResult> {
+  const [row] = await db.select().from(agentActions).where(and(eq(agentActions.id, actionId), eq(agentActions.userId, userId)));
+  if (!row || row.type !== "posters") throw new PosterJobError("Those posters no longer exist.", 404);
+  const result = row.result as PosterJobResult | null;
+  const item = result?.items?.find((i) => i.index === index);
+  if (!result || !item || item.status !== "done") throw new PosterJobError("That poster isn't ready.", 409);
+  if (item.kept || !item.preview) return result;
+  if (!item.storagePath) throw new PosterJobError("This preview can't be kept. Make it again.", 409);
+  if (item.keeping) throw new PosterJobError("Already keeping this poster…", 409);
+
+  // Claim it first (only if nobody changed the row since we read it), so a double click can't charge twice.
+  Object.assign(item, { keeping: true });
+  const claimed = await db.update(agentActions)
+    .set({ result, updatedAt: new Date().toISOString() })
+    .where(and(eq(agentActions.id, actionId), eq(agentActions.updatedAt, row.updatedAt)))
+    .returning({ id: agentActions.id });
+  if (!claimed.length) throw new PosterJobError("Already keeping this poster…", 409);
+
+  const paid = await CreditsDAO.deductImageCredits(userId, 1);
+  if (!paid.success) {
+    await releaseKeep(actionId, index);
+    throw new PosterJobError("You need 1 image credit to keep this poster. Buy credits, then try again.", 402);
+  }
+  try {
+    const published = await publishKeptDraft(userId, item.storagePath, "agent_poster");
+    // Re-read so a parallel keep of another tile isn't overwritten.
+    const [fresh] = await db.select().from(agentActions).where(eq(agentActions.id, actionId));
+    const latest = (fresh?.result as PosterJobResult | null) ?? result;
+    const target = latest.items.find((i) => i.index === index)!;
+    Object.assign(target, { imageUrl: published.url, preview: false, kept: true, keeping: false });
+    latest.charged = (latest.charged ?? 0) + 1;
+    await db.update(agentActions).set({ result: latest, updatedAt: new Date().toISOString() }).where(eq(agentActions.id, actionId));
+    await rememberTaste(userId, tasteFromKeep(target.headline), row.sessionId);
+    return latest;
+  } catch (err) {
+    await CreditsDAO.addImageCreditsAddon(userId, 1, "agent_keep_refund").catch(() => null);
+    await releaseKeep(actionId, index);
+    console.error("[agent/posters] keep failed", { message: (err as Error)?.message?.slice(0, 160) });
+    throw new PosterJobError("Couldn't keep this poster. Your credit was returned. Try again.", 500);
+  }
 }

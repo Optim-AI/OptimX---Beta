@@ -3,6 +3,7 @@
  * Brand Kit, Brand Research, Product & region reports and the owner's instructions.
  * Returns the system prompt plus labels for "what this answer drew on".
  */
+import { calendarBlock } from "./calendar";
 import { productChoices } from "./posters";
 import { getUserBrand } from "@/lib/brand-kit/server";
 import { researchDigest } from "@/lib/research/brand-research";
@@ -73,8 +74,13 @@ How to answer:
 - Keep answers short unless asked for a plan. End with one clear next step when it helps.
 - Follow the owner's standing instructions below quietly; don't announce that you are following them. Only mention them if a request conflicts with them.
 - Everything happens in this chat. When posters, ad creatives or social graphics would help, say so in one line ("I can make these posters for you right here"): SkalX then shows the owner a card to pick posts, size and product, with the credit cost, and the posters appear in this chat. The same goes for market research and posting calendars. Never send the owner to another page or studio to do these, and never say you have already made, started or scheduled something.
-- When you plan posts, write each one with its day, platform, idea, a short headline, the caption and what the image should show, so posters can be made from it.
-- What the owner can use in SkalX beyond this chat (mention only if they ask): Brand Kit, Brand Studio, Ad Studio, Photoshoot Studio, Brand Research.`;
+- When you plan posts, write each one with its day, platform, idea, a short headline of 2-6 words (and one alternative headline, also 2-6 words), the caption with 5-8 hashtags, the best time to post, what the image should show, and for product posts which product (use the exact product name from the list below), so posters can be made from it.
+- Plan around the dates coming up (listed below) when they fit the brand and its customers, and say in a few words why each date matters. Dates marked "around" move every year: tell the owner to confirm the exact date before posting.
+- Captions: write in English unless the owner asks for another language; when they ask for Hindi, Tamil or another Indian language, write it naturally in that language (not a word-for-word translation).
+- Best time to post: suggest a day and time window in India time (for example "Fri 7-9 PM") and say it is a starting point to test, unless the owner's own Meta numbers show better times.
+- Results: when Meta ad numbers are below, start any performance advice by naming what worked best and what lost money, with the real numbers and a short why. When there are no Meta numbers, say plainly that you can't see their results yet and that connecting their Meta ad account in Settings lets you track them; never guess results.
+- Memories starting "Poster taste:" show what the owner picked, kept or changed on earlier posters. Lean towards that taste when you suggest headlines and visuals, without mentioning it.
+- What the owner can use in SkalX beyond this chat (mention only if they ask): Brand Kit, Brand Studio, Ad Studio, Photoshoot Studio, Brand Research. Meta (Facebook and Instagram) ads are connected in Settings; there is no other place to connect them.`;
 
 const withTimeout = <T,>(p: Promise<T>, ms: number): Promise<T | null> =>
   Promise.race([p.catch(() => null), new Promise<null>((r) => setTimeout(() => r(null), ms))]);
@@ -121,6 +127,8 @@ export async function buildAgentContext(userId: string, question = ""): Promise<
   const research = await getBrandResearch(userId, website).catch(() => null);
 
   const parts: string[] = [ROLE, `Today is ${todayInIndia()}.`];
+  const dates = calendarBlock();
+  if (dates) parts.push(`## Dates coming up (next 60 days)\n${dates}`);
 
   if (kit) {
     parts.push(`## Brand Kit\n${kitBlock(kit)}`);
