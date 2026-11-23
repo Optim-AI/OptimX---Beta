@@ -57,7 +57,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     async function diagnosticGet(tokenName: string, token: string) {
       const url = `${buildUrl(mediaId, token)}&fields=id,permalink,media_type,media_url,timestamp,caption`;
       const r = await fetchJson(url);
-      attempts.push({ attempt: "diag_get", usedToken: tokenName, tokenRedacted: redactToken(token), urlCalled: url, ...r });
+      attempts.push({ attempt: "diag_get", usedToken: tokenName, tokenRedacted: redactToken(token), urlCalled: url.split("?")[0], ...r });
       return r;
     }
 
@@ -66,7 +66,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       await diagnosticGet(tokenName, token);
       const url = buildUrl(mediaId, token);
       const r = await fetchJson(url, { method: "DELETE" });
-      attempts.push({ attempt: "delete", usedToken: tokenName, tokenRedacted: redactToken(token), urlCalled: url, ...r });
+      attempts.push({ attempt: "delete", usedToken: tokenName, tokenRedacted: redactToken(token), urlCalled: url.split("?")[0], ...r });
       return r;
     }
 
@@ -87,12 +87,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (pageAccessToken && process.env.FACEBOOK_APP_ID && APP_SECRET) {
       const dbgUrl = `https://graph.facebook.com/debug_token?input_token=${encodeURIComponent(pageAccessToken)}&access_token=${encodeURIComponent(`${process.env.FACEBOOK_APP_ID}|${APP_SECRET}`)}`;
       const d = await fetchJson(dbgUrl);
-      tokenDebug.push({ which: "pageAccessToken", debugUrl: dbgUrl, ...d, tokenRedacted: redactToken(pageAccessToken) });
+      tokenDebug.push({ which: "pageAccessToken", ...d, tokenRedacted: redactToken(pageAccessToken) });
     }
     if (userAccessToken && process.env.FACEBOOK_APP_ID && APP_SECRET) {
       const dbgUrl = `https://graph.facebook.com/debug_token?input_token=${encodeURIComponent(userAccessToken)}&access_token=${encodeURIComponent(`${process.env.FACEBOOK_APP_ID}|${APP_SECRET}`)}`;
       const d = await fetchJson(dbgUrl);
-      tokenDebug.push({ which: "userAccessToken", debugUrl: dbgUrl, ...d, tokenRedacted: redactToken(userAccessToken) });
+      tokenDebug.push({ which: "userAccessToken", ...d, tokenRedacted: redactToken(userAccessToken) });
     }
 
     return res.status(500).json({

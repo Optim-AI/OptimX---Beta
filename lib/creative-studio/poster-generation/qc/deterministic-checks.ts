@@ -3,6 +3,7 @@
  * Technical checks code can verify reliably.
  */
 
+import { safeFetch } from "@/lib/audit/url-safety";
 import sharp from "sharp";
 import type { PosterAspectRatio } from "../types";
 import type { PosterQcCheck, PosterQcIssue } from "../types";
@@ -61,12 +62,7 @@ export async function loadImageBuffer(
       return Buffer.from(m[1], "base64");
     }
     if (imageUrl.startsWith("http://") || imageUrl.startsWith("https://")) {
-      const resp = await fetch(imageUrl, {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (compatible; SkalX AI/1.0)",
-          Accept: "image/*",
-        },
-      });
+      const resp = await safeFetch(imageUrl, { timeoutMs: 30_000 });
       if (!resp.ok) return null;
       return Buffer.from(await resp.arrayBuffer());
     }

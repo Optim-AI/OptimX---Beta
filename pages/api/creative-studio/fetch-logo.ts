@@ -1,10 +1,16 @@
 // pages/api/creative-studio/fetch-logo.ts
 import type { NextApiRequest, NextApiResponse } from "next";
+import { getUserIdFromRequest } from "@/auth/request";
+import { limitedPagesApi } from "@/lib/security/rate-limit";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") {
     return res.status(405).json({ ok: false, error: "Method not allowed" });
   }
+
+  const userId = await getUserIdFromRequest(req);
+  if (!userId) return res.status(401).json({ ok: false, error: "Please sign in to use this." });
+  if (limitedPagesApi(req, res, "fetch-logo", 30, 60_000, userId)) return;
 
   try {
     const { domain } = req.body;
@@ -14,7 +20,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     // Clean domain (remove protocol, www, path)
-    const cleanDomain = domain.replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0];
+    const cleanDomain = domain.replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0].toLowerCase();
+    if (!/^[a-z0-9.-]{1,253}$/.test(cleanDomain)) {
+      return res.status(400).json({ ok: false, error: "Please enter a website address like example.com" });
+    }
 
     // Try Brandfetch API first
     // Note: You'll need to add your Brandfetch API key to environment variables

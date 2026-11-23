@@ -4,11 +4,17 @@ import { supabaseAdmin } from "@/auth/supabase/admin"; // Keep for storage opera
 import { getUserIdFromRequest } from "@/auth/request";
 import { CampaignDAO } from "@/database/models/Campaign.dao";
 import { GeneratedImageDAO } from "@/database/models/GeneratedImage.dao";
+import { safeFetch, IMAGE_CONTENT } from "@/lib/audit/url-safety";
+
+/** Only plain image types are stored in the public bucket (no SVG/HTML). */
+const SAFE_IMAGE_TYPES: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/jpg": "jpg", "image/webp": "webp" };
 
 function dataUrlToBuffer(dataUrl: string) {
-  const m = dataUrl.match(/^data:(.+);base64,(.+)$/);
+  const m = dataUrl.match(/^data:([^;,]+);base64,(.+)$/);
   if (!m) throw new Error("Invalid data URL");
-  return { buffer: Buffer.from(m[2], "base64"), mime: m[1] };
+  const mime = m[1].toLowerCase();
+  if (!SAFE_IMAGE_TYPES[mime]) throw new Error("Unsupported image type");
+  return { buffer: Buffer.from(m[2], "base64"), mime: mime === "image/jpg" ? "image/jpeg" : mime };
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -33,6 +39,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ ok: false, error: "Missing or invalid campaignName" });
     }
 
+    if (/^data:/i.test(posterUrl) && !/^data:image\/(png|jpe?g|webp);base64,/i.test(posterUrl)) {
+      return res.status(400).json({ ok: false, error: "Please use a PNG, JPG or WEBP image." });
+    }
     let image_url = posterUrl;
     let image_path = "";
 
@@ -40,7 +49,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     try {
       if (posterUrl.startsWith("data:")) {
         const { buffer, mime } = dataUrlToBuffer(posterUrl);
-        const ext = mime.split("/")[1] || "png";
+        const ext = SAFE_IMAGE_TYPES[mime];
         const safeName = campaignName
           .replace(/[^a-z0-9_\-]/gi, "_")
           .toLowerCase();
@@ -67,12 +76,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       } else if (posterUrl.startsWith("http")) {
         // Try to fetch and re-upload remote image
         try {
-          const response = await fetch(posterUrl);
-          if (response.ok) {
-            const blob = await response.blob();
+          const response = await safeFetch(posterUrl, { accept: IMAGE_CONTENT, maxBytes: 10 * 1024 * 1024 });
+          const remoteType = (response.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
+          if (response.ok && SAFE_IMAGE_TYPES[remoteType]) {
+            const blob = new Blob([new Uint8Array(await response.arrayBuffer())], { type: remoteType === "image/jpg" ? "image/jpeg" : remoteType });
             const arrayBuffer = await blob.arrayBuffer();
             const buffer = Buffer.from(arrayBuffer);
-            const ext = blob.type?.split("/")[1] || "png";
+            const ext = SAFE_IMAGE_TYPES[remoteType];
             const safeName = campaignName
               .replace(/[^a-z0-9_\-]/gi, "_")
               .toLowerCase();

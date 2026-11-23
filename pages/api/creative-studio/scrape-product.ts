@@ -1,6 +1,8 @@
 // pages/api/creative-studio/scrape-product.ts
+import { limitedPagesApi } from "@/lib/security/rate-limit";
 import { cleanProductName, productNameFromHtml } from "@/lib/creative-studio/product-name";
 import type { NextApiRequest, NextApiResponse } from "next";
+import { safeFetch } from "@/lib/audit/url-safety";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") {
@@ -10,6 +12,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const { getUserIdFromRequest } = await import("@/auth/request");
   const userId = await getUserIdFromRequest(req);
   if (!userId) return res.status(401).json({ ok: false, error: "Authentication required" });
+  if (limitedPagesApi(req, res, "scrape-product", 30, 60_000, userId)) return;
 
   try {
     const { url } = req.body;
@@ -27,10 +30,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // For now, we'll use a simple scraping approach
     // In production, you might want to use a service like ScraperAPI, Bright Data, or similar
-    const response = await fetch(url, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-      },
+    const response = await safeFetch(url, {
+      userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+      maxBytes: 5 * 1024 * 1024,
+      timeoutMs: 15_000,
     });
 
     if (!response.ok) {
@@ -113,12 +116,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
 
-        const imgResponse = await fetch(imgUrl, {
-          headers: {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            "Referer": url, // Some sites require referer
-          },
-          signal: controller.signal,
+        const imgResponse = await safeFetch(imgUrl, {
+          userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+          timeoutMs: 10_000,
+          maxBytes: 10 * 1024 * 1024,
         });
 
         clearTimeout(timeoutId);
@@ -168,9 +169,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
   } catch (error: any) {
     console.error("Product scraping error:", error);
-    return res.status(500).json({
+    return res.status(error?.name === "UnsafeUrlError" ? 400 : 500).json({
       ok: false,
-      error: error.message || "Failed to scrape product information",
+      error: error?.name === "UnsafeUrlError"
+        ? "That link can't be used. Please use a public product page link."
+        : error.message || "Failed to scrape product information",
     });
   }
 }

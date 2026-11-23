@@ -1,4 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from "next";
+import { limitedPagesApi } from "@/lib/security/rate-limit";
 import { getUserIdFromRequest } from "@/auth/request";
 import { normalizeAuditUrl } from "@/lib/audit/url-safety";
 import { extractBrandKitFromWebsite } from "@/lib/brand-kit/extract";
@@ -16,6 +17,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
   const userId = await getUserIdFromRequest(req);
   if (!userId) return res.status(401).json({ error: "Please sign in." });
+  if (limitedPagesApi(req, res, "brand-kit-extract", 20, 60 * 60_000, userId)) return;
 
   const check = normalizeAuditUrl(req.body?.url);
   if (!check.ok) return res.status(400).json({ error: check.message.replace(/audited/g, "imported") });

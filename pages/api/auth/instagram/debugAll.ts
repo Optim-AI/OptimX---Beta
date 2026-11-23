@@ -30,7 +30,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const pageUrl = `https://graph.facebook.com/v${VERSION}/${encodeURIComponent(pageId)}?fields=instagram_business_account&access_token=${encodeURIComponent(pageAccessToken)}`;
       const pageRes = await fetch(pageUrl);
       const pageText = await pageRes.text();
-      result.checks.pageInstagramBusiness = { status: pageRes.status, ok: pageRes.ok, body: safeJsonParse(pageText), urlCalled: pageUrl };
+      result.checks.pageInstagramBusiness = { status: pageRes.status, ok: pageRes.ok, body: safeJsonParse(pageText), urlCalled: pageUrl.split("?")[0] };
     } else result.checks.pageInstagramBusiness = { skipped: true, reason: "missing pageId or pageAccessToken" };
 
     if (igUserId && pageAccessToken) {
@@ -38,7 +38,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const igMediaUrl = `https://graph.facebook.com/v${VERSION}/${encodeURIComponent(igUserId)}/media?fields=${encodeURIComponent(fields)}&access_token=${encodeURIComponent(pageAccessToken)}&limit=50`;
       const igRes = await fetch(igMediaUrl);
       const igText = await igRes.text();
-      result.checks.igMedia = { status: igRes.status, ok: igRes.ok, body: safeJsonParse(igText), urlCalled: igMediaUrl };
+      result.checks.igMedia = { status: igRes.status, ok: igRes.ok, body: safeJsonParse(igText), urlCalled: igMediaUrl.split("?")[0] };
     } else result.checks.igMedia = { skipped: true, reason: "missing igUserId or pageAccessToken" };
 
     // lastPublishId check
@@ -48,7 +48,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const mediaUrl = `https://graph.facebook.com/v${VERSION}/${encodeURIComponent(mediaId)}?fields=${encodeURIComponent(fields)}&access_token=${encodeURIComponent(pageAccessToken)}`;
       const mRes = await fetch(mediaUrl);
       const mText = await mRes.text();
-      result.checks.lastPublishId = { mediaId, status: mRes.status, ok: mRes.ok, body: safeJsonParse(mText), urlCalled: mediaUrl };
+      result.checks.lastPublishId = { mediaId, status: mRes.status, ok: mRes.ok, body: safeJsonParse(mText), urlCalled: mediaUrl.split("?")[0] };
     } else result.checks.lastPublishId = { skipped: true, reason: "no saved.lastPublishId or missing page token" };
 
     // page posts
@@ -57,7 +57,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const pagePostsUrl = `https://graph.facebook.com/v${VERSION}/${encodeURIComponent(pageId)}/posts?fields=${encodeURIComponent(fields)}&access_token=${encodeURIComponent(pageAccessToken)}&limit=25`;
       const pRes = await fetch(pagePostsUrl);
       const pText = await pRes.text();
-      result.checks.pagePosts = { status: pRes.status, ok: pRes.ok, body: safeJsonParse(pText), urlCalled: pagePostsUrl };
+      result.checks.pagePosts = { status: pRes.status, ok: pRes.ok, body: safeJsonParse(pText), urlCalled: pagePostsUrl.split("?")[0] };
     } else result.checks.pagePosts = { skipped: true, reason: "missing pageId or pageAccessToken" };
 
     // token debug
@@ -65,7 +65,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const debugUrl = `https://graph.facebook.com/debug_token?input_token=${encodeURIComponent(pageAccessToken)}&access_token=${encodeURIComponent(`${process.env.FACEBOOK_APP_ID}|${process.env.FACEBOOK_APP_SECRET}`)}`;
       const dRes = await fetch(debugUrl);
       const dText = await dRes.text();
-      result.checks.tokenDebug = { status: dRes.status, ok: dRes.ok, body: safeJsonParse(dText), urlCalled: debugUrl };
+      result.checks.tokenDebug = { status: dRes.status, ok: dRes.ok, body: safeJsonParse(dText), urlCalled: "graph.facebook.com/debug_token" };
     } else result.checks.tokenDebug = { skipped: true, reason: "missing page token or app credentials" };
 
     // heuristics

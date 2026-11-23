@@ -41,21 +41,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (pageAccessToken) {
       const url = `https://graph.facebook.com/v${VERSION}/${encodeURIComponent(mediaId)}?access_token=${encodeURIComponent(pageAccessToken)}`;
       const r = await callDelete(url);
-      attempts.push({ usedToken: "pageAccessToken", tokenRedacted: redactToken(pageAccessToken), urlCalled: url, ...r });
+      attempts.push({ usedToken: "pageAccessToken", tokenRedacted: redactToken(pageAccessToken), urlCalled: url.split("?")[0], ...r });
       if (r.ok) return res.status(200).json({ success: true, attempts });
     }
 
     if (longUserToken) {
       const url = `https://graph.facebook.com/v${VERSION}/${encodeURIComponent(mediaId)}?access_token=${encodeURIComponent(longUserToken)}`;
       const r = await callDelete(url);
-      attempts.push({ usedToken: "longUserToken", tokenRedacted: redactToken(longUserToken), urlCalled: url, ...r });
+      attempts.push({ usedToken: "longUserToken", tokenRedacted: redactToken(longUserToken), urlCalled: url.split("?")[0], ...r });
       if (r.ok) return res.status(200).json({ success: true, attempts });
     }
 
     if (userAccessToken) {
       const url = `https://graph.facebook.com/v${VERSION}/${encodeURIComponent(mediaId)}?access_token=${encodeURIComponent(userAccessToken)}`;
       const r = await callDelete(url);
-      attempts.push({ usedToken: "userAccessToken", tokenRedacted: redactToken(userAccessToken), urlCalled: url, ...r });
+      attempts.push({ usedToken: "userAccessToken", tokenRedacted: redactToken(userAccessToken), urlCalled: url.split("?")[0], ...r });
       if (r.ok) return res.status(200).json({ success: true, attempts });
     }
 
@@ -69,7 +69,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const dtext = await dres.text();
       let dbody: any = dtext;
       try { dbody = JSON.parse(dtext); } catch {}
-      debugs.push({ which: "pageAccessToken", debugUrl, status: dres.status, ok: dres.ok, body: dbody, tokenRedacted: redactToken(pageAccessToken) });
+      debugs.push({ which: "pageAccessToken", status: dres.status, ok: dres.ok, body: dbody, tokenRedacted: redactToken(pageAccessToken) });
     }
     if (userAccessToken && appId && appSecret) {
       const debugUrl = `https://graph.facebook.com/debug_token?input_token=${encodeURIComponent(userAccessToken)}&access_token=${encodeURIComponent(`${appId}|${appSecret}`)}`;
@@ -77,7 +77,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const dtext = await dres.text();
       let dbody: any = dtext;
       try { dbody = JSON.parse(dtext); } catch {}
-      debugs.push({ which: "userAccessToken", debugUrl, status: dres.status, ok: dres.ok, body: dbody, tokenRedacted: redactToken(userAccessToken) });
+      debugs.push({ which: "userAccessToken", status: dres.status, ok: dres.ok, body: dbody, tokenRedacted: redactToken(userAccessToken) });
     }
 
     return res.status(500).json({

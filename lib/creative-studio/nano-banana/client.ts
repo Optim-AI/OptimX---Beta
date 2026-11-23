@@ -11,6 +11,7 @@
  * reusable generation core. Poster and video/keyframe model IDs stay independent.
  */
 
+import { safeFetch } from "@/lib/audit/url-safety";
 import axios from "axios";
 import sharp from "sharp";
 import { withRetryOnGeminiTransient } from "@/lib/gemini-retry";
@@ -256,7 +257,7 @@ export function dataUrlToBuffer(dataUrl: string): Buffer {
 }
 
 export async function fetchUrlToBuffer(url: string): Promise<Buffer> {
-  const resp = await fetch(url);
+  const resp = await safeFetch(url, { timeoutMs: 30_000 });
   if (!resp.ok) throw new Error(`Failed to fetch ${url}: ${resp.status}`);
   return Buffer.from(await resp.arrayBuffer());
 }

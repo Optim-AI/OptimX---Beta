@@ -1,39 +1,47 @@
 // pages/api/meta/oauth/start.ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import { encodeState } from '@/auth/helpers';
-import { cleanupExpiredSessions } from '@/integrations/meta/oauth-session';
+import { serialize } from "cookie";
+import { getUserIdFromRequest } from "@/auth/request";
+import { createState, STATE_COOKIE, STATE_TTL_SECONDS } from "@/lib/meta/oauth-state";
+
+/** Cookie path shared by start and callback (the nonce must reach the callback). */
+const META_OAUTH_COOKIE_PATH = "/api/meta/oauth";
 
 /**
- * Initiates Meta OAuth flow for Facebook + Instagram.
- * This replaces /api/auth/instagram/start
+ * POST /api/meta/oauth/start (signed in, Bearer) → { url } for the Facebook + Instagram dialog.
+ *
+ * The state is signed and names the signed-in user; a matching nonce goes in an httpOnly
+ * cookie, so a connect link can't be replayed in someone else's browser and the user's
+ * sign-in token never appears in a URL. A plain GET (old links) sends people back to the
+ * Integrations page to start again.
  */
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  // Skip cleanup if DATABASE_URL not configured (sessions expire naturally after 10min)
-  // cleanupExpiredSessions().catch((err) => {
-  //   console.warn("Failed to cleanup expired sessions:", err);
-  // });
+  if (req.method === "GET") {
+    return res.redirect(302, "/integrations");
+  }
+  if (req.method !== "POST") {
+    res.setHeader("Allow", "GET, POST");
+    return res.status(405).json({ error: "Method not allowed" });
+  }
+
+  const userId = await getUserIdFromRequest(req);
+  if (!userId) return res.status(401).json({ error: "Please sign in again, then try connecting." });
+
   const appId = process.env.FACEBOOK_APP_ID;
   const version = process.env.FACEBOOK_API_VERSION || "23.0";
   const redirectUri = `${process.env.NEXT_PUBLIC_APP_URL}/api/meta/oauth/callback`;
 
-  if (!appId) {
-    return res.status(500).json({ error: "FACEBOOK_APP_ID not configured" });
+  if (!appId || !process.env.NEXT_PUBLIC_APP_URL) {
+    return res.status(503).json({ error: "Meta connection is not set up yet. Please contact support." });
   }
 
-  if (!process.env.NEXT_PUBLIC_APP_URL) {
-    return res.status(500).json({ error: "NEXT_PUBLIC_APP_URL not configured" });
+  let state: string;
+  let nonce: string;
+  try {
+    ({ state, nonce } = createState(userId));
+  } catch {
+    return res.status(503).json({ error: "Meta connection is not set up yet. Please contact support." });
   }
-
-  // Extract Supabase session token from query params (passed from frontend)
-  const supabaseToken = Array.isArray(req.query.sb)
-    ? req.query.sb[0]
-    : (req.query.sb as string | undefined);
-
-  // Encode state with random string and optional Supabase token
-  const statePayload: any = { r: Math.random().toString(36).slice(2, 9) };
-  if (supabaseToken) statePayload.t = supabaseToken;
-
-  const state = encodeState(statePayload);
 
   // Request comprehensive permissions for Facebook, Instagram, and Ads
   const scopes = [
@@ -63,5 +71,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     `&response_type=code` +
     `&state=${encodeURIComponent(state)}`;
 
-  res.redirect(oauthUrl);
+  res.setHeader(
+    "Set-Cookie",
+    serialize(STATE_COOKIE, nonce, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: META_OAUTH_COOKIE_PATH,
+      maxAge: STATE_TTL_SECONDS,
+    })
+  );
+  return res.status(200).json({ url: oauthUrl });
 }

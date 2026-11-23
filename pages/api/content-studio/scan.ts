@@ -1,6 +1,8 @@
 // pages/api/content-studio/scan.ts
 // Website scanning: full-site crawl with Playwright, extract products, brand intelligence
 
+import { limitedPagesApi } from "@/lib/security/rate-limit";
+import { safeFetch } from "@/lib/audit/url-safety";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { JSDOM } from "jsdom";
 import { Readability } from "@mozilla/readability";
@@ -824,11 +826,7 @@ function extractProductFromHtml(html: string, url: string): {
 }
 
 async function fetchPageHtml(url: string): Promise<string> {
-  const resp = await fetch(url, {
-    redirect: "follow",
-    headers: { "User-Agent": "Mozilla/5.0 (compatible; OptimX-ContentStudio/1.0)" },
-    signal: AbortSignal.timeout(15000),
-  });
+  const resp = await safeFetch(url, { userAgent: "Mozilla/5.0 (compatible; OptimX-ContentStudio/1.0)", timeoutMs: 15_000, maxBytes: 5 * 1024 * 1024 });
   if (!resp.ok) throw new Error(`Failed to fetch: ${resp.statusText}`);
   return resp.text();
 }
@@ -854,10 +852,7 @@ async function tryWooCommerceProducts(baseOrigin: string): Promise<{
   ];
   for (const productsUrl of endpoints) {
     try {
-      const resp = await fetch(productsUrl, {
-        headers: { "User-Agent": "Mozilla/5.0 (compatible; OptimX-ContentStudio/1.0)" },
-        signal: AbortSignal.timeout(10000),
-      });
+      const resp = await safeFetch(productsUrl, { userAgent: "Mozilla/5.0 (compatible; OptimX-ContentStudio/1.0)", timeoutMs: 10_000, maxBytes: 5 * 1024 * 1024 });
       if (!resp.ok) continue;
       const raw = await resp.json();
       if (!Array.isArray(raw) || raw.length === 0) continue;
@@ -910,10 +905,7 @@ async function tryShopifyProductsJson(baseOrigin: string): Promise<{
 }> {
   const productsUrl = `${baseOrigin}/products.json?limit=250`;
   try {
-    const resp = await fetch(productsUrl, {
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; OptimX-ContentStudio/1.0)" },
-      signal: AbortSignal.timeout(10000),
-    });
+    const resp = await safeFetch(productsUrl, { userAgent: "Mozilla/5.0 (compatible; OptimX-ContentStudio/1.0)", timeoutMs: 10_000, maxBytes: 5 * 1024 * 1024 });
     if (!resp.ok) return { products: [], success: false };
     const data = await resp.json();
     const raw = data?.products;
@@ -1012,6 +1004,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(401).json({ ok: false, error: "Authentication required" });
   }
 
+  if (limitedPagesApi(req, res, "content-studio-scan", 30, 60 * 60_000, userId)) return;
   let { url } = req.body;
   if (!url || typeof url !== "string") {
     return res.status(400).json({ ok: false, error: "URL is required" });

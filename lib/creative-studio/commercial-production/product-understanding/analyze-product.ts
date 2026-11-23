@@ -9,6 +9,7 @@
  * Non-fatal: any failure returns null and generation continues without it.
  */
 
+import { safeFetch } from "@/lib/audit/url-safety";
 import { getGeminiApiKey, GEMINI_REST_BASE } from "@/lib/gemini-config";
 import type { StoredAssetRef } from "../assets";
 
@@ -64,7 +65,7 @@ export async function loadImageInline(
     return { mimeType, data: url.slice(comma + 1) };
   }
   if (!url.startsWith("https://")) return null;
-  const res = await fetch(url, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
+  const res = await safeFetch(url, { timeoutMs: REQUEST_TIMEOUT_MS });
   if (!res.ok) return null;
   const mimeType = res.headers.get("content-type")?.split(";")[0]?.trim() || ref.mimeType || "image/jpeg";
   if (!mimeType.startsWith("image/")) return null;

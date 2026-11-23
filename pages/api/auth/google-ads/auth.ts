@@ -2,6 +2,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { google } from "googleapis";
 import { resolveRequestOrigin } from "@/lib/routing/safe-next";
+import { issueOAuthNonce } from "@/lib/security/oauth-nonce";
 
 const CLIENT_ID = process.env.GOOGLE_ADS_CLIENT_ID;
 const CLIENT_SECRET = process.env.GOOGLE_ADS_CLIENT_SECRET;
@@ -31,7 +32,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     "https://www.googleapis.com/auth/userinfo.email",
   ];
 
+  const nonce = issueOAuthNonce("skx_ga_state", "/api/auth/google-ads", origin.startsWith("https://"));
+  res.setHeader("Set-Cookie", nonce.setCookie);
   const url = oauth2Client.generateAuthUrl({
+    state: nonce.state,
     access_type: "offline",
     prompt: "consent",
     scope: scopes,

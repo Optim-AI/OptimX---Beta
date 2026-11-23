@@ -2,6 +2,7 @@
  * Veo reference image assembly — product photos are passed through unchanged when possible.
  */
 
+import { safeFetch } from "@/lib/audit/url-safety";
 import sharp from "sharp";
 
 export const VEO_MAX_REFERENCE_IMAGES = 3;
@@ -54,12 +55,7 @@ export async function fetchImageForVeoReference(
       return convertToVeoReferenceFormat(buffer, parsed.mimeType);
     }
 
-    const response = await fetch(url, {
-      headers: {
-        Accept: "image/*",
-        "User-Agent": "Mozilla/5.0 (compatible; OptimX-VideoGenerator/1.0)",
-      },
-    });
+    const response = await safeFetch(url, { userAgent: "Mozilla/5.0 (compatible; OptimX-VideoGenerator/1.0)", timeoutMs: 30_000 });
     if (!response.ok) {
       console.warn(`Failed to fetch image from URL: ${response.status}`);
       return null;

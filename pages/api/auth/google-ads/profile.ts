@@ -31,16 +31,14 @@ async function refreshAccessToken(refreshToken: string): Promise<RefreshResp> {
   const txt = await resp.text();
   let obj: any;
   try { obj = JSON.parse(txt); } catch { throw new Error("Failed to parse refresh response: " + txt); }
-  if (!obj.access_token) throw new Error("No access_token in refresh response: " + txt);
+  if (!obj.access_token) throw new Error("No access_token in refresh response");
   return obj;
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
     const raw = req.headers.cookie ?? "";
-    console.log("profile raw cookie header:", raw);
     const cookies = raw ? cookie.parse(raw) : {};
-    console.log("profile parsed cookies:", cookies);
 
     let accessToken: string | undefined = cookies.ga_access_token;
     const refreshToken: string | undefined = cookies.ga_refresh_token;

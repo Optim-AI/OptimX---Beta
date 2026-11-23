@@ -226,6 +226,10 @@ export type SafeFetchOptions = {
   accept?: RegExp;
   /** Some storefronts (Shopify) rate-limit agents containing "bot"; research passes a browser agent. */
   userAgent?: string;
+  /** Keep a prefix when over maxBytes (pages). When false, too-large responses throw (images, files). */
+  truncate?: boolean;
+  /** Resolve non-2xx responses (empty body) instead of throwing. */
+  anyStatus?: boolean;
 };
 
 const DEFAULT_ACCEPT = /^(text\/html|application\/xhtml\+xml)/i;
@@ -235,6 +239,7 @@ type RequestOnceResult = {
   location: string | null;
   contentType: string;
   body: string;
+  raw: Buffer;
   truncated: boolean;
 };
 
@@ -264,7 +269,12 @@ function requestOnce(
         const contentType = String(res.headers['content-type'] || '');
         if (status >= 300 && status < 400) {
           res.resume();
-          resolve({ status, location, contentType, body: '', truncated: false });
+          resolve({ status, location, contentType, body: '', raw: Buffer.alloc(0), truncated: false });
+          return;
+        }
+        if ((status < 200 || status >= 300) && opts.anyStatus) {
+          res.resume();
+          resolve({ status, location: null, contentType, body: '', raw: Buffer.alloc(0), truncated: false });
           return;
         }
         if (status < 200 || status >= 300) {
@@ -286,11 +296,17 @@ function requestOnce(
         const finish = () => {
           if (settled) return;
           settled = true;
+          if (truncated && !opts.truncate) {
+            reject(new FetchLimitError('too_large', 'File is too large'));
+            return;
+          }
+          const raw = Buffer.concat(chunks);
           resolve({
             status,
             location,
             contentType,
-            body: Buffer.concat(chunks).toString('utf8'),
+            body: opts.truncate ? raw.toString('utf8') : '',
+            raw,
             truncated,
           });
         };
@@ -343,12 +359,19 @@ function requestOnce(
  * an overall deadline, a byte cap, and content-type allow-listing.
  */
 export async function safeFetchText(rawUrl: string, options: SafeFetchOptions = {}): Promise<SafeFetchResult> {
+  const { raw: _raw, ...rest } = await safeFetchCore(rawUrl, { truncate: true, ...options });
+  return rest;
+}
+
+async function safeFetchCore(rawUrl: string, options: SafeFetchOptions): Promise<SafeFetchResult & { raw: Buffer }> {
   const opts: Required<SafeFetchOptions> = {
     timeoutMs: options.timeoutMs ?? 10_000,
     maxBytes: options.maxBytes ?? 2 * 1024 * 1024,
     maxRedirects: options.maxRedirects ?? 4,
     accept: options.accept ?? DEFAULT_ACCEPT,
     userAgent: options.userAgent ?? 'SkalXAuditBot/1.0 (+https://skalx.ai)',
+    truncate: options.truncate ?? true,
+    anyStatus: options.anyStatus ?? false,
   };
   const deadline = Date.now() + opts.timeoutMs;
   let current = rawUrl;
@@ -368,8 +391,40 @@ export async function safeFetchText(rawUrl: string, options: SafeFetchOptions = 
       status: result.status,
       contentType: result.contentType,
       body: result.body,
+      raw: result.raw,
       truncated: result.truncated,
     };
   }
   throw new FetchLimitError('redirects', 'Too many redirects');
+}
+
+const ANY_CONTENT = /^/;
+export const IMAGE_CONTENT = /^image\/(png|jpe?g|webp|gif|avif)\b/i;
+
+/**
+ * Drop-in for `fetch(url)` on URLs that come from users or scraped pages.
+ * Same SSRF protection as safeFetchText (public addresses only, every redirect re-checked,
+ * deadline, byte cap). Returns a standard Response; non-2xx statuses come back with `ok: false`.
+ * Throws UnsafeUrlError for private/invalid URLs and FetchLimitError for limits.
+ */
+export async function safeFetch(
+  rawUrl: string,
+  options: Omit<SafeFetchOptions, 'truncate' | 'anyStatus'> = {}
+): Promise<Response> {
+  const result = await safeFetchCore(rawUrl, {
+    maxBytes: 20 * 1024 * 1024,
+    timeoutMs: 20_000,
+    accept: ANY_CONTENT,
+    userAgent: 'Mozilla/5.0 (compatible; SkalX/1.0; +https://skalxai.app)',
+    ...options,
+    truncate: false,
+    anyStatus: true,
+  });
+  const ok = result.status >= 200 && result.status < 300;
+  const res = new Response(ok ? new Uint8Array(result.raw) : null, {
+    status: result.status,
+    headers: result.contentType ? { 'content-type': result.contentType } : {},
+  });
+  Object.defineProperty(res, 'url', { value: result.url });
+  return res;
 }

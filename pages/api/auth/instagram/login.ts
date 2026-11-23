@@ -1,26 +1,8 @@
-// pages/api/auth/instagram/login.ts
+// Retired (security audit 2026-11-23): this older Instagram connect flow put the user's
+// sign-in token in the URL and had no CSRF protection. Meta is connected from the
+// Integrations page via /api/meta/oauth/start (signed state + nonce cookie).
 import type { NextApiRequest, NextApiResponse } from "next";
 
-export default function handler(req: NextApiRequest, res: NextApiResponse) {
-  const appId = process.env.FACEBOOK_APP_ID!;
-  const version = process.env.FACEBOOK_API_VERSION || "23.0";
-  const redirectUri = `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/instagram/callback`;
-
-  const scopes = [
-    "instagram_basic",
-    "instagram_content_publish",
-    "pages_show_list",
-    "pages_read_engagement",
-    "instagram_manage_comments",
-    "leads_retrieval",
-  ].join(",");
-
-  const oauth = `https://www.facebook.com/v${version}/dialog/oauth` +
-    `?client_id=${encodeURIComponent(appId)}` +
-    `&redirect_uri=${encodeURIComponent(redirectUri)}` +
-    `&scope=${encodeURIComponent(scopes)}` +
-    `&response_type=code`;
-
-  // Redirect the browser to Facebook login
-  res.redirect(oauth);
+export default function handler(_req: NextApiRequest, res: NextApiResponse) {
+  return res.redirect(302, "/integrations");
 }

@@ -1,4 +1,5 @@
 // pages/api/brand/fullAnalyze.ts
+import { limitedPagesApi } from "@/lib/security/rate-limit";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { JSDOM } from "jsdom";
 import { Readability } from "@mozilla/readability";
@@ -313,6 +314,7 @@ export default async function handler(
   const { getUserIdFromRequest } = await import("@/auth/request");
   const userId = await getUserIdFromRequest(req);
   if (!userId) return res.status(401).json({ error: "Authentication required" });
+  if (limitedPagesApi(req, res, "brand-full-analyze", 20, 60 * 60_000, userId)) return;
 
   const check = normalizeAuditUrl(req.body?.url);
   if (!check.ok) return res.status(400).json({ error: check.message });

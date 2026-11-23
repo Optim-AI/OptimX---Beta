@@ -1,6 +1,8 @@
 // pages/api/creative-intelligence/analyze.ts
 // Multi-stage Creative Intelligence pipeline: Website → Competitors → Reviews → Hooks
 
+import { limitedPagesApi } from "@/lib/security/rate-limit";
+import { safeFetch } from "@/lib/audit/url-safety";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { getUserIdFromRequest } from "@/auth/request";
 import { db, extractDbError } from "@/database/client";
@@ -109,10 +111,7 @@ function extractSocialUrlsFromDoc(doc: Document, baseUrl: string): { facebook: s
 }
 
 async function fetchPageData(url: string) {
-  const resp = await fetch(url, {
-    redirect: "follow",
-    headers: PAGE_FETCH_HEADERS,
-  });
+  const resp = await safeFetch(url, { userAgent: PAGE_FETCH_HEADERS["User-Agent"], timeoutMs: 15_000, maxBytes: 5 * 1024 * 1024 });
   if (!resp.ok) throw new Error(`Failed to fetch page (${resp.status})`);
   const html = await resp.text();
   const dom = new JSDOM(html, { url });
@@ -290,10 +289,7 @@ async function domainKeywordValidation(
   let combined = [candidate.title || "", candidate.snippet || ""].join(" ").toLowerCase();
   try {
     const url = candidate.url || `https://${candidate.domain}`;
-    const resp = await fetch(url, {
-      headers: PAGE_FETCH_HEADERS,
-      signal: AbortSignal.timeout(6000),
-    });
+    const resp = await safeFetch(url, { userAgent: PAGE_FETCH_HEADERS["User-Agent"], timeoutMs: 6_000, maxBytes: 5 * 1024 * 1024 });
     if (resp.ok) {
       const html = await resp.text();
       const dom = new JSDOM(html);
@@ -891,6 +887,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(401).json({ ok: false, error: "Authentication required" });
   }
 
+  if (limitedPagesApi(req, res, "creative-intel-analyze", 10, 60 * 60_000, userId)) return;
   const {
     brandUrl,
     competitorUrls: rawCompetitorUrls,

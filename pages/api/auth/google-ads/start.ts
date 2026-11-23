@@ -1,6 +1,7 @@
 // pages/api/auth/google-ads/start.ts
 import { NextApiRequest, NextApiResponse } from "next";
 import { resolveRequestOrigin } from "@/lib/routing/safe-next";
+import { issueOAuthNonce } from "@/lib/security/oauth-nonce";
 
 const CLIENT_ID = "947565254141-5mispk8fus70rj42pp1srjof4774p9ve.apps.googleusercontent.com";
 
@@ -23,6 +24,9 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
     prompt: "consent",
     scope: "https://www.googleapis.com/auth/adwords openid email profile",
   });
+  const nonce = issueOAuthNonce("skx_ga_state", "/api/auth/google-ads", origin.startsWith("https://"));
+  params.set("state", nonce.state);
+  res.setHeader("Set-Cookie", nonce.setCookie);
   const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
   res.redirect(authUrl);
 }

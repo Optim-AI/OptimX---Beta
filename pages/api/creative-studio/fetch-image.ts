@@ -4,6 +4,8 @@ import { JSDOM } from "jsdom";
 import sharp from "sharp";
 import { supabaseAdmin } from "@/auth/supabase/admin";
 import { getUserIdFromRequest } from "@/auth/request";
+import { limitedPagesApi } from "@/lib/security/rate-limit";
+import { safeFetch, UnsafeUrlError } from "@/lib/audit/url-safety";
 
 // Helper to convert relative URLs to absolute
 function toAbsolute(base: string, src: string): string {
@@ -17,10 +19,7 @@ function toAbsolute(base: string, src: string): string {
 // Scrape page to find product images
 async function scrapeProductImage(url: string): Promise<string | null> {
   try {
-    const resp = await fetch(url, {
-      redirect: "follow",
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; SkalX AI/1.0)" },
-    });
+    const resp = await safeFetch(url, { maxBytes: 5 * 1024 * 1024, timeoutMs: 15_000 });
     
     if (!resp.ok) {
       throw new Error(`Failed to fetch page: ${resp.statusText}`);
@@ -89,6 +88,10 @@ export default async function handler(
     return res.status(405).json({ ok: false, error: "Method not allowed" });
   }
 
+  const userId = await getUserIdFromRequest(req);
+  if (!userId) return res.status(401).json({ ok: false, error: "Please sign in to use this." });
+  if (limitedPagesApi(req, res, "fetch-image", 60, 60_000, userId)) return;
+
   const { url: rawUrl, directFetch } = req.body ?? {};
   let url = typeof rawUrl === "string" ? rawUrl.trim() : "";
   if (!url) {
@@ -136,13 +139,7 @@ export default async function handler(
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30000);
 
-    const response = await fetch(imageUrl, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (compatible; SkalX AI/1.0)",
-        "Accept": "image/*",
-      },
-      signal: controller.signal,
-    }).finally(() => {
+    const response = await safeFetch(imageUrl, { timeoutMs: 30_000 }).finally(() => {
       clearTimeout(timeoutId);
     });
 
@@ -199,8 +196,7 @@ export default async function handler(
     let publicUrl: string | null = null;
     let storagePath: string | null = null;
     try {
-      const userId = await getUserIdFromRequest(req);
-      const uid = userId || "anonymous";
+      const uid = userId;
       storagePath = `generated/${uid}/${Date.now()}_product.jpg`;
 
       const { error: uploadError } = await supabaseAdmin.storage
@@ -238,6 +234,13 @@ export default async function handler(
       return res.status(408).json({ ok: false, error: "Request timeout - image took too long to fetch" });
     }
     
+    if (error instanceof UnsafeUrlError) {
+      return res.status(400).json({ ok: false, error: "That link can't be used. Please use a public website or image link." });
+    }
+    if (error?.name === "FetchLimitError") {
+      return res.status(error.code === "timeout" ? 408 : 400).json({ ok: false, error: error.code === "too_large" ? "That image is too large." : "We couldn't fetch that image." });
+    }
+
     if (error.message?.includes("Invalid URL")) {
       return res.status(400).json({ ok: false, error: "Invalid URL format" });
     }

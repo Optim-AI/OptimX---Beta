@@ -17,7 +17,7 @@ import { SITE_SUPPORT_EMAIL } from '@/lib/seo/site';
  * - localStorage keys are namespaced by userId
  */
 
-const OAUTH_PATH = "/api/auth/instagram/start";
+const OAUTH_PATH = "/integrations";
 const STATUS_API = "/api/integrations/status";
 const PLATFORM_KEY = "meta";
 

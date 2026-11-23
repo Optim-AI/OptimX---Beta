@@ -1,5 +1,6 @@
 // lib/meta/oauthSession.ts
 // REFACTORED: Now uses Prisma OAuthSessionDAO instead of direct Supabase
+import { randomBytes } from "crypto";
 import { OAuthSessionDAO } from '@/database';
 
 /**
@@ -46,7 +47,8 @@ export async function storeOAuthSession(
     tokenExpiresAt?: string;
   }
 ): Promise<string> {
-  const sessionId = `oauth_meta_${userId}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+  // Unguessable: the id is the only thing linking the page-picker to this session.
+  const sessionId = `oauth_meta_${randomBytes(24).toString("base64url")}`;
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
   const session: OAuthSession = {

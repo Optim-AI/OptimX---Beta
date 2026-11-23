@@ -3,6 +3,10 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import * as cookie from "cookie";
 import { setStatus } from '@/integrations/store';
 import { resolveRequestOrigin } from "@/lib/routing/safe-next";
+import { checkOAuthNonce, clearOAuthNonce } from "@/lib/security/oauth-nonce";
+
+const escapeHtml = (v: unknown) =>
+  String(v).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string));
 
 const CLIENT_ID = process.env.GOOGLE_ADS_CLIENT_ID;
 const CLIENT_SECRET = process.env.GOOGLE_ADS_CLIENT_SECRET;
@@ -17,6 +21,8 @@ type TokenResponse = {
 };
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  // Plain text unless a branch below deliberately sends our own HTML page.
+  res.setHeader("Content-Type", "text/plain; charset=utf-8");
   try {
     if (!CLIENT_ID || !CLIENT_SECRET) {
       return res.status(500).send(
@@ -28,7 +34,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     if (error) {
       console.error("[google-ads callback] oauth error param present");
-      return res.status(400).send("OAuth error: " + String(error));
+      res.setHeader("Content-Type", "text/plain; charset=utf-8");
+      return res.status(400).send("Google sign-in was cancelled or failed: " + String(error).slice(0, 100));
+    }
+    if (!checkOAuthNonce(req.headers.cookie, "skx_ga_state", req.query.state)) {
+      res.setHeader("Content-Type", "text/plain; charset=utf-8");
+      return res.status(400).send("This connection link has expired. Please start connecting Google Ads again.");
     }
     if (!code || Array.isArray(code)) {
       return res.status(400).send("Missing code");
@@ -77,7 +88,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // Decide cookie flags: SameSite=None + Secure for https origins, otherwise lax+insecure for localhost.
     const isSecureContext = redirectUri.startsWith("https://") || process.env.NODE_ENV === "production";
-    const sameSiteValue = isSecureContext ? ("none" as const) : ("lax" as const);
+    // Lax: these cookies authorise Google Ads actions, so they must not ride along on cross-site requests.
+    const sameSiteValue = "lax" as const;
     const maxAgeAccess = tokenJson.expires_in ?? 3600;
 
     const cookiesToSet: string[] = [];
@@ -114,6 +126,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       })
     );
 
+    cookiesToSet.push(clearOAuthNonce("skx_ga_state", "/api/auth/google-ads"));
     res.setHeader("Set-Cookie", cookiesToSet);
 
     try {
@@ -166,7 +179,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(200).send(html);
   } catch (outerErr: any) {
     console.error("[google-ads callback] unexpected error");
-    const errHtml = `<!doctype html><html><body><h3>OAuth callback error</h3><pre>${String(outerErr?.message || outerErr)}</pre></body></html>`;
+    const errHtml = `<!doctype html><html><body><h3>OAuth callback error</h3><pre>${escapeHtml(outerErr?.message || outerErr)}</pre></body></html>`;
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     return res.status(500).send(errHtml);
   }

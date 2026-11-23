@@ -2,6 +2,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { getOAuthSession, clearOAuthSession } from '@/integrations/meta/oauth-session';
 import { saveIntegration, setStatus } from '@/integrations/store';
+import { getUserIdFromRequest } from '@/auth/request';
 
 const VERSION = process.env.FACEBOOK_API_VERSION || "23.0";
 
@@ -20,6 +21,10 @@ export default async function handler(
   }
 
   try {
+    const userId = await getUserIdFromRequest(req);
+    if (!userId) {
+      return res.status(401).json({ error: "unauthorized", message: "Please sign in again, then try connecting." });
+    }
     const { sessionId, pageId } = req.body;
 
     // Validate input
@@ -31,7 +36,9 @@ export default async function handler(
     }
 
     // Retrieve OAuth session
-    const session = await getOAuthSession(sessionId);
+    const found = await getOAuthSession(String(sessionId));
+    // Only the person who started the connection may finish it.
+    const session = found && found.userId === userId ? found : null;
 
     if (!session) {
       return res.status(400).json({

@@ -53,7 +53,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     async function diagnosticGet(tokenName: string, token: string) {
       const url = `${buildUrl(postId, token)}&fields=id,permalink_url,message,created_time`;
       const r = await fetchJson(url);
-      attempts.push({ attempt: "diag_get", usedToken: tokenName, tokenRedacted: token ? token.slice(0,6) + "..." : null, urlCalled: url, ...r });
+      attempts.push({ attempt: "diag_get", usedToken: tokenName, tokenRedacted: token ? token.slice(0,6) + "..." : null, urlCalled: url.split("?")[0], ...r });
       return r;
     }
 
@@ -62,7 +62,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       await diagnosticGet(tokenName, token);
       const url = buildUrl(postId, token);
       const r = await fetchJson(url, { method: "DELETE" });
-      attempts.push({ attempt: "delete", usedToken: tokenName, tokenRedacted: token ? token.slice(0,6) + "..." : null, urlCalled: url, ...r });
+      attempts.push({ attempt: "delete", usedToken: tokenName, tokenRedacted: token ? token.slice(0,6) + "..." : null, urlCalled: url.split("?")[0], ...r });
       return r;
     }
 
@@ -86,7 +86,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (pageAccessToken && APP_ID && APP_SECRET) {
       const dbgUrl = `https://graph.facebook.com/debug_token?input_token=${encodeURIComponent(pageAccessToken)}&access_token=${encodeURIComponent(`${APP_ID}|${APP_SECRET}`)}`;
       const d = await fetchJson(dbgUrl);
-      tokenDebug.push({ which: "pageAccessToken", debugUrl: dbgUrl, ...d, tokenRedacted: pageAccessToken ? pageAccessToken.slice(0,6) + "..." : null });
+      tokenDebug.push({ which: "pageAccessToken", ...d, tokenRedacted: pageAccessToken ? pageAccessToken.slice(0,6) + "..." : null });
     }
 
     return res.status(500).json({

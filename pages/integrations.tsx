@@ -268,16 +268,23 @@ export default function IntegrationsPage() {
     if (!platform.authPath) return;
 
     try {
-      let url = platform.authPath;
+      // Open the window now (inside the click) so popup blockers allow it, then point it
+      // at the Facebook dialog once the server returns the signed connect URL.
+      const popup = openPopup("about:blank", `oauth_${platform.id}`);
       const token = await getSupabaseAccessToken();
-
-      try {
-        const u = new URL(platform.authPath, window.location.origin);
-        if (token) u.searchParams.set("sb", token);
-        url = u.toString();
-      } catch {}
-
-      const popup = openPopup(url, `oauth_${platform.id}`);
+      const startRes = await fetch(platform.authPath, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      const startData = (await startRes.json().catch(() => ({}))) as { url?: string; error?: string };
+      if (!startRes.ok || !startData.url) {
+        try { popup?.close(); } catch {}
+        setMessage(startData.error || "couldn't start the connection — please try again");
+        setTimeout(() => setMessage(null), 3000);
+        return;
+      }
+      if (popup && !popup.closed) popup.location.href = startData.url;
+      else window.location.href = startData.url;
       popupRef.current = popup;
       localStorage.setItem("pending_connect", platform.id);
       pollStatusFor(platform.id);

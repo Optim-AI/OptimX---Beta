@@ -59,7 +59,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     // Check if body exists and is valid
     if (!req.body || typeof req.body !== 'object') {
-      console.error("Invalid request body:", typeof req.body, req.body);
+      console.error("Invalid request body:", typeof req.body);
       return res.status(400).json({ 
         ok: false, 
         error: "Invalid request body. Expected JSON object.",

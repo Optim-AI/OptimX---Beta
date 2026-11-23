@@ -1,9 +1,13 @@
 // pages/api/creative-studio/save-poster.ts
+import { limitedPagesApi } from "@/lib/security/rate-limit";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { supabaseAdmin } from "@/auth/supabase/admin";
 import { getUserIdFromRequest } from "@/auth/request";
 import { GeneratedImageDAO } from "@/database/models/GeneratedImage.dao";
-import { randomUUID } from "crypto";
+import { safeFetch, IMAGE_CONTENT } from "@/lib/audit/url-safety";
+
+/** Only plain image types are stored in the public bucket (no SVG/HTML). */
+const SAFE_IMAGE_TYPES: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/jpg": "jpg", "image/webp": "webp" };
 
 // Increase body size limit for large image data URLs (up to 10MB)
 export const config = {
@@ -15,9 +19,11 @@ export const config = {
 };
 
 function dataUrlToBuffer(dataUrl: string) {
-  const m = dataUrl.match(/^data:(.+);base64,(.+)$/);
+  const m = dataUrl.match(/^data:([^;,]+);base64,(.+)$/);
   if (!m) throw new Error("Invalid data URL");
-  return { buffer: Buffer.from(m[2], "base64"), mime: m[1] };
+  const mime = m[1].toLowerCase();
+  if (!SAFE_IMAGE_TYPES[mime]) throw new Error("Unsupported image type");
+  return { buffer: Buffer.from(m[2], "base64"), mime: mime === "image/jpg" ? "image/jpeg" : mime };
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -28,7 +34,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     // Get authenticated user ID using staging's auth helper
     const userId = await getUserIdFromRequest(req);
-    const effectiveUserId = userId || randomUUID();
+    if (!userId) return res.status(401).json({ ok: false, error: "Please sign in to save posters." });
+  if (limitedPagesApi(req, res, "save-poster", 60, 60_000, userId)) return;
+    const effectiveUserId = userId;
     
     const { imageUrl, name, metadata } = req.body ?? {};
 
@@ -40,10 +48,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     let publicUrl = imageUrl;
 
     // Upload image to Supabase storage if it's a data URL or needs to be stored
+    if (/^data:/i.test(imageUrl) && !/^data:image\/(png|jpe?g|webp);base64,/i.test(imageUrl)) {
+      return res.status(400).json({ ok: false, error: "Please use a PNG, JPG or WEBP image." });
+    }
     if (imageUrl.startsWith("data:")) {
       try {
         const { buffer, mime } = dataUrlToBuffer(imageUrl);
-        const ext = mime.split("/")[1] || "png";
+        const ext = SAFE_IMAGE_TYPES[mime];
         const safeName = (name || "poster")
           .replace(/[^a-z0-9_\-]/gi, "_")
           .toLowerCase();
@@ -73,12 +84,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     } else if (imageUrl.startsWith("http")) {
       // Try to fetch and re-upload remote image
       try {
-        const response = await fetch(imageUrl);
-        if (response.ok) {
-          const blob = await response.blob();
+        const response = await safeFetch(imageUrl, { accept: IMAGE_CONTENT, maxBytes: 10 * 1024 * 1024 });
+        const remoteType = (response.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
+        if (response.ok && SAFE_IMAGE_TYPES[remoteType]) {
+          const blob = new Blob([new Uint8Array(await response.arrayBuffer())], { type: remoteType === "image/jpg" ? "image/jpeg" : remoteType });
           const arrayBuffer = await blob.arrayBuffer();
           const buffer = Buffer.from(arrayBuffer);
-          const ext = blob.type?.split("/")[1] || "png";
+          const ext = SAFE_IMAGE_TYPES[remoteType];
           const safeName = (name || "poster")
             .replace(/[^a-z0-9_\-]/gi, "_")
             .toLowerCase();

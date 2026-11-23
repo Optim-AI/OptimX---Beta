@@ -1,7 +1,7 @@
 // pages/api/meta/oauth/callback.ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import { decodeState } from '@/auth/helpers';
-import { supabaseAdmin } from '@/auth/supabase/admin';
+import { parse, serialize } from "cookie";
+import { verifyState, STATE_COOKIE } from '@/lib/meta/oauth-state';
 import { storeOAuthSession } from '@/integrations/meta/oauth-session';
 
 const VERSION = process.env.FACEBOOK_API_VERSION || "23.0";
@@ -22,6 +22,8 @@ function safeStringify(obj: any) {
  */
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   let stage = "start";
+  // The nonce cookie is single-use.
+  res.setHeader("Set-Cookie", serialize(STATE_COOKIE, "", { path: "/api/meta/oauth", maxAge: 0 }));
   try {
     // Handle OAuth cancellation/errors
     if (req.query.error) {
@@ -34,43 +36,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const code = Array.isArray(req.query.code) ? req.query.code[0] : req.query.code;
     if (!code) return res.status(400).send("missing code");
 
-    // 2. Decode state to get Supabase token
-    stage = "decode_state";
-    const stateObj = decodeState(req.query.state);
-    const supabaseTokenFromState = stateObj?.t ?? null;
-
-    const authHeader = req.headers.authorization;
-    const tokenFromHeader =
-      authHeader && String(authHeader).startsWith("Bearer ")
-        ? String(authHeader).slice(7)
-        : null;
-    const token = supabaseTokenFromState ?? tokenFromHeader ?? null;
-
-    // 3. Resolve Supabase user ID
-    let resolvedUserId: string | null = null;
-    if (token) {
-      stage = "resolve_supabase_user";
-      const { data, error } = await supabaseAdmin.auth.getUser(token);
-      if (!error && data?.user?.id) resolvedUserId = data.user.id;
-      else
-        console.warn("supabase getUser returned no user or error", {
-          error,
-          data,
-        });
+    // 2. Check the signed state against the nonce cookie set by /api/meta/oauth/start.
+    //    The user comes only from the signed state, never from a token in the URL.
+    stage = "verify_state";
+    const firstQ = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
+    const verified = verifyState(firstQ(req.query.state), parse(req.headers.cookie ?? "")[STATE_COOKIE]);
+    if (!verified.ok) {
+      console.warn("[meta oauth] bad state", verified.reason);
+      return res.redirect(`/integrations/meta/error?type=${verified.reason === "expired" ? "expired" : "state"}`);
     }
-
-    // Fallback to env var (for testing only)
-    if (!resolvedUserId && process.env.SUPABASE_INTEGRATION_USER_ID) {
-      resolvedUserId = process.env.SUPABASE_INTEGRATION_USER_ID;
-    }
-
-    if (!resolvedUserId) {
-      return res.status(400).json({
-        error: "missing_supabase_user_id",
-        message:
-          "No Supabase user could be resolved. Ensure you pass the Supabase access token as `sb` to /api/meta/oauth/start or set SUPABASE_INTEGRATION_USER_ID.",
-      });
-    }
+    const resolvedUserId = verified.userId;
 
     // 4. Validate environment variables
     stage = "read_env";
