@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { AD_PERFORMANCE_LIVE, TRENDS_LIVE } from '@/lib/launch-flags';
@@ -138,6 +138,9 @@ const ITEM = '#a3a3ab';
 const ACTIVE_BG = '#2a2a31';
 const HOVER_BG = 'rgba(255,255,255,0.045)';
 
+const PHONE_QUERY = '(max-width: 767.98px)';
+const useIsomorphicLayoutEffect = typeof window === 'undefined' ? useEffect : useLayoutEffect;
+
 function isRouteActive(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
@@ -155,11 +158,16 @@ const Sidebar: React.FC<SidebarProps> = ({
   const router = useRouter();
   const pathname = router.pathname;
   const [collapsed, setCollapsed] = useState(false);
+  // Phones (under 768px) get a thin icon strip; the menu button slides the full menu over the page.
+  const [isPhone, setIsPhone] = useState(false);
+  const [phoneOpen, setPhoneOpen] = useState(false);
+  const compact = isPhone ? !phoneOpen : collapsed;
   const [featureAccess, setFeatureAccess] = useState<Record<string, FeatureAccess>>({});
   const [featuresLoading, setFeaturesLoading] = useState(true);
   const [accountOpen, setAccountOpen] = useState(false);
   const [accountInitial, setAccountInitial] = useState('');
   const accountRef = useRef<HTMLDivElement>(null);
+  const asideRef = useRef<HTMLElement>(null);
   const signingOut = useRef(false);
 
   // Every app page has the sidebar, so it guards the session: signed out or expired →
@@ -211,7 +219,33 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   useEffect(() => {
     setAccountOpen(false);
+    setPhoneOpen(false);
   }, [pathname]);
+
+  useIsomorphicLayoutEffect(() => {
+    const query = window.matchMedia(PHONE_QUERY);
+    const sync = () => {
+      setIsPhone(query.matches);
+      if (!query.matches) setPhoneOpen(false);
+    };
+    sync();
+    query.addEventListener('change', sync);
+    return () => query.removeEventListener('change', sync);
+  }, []);
+
+  useEffect(() => {
+    if (!phoneOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setPhoneOpen(false);
+    };
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [phoneOpen]);
 
   useEffect(() => {
     if (!accountOpen) return;
@@ -260,7 +294,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   const renderItem = (item: NavItem, state: 'loading' | 'visible') => {
     if (state === 'loading') {
-      return <SkeletonNavItem key={item.href} className={collapsed ? 'justify-center px-0' : ''} />;
+      return <SkeletonNavItem key={item.href} className={compact ? 'justify-center px-0' : ''} />;
     }
 
     const active = isRouteActive(pathname, item.href);
@@ -271,10 +305,10 @@ const Sidebar: React.FC<SidebarProps> = ({
       <Link
         key={item.href}
         href={item.href}
-        title={collapsed ? item.label : undefined}
+        title={compact ? item.label : undefined}
         aria-current={active ? 'page' : undefined}
         className={`group flex items-center gap-2.5 rounded-lg transition-colors duration-150 ${
-          collapsed ? 'justify-center px-2 py-2' : 'px-2.5 py-2'
+          compact ? 'justify-center px-2 py-2' : 'px-2.5 py-2'
         }`}
         style={{
           color: isReport ? '#f05252' : active ? '#ffffff' : ITEM,
@@ -293,7 +327,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         }}
       >
         <item.Icon size={16} strokeWidth={1.75} className="shrink-0" />
-        {!collapsed && (
+        {!compact && (
           <>
             <span className="min-w-0 truncate text-[13px] leading-5">{item.label}</span>
             {(item.betaBadge || comingSoon) && (
@@ -322,21 +356,49 @@ const Sidebar: React.FC<SidebarProps> = ({
     );
   };
 
+  const overlay = isPhone && phoneOpen;
+
+  // Some pages (Create Campaign) set the sidebar's layer themselves; lift it over the dimmed page while open.
+  useEffect(() => {
+    const el = asideRef.current;
+    if (!overlay || !el) return;
+    const prev = el.style.zIndex;
+    el.style.zIndex = '61';
+    return () => {
+      el.style.zIndex = prev;
+    };
+  }, [overlay]);
+
   return (
+    <>
+    {overlay && (
+      <>
+        {/* Keeps the page where it was while the menu slides over it. */}
+        <div aria-hidden="true" className="w-14 shrink-0" />
+        <div
+          aria-hidden="true"
+          className="fixed inset-0 z-[60] bg-black/60"
+          onClick={() => setPhoneOpen(false)}
+        />
+      </>
+    )}
     <aside
-      className={`sticky top-0 flex h-screen shrink-0 flex-col self-start transition-[width] duration-200 ease-out ${
-        collapsed ? 'w-[72px]' : 'w-[260px]'
+      ref={asideRef}
+      className={`flex shrink-0 flex-col transition-[width] duration-200 ease-out ${
+        overlay
+          ? 'fixed left-0 top-0 z-[61] h-[100dvh] w-[280px] max-w-[85vw] shadow-2xl'
+          : `sticky top-0 h-screen self-start ${isPhone ? 'w-14' : compact ? 'w-[72px]' : 'w-[260px] max-md:w-14 max-md:overflow-hidden'}`
       }`}
       style={{
         backgroundColor: SURFACE,
         color: ITEM,
         borderRight: `1px solid ${LINE}`,
       }}
-      aria-expanded={!collapsed}
-      data-collapsed={collapsed ? 'true' : 'false'}
+      aria-expanded={!compact}
+      data-collapsed={compact ? 'true' : 'false'}
     >
-      <div className={`flex items-center ${collapsed ? 'justify-center px-2' : 'justify-between px-4'} py-4`}>
-        {!collapsed &&
+      <div className={`flex items-center ${compact ? 'justify-center px-2' : 'justify-between px-4'} py-4`}>
+        {!compact &&
           (onLogoClick ? (
             <button type="button" onClick={onLogoClick} className="rounded-md" aria-label="SkalX">
               <img src="/images/SkalX_Logo.png" alt="SkalX" className="h-5 w-auto object-contain" />
@@ -348,10 +410,11 @@ const Sidebar: React.FC<SidebarProps> = ({
           ))}
         <button
           type="button"
-          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-label={compact ? 'Expand sidebar' : 'Collapse sidebar'}
           onClick={() => {
             setAccountOpen(false);
-            setCollapsed((open) => !open);
+            if (isPhone) setPhoneOpen((open) => !open);
+            else setCollapsed((open) => !open);
           }}
           className="inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors"
           style={{ color: '#8d8d95' }}
@@ -375,7 +438,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             className={index === 0 ? '' : 'mt-2 border-t pt-2'}
             style={index === 0 ? undefined : { borderColor: LINE }}
           >
-            {!collapsed && (
+            {!compact && (
               <div
                 className="px-2.5 pb-1.5 pt-1.5 text-[10px] font-semibold uppercase tracking-[0.14em]"
                 style={{ color: LABEL }}
@@ -400,9 +463,9 @@ const Sidebar: React.FC<SidebarProps> = ({
             <button
               type="button"
               onClick={() => onBrandGuideline()}
-              title={collapsed ? 'Brand kit' : undefined}
+              title={compact ? 'Brand kit' : undefined}
               className={`mb-1 flex w-full items-center gap-2.5 rounded-lg py-2 text-[13px] transition-colors ${
-                collapsed ? 'justify-center px-2' : 'px-2.5'
+                compact ? 'justify-center px-2' : 'px-2.5'
               }`}
               style={{ color: ITEM }}
               onMouseEnter={(event) => {
@@ -415,7 +478,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               }}
             >
               <FileText size={16} strokeWidth={1.75} />
-              {!collapsed && <span>Brand kit</span>}
+              {!compact && <span>Brand kit</span>}
             </button>
           )}
 
@@ -424,9 +487,9 @@ const Sidebar: React.FC<SidebarProps> = ({
               <button
                 type="button"
                 onClick={() => onNewChat?.()}
-                title={collapsed ? 'New session' : undefined}
+                title={compact ? 'New session' : undefined}
                 className={`flex w-full items-center gap-2.5 rounded-lg py-2 text-[13px] font-medium transition-colors ${
-                  collapsed ? 'justify-center px-2' : 'px-2.5'
+                  compact ? 'justify-center px-2' : 'px-2.5'
                 }`}
                 style={{ color: '#f4f4f5', background: 'rgba(255,255,255,0.04)' }}
                 onMouseEnter={(event) => {
@@ -436,11 +499,11 @@ const Sidebar: React.FC<SidebarProps> = ({
                   event.currentTarget.style.background = 'rgba(255,255,255,0.04)';
                 }}
               >
-                {collapsed ? <Plus size={16} strokeWidth={1.75} /> : <MessageSquare size={16} strokeWidth={1.75} />}
-                {!collapsed && <span>New session</span>}
+                {compact ? <Plus size={16} strokeWidth={1.75} /> : <MessageSquare size={16} strokeWidth={1.75} />}
+                {!compact && <span>New session</span>}
               </button>
 
-              {!collapsed && (
+              {!compact && (
                 <div className="mt-2">
                   <div className="px-2.5 pb-1.5 text-[10px] font-semibold uppercase tracking-[0.14em]" style={{ color: LABEL }}>
                     Your sessions
@@ -500,7 +563,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       )}
 
       <div ref={accountRef} className="relative border-t px-2.5 py-2.5" style={{ borderColor: LINE }}>
-        {accountOpen && !collapsed && (
+        {accountOpen && !compact && (
           <div
             role="menu"
             className="absolute bottom-full left-2.5 right-2.5 z-30 mb-2 overflow-hidden rounded-xl border py-1 shadow-xl"
@@ -553,7 +616,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           </div>
         )}
 
-        {collapsed ? (
+        {compact ? (
           <Link
             href="/settings"
             title="Account"
@@ -595,6 +658,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         )}
       </div>
     </aside>
+    </>
   );
 };
 
