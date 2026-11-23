@@ -24,6 +24,10 @@ export type ArtBrief = {
   packaging: string | null;
   /** The brand name or logo is clearly printed on the product in the photo. */
   brandOnPack: boolean;
+  /** False for brand posts with no product photo. */
+  hasProduct: boolean;
+  /** Whole-brand ad: the products shown together. Empty for one product. */
+  range: string[];
   idea: string;
   background: string;
   palette: string[];
@@ -54,13 +58,18 @@ export function cleanProductName(name: string, brand?: string | null): string {
 }
 
 /** Validate the model's answer. Returns null when it is not usable (caller falls back). */
-export function cleanArtBrief(raw: unknown, ctx: { brandColors: string[]; productName: string; fallbackHeadline: string }): ArtBrief | null {
+export function cleanArtBrief(
+  raw: unknown,
+  ctx: { brandColors: string[]; productName: string; fallbackHeadline: string; exactHeadline?: string | null; hasProduct?: boolean; range?: string[] }
+): ArtBrief | null {
   const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   const direction = (ART_DIRECTIONS as readonly string[]).includes(String(r.direction)) ? (r.direction as ArtDirectionStyle) : "bold";
   const idea = clip(r.idea, 400);
   if (!idea) return null;
 
-  let headline = clip(r.headline, 80).replace(/^["“']|["”']$/g, "");
+  // A headline the owner already saw (e.g. in the agent's post plan) is kept word for word.
+  const exact = clip(ctx.exactHeadline, 80);
+  let headline = exact && words(exact) <= 8 ? exact : clip(r.headline, 80).replace(/^["“']|["”']$/g, "");
   if (!headline || words(headline) > 8) headline = clip(ctx.fallbackHeadline, 80);
   if (!headline) return null;
   const cta = clip(r.cta, 24).replace(/^["“']|["”']$/g, "") || "Shop now";
@@ -75,7 +84,9 @@ export function cleanArtBrief(raw: unknown, ctx: { brandColors: string[]; produc
     direction,
     productName: clip(r.productName, 60) || ctx.productName,
     packaging: clip(r.packaging, 40) || null,
-    brandOnPack: r.brandOnPack === true,
+    brandOnPack: ctx.hasProduct !== false && r.brandOnPack === true,
+    hasProduct: ctx.hasProduct !== false,
+    range: ctx.hasProduct !== false ? (ctx.range ?? []).filter(Boolean).slice(0, 3) : [],
     idea,
     background: clip(r.background, 200),
     palette: [...new Set(palette.length ? palette : brand)].slice(0, 3),
@@ -94,14 +105,23 @@ export function artBriefInstruction(a: ArtBrief): string[] {
 export function formatArtBrief(a: ArtBrief): string {
   return [
     "=== ART DIRECTION (for Creative Director / image generation only) ===",
-    `Product: ${a.productName}${a.packaging ? ` (${a.packaging})` : ""} — the exact product from the photo is the hero, label fully visible and never cropped.`,
+    a.hasProduct && a.range.length > 1
+      ? `Products: the ${a.range.join(", ")} together as one set — each exactly as in its photo, labels fully visible, none cropped; the brand is the hero.`
+      : a.hasProduct
+      ? `Product: ${a.productName}${a.packaging ? ` (${a.packaging})` : ""} — the exact product from the photo is the hero, label fully visible and never cropped.`
+      : `No product photo: the brand and this one idea are the hero. Never invent a product pack or label.`,
     `One visual idea: ${a.idea}`,
     a.background && `Background and setting: ${a.background}`,
     a.palette.length && `Colours: ${a.palette.join(", ")} — one dominant colour, strong contrast.`,
     a.typeFeel && `Type: ${a.typeFeel}`,
-    `Style: ${a.direction}. One dominant move, generous breathing room, no clutter, no extra props competing with the product.`,
+    `Style: ${a.direction}. One dominant move, generous breathing room, no clutter, no extra props competing with the ${a.hasProduct ? "product" : "idea"}.`,
     `The headline reads exactly "${a.headline}" — every word, not shortened. The button reads "${a.cta}".`,
-    a.brandOnPack ? "The brand name already shows on the packaging — no separate logo or wordmark." : "Show the brand logo once only.",
+    a.brandOnPack
+      ? "The brand name already shows on the packaging — no separate logo or wordmark."
+      : a.hasProduct
+        ? "Show the brand logo once only."
+        : "Branding: the attached logo once, small, near an edge — never the brand name as large text and never inside or after the headline.",
+    `No other words than the headline and the button${a.hasProduct ? " (text printed on the packs stays as it is)" : ""}.`,
   ]
     .filter(Boolean)
     .join("\n");
@@ -121,30 +141,35 @@ async function productPhoto(url: string | undefined): Promise<{ mime: string; ba
 
 export async function writeArtBrief(input: {
   brand: BrandSnapshot;
-  product: Product;
+  /** Null for brand posts (no single product). */
+  product: Product | null;
   angle: ArtBriefAngle | null;
   ownerRequest?: string | null;
   aspectRatio?: string;
+  /** Keep this headline word for word (the owner already saw it). */
+  exactHeadline?: string | null;
+  /** Whole-brand ad: names of the products shown together. */
+  range?: string[];
 }): Promise<ArtBrief | null> {
   const { brand, product, angle } = input;
-  const productName = cleanProductName(product.product_name, brand.name);
+  const productName = product ? cleanProductName(product.product_name, brand.name) : brand.name;
   const brandColors = cleanBrandColors((brand.primaryColors || []).filter(Boolean));
-  const photo = await productPhoto((product.product_images || []).find((u) => /^https?:\/\//.test(u)));
+  const photo = product ? await productPhoto((product.product_images || []).find((u) => /^https?:\/\//.test(u))) : undefined;
 
   const prompt = `You are the art director for a ${input.aspectRatio || "4:5"} social media ad poster. Write a short, specific art brief.
 
 Brand: ${brand.name}${brand.tone ? ` — tone: ${clip(brand.tone, 80)}` : ""}${brand.industry ? ` — ${clip(brand.industry, 60)}` : ""}
 Brand colours (use only these): ${brandColors.join(", ") || "none on file — choose 2-3 that suit the product and packaging"}
-Product: ${productName}${product.category ? ` (${clip(product.category, 60)})` : ""}
+${product && (input.range?.length ?? 0) > 1 ? `This is a whole-brand ad, not for one product: show the range together (${input.range!.join(", ")}), with the brand as the hero.` : product ? `Product: ${productName}${product.category ? ` (${clip(product.category, 60)})` : ""}` : "No single product: this is a brand poster (no product photo). Build the one idea around the brand itself, never a made-up product pack."}
 ${angle ? `Ad angle: ${clip(angle.angle, 80)} — ${clip(angle.message || angle.explanation, 240)}
 Hook to turn into the headline: "${clip(angle.title, 120)}"` : ""}
 ${input.ownerRequest ? `The owner asked for (respect it): ${clip(input.ownerRequest, 500)}` : ""}
 ${photo ? "The attached image is the real product photo: describe the packaging type you see (jar, pouch, can, bottle, box…), and say whether the brand name or logo is clearly printed on the product itself (brandOnPack)." : ""}
 
 Rules:
-- ONE visual idea that a single still image can show, with the product as the hero. No sounds, no step-by-step actions, no split scenes, no crowd of props.
+- ONE visual idea that a single still image can show, with the ${product ? "product" : "brand"} as the hero. No sounds, no step-by-step actions, no split scenes, no crowd of props.
 - If the owner mentioned a trend or occasion, use it as a light flavour of the one idea, never a second scene.
-- Headline: 2-6 words, punchy, keeps the hook's idea, no brand name. No prices, discounts, ratings or claims that were not given.
+${input.exactHeadline ? `- Headline: use exactly "${clip(input.exactHeadline, 80)}".` : "- Headline: 2-6 words, punchy, keeps the hook's idea, no brand name."} No prices, discounts, ratings or claims that were not given.
 - cta: 2-3 words.
 - direction: one of ${ART_DIRECTIONS.join(", ")} — pick what suits the brand and product (never retail/catalogue framing).
 
@@ -153,7 +178,7 @@ Reply as JSON only:
 
   try {
     const raw = await agentJson<unknown>(prompt, { file: photo, timeoutMs: 45_000, label: "ad-studio-art-brief" });
-    return cleanArtBrief(raw, { brandColors, productName, fallbackHeadline: angle?.title || "" });
+    return cleanArtBrief(raw, { brandColors, productName, fallbackHeadline: angle?.title || "", exactHeadline: input.exactHeadline, hasProduct: !!product, range: input.range });
   } catch (err) {
     console.warn("[art-brief] failed, using the standard brief", { message: (err as Error)?.message?.slice(0, 160) });
     return null;

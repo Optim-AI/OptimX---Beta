@@ -4,7 +4,8 @@
 // POST /api/agent/actions {id, op:"dismiss"}
 // GET  /api/agent/actions?products=1       → products with photos, for posters
 // POST /api/agent/actions {op:"upload", mime, size} → one-time upload for a product photo
-// POST /api/agent/actions {id, op:"run", posters:{selected:[i], size, product:{ref}|{uploadPath,name}|null}}
+// POST /api/agent/actions {id, op:"run", posters:{selected:[i], size, product:{ref}|{uploadPath,name}|null, products?:{[i]: {ref}|{uploadPath,name}|null}}}
+//   products = per post (null = brand poster); overrides product
 // POST /api/agent/actions {id, op:"poster-update", index, imageUrl, generationId} → keep an edited poster
 import type { NextApiRequest, NextApiResponse } from "next";
 import { getUserIdFromRequest } from "@/auth/request";
@@ -63,7 +64,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (opts.product && !product) return res.status(400).json({ ok: false, error: "We couldn't use that product photo. Pick another one." });
       const posts = (current.params.posts ?? []) as PlannedPost[];
       const selected = Array.isArray(opts.selected) ? (opts.selected as unknown[]).map(Number) : posts.map((_, i) => i);
-      await startPosterJob({ userId, actionId: id, posts, selected, size, product });
+      // Per-post products: each choice is resolved against the owner's own products/uploads.
+      let productsByPost: Record<number, Awaited<ReturnType<typeof resolveProduct>>> | undefined;
+      if (opts.products && typeof opts.products === "object") {
+        productsByPost = {};
+        const cache = new Map<string, Awaited<ReturnType<typeof resolveProduct>>>();
+        for (const [k, choice] of Object.entries(opts.products as Record<string, unknown>).slice(0, 12)) {
+          const i = Number(k);
+          if (!Number.isInteger(i) || i < 0 || i >= posts.length) continue;
+          if (!choice) { productsByPost[i] = null; continue; }
+          const key = JSON.stringify(choice);
+          if (!cache.has(key)) cache.set(key, await resolveProduct(userId, choice));
+          const resolved = cache.get(key) ?? null;
+          if (!resolved) return res.status(400).json({ ok: false, error: `We couldn't use the product photo for post ${i + 1}. Pick another one.` });
+          productsByPost[i] = resolved;
+        }
+      }
+      await startPosterJob({ userId, actionId: id, posts, selected, size, product, productsByPost });
       return res.status(200).json({ ok: true, action: await getAction(userId, id) });
     }
 

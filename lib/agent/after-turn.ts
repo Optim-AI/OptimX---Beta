@@ -3,7 +3,8 @@
  *  - facts to remember (only what the OWNER stated, never the agent's ideas)
  *  - 0–2 action buttons to offer (never run; the owner confirms)
  */
-import { ACTION_GUIDE, cleanProposal, saveProposals, type AgentAction } from "./actions";
+import { actionGuide, cleanProposal, saveProposals, type AgentAction } from "./actions";
+import { productChoices } from "./posters";
 import { agentJson } from "./gemini-json";
 import { MAX_MEMORIES, addMemory, type Memory } from "./memory";
 
@@ -14,6 +15,7 @@ export async function afterTurn(input: {
 }): Promise<{ learned: Memory[]; actions: AgentAction[] }> {
   const msg = input.ownerMessage.trim();
   const known = input.memories.slice(0, 60).map((m) => `- ${m.fact}`).join("\n") || "(nothing yet)";
+  const productNames = (await productChoices(input.userId).catch(() => [])).map((p) => p.name);
   const out = await agentJson<{ facts?: unknown; actions?: unknown }>(
     `A small-business owner is chatting with their marketing assistant inside SkalX. Do two things.
 
@@ -21,7 +23,7 @@ export async function afterTurn(input: {
 Already remembered:
 ${known}
 
-2. ACTIONS: ${ACTION_GUIDE}
+2. ACTIONS: ${actionGuide(productNames)}
 
 Owner's message:
 """${msg.slice(0, 3000)}"""

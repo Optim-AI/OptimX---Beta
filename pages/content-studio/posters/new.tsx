@@ -1,9 +1,9 @@
-// /content-studio/posters/new[?scan=<scanId>&product=<name>&from_ad=<id>&idea=<text>&goal=<AdGoal>&offer=<text>] — product → goal → where it runs → (optional note) → 8 draft posters.
+// /content-studio/posters/new[?scan=<scanId>&product=<name>&from_ad=<id>&idea=<text>&goal=<AdGoal>&offer=<text>&scope=brand] — one product or the whole brand → goal → where it runs → (optional note) → 8 draft posters.
 import React, { useEffect, useMemo, useState } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { Check, ImageOff, Loader2, Sparkles, ShoppingBag, Rocket, Tag, PartyPopper, ArrowLeftRight, Megaphone, MessageSquareQuote } from 'lucide-react';
+import { Check, ImageOff, Loader2, Package, Sparkles, Store, ShoppingBag, Rocket, Tag, PartyPopper, ArrowLeftRight, Megaphone, MessageSquareQuote } from 'lucide-react';
 import Sidebar from '../../../app/web/src/components/Sidebar';
 import colors from '@/lib/ui/colors';
 import { authFetch } from '@/lib/utils';
@@ -45,6 +45,8 @@ export default function NewPostersPage() {
   const router = useRouter();
   const [products, setProducts] = useState<ProductOption[] | null>(null);
   const [productId, setProductId] = useState<string | null>(null);
+  /** One product, or an ad for the whole brand (the range together, or the brand alone). */
+  const [scope, setScope] = useState<'product' | 'brand'>('product');
   const [goal, setGoal] = useState<AdGoal | null>(null);
   const [offer, setOffer] = useState('');
   const [formats, setFormats] = useState<AdFormat[]>(['feed_4x5']);
@@ -67,6 +69,7 @@ export default function NewPostersPage() {
           ?? list.find((p) => name && p.name.toLowerCase() === name);
         setProductId(match?.id ?? body.suggested ?? (list.length === 1 ? list[0].id : null));
         if (fromAd) setGoal((g) => g ?? 'sell_more');
+        if (router.query.scope === 'brand') setScope('brand');
         // From Trends: the idea arrives as a ready note the owner can edit.
         const idea = typeof router.query.idea === 'string' ? router.query.idea.slice(0, 1000) : '';
         if (idea) setNote((n) => n || idea);
@@ -84,19 +87,30 @@ export default function NewPostersPage() {
   const product = useMemo(() => products?.find((p) => p.id === productId) ?? null, [products, productId]);
   const fromAdId = typeof router.query.from_ad === 'string' && /^\d{1,30}$/.test(router.query.from_ad) ? router.query.from_ad : null;
   const needsOffer = goal ? !!AD_GOALS[goal].needsOffer : false;
-  const ready = !!product && !!goal && formats.length > 0 && (!needsOffer || offer.trim().length > 2);
+  // Brand ads use product photos from the same website scan (up to 3), when there are any.
+  const brandScanId = useMemo(() => (product ?? products?.[0])?.id.split(':')[0] ?? null, [product, products]);
+  const rangePreview = useMemo(() => {
+    const seen = new Set<string>();
+    return (products ?? []).filter((p) => {
+      const key = p.name.split(/\s+-\s+/)[0].trim().toLowerCase(); // same as the server's baseProductName
+      if (!brandScanId || !p.id.startsWith(`${brandScanId}:`) || !p.image || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }).slice(0, 3);
+  }, [products, brandScanId]);
+  const ready = (scope === 'brand' || !!product) && !!goal && formats.length > 0 && (!needsOffer || offer.trim().length > 2);
 
   const toggleFormat = (f: AdFormat) =>
     setFormats((prev) => (prev.includes(f) ? (prev.length > 1 ? prev.filter((x) => x !== f) : prev) : [...prev, f]));
 
   async function start() {
-    if (!product || !goal) return;
+    if ((scope === 'product' && !product) || !goal) return;
     setStarting(true);
     try {
-      const [scanId] = product.id.split(':');
+      const scanId = scope === 'brand' ? brandScanId : product!.id.split(':')[0];
       const res = await authFetch('/api/ad-studio/projects', {
         method: 'POST',
-        body: JSON.stringify({ scanId, productName: product.name, goal, offer: offer.trim() || undefined, formats, direction: note.trim() || undefined, fromAdId: fromAdId || undefined }),
+        body: JSON.stringify({ scope, scanId: scanId || undefined, productName: scope === 'brand' ? undefined : product!.name, goal, offer: offer.trim() || undefined, formats, direction: note.trim() || undefined, fromAdId: fromAdId || undefined }),
       });
       const body = (await res.json().catch(() => ({}))) as { id?: string; message?: string };
       if (!res.ok || !body.id) throw new Error(body.message || 'Could not start. Please try again.');
@@ -125,8 +139,43 @@ export default function NewPostersPage() {
             </p>
           </header>
 
-          <Step n={1} title="Which product?" done={!!product}>
-            {products === null ? (
+          <Step n={1} title="What is this ad for?" done={scope === 'brand' || !!product}>
+            <div className="mb-4 grid gap-2 sm:grid-cols-2">
+              <Choice on={scope === 'product'} onClick={() => setScope('product')}>
+                <span className="mt-0.5 shrink-0" style={{ color: scope === 'product' ? colors.primary : colors.mutedForeground }}><Package size={18} /></span>
+                <span>
+                  <span className="block text-sm font-medium" style={{ color: colors.foreground }}>One product</span>
+                  <span className="block text-xs" style={{ color: colors.mutedForeground }}>Ads that sell one item. You pick which.</span>
+                </span>
+              </Choice>
+              <Choice on={scope === 'brand'} onClick={() => setScope('brand')}>
+                <span className="mt-0.5 shrink-0" style={{ color: scope === 'brand' ? colors.primary : colors.mutedForeground }}><Store size={18} /></span>
+                <span>
+                  <span className="block text-sm font-medium" style={{ color: colors.foreground }}>My whole brand</span>
+                  <span className="block text-xs" style={{ color: colors.mutedForeground }}>Ads for your brand and range, not one item.</span>
+                </span>
+              </Choice>
+            </div>
+            {scope === 'brand' ? (
+              <div className="rounded-xl p-3 text-sm" style={{ background: colors.secondary, border: `1px solid ${colors.border}`, color: colors.mutedForeground }}>
+                {rangePreview.length ? (
+                  <>
+                    <p className="mb-2">The posters show your brand with these products together:</p>
+                    <div className="flex flex-wrap gap-2">
+                      {rangePreview.map((p) => (
+                        <span key={p.id} className="flex items-center gap-2 rounded-lg px-2 py-1" style={{ background: colors.card }}>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={p.image!} alt="" className="h-8 w-8 rounded object-cover" />
+                          <span className="max-w-[10rem] truncate text-xs" style={{ color: colors.foreground }}>{p.name}</span>
+                        </span>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <p>The posters are built around your brand (name, logo, colours and story) — no product photos needed.</p>
+                )}
+              </div>
+            ) : products === null ? (
               <p className="flex items-center gap-2 text-sm" style={{ color: colors.mutedForeground }}><Loader2 size={14} className="animate-spin" /> Loading your products…</p>
             ) : products.length === 0 ? (
               <div className="text-sm" style={{ color: colors.mutedForeground }}>

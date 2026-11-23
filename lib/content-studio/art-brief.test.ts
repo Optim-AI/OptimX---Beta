@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import { cleanBrandColors, isRealFontFamily, isThemeDefaultColor, realFontOrNull } from "../brand-kit/design-hygiene";
 import { artBriefInstruction, cleanArtBrief, cleanProductName, formatArtBrief } from "./art-brief";
 import { buildAdStudioBrief, buildAdStudioArtDirection } from "./engine-posters";
+import { brandRangeProduct, isBrandRange } from "../ad-studio/service";
 import { detectUserOverrides } from "../creative-studio/poster-generation/strategy/strategy-input";
 
 let passed = 0;
@@ -89,6 +90,27 @@ test("without an art brief Ad Studio keeps the older brief", () => {
   });
   assert.equal(brief.visualDirection, null);
   assert.ok(/What the poster should show as proof/.test(brief.userInstruction));
+});
+
+test("whole-brand ads show the range, or the brand alone", () => {
+  const prods = ["A", "B", "C", "D"].map((n) => ({ product_name: n, product_images: [`https://example.com/${n}.jpg`] })) as never[];
+  const range = brandRangeProduct({ name: "oorgaa", description: "Coastal snacks" }, prods);
+  assert.equal(isBrandRange(range), true);
+  assert.equal(range.product_images.length, 3);
+  const brief = buildAdStudioBrief({ brand: { name: "oorgaa" } as never, product: range, angle: null });
+  assert.equal(brief.productReferences.length, 3);
+  assert.ok(/whole-brand ad/i.test(brief.userInstruction));
+  const art = cleanArtBrief({ idea: "Three jars in a row", headline: "Taste the coast" }, { ...ctx, range: ["A", "B", "C"] })!;
+  assert.ok(/together as one set/.test(formatArtBrief(art)));
+  const dupes = brandRangeProduct({ name: "x" }, [
+    { product_name: "Bundle – Pack of 6", product_images: ["https://e.com/1.jpg"] },
+    { product_name: "Bundle – Pack of 6 - x - Combo", product_images: ["https://e.com/2.jpg"] },
+    { product_name: "Classic", product_images: ["https://e.com/3.jpg"] },
+  ] as never[]);
+  assert.equal(dupes.product_images.length, 2);
+  const bare = brandRangeProduct({ name: "oorgaa" }, []);
+  assert.equal(bare.product_images.length, 0);
+  assert.ok(/no product photo/i.test(buildAdStudioBrief({ brand: { name: "oorgaa" } as never, product: bare, angle: null }).userInstruction));
 });
 
 console.log(`\n${passed} passed`);

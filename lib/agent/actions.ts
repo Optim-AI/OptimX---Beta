@@ -275,8 +275,16 @@ export async function runAction(userId: string, id: string): Promise<RunOutcome>
 }
 
 /** Text for the post-turn model call that decides which actions to offer. */
-export const ACTION_GUIDE = `Actions you may offer (0 to 2; usually none). Nothing leaves the chat: posters, research and calendars are all made right here.
-- {"type":"posters","title":"…","params":{"posts":[{"day":"Tuesday","platform":"Instagram feed","idea": one line,"headline": short poster headline (no price or discount unless the owner gave it),"caption": the post caption,"visual": what the image shows,"goal": one of ${POSTER_AD_GOAL_LIST}}]}}
-  Offer this when the reply is a post plan (one entry per planned post, copied from the reply, max ${MAX_POSTS}) or the owner wants a poster, ad creative or social graphic (one entry).
+export function actionGuide(productNames: string[] = []): string {
+  const products = productNames.length
+    ? `The owner's products (use an exact name for "product"): ${productNames.slice(0, 30).join("; ")}.`
+    : `The owner has no products with photos yet: use "scope":"brand" unless they name a product.`;
+  return `Actions you may offer (0 to 2; usually none). Nothing leaves the chat: posters, research and calendars are all made right here.
+- {"type":"posters","title":"…","params":{"posts":[{"day":"Tuesday","platform":"Instagram feed","idea": one line,"headline": short poster headline (no price or discount unless the owner gave it),"caption": the post caption,"visual": what the image shows,"goal": one of ${POSTER_AD_GOAL_LIST},"scope": "product" when the post sells or shows one product, "brand" for festival wishes, brand story, behind the scenes or the whole range,"product": the product name for a product post, else ""}]}}
+  Offer this when the reply is a post plan (one entry per planned post, copied from the reply, max ${MAX_POSTS}) or the owner wants a poster, ad creative or social graphic (one entry). ${products}
 - {"type":"research","title":"…","params":{"product": product name or "","regions": Indian state or city names, e.g. ["Bengaluru","Tamil Nadu"]}}  (always offer it when the owner asks for research, a report, or a competitor/market/regional study; otherwise only when they need facts we don't have yet)
 - {"type":"calendar","title":"…","params":{"weeks":1-4,"focus": theme or occasion}}  (when they want a longer posting plan than this reply gives)`;
+}
+
+/** Guide without the owner's product list (tests, fallbacks). */
+export const ACTION_GUIDE = actionGuide();

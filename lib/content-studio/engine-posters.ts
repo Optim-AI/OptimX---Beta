@@ -75,6 +75,17 @@ function adGoalFor(funnel?: string): PosterAdGoal {
 
 const clip = (s: string | undefined, n: number) => (s || "").replace(/\s+/g, " ").trim().slice(0, n);
 
+/** Whole-brand ads (Ad Studio "My whole brand"): the brand with its range, not one product. */
+type BrandRange = { scope?: string; range?: string[] };
+const isBrandRange = (p: Product) => (p as BrandRange).scope === "brand";
+const rangeOf = (p: Product) => (isBrandRange(p) ? ((p as BrandRange).range ?? []) : []);
+const hasPhoto = (p: Product) => !!p.product_images?.some((u) => /^https?:\/\//.test(u));
+
+/** The art brief for an Ad Studio poster: one product, the brand's range, or the brand alone. */
+function artBriefForProduct(brand: BrandSnapshot, product: Product, angle: AdStudioAngle | null, ownerRequest: string | null | undefined, aspectRatio: string) {
+  return writeArtBrief({ brand, product: hasPhoto(product) ? product : null, angle, ownerRequest, aspectRatio, range: rangeOf(product) });
+}
+
 export function buildAdStudioBrief(params: {
   brand: BrandSnapshot;
   product: Product;
@@ -109,7 +120,11 @@ export function buildAdStudioBrief(params: {
     ...angleBlock,
     ...(art ? artBriefInstruction(art) : []),
     ...campaignBlock,
-    "Feature the real product from the product reference — packaging must match it exactly.",
+    !hasPhoto(product)
+      ? "This is a brand ad with no product photo: build it around the brand, never a made-up product pack."
+      : isBrandRange(product)
+        ? "A whole-brand ad: feature these real products together from the product references — each pack must match its photo exactly."
+        : "Feature the real product from the product reference — packaging must match it exactly.",
     "Do not invent product claims, stats, discounts or ratings. No placeholder or labelled copy (never write 'CTA:' or 'Headline:').",
   ]
     .filter(Boolean)
@@ -218,6 +233,7 @@ async function loadBrand(userId: string, fallback?: Partial<BrandSnapshot> | nul
 
 function assertProductImage(product: Product) {
   if (!product?.product_name) throw new AdStudioPosterError("Product is required", 400);
+  if (isBrandRange(product)) return; // brand ads may have no product photo
   if (!product.product_images?.some((u) => /^https?:\/\//.test(u))) {
     throw new AdStudioPosterError("This product has no image to build the poster around.", 400);
   }
@@ -275,7 +291,7 @@ export async function generateAdStudioPosters(params: {
 
   const sessionService = createPosterGenerationSessionService();
   const session = await sessionService.createSession({ userId });
-  const art = await writeArtBrief({ brand, product, angle, aspectRatio: "4:5" });
+  const art = await artBriefForProduct(brand, product, angle, null, "4:5");
   await sessionService.updateBrief(session.id, userId, buildAdStudioBrief({ brand, product, angle, campaign, art }));
 
   await runMarketingStrategyForSession({ sessionId: session.id, userId, sessionService });
@@ -330,7 +346,7 @@ export async function generateAdStudioPosterPair(params: {
   try {
     const session = await sessionService.createSession({ userId });
     feedSessionId = session.id;
-    const art = await writeArtBrief({ brand, product, angle, aspectRatio: "4:5" });
+    const art = await artBriefForProduct(brand, product, angle, null, "4:5");
     const brief = buildAdStudioBrief({ brand, product, angle, campaign, art });
     brief.variantCount = 1;
     brief.aspectRatio = "4:5";
@@ -402,7 +418,7 @@ export async function renderAdStudioDraft(params: {
     const sessionService = createPosterGenerationSessionService();
     const session = await sessionService.createSession({ userId });
     sessionId = session.id;
-    const art = await writeArtBrief({ brand, product, angle, ownerRequest: params.extraInstruction, aspectRatio: params.aspectRatio });
+    const art = await artBriefForProduct(brand, product, angle, params.extraInstruction, params.aspectRatio);
     const brief = buildAdStudioBrief({ brand, product, angle, art });
     brief.variantCount = 1;
     brief.aspectRatio = params.aspectRatio;

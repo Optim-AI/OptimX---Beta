@@ -27,6 +27,8 @@ import type { BrandSnapshot, Product } from "@/app/web/src/components/creative-s
 import { getUserProduct, listUserProducts, type ProductRef } from "@/lib/test-packs/products";
 import { runInBackground } from "@/lib/jobs/background";
 import { CONTEXT_BUCKET } from "./context-items";
+import { artBriefInstruction, formatArtBrief, writeArtBrief, type ArtBrief } from "@/lib/content-studio/art-brief";
+import { withOnboardingArtDirection } from "@/lib/onboarding/demo-poster";
 
 export const POSTER_SIZES = { feed: "4:5", square: "1:1", story: "9:16" } as const;
 export type PosterSize = keyof typeof POSTER_SIZES;
@@ -41,6 +43,10 @@ export type PlannedPost = {
   caption: string;
   visual: string;
   goal: PosterAdGoal;
+  /** "product" = about one product (the owner picks which); "brand" = the brand itself (festivals, story, range). */
+  scope: "brand" | "product";
+  /** The product the agent suggests for a product post (one of the owner's product names). */
+  product: string;
 };
 
 export type PosterItem = {
@@ -53,6 +59,8 @@ export type PosterItem = {
   generationId?: string | null;
   /** How many times the owner edited it */
   edits?: number;
+  /** The product on this poster (null = brand poster) */
+  productName?: string | null;
 };
 
 export type PosterJobResult = {
@@ -81,14 +89,24 @@ export function cleanPost(raw: any): PlannedPost | null {
     caption: plain(raw?.caption, 600),
     visual: plain(raw?.visual, 300),
     goal,
+    scope: raw?.scope === "product" || (raw?.scope !== "brand" && plain(raw?.product, 80)) ? "product" : "brand",
+    product: plain(raw?.product, 80),
   };
 }
 
 /** Products the owner can put on posters (from Ad Studio website scans). */
 export async function productChoices(userId: string) {
   const list = await listUserProducts(userId).catch((): ProductRef[] => []);
+  // Scans list the same item more than once ("Bundle – Pack of 6" and "Bundle – Pack of 6 - brand - …"): show one.
+  const seen = new Set<string>();
   return list
     .filter((p) => p.product.product_images?.some((u) => /^https?:\/\//.test(u)))
+    .filter((p) => {
+      const key = (p.product.product_name || "").split(/\s+-\s+/)[0].replace(/\s+/g, " ").trim().toLowerCase();
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
     .slice(0, 30)
     .map((p) => ({ id: p.id, name: p.product.product_name, image: p.product.product_images.find((u) => /^https?:\/\//.test(u)) ?? null }));
 }
@@ -112,14 +130,30 @@ export async function resolveProduct(userId: string, choice: unknown): Promise<P
   return null;
 }
 
-function buildBrief(brand: BrandSnapshot, post: PlannedPost, product: Product | null, size: PosterSize): CreativeBrief {
+/** Same art-director brief as Ad Studio: one idea, a style, brand colours, the planned headline kept. */
+export function artBriefFor(brand: BrandSnapshot, post: PlannedPost, product: Product | null, size: PosterSize): Promise<ArtBrief | null> {
+  return writeArtBrief({
+    brand,
+    product,
+    angle: { title: post.headline || post.idea, message: post.idea, angle: post.goal },
+    ownerRequest: [post.visual && `Visual idea from the plan: ${post.visual}`, post.day && `Posting on ${post.day}${post.platform ? ` (${post.platform})` : ""}.`]
+      .filter(Boolean)
+      .join(" ") || null,
+    aspectRatio: POSTER_SIZES[size],
+    exactHeadline: post.headline || null,
+  });
+}
+
+export function buildBrief(brand: BrandSnapshot, post: PlannedPost, product: Product | null, size: PosterSize, art: ArtBrief | null = null): CreativeBrief {
   const logoUrl = brand.logo || brand.logoUrl || null;
   const images = (product?.product_images || []).filter((u) => /^https?:\/\//.test(u)).slice(0, 3).map((url) => ({ url }));
   const userInstruction = [
     `Create a ${post.platform || "social media"} poster for ${brand.name}${post.day ? ` (to post on ${post.day})` : ""}.`,
     `Post idea: ${post.idea}`,
-    post.headline && `Headline idea (tighten it, keep its meaning): "${post.headline}"`,
-    post.visual && `Visual idea: ${post.visual}`,
+    // With an art brief the picture and the exact copy are decided there.
+    !art && post.headline && `Headline idea (tighten it, keep its meaning): "${post.headline}"`,
+    !art && post.visual && `Visual idea: ${post.visual}`,
+    ...(art ? artBriefInstruction(art) : []),
     product ? "Feature the real product from the product reference; packaging must match it exactly." : "There is no product photo: build the poster around the brand, the idea and the visual, not a made-up product pack.",
     "Do not invent prices, discounts, stats or ratings that are not in this brief. No placeholder or labelled copy (never write 'CTA:' or 'Headline:').",
     "No badges, seals, stamps or stickers unless this brief gives their exact text.",
@@ -163,7 +197,7 @@ function buildBrief(brand: BrandSnapshot, post: PlannedPost, product: Product | 
         }
       : null,
     userInstruction,
-    visualDirection: null,
+    visualDirection: art?.direction ?? null,
     aspectRatio: POSTER_SIZES[size],
     variantCount: 1,
     platformHint: post.platform || "Instagram / Meta feed",
@@ -177,6 +211,7 @@ function buildBrief(brand: BrandSnapshot, post: PlannedPost, product: Product | 
     productReferences: images.map((image, i) => ({ id: `agent_product_${i}`, role: "product_packshot" as const, image })),
     designReferences: [],
     supportingReferences: [],
+    brandOnPackaging: art?.brandOnPack ?? false,
   } as CreativeBrief;
 }
 
@@ -185,8 +220,14 @@ async function renderOne(userId: string, brand: BrandSnapshot, post: PlannedPost
   try {
     const sessionService = createPosterGenerationSessionService();
     const session = await sessionService.createSession({ userId });
-    await sessionService.updateBrief(session.id, userId, buildBrief(brand, post, product, size));
+    const art = await artBriefFor(brand, post, product, size);
+    await sessionService.updateBrief(session.id, userId, buildBrief(brand, post, product, size, art));
     await runMarketingStrategyForSession({ sessionId: session.id, userId, sessionService });
+    if (art) {
+      // Added after the strategist (as in Ad Studio), for the concept and image stages.
+      const planned = await sessionService.getSession(session.id, userId);
+      if (planned.brief) await sessionService.updateBrief(session.id, userId, withOnboardingArtDirection(planned.brief, formatArtBrief(art)));
+    }
     const { concepts } = await runCreativeConceptsForSession({ sessionId: session.id, userId, conceptCount: 1, sessionService });
     if (!concepts.length) return { ok: false, error: "Couldn't plan this poster." };
     await selectConceptForSession({ sessionId: session.id, userId, conceptIds: concepts[0].id, sessionService });
@@ -223,7 +264,11 @@ export class PosterJobError extends Error {
  */
 export async function startPosterJob(input: {
   userId: string; actionId: string; posts: PlannedPost[]; selected: number[]; size: PosterSize; product: Product | null;
+  /** Per post (by index): the product on that poster, or null for a brand poster. Overrides `product`. */
+  productsByPost?: Record<number, Product | null>;
 }): Promise<PosterJobResult> {
+  const productFor = (index: number) =>
+    input.productsByPost && index in input.productsByPost ? input.productsByPost[index] : input.product;
   const { userId, actionId } = input;
   const picks = [...new Set(input.selected)].filter((i) => Number.isInteger(i) && i >= 0 && i < input.posts.length).slice(0, MAX_POSTS);
   if (!picks.length) throw new PosterJobError("Pick at least one post.");
@@ -240,7 +285,7 @@ export async function startPosterJob(input: {
   const brand = snapshot as unknown as BrandSnapshot;
 
   const result: PosterJobResult = {
-    items: picks.map((index) => ({ index, status: "queued" })),
+    items: picks.map((index) => ({ index, status: "queued", productName: productFor(index)?.product_name ?? null })),
     size: input.size,
     productName: input.product?.product_name ?? null,
     startedAt: new Date().toISOString(),
@@ -258,7 +303,7 @@ export async function startPosterJob(input: {
         const item = result.items[next++];
         item.status = "running";
         await writeResult(actionId, result);
-        const out = await renderOne(userId, brand, input.posts[item.index], input.product, input.size);
+        const out = await renderOne(userId, brand, input.posts[item.index], productFor(item.index), input.size);
         if (out.ok) { item.status = "done"; item.imageUrl = out.imageUrl; item.engineSessionId = out.engineSessionId; item.generationId = out.generationId; }
         else { item.status = "failed"; item.error = out.error; }
         await writeResult(actionId, result);

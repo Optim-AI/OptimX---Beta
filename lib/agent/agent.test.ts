@@ -4,8 +4,10 @@
  */
 import assert from "node:assert/strict";
 import { cleanCadence, describeCadence, nextRunAfter } from "./tasks";
-import { cleanProposal, costOf } from "./actions";
-import { cleanPost, isOwnPosterUrl, settleStale, type PosterJobResult } from "./posters";
+import { actionGuide, cleanProposal, costOf } from "./actions";
+import { buildBrief, cleanPost, isOwnPosterUrl, settleStale, type PosterJobResult } from "./posters";
+import { cleanArtBrief, formatArtBrief } from "../content-studio/art-brief";
+import { detectUserOverrides } from "../creative-studio/poster-generation/strategy/strategy-input";
 import { wantsWebFacts, iso } from "./store";
 
 let passed = 0;
@@ -101,6 +103,46 @@ test("web search runs only for fact questions", () => {
 test("database dates become ISO strings Safari can read", () => {
   assert.equal(iso("2026-11-23 03:30:00+00"), "2026-11-23T03:30:00.000Z");
   assert.equal(iso(null), "");
+});
+
+test("in-chat posters use the art brief and keep the planned headline", () => {
+  const post = cleanPost({ idea: "Pongal special", headline: "Pongal, made crunchier", visual: "Jar with sugarcane", goal: "awareness", day: "Jan 14" })!;
+  const art = cleanArtBrief(
+    { direction: "festive", idea: "Jar among sugarcane", headline: "Something else", cta: "Order now", brandOnPack: true },
+    { brandColors: ["#fab83d"], productName: "Anchovies", fallbackHeadline: "x", exactHeadline: post.headline, hasProduct: true }
+  )!;
+  assert.equal(art.headline, "Pongal, made crunchier");
+  const brief = buildBrief({ name: "oorgaa" } as never, post, { product_name: "Anchovies", product_images: ["https://example.com/a.jpg"] } as never, "feed", art);
+  assert.equal(brief.visualDirection, "festive");
+  assert.equal(brief.brandOnPackaging, true);
+  assert.ok(!/Headline idea|Visual idea/.test(brief.userInstruction));
+  assert.equal(detectUserOverrides(brief).headline, "Pongal, made crunchier");
+  const old = buildBrief({ name: "oorgaa" } as never, post, null, "feed");
+  assert.equal(old.visualDirection, null);
+  assert.ok(/Headline idea/.test(old.userInstruction));
+});
+
+test("brand posts never get a product line or a pack-only logo rule", () => {
+  const art = cleanArtBrief(
+    { direction: "bold", idea: "Big wordmark over a sunrise", headline: "Good mornings start here", cta: "Visit us", brandOnPack: true },
+    { brandColors: [], productName: "oorgaa", fallbackHeadline: "x", hasProduct: false }
+  )!;
+  assert.equal(art.hasProduct, false);
+  assert.equal(art.brandOnPack, false);
+  const block = formatArtBrief(art);
+  assert.ok(/No product photo/.test(block) && !/label fully visible/.test(block));
+  assert.ok(/never the brand name as large text/.test(block));
+});
+
+test("each planned post is a brand post or a product post", () => {
+  assert.equal(cleanPost({ idea: "Happy Pongal", scope: "brand" })!.scope, "brand");
+  const p = cleanPost({ idea: "Movie snack", scope: "product", product: "Peri Peri Anchovies" })!;
+  assert.equal(p.scope, "product");
+  assert.equal(p.product, "Peri Peri Anchovies");
+  assert.equal(cleanPost({ idea: "Old plan without scope" })!.scope, "brand");
+  assert.equal(cleanPost({ idea: "Named a product", product: "Jalapeno" })!.scope, "product");
+  assert.ok(actionGuide(["Peri Peri Anchovies"]).includes("Peri Peri Anchovies"));
+  assert.ok(/scope/.test(actionGuide()));
 });
 
 console.log(`\n${passed} passed`);

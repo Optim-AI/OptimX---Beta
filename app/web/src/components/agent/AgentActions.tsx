@@ -26,7 +26,9 @@ export type AgentActionUI = {
   result?: Record<string, unknown> | null;
 };
 
-export type PosterOptions = { selected: number[]; size: "feed" | "square" | "story"; product: { ref: string } | { uploadPath: string; name: string } | null };
+type ProductPick = { ref: string } | { uploadPath: string; name: string } | null;
+/** products: per post (by index) — the product on that poster, or null for a brand poster. */
+export type PosterOptions = { selected: number[]; size: "feed" | "square" | "story"; product: ProductPick; products?: Record<number, ProductPick> };
 
 const META = {
   posters: { Icon: ImageIcon, button: "Make posters", done: "Posters ready", where: "this chat" },
@@ -98,8 +100,8 @@ export function ActionCard({ a, running, balance, onRun, onDismiss, onStartPoste
 }
 
 // ---------- Posters made in the chat ----------
-type Post = { day: string; platform: string; idea: string; headline: string; caption: string; visual: string };
-type Tile = { index: number; status: "queued" | "running" | "done" | "failed"; imageUrl?: string | null; error?: string | null; engineSessionId?: string | null; generationId?: string | null; edits?: number };
+type Post = { day: string; platform: string; idea: string; headline: string; caption: string; visual: string; scope?: "brand" | "product"; product?: string };
+type Tile = { index: number; status: "queued" | "running" | "done" | "failed"; imageUrl?: string | null; error?: string | null; engineSessionId?: string | null; generationId?: string | null; edits?: number; productName?: string | null };
 type ProductChoice = { id: string; name: string; image: string | null };
 
 const SIZES = [
@@ -117,7 +119,9 @@ function PosterCard({ a, starting, balance, onStart, onDismiss, onChanged }: {
   const [picked, setPicked] = useState<Set<number>>(() => new Set(posts.map((_, i) => i)));
   const [size, setSize] = useState<PosterOptions["size"]>("feed");
   const [products, setProducts] = useState<ProductChoice[] | null>(null);
-  const [product, setProduct] = useState<PosterOptions["product"]>(null);
+  /** What goes on each poster: "brand", "ref:<product id>" or "upload" (the photo uploaded here). */
+  const [onPoster, setOnPoster] = useState<Record<number, string>>({});
+  const [uploaded, setUploaded] = useState<{ uploadPath: string; name: string } | null>(null);
   const [uploadPreview, setUploadPreview] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -130,6 +134,21 @@ function PosterCard({ a, starting, balance, onStart, onDismiss, onChanged }: {
     authFetch("/api/agent/actions?products=1").then((r) => r.json()).then((j) => setProducts(j.ok ? j.products : [])).catch(() => setProducts([]));
   }, [proposed, products]);
 
+  // Default for each post: brand posts show the brand; product posts get the product the agent named.
+  useEffect(() => {
+    if (!products) return;
+    setOnPoster((prev) => {
+      const next = { ...prev };
+      posts.forEach((p, i) => {
+        if (next[i]) return;
+        const wanted = (p.product || "").toLowerCase().trim();
+        const match = wanted ? products.find((x) => x.name.toLowerCase() === wanted) ?? products.find((x) => x.name.toLowerCase().includes(wanted) || wanted.includes(x.name.toLowerCase())) : null;
+        next[i] = p.scope === "product" && (match || products[0]) ? `ref:${(match || products[0])!.id}` : "brand";
+      });
+      return next;
+    });
+  }, [products, posts]);
+
   if (a.status === "dismissed") return null;
 
   const upload = async (file: File) => {
@@ -140,8 +159,14 @@ function PosterCard({ a, starting, balance, onStart, onDismiss, onChanged }: {
       if (!res.ok || !json.ok) throw new Error(json.error || "Upload failed.");
       const up = await supabase.storage.from("agent-context").uploadToSignedUrl(json.path, json.token, file, { contentType: file.type });
       if (up.error) throw new Error("Upload failed. Please try again.");
-      setProduct({ uploadPath: json.path, name: file.name.replace(/\.[a-z0-9]+$/i, "") });
+      setUploaded({ uploadPath: json.path, name: file.name.replace(/\.[a-z0-9]+$/i, "") });
       setUploadPreview(URL.createObjectURL(file));
+      // A fresh photo goes on the product posts that had no product of their own yet.
+      setOnPoster((prev) => {
+        const next = { ...prev };
+        posts.forEach((p, i) => { if (p.scope === "product" && (!next[i] || next[i] === "brand")) next[i] = "upload"; });
+        return next;
+      });
     } catch (e) {
       toast.error(friendlyError(e));
     } finally {
@@ -252,6 +277,17 @@ function PosterCard({ a, starting, balance, onStart, onDismiss, onChanged }: {
                 <span className="block text-[11.5px] font-medium uppercase tracking-[0.08em]" style={{ color: colors.mutedForeground }}>{[p.day, p.platform].filter(Boolean).join(" · ") || `Post ${i + 1}`}</span>
                 <span className="mt-0.5 block text-[14px]" style={{ color: colors.foreground }}>{p.headline || p.idea}</span>
                 {p.headline && p.idea && <span className="mt-0.5 block text-[12.5px] leading-snug" style={{ color: colors.mutedForeground }}>{p.idea}</span>}
+                <span className="mt-2 flex flex-wrap items-center gap-2 text-[12.5px]" onClick={(e) => e.preventDefault()}>
+                  <span style={{ color: colors.mutedForeground }}>On the poster:</span>
+                  <select value={onPoster[i] ?? "brand"} onChange={(e) => setOnPoster((s) => ({ ...s, [i]: e.target.value }))}
+                    aria-label={`What goes on poster ${i + 1}`}
+                    className="max-w-[240px] rounded-md border px-2 py-1 text-[12.5px]"
+                    style={{ background: colors.card, borderColor: colors.border, color: colors.foreground }}>
+                    <option value="brand">My brand (no single product)</option>
+                    {(products ?? []).map((x) => <option key={x.id} value={`ref:${x.id}`}>{x.name}</option>)}
+                    {uploaded && <option value="upload">Your photo: {uploaded.name}</option>}
+                  </select>
+                </span>
               </span>
             </label>
           );
@@ -272,29 +308,14 @@ function PosterCard({ a, starting, balance, onStart, onDismiss, onChanged }: {
           </div>
         </div>
         <div className="min-w-0">
-          <div className="mb-1.5 text-[12px]" style={{ color: colors.mutedForeground }}>Product on the poster</div>
+          <div className="mb-1.5 text-[12px]" style={{ color: colors.mutedForeground }}>Product not in the list?</div>
           <div className="flex flex-wrap items-center gap-2">
-            <button type="button" onClick={() => setProduct(null)}
-              className="rounded-lg border px-3 py-1.5 text-[13px]"
-              style={{ borderColor: product === null ? colors.primary : colors.border, color: colors.secondaryForeground }}>None</button>
-            {(products ?? []).slice(0, 6).map((p) => {
-              const on = !!product && "ref" in product && product.ref === p.id;
-              return (
-                <button key={p.id} type="button" onClick={() => setProduct({ ref: p.id })} title={p.name}
-                  className="flex max-w-[180px] items-center gap-2 rounded-lg border py-1 pl-1 pr-2.5 text-[13px]"
-                  style={{ borderColor: on ? colors.primary : colors.border, color: colors.secondaryForeground }}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  {p.image && <img src={p.image} alt="" className="h-7 w-7 rounded object-cover" />}
-                  <span className="truncate">{p.name}</span>
-                </button>
-              );
-            })}
             <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading}
               className="flex items-center gap-1.5 rounded-lg border py-1 pl-1.5 pr-2.5 text-[13px] disabled:opacity-50"
-              style={{ borderColor: product && "uploadPath" in product ? colors.primary : colors.border, color: colors.secondaryForeground }}>
+              style={{ borderColor: uploaded ? colors.primary : colors.border, color: colors.secondaryForeground }}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               {uploadPreview ? <img src={uploadPreview} alt="" className="h-7 w-7 rounded object-cover" /> : <Upload size={14} />}
-              {uploading ? "Uploading…" : uploadPreview ? "Your photo" : "Upload photo"}
+              {uploading ? "Uploading…" : uploadPreview ? "Your photo" : "Upload a product photo"}
             </button>
             <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) upload(f); }} />
           </div>
@@ -310,7 +331,15 @@ function PosterCard({ a, starting, balance, onStart, onDismiss, onChanged }: {
         <div className="flex items-center gap-2">
           <button type="button" onClick={onDismiss} className="rounded-lg px-3 py-2 text-[13px] hover:bg-white/5" style={{ color: colors.mutedForeground }}>Not now</button>
           <button type="button" disabled={!count || short || starting || uploading}
-            onClick={() => onStart({ selected: [...picked].sort((x, y) => x - y), size, product })}
+            onClick={() => onStart({
+              selected: [...picked].sort((x, y) => x - y),
+              size,
+              product: null,
+              products: Object.fromEntries([...picked].map((i) => {
+                const v = onPoster[i] ?? "brand";
+                return [i, v === "upload" ? uploaded : v.startsWith("ref:") ? { ref: v.slice(4) } : null];
+              })),
+            })}
             className="rounded-lg px-4 py-2 text-[13px] font-medium disabled:opacity-40" style={{ background: colors.primary, color: colors.primaryForeground }}>
             {starting ? "Starting…" : `Make ${count} poster${count === 1 ? "" : "s"}`}
           </button>

@@ -56,9 +56,56 @@ async function findProduct(userId: string, scanId: string, productName: string) 
   return { product, website: scan?.url ?? null };
 }
 
+/** "Spicy Pickle Bundle – Pack of 6 - oorgaa - Spicy Pickle Combo" → "spicy pickle bundle – pack of 6" */
+export function baseProductName(name: string | null | undefined): string {
+  return (name || '').split(/\s+-\s+/)[0].replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+/** Products shown together in a whole-brand ad (from the website scan). */
+export const BRAND_RANGE_MAX = 3;
+
+/**
+ * A whole-brand ad as a "product" the rest of the pipeline understands: the brand's
+ * name and story, with up to 3 product photos from the scan (or none: brand only).
+ * Marked with scope "brand" so the poster brief shows the range, not one item.
+ */
+export function brandRangeProduct(brand: { name?: string | null; description?: string | null; coreValueProp?: string | null; audience?: string | null } | null, products: Product[]): Product {
+  // Scans list the same item more than once ("Bundle – Pack of 6" and "Bundle – Pack of 6 - brand - …"): keep one of each.
+  const seen = new Set<string>();
+  const withPhoto = products.filter((p) => {
+    if (!p.product_images?.some((u) => /^https?:\/\//.test(u))) return false;
+    const key = baseProductName(p.product_name);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).slice(0, BRAND_RANGE_MAX);
+  const names = withPhoto.map((p) => p.product_name).filter(Boolean);
+  const name = (brand?.name || '').trim() || 'Our brand';
+  return {
+    product_name: name,
+    price: null,
+    description: [brand?.description || '', names.length ? `The range: ${names.join(', ')}.` : ''].filter(Boolean).join(' ').slice(0, 600),
+    key_benefits: [],
+    product_images: withPhoto.map((p) => p.product_images.find((u) => /^https?:\/\//.test(u))!).filter(Boolean),
+    target_audience: brand?.audience || '',
+    emotional_angles: [],
+    use_cases: [],
+    short_benefit: brand?.coreValueProp || '',
+    category: 'Whole brand',
+    scope: 'brand',
+    range: names,
+  } as Product;
+}
+
+export function isBrandRange(product: unknown): boolean {
+  return !!product && (product as { scope?: string }).scope === 'brand';
+}
+
 export async function createAdProject(params: {
   userId: string;
-  scanId: string;
+  /** "brand" = an ad for the whole brand (no single product). Default "product". */
+  scope?: 'product' | 'brand';
+  scanId: string | null;
   productName: string;
   goal: unknown;
   offer?: unknown;
@@ -75,9 +122,22 @@ export async function createAdProject(params: {
   if (AD_GOALS[goal].needsOffer && !offer) throw new AdStudioError('Tell us the offer (for example “20% off this week” or “Buy 2, get 1 free”).');
   const direction = typeof params.direction === 'string' ? params.direction.trim().slice(0, 1000) : '';
 
-  const { product, website } = await findProduct(params.userId, params.scanId, params.productName);
-  if (!product) throw new AdStudioError('We couldn’t find that product. Scan your website again in Ad Studio.', 404);
-  if (!product.product_images?.some((u) => /^https?:\/\//.test(u))) throw new AdStudioError('This product has no photo to build the posters around.');
+  let product: Product | null;
+  let website: string | null;
+  if (params.scope === 'brand') {
+    const [{ snapshot }, scan] = await Promise.all([
+      getUserBrand(params.userId).catch(() => ({ snapshot: null })),
+      params.scanId ? ContentStudioScanDAO.getByIdAndUser(params.scanId, params.userId).catch(() => null) : Promise.resolve(null),
+    ]);
+    if (!snapshot?.name) throw new AdStudioError('Set up your Brand Kit first so brand ads use your name, logo and colours.');
+    product = brandRangeProduct(snapshot, Array.isArray(scan?.products) ? (scan!.products as Product[]) : []);
+    website = scan?.url ?? snapshot.website_url ?? null;
+  } else {
+    if (!params.scanId) throw new AdStudioError('Choose a product first.');
+    ({ product, website } = await findProduct(params.userId, params.scanId, params.productName));
+    if (!product) throw new AdStudioError('We couldn’t find that product. Scan your website again in Ad Studio.', 404);
+    if (!product.product_images?.some((u) => /^https?:\/\//.test(u))) throw new AdStudioError('This product has no photo to build the posters around.');
+  }
 
   if (AD_GOALS[goal].needsReviews) {
     const research = await getBrandResearch(params.userId, website).catch(() => null);
@@ -92,7 +152,8 @@ export async function createAdProject(params: {
     userId: params.userId,
     scanId: params.scanId,
     product,
-    productSlug: slugPart(product.product_name, 24),
+    // Whole-brand ads share one daily draft allowance per brand.
+    productSlug: params.scope === 'brand' ? 'whole-brand' : slugPart(product.product_name, 24),
     goal,
     offerDetails: offer || null,
     formats,
@@ -108,7 +169,7 @@ export async function claimNextRound(userId: string, projectId: string, opts: { 
   const project = await store.getProject(userId, projectId);
   if (!project) throw new AdStudioError('Not found', 404);
   const size = Math.min(opts.maxSize ?? Infinity, nextRoundSize(await store.draftsLast24h(userId, project.productSlug)));
-  if (size === 0) throw new AdStudioError('You’ve made the most free drafts for this product today. Keep the ones you like, or come back tomorrow for more.', 429, 'DAILY_LIMIT');
+  if (size === 0) throw new AdStudioError(isBrandRange(project.product) ? 'You’ve made the most free brand drafts today. Keep the ones you like, or come back tomorrow for more.' : 'You’ve made the most free drafts for this product today. Keep the ones you like, or come back tomorrow for more.', 429, 'DAILY_LIMIT');
   if ((await imageCredits(userId)) < MIN_CREDITS_TO_START) throw new AdStudioError('You need at least 1 image credit to make more drafts.', 402, 'INSUFFICIENT_CREDITS');
   const claimed = await store.claimRound(userId, projectId);
   if (!claimed) throw new AdStudioError('Your posters are still being made.', 409, 'BUSY');

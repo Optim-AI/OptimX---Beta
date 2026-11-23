@@ -3,6 +3,7 @@
  * Brand Kit, Brand Research, Product & region reports and the owner's instructions.
  * Returns the system prompt plus labels for "what this answer drew on".
  */
+import { productChoices } from "./posters";
 import { getUserBrand } from "@/lib/brand-kit/server";
 import { researchDigest } from "@/lib/research/brand-research";
 import { getBrandResearch, listFocusedResearch } from "@/lib/research/store";
@@ -106,13 +107,14 @@ const words = (s: string) => new Set((s.toLowerCase().match(/[a-z0-9\u0900-\u0DF
 
 export async function buildAgentContext(userId: string, question = ""): Promise<AgentContext> {
   const used: string[] = [];
-  const [{ kit, snapshot }, settings, focused, memories, items, meta] = await Promise.all([
+  const [{ kit, snapshot }, settings, focused, memories, items, meta, products] = await Promise.all([
     getUserBrand(userId).catch(() => ({ kit: null, snapshot: null })),
     getSettings(userId).catch(() => ({ instructions: "", tagline: null })),
     listFocusedResearch(userId).catch(() => [] as FocusedResearch[]),
     listMemories(userId, 60).catch(() => []),
     contextForChat(userId).catch(() => []),
     metaBlock(userId).catch(() => ""),
+    productChoices(userId).catch(() => [] as { name: string }[]),
   ]);
   const brandName = kit?.name || (snapshot as any)?.brand_name || (snapshot as any)?.name || "";
   const website = kit?.websiteUrl || (snapshot as any)?.website_url || null;
@@ -127,6 +129,11 @@ export async function buildAgentContext(userId: string, question = ""): Promise<
     parts.push(`## Brand\nBrand: ${brandName}${website ? `\nWebsite: ${website}` : ""}`);
   } else {
     parts.push(`## Brand\nThe owner hasn't set up a Brand Kit yet. Help anyway, ask what they sell when it matters, and suggest setting up the Brand Kit (Create → Brand Kit) so answers fit their brand.`);
+  }
+
+  if (products.length) {
+    parts.push(`## Products with photos (use these exact names; a product post features one of them)\n${products.slice(0, 30).map((p) => `- ${p.name}`).join("\n")}`);
+    used.push(products.length === 1 ? "1 product" : `${products.length} products`);
   }
 
   const digest = research ? researchDigest(research, 3500) : "";
