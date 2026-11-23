@@ -23,6 +23,7 @@ import type { PosterAdGoal } from "@/lib/creative-studio/poster-generation/types
 import type { BrandSnapshot, Product } from "@/app/web/src/components/creative-studio/types";
 import { formatSceneGuidanceForBrief, inferProductSceneProfile } from "@/lib/onboarding/product-scene-guidance";
 import { withOnboardingArtDirection } from "@/lib/onboarding/demo-poster";
+import { artBriefInstruction, formatArtBrief, writeArtBrief, type ArtBrief } from "./art-brief";
 import {
   CAROUSEL_MAX_SLIDES,
   CAROUSEL_MIN_SLIDES,
@@ -79,8 +80,10 @@ export function buildAdStudioBrief(params: {
   product: Product;
   angle: AdStudioAngle | null;
   campaign?: AdStudioCampaignContext | null;
+  /** Art-director brief: locks the headline/button and sets the style. Null = the older strategy-text brief. */
+  art?: ArtBrief | null;
 }): CreativeBrief {
-  const { brand, product, angle, campaign } = params;
+  const { brand, product, angle, campaign, art } = params;
   const images = (product.product_images || []).filter((u) => /^https?:\/\//.test(u)).slice(0, 4).map((url) => ({ url }));
   const logoUrl = brand.logo || brand.logoUrl || null;
 
@@ -88,8 +91,9 @@ export function buildAdStudioBrief(params: {
     ? [
         `Ad angle${angle.angle ? ` — ${angle.angle}` : ""}: ${clip(angle.message || angle.explanation, 300)}`,
         angle.insight && `Insight it is built on: ${clip(angle.insight, 240)}`,
-        angle.proof && `What the poster should show as proof: ${clip(angle.proof, 200)}`,
-        `Hook from the ad strategy (tighten it to a poster headline; keep its idea): "${clip(angle.title, 120)}"`,
+        // With an art brief the picture is decided there; "proof" scenes and sounds made posters busy.
+        !art && angle.proof && `What the poster should show as proof: ${clip(angle.proof, 200)}`,
+        !art && `Hook from the ad strategy (tighten it to a poster headline; keep its idea): "${clip(angle.title, 120)}"`,
       ]
     : [];
   const campaignBlock = campaign
@@ -101,8 +105,9 @@ export function buildAdStudioBrief(params: {
     : [];
 
   const userInstruction = [
-    `Create a campaign poster for ${product.product_name} by ${brand.name}.`,
+    `Create a campaign poster for ${art ? art.productName : product.product_name} by ${brand.name}.`,
     ...angleBlock,
+    ...(art ? artBriefInstruction(art) : []),
     ...campaignBlock,
     "Feature the real product from the product reference — packaging must match it exactly.",
     "Do not invent product claims, stats, discounts or ratings. No placeholder or labelled copy (never write 'CTA:' or 'Headline:').",
@@ -146,7 +151,7 @@ export function buildAdStudioBrief(params: {
       catalogProduct: product,
     },
     userInstruction,
-    visualDirection: null,
+    visualDirection: art?.direction ?? null,
     aspectRatio: "4:5",
     variantCount: 3,
     platformHint: "Instagram / Meta feed",
@@ -160,6 +165,7 @@ export function buildAdStudioBrief(params: {
     productReferences: images.map((image, i) => ({ id: `adstudio_product_${i}`, role: "product_packshot" as const, image })),
     designReferences: [],
     supportingReferences: [],
+    brandOnPackaging: art?.brandOnPack ?? false,
   };
 }
 
@@ -168,7 +174,8 @@ export function buildAdStudioBrief(params: {
  * (visual language in the brief would trip the strategist's visual-leak check).
  * Without it, price- and value-led angles tend to come back as a bare packshot.
  */
-export function buildAdStudioArtDirection(brand: BrandSnapshot, product: Product, angle: AdStudioAngle | null): string {
+export function buildAdStudioArtDirection(brand: BrandSnapshot, product: Product, angle: AdStudioAngle | null, art?: ArtBrief | null): string {
+  if (art) return formatArtBrief(art);
   const scene = formatSceneGuidanceForBrief(
     inferProductSceneProfile(product, [brand.productCategory || "", brand.offering || "", brand.industry || "", brand.description || ""])
   );
@@ -189,14 +196,15 @@ async function applyArtDirection(
   userId: string,
   brand: BrandSnapshot,
   product: Product,
-  angle: AdStudioAngle | null
+  angle: AdStudioAngle | null,
+  art: ArtBrief | null = null
 ) {
   const session = await sessionService.getSession(sessionId, userId);
   if (!session.brief) return;
   await sessionService.updateBrief(
     sessionId,
     userId,
-    withOnboardingArtDirection(session.brief, buildAdStudioArtDirection(brand, product, angle))
+    withOnboardingArtDirection(session.brief, buildAdStudioArtDirection(brand, product, angle, art))
   );
 }
 
@@ -267,10 +275,11 @@ export async function generateAdStudioPosters(params: {
 
   const sessionService = createPosterGenerationSessionService();
   const session = await sessionService.createSession({ userId });
-  await sessionService.updateBrief(session.id, userId, buildAdStudioBrief({ brand, product, angle, campaign }));
+  const art = await writeArtBrief({ brand, product, angle, aspectRatio: "4:5" });
+  await sessionService.updateBrief(session.id, userId, buildAdStudioBrief({ brand, product, angle, campaign, art }));
 
   await runMarketingStrategyForSession({ sessionId: session.id, userId, sessionService });
-  await applyArtDirection(sessionService, session.id, userId, brand, product, angle);
+  await applyArtDirection(sessionService, session.id, userId, brand, product, angle, art);
   const { concepts } = await runCreativeConceptsForSession({ sessionId: session.id, userId, conceptCount: 3, sessionService });
   if (!concepts.length) throw new AdStudioPosterError("Couldn't plan the poster. Please try again.");
   await selectConceptForSession({ sessionId: session.id, userId, conceptIds: concepts.map((c) => c.id), sessionService });
@@ -321,12 +330,13 @@ export async function generateAdStudioPosterPair(params: {
   try {
     const session = await sessionService.createSession({ userId });
     feedSessionId = session.id;
-    const brief = buildAdStudioBrief({ brand, product, angle, campaign });
+    const art = await writeArtBrief({ brand, product, angle, aspectRatio: "4:5" });
+    const brief = buildAdStudioBrief({ brand, product, angle, campaign, art });
     brief.variantCount = 1;
     brief.aspectRatio = "4:5";
     await sessionService.updateBrief(session.id, userId, brief);
     await runMarketingStrategyForSession({ sessionId: session.id, userId, sessionService });
-    await applyArtDirection(sessionService, session.id, userId, brand, product, angle);
+    await applyArtDirection(sessionService, session.id, userId, brand, product, angle, art);
     const { concepts } = await runCreativeConceptsForSession({ sessionId: session.id, userId, conceptCount: 1, sessionService });
     if (!concepts.length) throw new AdStudioPosterError("Couldn't plan the poster. Please try again.");
     await selectConceptForSession({ sessionId: session.id, userId, conceptIds: concepts[0].id, sessionService });
@@ -392,14 +402,15 @@ export async function renderAdStudioDraft(params: {
     const sessionService = createPosterGenerationSessionService();
     const session = await sessionService.createSession({ userId });
     sessionId = session.id;
-    const brief = buildAdStudioBrief({ brand, product, angle });
+    const art = await writeArtBrief({ brand, product, angle, ownerRequest: params.extraInstruction, aspectRatio: params.aspectRatio });
+    const brief = buildAdStudioBrief({ brand, product, angle, art });
     brief.variantCount = 1;
     brief.aspectRatio = params.aspectRatio;
     brief.adGoal = params.adGoal;
     if (params.extraInstruction) brief.userInstruction = `${brief.userInstruction}\n${clip(params.extraInstruction, 700)}`;
     await sessionService.updateBrief(session.id, userId, brief);
     await runMarketingStrategyForSession({ sessionId: session.id, userId, sessionService });
-    await applyArtDirection(sessionService, session.id, userId, brand, product, angle);
+    await applyArtDirection(sessionService, session.id, userId, brand, product, angle, art);
     const { concepts } = await runCreativeConceptsForSession({ sessionId: session.id, userId, conceptCount: 1, sessionService });
     if (!concepts.length) throw new AdStudioPosterError("Couldn't plan this poster.");
     await selectConceptForSession({ sessionId: session.id, userId, conceptIds: concepts[0].id, sessionService });

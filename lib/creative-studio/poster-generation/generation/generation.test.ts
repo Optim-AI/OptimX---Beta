@@ -611,6 +611,23 @@ async function run() {
     "kit logo attached"
   );
 
+  // Packaging already shows the brand: no second logo, and the prompt says so.
+  const packSpec = buildGenerationSpecification({
+    sessionId: "sess_gen",
+    brief: { ...makeBrief(), brandOnPackaging: true },
+    strategy,
+    concept,
+    dna,
+    product: contexts.product,
+    brand: contexts.brand,
+    references: contexts.references,
+    variantIndex: 0,
+    brandKit: { id: "kit_1", name: "FuelCo", websiteUrl: null, isDefault: true, logo: { url: "https://cdn.fuelco.test/kit-logo.svg" }, colors: [], fonts: {}, guidelines: { mustInclude: [], dos: [], donts: [] }, identity: { ...EMPTY_IDENTITY }, createdAt: "", updatedAt: "" } as never,
+  });
+  const hasProductRef = packSpec.references.some((r) => r.kind === "product" && r.url);
+  assert(!hasProductRef || !packSpec.references.some((r) => r.kind === "logo"), "no separate logo when the pack shows the brand");
+  if (hasProductRef) assert(compileNanoBananaPrompt(packSpec).includes("do not add a separate logo"), "prompt forbids a second logo");
+
   // Ad formats: the objective decides CTA, badge prominence and format labels
   const specFor = (strategyOverrides: Partial<MarketingStrategy>, briefOverrides: Partial<CreativeBrief> = {}, conceptOverrides: Partial<CreativeConcept> = {}) =>
     buildGenerationSpecification({

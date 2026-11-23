@@ -149,6 +149,8 @@ export function compileArtDirectorBrief(
   }
   if (art.hasLogoReference) {
     refNotes.push("Place the attached logo small and unaltered.");
+  } else if (art.brandOnPackaging) {
+    refNotes.push("The brand name on the packaging is the only branding: do not add a separate logo or brand wordmark anywhere else.");
   }
   if (art.hasDesignReference) {
     refNotes.push(

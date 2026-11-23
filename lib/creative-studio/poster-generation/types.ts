@@ -206,6 +206,8 @@ export type CreativeBrief = {
   designReferences: PosterReferenceAsset[];
   /** Supporting stills (reference stills rail) */
   supportingReferences: PosterReferenceAsset[];
+  /** The product photo already shows the brand name/logo, so no separate logo is added (shown once). */
+  brandOnPackaging?: boolean;
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -371,6 +373,8 @@ export type PosterArtDirection = {
   brandFont: string | null;
   hasProductReference: boolean;
   hasLogoReference: boolean;
+  /** Logo left out because the packaging already shows the brand. */
+  brandOnPackaging?: boolean;
   hasDesignReference: boolean;
   theme: {
     label: string;

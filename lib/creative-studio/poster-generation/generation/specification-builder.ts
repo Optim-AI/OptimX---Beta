@@ -4,6 +4,7 @@
  * Does NOT invent marketing copy or creative strategy.
  */
 
+import { cleanBrandColors, realFontOrNull } from "@/lib/brand-kit/design-hygiene";
 import type { BrandContext } from "../context/brand-context";
 import type { ProductContext } from "../context/product-context";
 import type { ReferenceContext } from "../context/reference-context";
@@ -339,7 +340,9 @@ function buildReferences(
 
   // The Brand Kit logo is the user's explicit choice, so it wins over detected logos.
   const logo = kitLogoUrl ? { url: kitLogoUrl } : brand.identity.logo || brief.brand?.logo;
-  if (logo?.url) {
+  // Packaging that already shows the brand: a second logo only repeats it (seen 2–3 times per poster).
+  const brandAlreadyShown = !!brief.brandOnPackaging && out.some((r) => r.kind === "product");
+  if (logo?.url && !brandAlreadyShown) {
     out.push({
       assetId: "brand_logo",
       kind: "logo",
@@ -473,14 +476,18 @@ export function buildGenerationSpecification(
   const artDirection: PosterArtDirection = {
     productName,
     brandName: pick(kit?.name, brand.identity.name?.value, brief.brand?.name) || null,
-    brandColors: kit?.colors.length
-      ? kit.colors.map((c) => c.hex)
-      : brand.identity.colors.palette?.length
-        ? [...brand.identity.colors.palette]
-        : [...(brief.brand?.primaryColors || [])],
-    brandFont: pick(kit?.fonts.heading?.family, brand.identity.fonts?.value, brief.brand?.fonts) || null,
+    // Scanned theme defaults (iPhone blue, Bootstrap blue) and CSS variable "fonts" are dropped.
+    brandColors: cleanBrandColors(
+      kit?.colors.length
+        ? kit.colors.map((c) => c.hex)
+        : brand.identity.colors.palette?.length
+          ? [...brand.identity.colors.palette]
+          : [...(brief.brand?.primaryColors || [])]
+    ),
+    brandFont: realFontOrNull(pick(kit?.fonts.heading?.family, brand.identity.fonts?.value, brief.brand?.fonts)),
     hasProductReference: hasProductRef,
     hasLogoReference: refs.some((r) => r.kind === "logo" && r.url),
+    brandOnPackaging: !!brief.brandOnPackaging && hasProductRef,
     hasDesignReference: refs.some((r) => r.kind === "design" && r.url),
     theme: {
       label: theme.label,
@@ -525,9 +532,9 @@ export function buildGenerationSpecification(
     brandKit: kit
       ? {
           name: kit.name,
-          colors: kit.colors.map((c) => ({ hex: c.hex, role: c.role })),
-          headingFont: kit.fonts.heading?.family ?? null,
-          bodyFont: kit.fonts.body?.family ?? kit.fonts.heading?.family ?? null,
+          colors: cleanBrandColors(kit.colors.map((c) => ({ hex: c.hex, role: c.role }))),
+          headingFont: realFontOrNull(kit.fonts.heading?.family),
+          bodyFont: realFontOrNull(kit.fonts.body?.family) ?? realFontOrNull(kit.fonts.heading?.family),
           mustInclude: [...kit.guidelines.mustInclude],
           dos: [...kit.guidelines.dos],
           donts: [...kit.guidelines.donts],
