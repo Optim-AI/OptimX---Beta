@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import {
+import { Sparkles,
   CalendarDays,
   Camera,
   ChevronDown,
@@ -23,6 +23,7 @@ import { Badge } from './kit/Badge';
 import { CTAButton } from './kit/CTAButton';
 
 const FEATURE_ICONS: Record<string, LucideIcon> = {
+  'marketing-agent': Sparkles,
   'ad-studio': ImageIcon,
   'ugc-video-ads': Clapperboard,
   'product-photoshoot': Camera,

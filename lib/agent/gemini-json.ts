@@ -9,7 +9,7 @@ import { AGENT_MODEL } from "./stream";
 
 const FALLBACKS = ["gemini-3.8-flash", "gemini-2.5-flash"];
 
-export async function agentJson<T>(prompt: string, opts: { file?: { mime: string; base64: string }; timeoutMs?: number; label?: string } = {}): Promise<T> {
+export async function agentJson<T>(prompt: string, opts: { file?: { mime: string; base64: string }; timeoutMs?: number; label?: string; temperature?: number } = {}): Promise<T> {
   const key = getGeminiApiKey();
   if (!key) throw new Error("GEMINI_API_KEY is not configured");
   const parts: unknown[] = [];
@@ -26,7 +26,7 @@ export async function agentJson<T>(prompt: string, opts: { file?: { mime: string
         body: JSON.stringify({
           contents: [{ role: "user", parts }],
           generationConfig: {
-            temperature: 0.2,
+            temperature: opts.temperature ?? 0.2,
             maxOutputTokens: 8192,
             responseMimeType: "application/json",
             thinkingConfig: /gemini-2\.5/.test(model) ? { thinkingBudget: 0 } : { thinkingLevel: "low" },

@@ -7,6 +7,7 @@ import { cleanBrandColors, isRealFontFamily, isThemeDefaultColor, realFontOrNull
 import { artBriefInstruction, cleanArtBrief, cleanProductName, formatArtBrief } from "./art-brief";
 import { buildAdStudioBrief, buildAdStudioArtDirection } from "./engine-posters";
 import { brandRangeProduct, isBrandRange } from "../ad-studio/service";
+import { cleanConcept, conceptLines, tooSimilar } from "./creative-ideas";
 import { detectUserOverrides } from "../creative-studio/poster-generation/strategy/strategy-input";
 
 let passed = 0;
@@ -111,6 +112,21 @@ test("whole-brand ads show the range, or the brand alone", () => {
   const bare = brandRangeProduct({ name: "oorgaa" }, []);
   assert.equal(bare.product_images.length, 0);
   assert.ok(/no product photo/i.test(buildAdStudioBrief({ brand: { name: "oorgaa" } as never, product: bare, angle: null }).userInstruction));
+});
+
+test("each poster carries its own creative idea, not a template", () => {
+  assert.equal(cleanConcept({ device: "metaphor" }), null); // needs a picture and type treatment
+  const c = cleanConcept({ device: "Visual metaphor", thought: "Lunch is boring", visual: "A tiffin opening like a treasure chest", type: "Hand-lettered script curling out of the tiffin", colour: "Warm gold on deep teal", composition: "Low angle, eye travels from lid to words", why: "Surprise" })!;
+  assert.ok(c);
+  const lines = conceptLines(c);
+  assert.ok(lines[0].startsWith("Creative idea (Visual metaphor)"));
+  const twin = { ...c, visual: "Something else" };
+  assert.equal(tooSimilar(c, twin), true);
+  assert.equal(tooSimilar(c, { ...c, device: "Exaggerated scale", type: "Tiny serif caption" }), false);
+  const art = cleanArtBrief({ direction: "premium", idea: "x", headline: "Lunch, upgraded" }, { ...ctx, concept: c })!;
+  const block = formatArtBrief(art);
+  assert.ok(block.includes("A tiffin opening like a treasure chest") && block.includes("Hand-lettered script"));
+  assert.ok(!/huge heavy|One dominant move/i.test(block));
 });
 
 console.log(`\n${passed} passed`);

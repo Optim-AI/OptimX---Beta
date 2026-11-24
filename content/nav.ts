@@ -9,7 +9,7 @@ export type NavLink = { label: string; href: string; description?: string; exter
 
 export const NAV = {
   productLabel: 'Product',
-  productFeatureIds: ['ad-studio', 'ugc-video-ads', 'product-photoshoot', 'brand-research', 'competitor-ad-watch', 'ad-analytics', 'content-calendar'],
+  productFeatureIds: ['marketing-agent', 'ad-studio', 'ugc-video-ads', 'product-photoshoot', 'brand-research', 'competitor-ad-watch', 'ad-analytics', 'content-calendar'],
   productFooterNote: 'Every ad comes with the research behind it.',
   solutionsLabel: 'Solutions',
   solutions: [

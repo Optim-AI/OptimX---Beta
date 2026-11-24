@@ -10,8 +10,6 @@ import {
   Folder,
   Library,
   FileText,
-  Link2,
-  SlidersHorizontal,
   Flag,
   PanelLeft,
   Plus,
@@ -19,6 +17,7 @@ import {
   MessageSquare,
   Trash2,
   ChevronsUpDown,
+  ChevronDown,
   Palette,
   ScanSearch,
   TrendingUp,
@@ -31,6 +30,7 @@ import {
 import { supabase } from '@/auth/supabase/client';
 import { authFetch } from '@/lib/utils';
 import { SkeletonNavItem } from './ui/skeletons';
+import AgentOrb from './agent/AgentOrb';
 
 type NavItem = {
   href: string;
@@ -40,6 +40,8 @@ type NavItem = {
   betaBadge?: boolean;
   /** Shows a "Soon" badge; the page itself explains it is coming. */
   comingSoon?: boolean;
+  /** Soft colour for the icon tile (hex) */
+  tint?: string;
 };
 
 type NavSection = {
@@ -50,56 +52,45 @@ type NavSection = {
 
 const NAV_SECTIONS: NavSection[] = [
   // Dashboard is hidden until the overview screen is ready to ship.
-  // {
-  //   id: 'overview',
-  //   label: 'Overview',
-  //   items: [
-  //     { href: '/dashboard', label: 'Dashboard', Icon: LayoutGrid, featureKey: 'dashboard' },
-  //   ],
-  // },
-  {
-    id: 'agent',
-    label: 'Agent',
-    items: [{ href: '/marketing-agent', label: 'Marketing Agent', Icon: Sparkles }],
-  },
+  // The Marketing Agent has its own highlighted row above these sections (AGENT_HREF).
   {
     id: 'create',
     label: 'Create',
     items: [
-      { href: '/brand-kit', label: 'Brand Kit', Icon: Palette },
-      { href: '/photo-studio', label: 'Photoshoot Studio', Icon: Camera },
-      { href: '/brand-studio', label: 'Brand Studio', Icon: Orbit },
-      { href: '/content-studio', label: 'Ad Studio', Icon: ImageIcon },
-      { href: '/ugc-studio', label: 'UGC Studio', Icon: Smartphone, comingSoon: true },
-      { href: '/create-campaign', label: 'Create Campaign', Icon: PlusCircle, featureKey: 'create_campaigns' },
+      { href: '/brand-kit', label: 'Brand Kit', Icon: Palette, tint: '#a78bfa' },
+      { href: '/photo-studio', label: 'Photoshoot Studio', Icon: Camera, tint: '#f5b942' },
+      { href: '/brand-studio', label: 'Brand Studio', Icon: Orbit, tint: '#f472b6' },
+      { href: '/content-studio', label: 'Ad Studio', Icon: ImageIcon, tint: '#60a5fa' },
+      { href: '/ugc-studio', label: 'UGC Studio', Icon: Smartphone, comingSoon: true, tint: '#2dd4bf' },
+      { href: '/create-campaign', label: 'Create Campaign', Icon: PlusCircle, featureKey: 'create_campaigns', tint: '#38bdf8' },
     ],
   },
   {
-    id: 'intelligence',
-    label: 'Intelligence',
+    id: 'insights',
+    label: 'Insights',
     items: [
-      { href: '/brand-research', label: 'Brand Research', Icon: ScanSearch },
-      { href: '/meta-intelligence', label: 'Ad Performance', Icon: TrendingUp, comingSoon: !AD_PERFORMANCE_LIVE },
-      { href: '/trends', label: 'Trends', Icon: Flame, comingSoon: !TRENDS_LIVE },
+      { href: '/brand-research', label: 'Brand Research', Icon: ScanSearch, tint: '#34d399' },
+      { href: '/meta-intelligence', label: 'Ad Performance', Icon: TrendingUp, comingSoon: !AD_PERFORMANCE_LIVE, tint: '#22d3ee' },
+      { href: '/trends', label: 'Trends', Icon: Flame, comingSoon: !TRENDS_LIVE, tint: '#f87171' },
     ],
   },
   {
     id: 'library',
     label: 'Library',
     items: [
-      { href: '/image-library', label: 'Generated Contents', Icon: Folder },
-      { href: '/library', label: 'Campaign Library', Icon: Library, featureKey: 'campaign_library' },
+      { href: '/image-library', label: 'Generated Contents', Icon: Folder, tint: '#94a3b8' },
+      { href: '/library', label: 'Campaign Library', Icon: Library, featureKey: 'campaign_library', tint: '#cbd5e1' },
     ],
   },
-  {
-    id: 'account',
-    label: 'Account',
-    items: [
-      { href: '/buy-credits', label: 'Plans & Purchases', Icon: FileText },
-      { href: '/integrations', label: 'Integrations', Icon: Link2, featureKey: 'integrations' },
-      { href: '/settings', label: 'Settings', Icon: SlidersHorizontal },
-    ],
-  },
+];
+
+const AGENT_HREF = '/marketing-agent';
+
+/** Account links live in the Account menu at the bottom (not in the main list). */
+const ACCOUNT_LINKS: Array<{ href: string; label: string; featureKey?: string }> = [
+  { href: '/settings', label: 'Settings' },
+  { href: '/buy-credits', label: 'Plans & Purchases' },
+  { href: '/integrations', label: 'Integrations', featureKey: 'integrations' },
 ];
 
 const REPORT_ITEM: NavItem = {
@@ -165,6 +156,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   const [featureAccess, setFeatureAccess] = useState<Record<string, FeatureAccess>>({});
   const [featuresLoading, setFeaturesLoading] = useState(true);
   const [accountOpen, setAccountOpen] = useState(false);
+  const [soonOpen, setSoonOpen] = useState(false);
   const [accountInitial, setAccountInitial] = useState('');
   const accountRef = useRef<HTMLDivElement>(null);
   const asideRef = useRef<HTMLElement>(null);
@@ -271,15 +263,20 @@ const Sidebar: React.FC<SidebarProps> = ({
     return 'visible';
   };
 
+  const isSoon = (item: NavItem) => Boolean(item.comingSoon || (item.featureKey && featureAccess[item.featureKey]?.comingSoon));
+  // "Soon" features wait in one small fold at the bottom instead of crowding the list.
+  const soonItems = NAV_SECTIONS.flatMap((section) => section.items).filter((item) => itemState(item) === 'visible' && isSoon(item));
   const sections = NAV_SECTIONS.map((section) => ({
     ...section,
     entries: section.items
       .map((item) => ({ item, state: itemState(item) }))
       .filter(
         (entry): entry is { item: NavItem; state: 'loading' | 'visible' } =>
-          entry.state !== 'hidden'
+          entry.state !== 'hidden' && !(entry.state === 'visible' && isSoon(entry.item))
       ),
   })).filter((section) => section.entries.length > 0);
+  const accountLinks = ACCOUNT_LINKS.filter((l) => !l.featureKey || itemState({ href: l.href, label: l.label, Icon: Folder, featureKey: l.featureKey }) === 'visible');
+  const agentActive = isRouteActive(pathname, AGENT_HREF);
 
   async function handleSignOut() {
     setAccountOpen(false);
@@ -294,7 +291,8 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   const renderItem = (item: NavItem, state: 'loading' | 'visible') => {
     if (state === 'loading') {
-      return <SkeletonNavItem key={item.href} className={compact ? 'justify-center px-0' : ''} />;
+      // The folded strip has no room for a text placeholder; the item appears once access is known.
+      return compact ? null : <SkeletonNavItem key={item.href} />;
     }
 
     const active = isRouteActive(pathname, item.href);
@@ -308,7 +306,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         title={compact ? item.label : undefined}
         aria-current={active ? 'page' : undefined}
         className={`group flex items-center gap-2.5 rounded-lg transition-colors duration-150 ${
-          compact ? 'justify-center px-2 py-2' : 'px-2.5 py-2'
+          compact ? 'justify-center px-1.5 py-1.5' : 'px-2 py-1.5'
         }`}
         style={{
           color: isReport ? '#f05252' : active ? '#ffffff' : ITEM,
@@ -326,7 +324,16 @@ const Sidebar: React.FC<SidebarProps> = ({
           event.currentTarget.style.color = isReport ? '#f05252' : ITEM;
         }}
       >
-        <item.Icon size={16} strokeWidth={1.75} className="shrink-0" />
+        {item.tint ? (
+          <span
+            className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-[7px] transition-colors"
+            style={{ background: `${item.tint}${active ? '33' : '1a'}`, color: item.tint }}
+          >
+            <item.Icon size={15} strokeWidth={1.9} />
+          </span>
+        ) : (
+          <item.Icon size={16} strokeWidth={1.75} className="shrink-0" />
+        )}
         {!compact && (
           <>
             <span className="min-w-0 truncate text-[13px] leading-5">{item.label}</span>
@@ -432,29 +439,60 @@ const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       <nav className="min-h-0 flex-1 overflow-y-auto px-2.5 pb-3" aria-label="Primary" style={{ scrollbarWidth: 'thin' }}>
-        {sections.map((section, index) => (
-          <div
-            key={section.id}
-            className={index === 0 ? '' : 'mt-2 border-t pt-2'}
-            style={index === 0 ? undefined : { borderColor: LINE }}
+        {/* The Marketing Agent: its own highlighted row with the living orb. */}
+        <Link
+          href={AGENT_HREF}
+          title={compact ? 'Marketing Agent' : undefined}
+          aria-current={agentActive ? 'page' : undefined}
+          className={`group mb-3 block rounded-xl p-px transition-shadow ${agentActive ? 'shadow-[0_0_24px_-6px_rgba(167,139,250,0.55)]' : 'hover:shadow-[0_0_20px_-8px_rgba(167,139,250,0.5)]'}`}
+          style={{ background: 'linear-gradient(135deg, rgba(255,201,143,0.55), rgba(247,166,200,0.5), rgba(196,166,242,0.55), rgba(127,159,245,0.6))' }}
+        >
+          <span
+            className={`flex items-center gap-2.5 rounded-[11px] ${compact ? 'justify-center p-1.5' : 'px-2.5 py-2'}`}
+            style={{ background: agentActive ? 'linear-gradient(135deg, #2a2236, #1d2238)' : 'linear-gradient(135deg, #201c26, #191b24)' }}
           >
+            <AgentOrb size={compact ? 24 : 26} active={agentActive} />
+            {!compact && (
+              <span className="min-w-0">
+                <span className="block truncate text-[13.5px] font-semibold leading-5" style={{ color: '#ffffff' }}>Marketing Agent</span>
+                <span className="block truncate text-[11px] leading-4" style={{ color: '#b9b4c9' }}>Your strategist</span>
+              </span>
+            )}
+          </span>
+        </Link>
+
+        {sections.map((section, index) => (
+          <div key={section.id} className={index === 0 ? '' : 'mt-3'}>
             {!compact && (
               <div
-                className="px-2.5 pb-1.5 pt-1.5 text-[10px] font-semibold uppercase tracking-[0.14em]"
+                className="px-2 pb-1 pt-1 text-[10.5px] font-semibold uppercase tracking-[0.12em]"
                 style={{ color: LABEL }}
               >
                 {section.label}
               </div>
             )}
+            {compact && index > 0 && <div className="mx-2 mb-2 border-t" style={{ borderColor: LINE }} />}
             <div className="space-y-0.5">
               {section.entries.map(({ item, state }) => renderItem(item, state))}
             </div>
           </div>
         ))}
 
-        <div className="mt-2 border-t pt-2" style={{ borderColor: LINE }}>
-          {renderItem(REPORT_ITEM, 'visible')}
-        </div>
+        {!compact && soonItems.length > 0 && (
+          <div className="mt-3">
+            <button
+              type="button"
+              onClick={() => setSoonOpen((o) => !o)}
+              aria-expanded={soonOpen}
+              className="flex w-full items-center gap-1.5 rounded-lg px-2 py-1.5 text-left text-[11.5px] transition-colors hover:bg-white/[0.04]"
+              style={{ color: LABEL }}
+            >
+              <ChevronDown size={13} strokeWidth={2} className={`transition-transform ${soonOpen ? '' : '-rotate-90'}`} />
+              Coming soon · {soonItems.length}
+            </button>
+            {soonOpen && <div className="mt-0.5 space-y-0.5 opacity-80">{soonItems.map((item) => renderItem(item, 'visible'))}</div>}
+          </div>
+        )}
       </nav>
 
       {(onBrandGuideline || showChatHistory) && (
@@ -569,33 +607,24 @@ const Sidebar: React.FC<SidebarProps> = ({
             className="absolute bottom-full left-2.5 right-2.5 z-30 mb-2 overflow-hidden rounded-xl border py-1 shadow-xl"
             style={{ background: '#1c1c21', borderColor: LINE }}
           >
+            {accountLinks.map((l) => (
+              <Link
+                key={l.href}
+                href={l.href}
+                role="menuitem"
+                className="block px-3 py-2 text-[13px] transition-colors hover:bg-white/[0.045]"
+                style={{ color: '#f4f4f5' }}
+              >
+                {l.label}
+              </Link>
+            ))}
             <Link
-              href="/settings"
+              href={REPORT_ITEM.href}
               role="menuitem"
-              className="block px-3 py-2 text-[13px] transition-colors"
+              className="block px-3 py-2 text-[13px] transition-colors hover:bg-white/[0.045]"
               style={{ color: '#f4f4f5' }}
-              onMouseEnter={(event) => {
-                event.currentTarget.style.background = HOVER_BG;
-              }}
-              onMouseLeave={(event) => {
-                event.currentTarget.style.background = 'transparent';
-              }}
             >
-              Settings
-            </Link>
-            <Link
-              href="/buy-credits"
-              role="menuitem"
-              className="block px-3 py-2 text-[13px] transition-colors"
-              style={{ color: '#f4f4f5' }}
-              onMouseEnter={(event) => {
-                event.currentTarget.style.background = HOVER_BG;
-              }}
-              onMouseLeave={(event) => {
-                event.currentTarget.style.background = 'transparent';
-              }}
-            >
-              Plans & Purchases
+              {REPORT_ITEM.label}
             </Link>
             <div className="my-1 border-t" style={{ borderColor: LINE }} />
             <button

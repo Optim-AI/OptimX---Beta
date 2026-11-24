@@ -12,6 +12,7 @@ import { agentJson } from "@/lib/agent/gemini-json";
 import { IMAGE_CONTENT, safeFetch } from "@/lib/audit/url-safety";
 import { cleanBrandColors } from "@/lib/brand-kit/design-hygiene";
 import type { PosterVisualDirection } from "@/lib/creative-studio/poster-generation/types";
+import { conceptLines, type CreativeConcept } from "./creative-ideas";
 import type { BrandSnapshot, Product } from "@/app/web/src/components/creative-studio/types";
 
 /** Styles that lead to designed posters. "commercial" (retail framing) is left out on purpose. */
@@ -28,6 +29,8 @@ export type ArtBrief = {
   hasProduct: boolean;
   /** Whole-brand ad: the products shown together. Empty for one product. */
   range: string[];
+  /** The creative director's idea for this poster (set-level ideation), when there is one. */
+  concept?: CreativeConcept | null;
   idea: string;
   background: string;
   palette: string[];
@@ -60,7 +63,7 @@ export function cleanProductName(name: string, brand?: string | null): string {
 /** Validate the model's answer. Returns null when it is not usable (caller falls back). */
 export function cleanArtBrief(
   raw: unknown,
-  ctx: { brandColors: string[]; productName: string; fallbackHeadline: string; exactHeadline?: string | null; hasProduct?: boolean; range?: string[] }
+  ctx: { brandColors: string[]; productName: string; fallbackHeadline: string; exactHeadline?: string | null; hasProduct?: boolean; range?: string[]; concept?: CreativeConcept | null }
 ): ArtBrief | null {
   const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   const direction = (ART_DIRECTIONS as readonly string[]).includes(String(r.direction)) ? (r.direction as ArtDirectionStyle) : "bold";
@@ -87,6 +90,7 @@ export function cleanArtBrief(
     brandOnPack: ctx.hasProduct !== false && r.brandOnPack === true,
     hasProduct: ctx.hasProduct !== false,
     range: ctx.hasProduct !== false ? (ctx.range ?? []).filter(Boolean).slice(0, 3) : [],
+    concept: ctx.concept ?? null,
     idea,
     background: clip(r.background, 200),
     palette: [...new Set(palette.length ? palette : brand)].slice(0, 3),
@@ -110,11 +114,19 @@ export function formatArtBrief(a: ArtBrief): string {
       : a.hasProduct
       ? `Product: ${a.productName}${a.packaging ? ` (${a.packaging})` : ""} — the exact product from the photo is the hero, label fully visible and never cropped.`
       : `No product photo: the brand and this one idea are the hero. Never invent a product pack or label.`,
-    `One visual idea: ${a.idea}`,
-    a.background && `Background and setting: ${a.background}`,
-    a.palette.length && `Colours: ${a.palette.join(", ")} — one dominant colour, strong contrast.`,
-    a.typeFeel && `Type: ${a.typeFeel}`,
-    `Style: ${a.direction}. One dominant move, generous breathing room, no clutter, no extra props competing with the ${a.hasProduct ? "product" : "idea"}.`,
+    ...(a.concept
+      ? [
+          ...conceptLines(a.concept),
+          a.palette.length && `Brand colours to use with intent: ${a.palette.join(", ")}.`,
+          "Design it like a thoughtful human designer, not an ad template: the words are part of the artwork, every element earns its place, and the idea reads in two seconds.",
+        ]
+      : [
+          `One visual idea: ${a.idea}`,
+          a.background && `Background and setting: ${a.background}`,
+          a.palette.length && `Colours: ${a.palette.join(", ")}.`,
+          a.typeFeel && `Type: ${a.typeFeel}`,
+          `Style: ${a.direction}. Every element earns its place; no props competing with the ${a.hasProduct ? "product" : "idea"}.`,
+        ]),
     `The headline reads exactly "${a.headline}" — every word, not shortened. The button reads "${a.cta}".`,
     a.brandOnPack
       ? "The brand name already shows on the packaging — no separate logo or wordmark."
@@ -150,6 +162,8 @@ export async function writeArtBrief(input: {
   exactHeadline?: string | null;
   /** Whole-brand ad: names of the products shown together. */
   range?: string[];
+  /** The set-level creative concept for this poster (see creative-ideas.ts). */
+  concept?: CreativeConcept | null;
 }): Promise<ArtBrief | null> {
   const { brand, product, angle } = input;
   const productName = product ? cleanProductName(product.product_name, brand.name) : brand.name;
@@ -167,18 +181,19 @@ ${input.ownerRequest ? `The owner asked for (respect it): ${clip(input.ownerRequ
 ${photo ? "The attached image is the real product photo: describe the packaging type you see (jar, pouch, can, bottle, box…), and say whether the brand name or logo is clearly printed on the product itself (brandOnPack)." : ""}
 
 Rules:
-- ONE visual idea that a single still image can show, with the ${product ? "product" : "brand"} as the hero. No sounds, no step-by-step actions, no split scenes, no crowd of props.
+${input.concept ? `- This poster's creative concept is already decided — keep it, describe its picture as "idea" in your own words, and pick the direction that fits it:
+${conceptLines(input.concept).map((l) => `  ${l}`).join("\n")}\n` : ""}- ONE visual idea that a single still image can show, with the ${product ? "product" : "brand"} as the hero. No sounds, no step-by-step actions, no split scenes, no crowd of props.
 - If the owner mentioned a trend or occasion, use it as a light flavour of the one idea, never a second scene.
 ${input.exactHeadline ? `- Headline: use exactly "${clip(input.exactHeadline, 80)}".` : "- Headline: 2-6 words, punchy, keeps the hook's idea, no brand name."} No prices, discounts, ratings or claims that were not given.
 - cta: 2-3 words.
 - direction: one of ${ART_DIRECTIONS.join(", ")} — pick what suits the brand and product (never retail/catalogue framing).
 
 Reply as JSON only:
-{"direction":"","productName":"short clean name","packaging":"","brandOnPack":false,"idea":"one or two sentences","background":"","palette":["#hex"],"typeFeel":"e.g. huge heavy rounded sans","headline":"","cta":""}`;
+{"direction":"","productName":"short clean name","packaging":"","brandOnPack":false,"idea":"one or two sentences","background":"","palette":["#hex"],"typeFeel":"the typeface character and how the words sit in the design","headline":"","cta":""}`;
 
   try {
     const raw = await agentJson<unknown>(prompt, { file: photo, timeoutMs: 45_000, label: "ad-studio-art-brief" });
-    return cleanArtBrief(raw, { brandColors, productName, fallbackHeadline: angle?.title || "", exactHeadline: input.exactHeadline, hasProduct: !!product, range: input.range });
+    return cleanArtBrief(raw, { brandColors, productName, fallbackHeadline: angle?.title || "", exactHeadline: input.exactHeadline, hasProduct: !!product, range: input.range, concept: input.concept });
   } catch (err) {
     console.warn("[art-brief] failed, using the standard brief", { message: (err as Error)?.message?.slice(0, 160) });
     return null;

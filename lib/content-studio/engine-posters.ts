@@ -24,6 +24,7 @@ import type { BrandSnapshot, Product } from "@/app/web/src/components/creative-s
 import { formatSceneGuidanceForBrief, inferProductSceneProfile } from "@/lib/onboarding/product-scene-guidance";
 import { withOnboardingArtDirection } from "@/lib/onboarding/demo-poster";
 import { artBriefInstruction, formatArtBrief, writeArtBrief, type ArtBrief } from "./art-brief";
+import type { CreativeConcept } from "./creative-ideas";
 import {
   CAROUSEL_MAX_SLIDES,
   CAROUSEL_MIN_SLIDES,
@@ -82,8 +83,8 @@ const rangeOf = (p: Product) => (isBrandRange(p) ? ((p as BrandRange).range ?? [
 const hasPhoto = (p: Product) => !!p.product_images?.some((u) => /^https?:\/\//.test(u));
 
 /** The art brief for an Ad Studio poster: one product, the brand's range, or the brand alone. */
-function artBriefForProduct(brand: BrandSnapshot, product: Product, angle: AdStudioAngle | null, ownerRequest: string | null | undefined, aspectRatio: string) {
-  return writeArtBrief({ brand, product: hasPhoto(product) ? product : null, angle, ownerRequest, aspectRatio, range: rangeOf(product) });
+function artBriefForProduct(brand: BrandSnapshot, product: Product, angle: AdStudioAngle | null, ownerRequest: string | null | undefined, aspectRatio: string, concept: CreativeConcept | null = null) {
+  return writeArtBrief({ brand, product: hasPhoto(product) ? product : null, angle, ownerRequest, aspectRatio, range: rangeOf(product), concept });
 }
 
 export function buildAdStudioBrief(params: {
@@ -409,6 +410,8 @@ export async function renderAdStudioDraft(params: {
   aspectRatio: "4:5" | "1:1" | "9:16" | "1.91:1";
   extraInstruction?: string | null;
   storeImage: NonNullable<Parameters<typeof generatePostersForSession>[0]["storeImage"]>;
+  /** This draft's idea from the round's creative director (so the 8 drafts don't look alike). */
+  concept?: CreativeConcept | null;
 }): Promise<DraftRenderResult> {
   const { userId, product, angle } = params;
   let sessionId: string | null = null;
@@ -418,7 +421,7 @@ export async function renderAdStudioDraft(params: {
     const sessionService = createPosterGenerationSessionService();
     const session = await sessionService.createSession({ userId });
     sessionId = session.id;
-    const art = await artBriefForProduct(brand, product, angle, params.extraInstruction, params.aspectRatio);
+    const art = await artBriefForProduct(brand, product, angle, params.extraInstruction, params.aspectRatio, params.concept ?? null);
     const brief = buildAdStudioBrief({ brand, product, angle, art });
     brief.variantCount = 1;
     brief.aspectRatio = params.aspectRatio;

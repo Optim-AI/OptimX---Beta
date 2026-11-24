@@ -32,6 +32,7 @@ import { withOnboardingArtDirection } from "@/lib/onboarding/demo-poster";
 import { gte } from "drizzle-orm";
 import { previewPathFor, publishKeptDraft, signedPreviewUrls, storeDraftImage } from "@/lib/ad-studio/storage";
 import { rememberTaste, tasteFromHeadlinePick, tasteFromKeep, tasteNotes } from "./taste";
+import { ideateSet, type CreativeConcept } from "@/lib/content-studio/creative-ideas";
 
 export const POSTER_SIZES = { feed: "4:5", square: "1:1", story: "9:16" } as const;
 export type PosterSize = keyof typeof POSTER_SIZES;
@@ -75,6 +76,10 @@ export type PosterItem = {
   /** Free preview (private draft): the owner keeps it for 1 credit, or leaves it. */
   preview?: boolean;
   keeping?: boolean;
+  /** The creative director's idea for this poster (kept so "Try again" redraws the same idea) */
+  concept?: CreativeConcept | null;
+  /** What the owner chose to put on this poster ({ref} | {uploadPath,name} | null = brand), for "Try again" */
+  productChoice?: unknown;
   /** Draft file of a preview (private bucket) */
   storagePath?: string | null;
   kept?: boolean;
@@ -174,8 +179,9 @@ export async function resolveProduct(userId: string, choice: unknown): Promise<P
 }
 
 /** Same art-director brief as Ad Studio: one idea, a style, brand colours, the planned headline kept. */
-export function artBriefFor(brand: BrandSnapshot, post: PlannedPost, product: Product | null, size: PosterSize, taste: string[] = []): Promise<ArtBrief | null> {
+export function artBriefFor(brand: BrandSnapshot, post: PlannedPost, product: Product | null, size: PosterSize, taste: string[] = [], concept: CreativeConcept | null = null): Promise<ArtBrief | null> {
   return writeArtBrief({
+    concept,
     brand,
     product,
     angle: { title: post.headline || post.idea, message: post.idea, angle: post.goal },
@@ -267,12 +273,12 @@ type RenderOk = { ok: true; imageUrl: string; engineSessionId: string; generatio
 
 async function renderOne(
   userId: string, brand: BrandSnapshot, post: PlannedPost, product: Product | null, size: PosterSize,
-  opts: { preview?: boolean; taste?: string[] } = {}
+  opts: { preview?: boolean; taste?: string[]; concept?: CreativeConcept | null } = {}
 ): Promise<RenderOk | { ok: false; error: string }> {
   try {
     const sessionService = createPosterGenerationSessionService();
     const session = await sessionService.createSession({ userId });
-    const art = await artBriefFor(brand, post, product, size, opts.taste);
+    const art = await artBriefFor(brand, post, product, size, opts.taste, opts.concept ?? null);
     await sessionService.updateBrief(session.id, userId, buildBrief(brand, post, product, size, art));
     await runMarketingStrategyForSession({ sessionId: session.id, userId, sessionService });
     if (art) {
@@ -330,6 +336,8 @@ export async function startPosterJob(input: {
   headlinesByPost?: Record<number, string>;
   /** Free preview posters (weekly check-in): no credits now, 1 credit to keep each. */
   preview?: boolean;
+  /** Per post (by index): the owner's product choice as sent ({ref}|{uploadPath,name}|null), kept for "Try again". */
+  productChoices?: Record<number, unknown>;
 }): Promise<PosterJobResult> {
   const headlineFor = (index: number) => {
     const post = input.posts[index];
@@ -356,7 +364,11 @@ export async function startPosterJob(input: {
   const brand = snapshot as unknown as BrandSnapshot;
 
   const result: PosterJobResult = {
-    items: picks.map((index) => ({ index, status: "queued", productName: productFor(index)?.product_name ?? null, headline: headlineFor(index) || null, ...(input.preview ? { preview: true } : {}) })),
+    items: picks.map((index) => ({
+      index, status: "queued", productName: productFor(index)?.product_name ?? null, headline: headlineFor(index) || null,
+      ...(input.productChoices && index in input.productChoices ? { productChoice: input.productChoices[index] ?? null } : {}),
+      ...(input.preview ? { preview: true } : {}),
+    })),
     size: input.size,
     productName: input.product?.product_name ?? null,
     startedAt: new Date().toISOString(),
@@ -376,6 +388,17 @@ export async function startPosterJob(input: {
   const taste = await tasteNotes(userId);
 
   runInBackground("agent-posters", async () => {
+    // One creative director thinks up the whole set first, so no two posters share an idea or a look.
+    const concepts = await ideateSet({
+      brand,
+      aspectRatio: POSTER_SIZES[input.size],
+      taste,
+      posts: result.items.map((it) => {
+        const p = input.posts[it.index];
+        return { headline: it.headline || p.headline || p.idea, idea: p.idea, product: productFor(it.index)?.product_name ?? null, goal: p.goal, occasion: p.day || null, visual: p.visual || null };
+      }),
+    });
+    result.items.forEach((it, i) => { it.concept = concepts[i] ?? null; });
     let next = 0;
     const work = async () => {
       while (next < result.items.length) {
@@ -383,7 +406,7 @@ export async function startPosterJob(input: {
         item.status = "running";
         await writeResult(actionId, result);
         const post = { ...input.posts[item.index], headline: headlineFor(item.index) };
-        const out = await renderOne(userId, brand, post, productFor(item.index), input.size, { preview: input.preview, taste });
+        const out = await renderOne(userId, brand, post, productFor(item.index), input.size, { preview: input.preview, taste, concept: item.concept });
         if (out.ok) {
           item.status = "done"; item.imageUrl = out.imageUrl; item.engineSessionId = out.engineSessionId; item.generationId = out.generationId;
           if (out.storagePath) item.storagePath = out.storagePath;
@@ -510,4 +533,59 @@ export async function keepPreview(userId: string, actionId: string, index: numbe
     console.error("[agent/posters] keep failed", { message: (err as Error)?.message?.slice(0, 160) });
     throw new PosterJobError("Couldn't keep this poster. Your credit was returned. Try again.", 500);
   }
+}
+
+/**
+ * "Try again" for one poster that failed or took too long: same post, product, headline and
+ * creative idea. Charged 1 credit only if it comes out right (previews stay free).
+ */
+export async function retryPoster(userId: string, actionId: string, index: number): Promise<PosterJobResult> {
+  const [row] = await db.select().from(agentActions).where(and(eq(agentActions.id, actionId), eq(agentActions.userId, userId)));
+  if (!row || row.type !== "posters") throw new PosterJobError("Those posters no longer exist.", 404);
+  const result = settleStale(row.result as PosterJobResult | null, row.updatedAt as string);
+  const item = result?.items?.find((i) => i.index === index);
+  if (!result || !item) throw new PosterJobError("That poster no longer exists.", 404);
+  if (item.status !== "failed") throw new PosterJobError(item.status === "done" ? "This poster is already made." : "This poster is still being made.", 409);
+  const posts = ((row.params as { posts?: unknown[] })?.posts ?? []).map(cleanPost);
+  const post = posts[index];
+  if (!post) throw new PosterJobError("That post no longer exists.", 404);
+
+  if (!item.preview) {
+    const balance = (await CreditsDAO.getFullBalance(userId))?.imageCredits.total ?? 0;
+    if (balance < 1) throw new PosterJobError("You need 1 image credit to try again. Buy credits, then try again.", 402);
+  }
+  const { snapshot } = await getUserBrand(userId);
+  if (!snapshot?.name) throw new PosterJobError("Set up your Brand Kit first so posters use your name, logo and colours.");
+  const brand = snapshot as unknown as BrandSnapshot;
+  const product = item.productChoice ? await resolveProduct(userId, item.productChoice) : null;
+  if (item.productChoice && !product) throw new PosterJobError("That product photo is no longer available. Make this poster again from the plan.", 409);
+
+  // Claim it (only if nobody changed the row since we read it), so a double click runs once.
+  Object.assign(item, { status: "running", error: null });
+  result.finishedAt = undefined;
+  const claimed = await db.update(agentActions)
+    .set({ result, status: "running", updatedAt: new Date().toISOString() })
+    .where(and(eq(agentActions.id, actionId), eq(agentActions.updatedAt, row.updatedAt)))
+    .returning({ id: agentActions.id });
+  if (!claimed.length) throw new PosterJobError("Already trying again…", 409);
+
+  const taste = await tasteNotes(userId);
+  runInBackground("agent-poster-retry", async () => {
+    const out = await renderOne(userId, brand, { ...post, headline: item.headline || post.headline }, product, result.size, { preview: item.preview, taste, concept: item.concept });
+    const [fresh] = await db.select().from(agentActions).where(eq(agentActions.id, actionId));
+    const latest = (fresh?.result as PosterJobResult | null) ?? result;
+    const target = latest.items.find((i) => i.index === index);
+    if (!target) return;
+    if (out.ok) {
+      Object.assign(target, { status: "done", imageUrl: out.imageUrl, engineSessionId: out.engineSessionId, generationId: out.generationId, error: null });
+      if (out.storagePath) target.storagePath = out.storagePath;
+      if (!target.preview) latest.charged = (latest.charged ?? 0) + 1;
+    } else {
+      Object.assign(target, { status: "failed", error: out.error });
+    }
+    if (!latest.items.some((i) => i.status === "queued" || i.status === "running")) latest.finishedAt = new Date().toISOString();
+    const anyDone = latest.items.some((i) => i.status === "done");
+    await writeResult(actionId, latest, latest.finishedAt ? (anyDone ? "done" : "failed") : "running");
+  });
+  return result;
 }

@@ -126,6 +126,20 @@ function PosterCard({ a, starting, balance, onStart, onDismiss, onChanged }: {
   const posts = (Array.isArray(a.params.posts) ? a.params.posts : []) as Post[];
   const job = (a.result ?? null) as { items?: Tile[]; size?: PosterOptions["size"]; productName?: string | null; finishedAt?: string; preview?: boolean; charged?: number } | null;
   const [keepingAt, setKeepingAt] = useState<number | null>(null);
+  const [retryingAt, setRetryingAt] = useState<number | null>(null);
+  const retry = async (index: number) => {
+    setRetryingAt(index);
+    try {
+      const res = await authFetch("/api/agent/actions", { method: "POST", body: JSON.stringify({ id: a.id, op: "retry", index }) });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.ok) throw new Error(json?.error || "Couldn't try again.");
+      onChanged({ ...json.result, finishedAt: undefined });
+    } catch (e) {
+      toast.error(friendlyError(e));
+    } finally {
+      setRetryingAt(null);
+    }
+  };
   const keep = async (index: number) => {
     setKeepingAt(index);
     try {
@@ -233,7 +247,15 @@ function PosterCard({ a, starting, balance, onStart, onDismiss, onChanged }: {
                       {t.kept && <span className="absolute left-2 top-2 rounded-full px-2 py-0.5 text-[10.5px] font-medium" style={{ background: "rgba(22,163,74,0.85)", color: "#fff" }}>Kept</span>}
                     </button>
                   ) : t.status === "failed" ? (
-                    <div className="flex h-full items-center justify-center p-3 text-center text-[12px]" style={{ color: colors.mutedForeground }}>{t.error || "This one didn't work. You weren't charged."}</div>
+                    <div className="flex h-full flex-col items-center justify-center gap-3 p-3 text-center text-[12px]" style={{ color: colors.mutedForeground }}>
+                      <span>{t.error || "This one didn't work. You weren't charged."}</span>
+                      <button type="button" disabled={retryingAt !== null} onClick={() => retry(t.index)}
+                        className="rounded-lg px-3.5 py-1.5 text-[12.5px] font-medium disabled:opacity-50"
+                        style={{ background: colors.primary, color: colors.primaryForeground }}>
+                        {retryingAt === t.index ? "Starting…" : "Try again"}
+                      </button>
+                      <span className="text-[11px]">{t.preview ? "Free preview" : "1 credit, only if it comes out right"}</span>
+                    </div>
                   ) : (
                     <div className="flex h-full flex-col items-center justify-center gap-2 animate-pulse">
                       <AgentOrb size={30} active={t.status === "running"} />

@@ -232,12 +232,14 @@ async function startPreviewPosters(userId: string, plan: { id: string; params: R
   if (!posts.length) return;
   const choices = await productChoices(userId).catch(() => [] as Awaited<ReturnType<typeof productChoices>>);
   const productsByPost: Record<number, Awaited<ReturnType<typeof resolveProduct>>> = {};
+  const productChoicesByPost: Record<number, unknown> = {};
   for (const [i, p] of posts.entries()) {
     const want = p.product.toLowerCase();
     const match = p.scope === "product" && want ? choices.find((c) => c.name.toLowerCase() === want) : undefined;
     productsByPost[i] = match ? await resolveProduct(userId, { ref: match.id }) : null;
+    productChoicesByPost[i] = match ? { ref: match.id } : null;
   }
   await startPosterJob({
-    userId, actionId: plan.id, posts, selected: posts.map((_, i) => i), size: "feed", product: null, productsByPost, preview: true,
+    userId, actionId: plan.id, posts, selected: posts.map((_, i) => i), size: "feed", product: null, productsByPost, productChoices: productChoicesByPost, preview: true,
   });
 }

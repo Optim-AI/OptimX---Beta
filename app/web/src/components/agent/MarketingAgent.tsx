@@ -623,7 +623,12 @@ export default function MarketingAgent() {
                   {[0, 1, 2].map((i) => <div key={i} className="h-16 animate-pulse rounded-xl" style={{ background: colors.card }} />)}
                 </div>
               ) : (
-                <Thread messages={messages} onUndo={undoMemory} actions={{ running: runningAction, balance: imageCredits, onRun: runAgentAction, onDismiss: dismissAgentAction, onStartPosters: startPosters, onPostersChanged: (id, result) => { patchAction(id, { result }); refreshCredits(); } }} onNext={(t) => { if (!busy) void send(t); }} />
+                <Thread messages={messages} onUndo={undoMemory} actions={{ running: runningAction, balance: imageCredits, onRun: runAgentAction, onDismiss: dismissAgentAction, onStartPosters: startPosters, onPostersChanged: (id, result) => {
+                  // "Try again" puts a poster back to running: keep refreshing until it's done.
+                  const busy = ((result as { items?: Array<{ status: string }> })?.items ?? []).some((i) => i.status === "running" || i.status === "queued");
+                  patchAction(id, busy ? { result, status: "running" } : { result });
+                  refreshCredits();
+                } }} onNext={(t) => { if (!busy) void send(t); }} />
               )}
               <div ref={bottomRef} />
             </div>

@@ -21,6 +21,14 @@ export type Feature = {
 
 export const FEATURES: Feature[] = [
   {
+    id: 'marketing-agent',
+    name: 'Marketing Agent',
+    short: 'Your strategist in a chat: plans posts and makes them.',
+    status: 'live',
+    href: '/#marketing-agent',
+    inNav: true,
+  },
+  {
     id: 'ad-studio',
     name: 'Ad Studio',
     short: 'Posters and carousels built from your research.',

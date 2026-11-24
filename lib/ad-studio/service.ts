@@ -14,6 +14,7 @@ import { getUserBrand } from '@/lib/brand-kit/server';
 import { getBrandResearch } from '@/lib/research/store';
 import { buildProductStrategy, type StrategyAngle, type StrategyProductInput } from '@/lib/research/product-strategy';
 import { renderAdStudioDraft } from '@/lib/content-studio/engine-posters';
+import { ideateSet, type CreativeConcept } from '@/lib/content-studio/creative-ideas';
 import { slugPart } from '@/lib/test-packs/naming';
 import { metaLog } from '@/lib/meta/log';
 import type { Product } from '@/app/web/src/components/creative-studio/types';
@@ -212,7 +213,7 @@ export async function runRound(params: {
   round: number;
   size: number;
   feedback?: string | null;
-  deps?: { research?: ResearchFn; render?: RenderFn };
+  deps?: { research?: ResearchFn; render?: RenderFn; ideate?: typeof ideateSet | null };
 }) {
   const project = await store.getProjectById(params.projectId);
   if (!project) return { skipped: true };
@@ -266,6 +267,25 @@ export async function runRound(params: {
       await store.updateProject(project.id, { status: 'drawing', error: null });
     }
 
+    // One creative director thinks up the whole round first, so the drafts don't look alike.
+    const conceptByDraft = new Map<string, CreativeConcept | null>();
+    // Tests that swap in a fake renderer skip ideation unless they pass their own.
+    const ideate = params.deps && 'ideate' in params.deps ? params.deps.ideate : params.deps?.render ? null : ideateSet;
+    if (ideate) try {
+      const { snapshot: brandNow } = await getUserBrand(project.userId).catch(() => ({ snapshot: null }));
+      if (brandNow?.name) {
+        const concepts = await ideate({
+          brand: brandNow as never,
+          aspectRatio: primary.aspect,
+          posts: drafts.map((d) => {
+            const a = d.angle as DraftAngle;
+            return { headline: a.title, idea: [a.angle, a.message].filter(Boolean).join(": "), product: isBrandRange(product) ? null : product.product_name, goal: goal.engineGoal, visual: extra || null };
+          }),
+        });
+        drafts.forEach((d, i) => conceptByDraft.set(d.id, concepts[i] ?? null));
+      }
+    } catch { /* drafts fall back to their own art brief */ }
+
     await mapLimit(drafts, RENDER_CONCURRENCY, async (d) => {
       const claimed = await store.claimDraftForRender(d.id);
       if (!claimed) return;
@@ -281,6 +301,7 @@ export async function runRound(params: {
             aspectRatio: primary.aspect,
             extraInstruction: extra || null,
             storeImage: storeDraftImage,
+            concept: conceptByDraft.get(d.id) ?? null,
           }),
           DRAFT_TIMEOUT_MS,
           'This poster took too long to draw.',

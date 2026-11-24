@@ -7,6 +7,7 @@ import { PRICING_PLANS } from "@/content/pricing";
 import MarketingLayout from "@/app/web/src/components/marketing/MarketingLayout";
 import { faqJsonLd } from "@/app/web/src/components/marketing/kit/FAQAccordion";
 import HomeHero from "@/app/web/src/components/marketing/home/HomeHero";
+import AgentSection from "@/app/web/src/components/marketing/home/AgentSection";
 import ProblemBlock from "@/app/web/src/components/marketing/home/ProblemBlock";
 import ThinkingStages from "@/app/web/src/components/marketing/home/ThinkingStages";
 import Showcase from "@/app/web/src/components/marketing/home/Showcase";
@@ -79,6 +80,7 @@ const Home: React.FC = () => {
         ]}
       />
       <HomeHero />
+      <AgentSection />
       <ProblemBlock />
       <ThinkingStages />
       <Showcase />

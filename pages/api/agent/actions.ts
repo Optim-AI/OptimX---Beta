@@ -8,12 +8,13 @@
 //   products = per post (null = brand poster); overrides product
 // POST /api/agent/actions {id, op:"poster-update", index, imageUrl, generationId, instruction?} → keep an edited poster
 // POST /api/agent/actions {id, op:"keep", index} → keep a free preview poster (1 image credit)
+// POST /api/agent/actions {id, op:"retry", index} → make one failed poster again (1 credit only if it works)
 import type { NextApiRequest, NextApiResponse } from "next";
 import { getUserIdFromRequest } from "@/auth/request";
 import { randomUUID } from "crypto";
 import { ActionError, dismissAction, getAction, runAction } from "@/lib/agent/actions";
 import { CONTEXT_BUCKET, MAX_FILE_BYTES } from "@/lib/agent/context-items";
-import { POSTER_SIZES, PosterJobError, keepPreview, productChoices, resolveProduct, startPosterJob, updatePosterItem, type PlannedPost, type PosterSize } from "@/lib/agent/posters";
+import { POSTER_SIZES, PosterJobError, keepPreview, retryPoster, productChoices, resolveProduct, startPosterJob, updatePosterItem, type PlannedPost, type PosterSize } from "@/lib/agent/posters";
 import { rememberTaste, tasteFromEdit } from "@/lib/agent/taste";
 import { addMessage, updateSession } from "@/lib/agent/store";
 
@@ -48,6 +49,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const id = idOf(req.body?.id);
     if (!id) return res.status(400).json({ ok: false, error: "Missing action" });
     if (req.body?.op === "dismiss") return res.status(200).json({ ok: await dismissAction(userId, id) });
+    if (req.body?.op === "retry") {
+      const index = Number(req.body?.index);
+      if (!Number.isInteger(index) || index < 0) return res.status(400).json({ ok: false, error: "Missing poster" });
+      return res.status(200).json({ ok: true, result: await retryPoster(userId, id, index) });
+    }
     if (req.body?.op === "keep") {
       const index = Number(req.body?.index);
       if (!Number.isInteger(index) || index < 0) return res.status(400).json({ ok: false, error: "Missing poster" });
@@ -97,7 +103,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           if (Number.isInteger(i) && i >= 0 && i < posts.length && typeof v === "string") headlinesByPost[i] = v.slice(0, 120);
         }
       }
-      await startPosterJob({ userId, actionId: id, posts, selected, size, product, productsByPost, headlinesByPost });
+      const productChoicesByPost = opts.products && typeof opts.products === "object"
+        ? Object.fromEntries(Object.entries(opts.products as Record<string, unknown>).slice(0, 12).map(([k, v]) => [Number(k), v ?? null]))
+        : Object.fromEntries(selected.map((i) => [i, opts.product ?? null]));
+      await startPosterJob({ userId, actionId: id, posts, selected, size, product, productsByPost, headlinesByPost, productChoices: productChoicesByPost });
       return res.status(200).json({ ok: true, action: await getAction(userId, id) });
     }
 

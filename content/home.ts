@@ -5,13 +5,37 @@
  */
 
 export const HERO = {
-  eyebrow: 'The AI marketing team for D2C brands',
-  kicker: 'Not just another AI ad tool.',
   title: 'Know what works. Then make it.',
-  sub: 'SkalX understands your brand, competitors and customers, builds your marketing strategy, and turns it into ready-to-use posters, videos and UGC-style ads.',
+  sub: 'Your AI marketing team. It learns your brand, plans what to post, and makes the posters, videos and ads.',
   primaryCta: 'Get your free brand audit',
   secondaryCta: 'Create your first ad',
-  trust: ['Free audit', 'No card needed', 'Ready in minutes'],
+} as const;
+
+/** Marketing Agent section (right after the hero). Chat mock-up uses the fictional Kolam Kitchen brand. */
+export const AGENT = {
+  eyebrow: 'Marketing Agent',
+  title: 'Meet your Marketing Agent',
+  sub: 'A strategist that knows your brand, plans your posts and makes them, all in one chat.',
+  points: [
+    { title: 'Knows your brand', body: 'Your Brand Kit, your products, your research and the Indian festivals coming up.' },
+    { title: 'Plans every post', body: 'The day, the idea, the caption with hashtags and the best time to post.' },
+    { title: 'Makes the posters in the chat', body: 'Each one a different creative idea. You pick the headline and the product.' },
+    { title: 'Checks in every week', body: 'A fresh plan with free preview posters. You pay only for the ones you keep.' },
+  ],
+  cta: 'Try the Marketing Agent',
+  chat: {
+    brand: 'Kolam Kitchen',
+    label: 'Example, fictional brand',
+    ask: 'Plan two posts for this week.',
+    reply: 'Your buyers miss Sunday home cooking, and they trust masala made the old way. Two posts on that:',
+    posts: [
+      { day: 'Sun · Instagram', headline: 'The Sunday kozhambu, in one spoon.', time: 'Best time 11 AM–1 PM' },
+      { day: 'Wed · Instagram', headline: 'Stone-ground in Karaikudi. Not in a factory.', time: 'Best time 7–9 PM' },
+    ],
+    note: 'I can make these posters for you right here.',
+    images: ['/showcase/kolam-kitchen/poster-1.webp', '/showcase/kolam-kitchen/poster-2.webp'],
+    footnote: 'Example chat and posters for a fictional brand.',
+  },
 } as const;
 
 /** Fictional brand used in the hero animation (never a real brand). */
