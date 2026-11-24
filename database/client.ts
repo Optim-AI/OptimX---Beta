@@ -30,9 +30,16 @@ function getPool(): Pool {
   } catch {
     console.log('[DB] Connecting with provided DATABASE_URL');
   }
+  // On Vercel every function instance has its own pool, and Supabase's session pooler
+  // (port 5432) allows only 15 clients in total: once full, every query fails with
+  // EMAXCONNSESSION (seen 2026-11-24, Marketing Agent chat). Keep each instance small and
+  // let idle connections go quickly. DB_POOL_MAX overrides (e.g. with the transaction
+  // pooler on port 6543, which allows far more clients).
+  const serverless = !!process.env.VERCEL;
   const pool = new Pool({
     connectionString,
-    max: 10,
+    max: Number(process.env.DB_POOL_MAX) || (serverless ? 3 : 10),
+    idleTimeoutMillis: serverless ? 5_000 : 30_000,
     // Fail waiters instead of deadlocking forever when every client is checked out
     // (Ad Studio used to hang 8 poster pipelines on this pool).
     connectionTimeoutMillis: 15_000,
